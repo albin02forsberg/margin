@@ -68,6 +68,7 @@ pub struct Link {
 pub struct OrgFile {
     pub path: PathBuf,
     pub title: String,
+    pub category: String,
     pub id: Option<String>,
     pub headlines: Vec<Headline>,
     pub links: Vec<Link>,
@@ -189,6 +190,7 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
     if let Some(h) = cur {
         f.headlines.push(h);
     }
+    f.category = file_cat;
     f
 }
 
