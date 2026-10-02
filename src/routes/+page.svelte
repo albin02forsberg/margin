@@ -903,6 +903,7 @@
     { label: "Reload from disk (discard unsaved changes)", leader: "f r", run: reloadFromDisk },
     { label: "Save all", leader: "f S", run: saveAll },
     { label: "Check for updates", leader: "f u", run: () => checkUpdate() },
+    { label: "Help: tutorial", leader: "?", run: async () => openFile((await call<[string, boolean]>("tutorial"))[0]) },
     { label: "Switch tab…", leader: "b b", run: switchTab },
     { label: "Next tab (also gt)", keys: ["Ctrl+Tab"], leader: "b n", run: () => cycleTab(1) },
     { label: "Previous tab (also gT)", keys: ["Ctrl+Shift+Tab"], leader: "b p", run: () => cycleTab(-1) },
@@ -1167,6 +1168,8 @@
       ed.hooks.follow = (target) => act(() => followLink(target ?? ed.linkAtCursor(view)));
       ed.hooks.tab = (d) => act(() => cycleTab(d));
       await openView("agenda");
+      const [tut, first] = await call<[string, boolean]>("tutorial");
+      if (first) await openFile(tut);
       await refreshTc();
       if (!import.meta.env.DEV) checkUpdate(true).catch(() => {}); // offline or no release yet: stay quiet
     });

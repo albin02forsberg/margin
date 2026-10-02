@@ -86,6 +86,18 @@ fn date(input: &str) -> R<NaiveDate> {
 
 // ---------------------------------------------------------------- config & files
 
+/// The tutorial note, kept beside config.toml so its examples stay out of the agenda.
+/// Written when missing; returns its path and whether it was just written (first run).
+#[tauri::command]
+fn tutorial(s: State<App>) -> R<(PathBuf, bool)> {
+    let p = s.cfg_path.with_file_name("tutorial.org");
+    let new = !p.exists();
+    if new {
+        std::fs::write(&p, include_str!("tutorial.org")).map_err(|e| e.to_string())?;
+    }
+    Ok((p, new))
+}
+
 #[tauri::command]
 fn config(s: State<App>) -> Value {
     let c = s.cfg();
@@ -770,7 +782,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            config, reload_config, save_view, list_files, read_file, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
+            config, tutorial, reload_config, save_view, list_files, read_file, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
