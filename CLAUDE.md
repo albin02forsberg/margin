@@ -1,0 +1,73 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
+
+**Margin** — Cross-platform desktop app for notes (org files), tasks, journal, and time tracking.
+- Frontend: SvelteKit + TypeScript + Svelte 5 + CodeMirror
+- Backend: Rust + Tauri (single-package repo: `/src` frontend, `/src-tauri` backend)
+- Multi-platform: Linux (AppImage/deb/rpm), macOS (DMG), Windows (exe) via GitHub Actions
+
+## Build & Test
+
+**Frontend + Backend (dev mode):**
+```bash
+npm run tauri dev  # Starts Vite dev server + Rust backend together
+```
+
+**Frontend only:**
+```bash
+npm run dev        # Vite dev server (port 5173 by default)
+npm run build      # Build frontend bundle
+```
+
+**Checks & Tests:**
+```bash
+npm run check      # Type checking (svelte-kit sync + svelte-check)
+npm test           # Run TypeScript tests (node --test src/lib/*.test.ts)
+cd src-tauri && cargo test  # Rust tests
+```
+
+**Release build:**
+```bash
+npm run tauri build  # Release binary for current OS only
+```
+
+## Release & CI/CD
+
+Version bumping and release process:
+1. Edit `src-tauri/tauri.conf.json` to bump version
+2. `git tag v<version> && git push --tags`
+3. GitHub Actions CI/CD runs, builds for all three OS, creates draft release
+4. Manual publish makes live (installed copies auto-update via TAURI_SIGNING_PRIVATE_KEY)
+
+CI/CD secrets needed: `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+
+## Code Style
+
+- TypeScript strict mode, ESM modules
+- Svelte 5 (latest), SvelteKit static adapter (SPA with index.html fallback)
+- CodeMirror 6 for editor, Vim bindings enabled
+- No linter/formatter configured (type checking via svelte-check only)
+- Rust uses Cargo release optimizations (LTO, single codegen unit, stripped)
+
+## Testing
+
+- TypeScript: `node --test` (native Node test runner, no framework)
+- Rust: `cargo test`
+- Run single TS test: `npm test 2>&1 | grep -A 20 "test_name"`
+
+## Tauri-Specific
+
+- Plugins: global-shortcut, notification, updater, process, tray-icon, single-instance, opener, user-idle
+- Backend API: Tauri commands expose Rust functions to frontend (invoke pattern)
+- File system: app uses user config dir (TOML: `config.toml`) and data dirs (notes, timeclock)
+- Sync: file changes detected via notify-debouncer-mini, triggers frontend refresh
+- Tray: app can close to tray or quit, controlled by `close_to_tray` setting
+
+## Repo Conventions
+
+- Main branch: `main` (PRs / CI required before merge)
+- Commits: Conventional or clear description (no strict format enforced)
+- Conflict resolution: When files sync (Emacs, git, or app editing), non-overlapping changes auto-merge; conflicts flagged
