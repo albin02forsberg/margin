@@ -625,6 +625,25 @@
     await tcDo("tc_in", { project: p.project, task: "", exportCode: p.code });
   }
 
+  /** Back from SINCE–BACK away with a timer running: keep, discard, or discard and stop. */
+  async function idleReturn({ since, back }: { since: string; back: string }) {
+    await refreshTc();
+    if (tc.project == null) return;
+    const hm = (t: string) => t.slice(11, 16);
+    const mins = Math.round((Date.parse(back) - Date.parse(since)) / 60000);
+    const c = await pick({
+      prompt: `You were away ${hm(since)}–${hm(back)} (${mins} min) while tracking “${tc.project || "Other"}”`,
+      items: [
+        { label: "Keep the time", value: "keep" },
+        { label: "Discard idle time", detail: `clock back in from ${hm(back)}`, value: "discard" },
+        { label: "Discard and stop", detail: `clock out at ${hm(since)}`, value: "stop" },
+      ],
+    });
+    if (c == null || c === "keep") return;
+    const note = c === "stop" ? await ask("What did you do?", tc.task ?? "", "goes into the work diary") : "";
+    if (note != null) await tcDo("tc_idle", { since, back: c === "stop" ? null : back, note });
+  }
+
   async function adjustStart() {
     const m = await ask("How many minutes ago did you actually start?");
     if (m && !isNaN(+m)) await tcDo("tc_adjust", { minutes: Math.round(+m) });
@@ -989,6 +1008,7 @@
     const focus = () => syncFromDisk();
     const unlisten = listen("fs-changed", () => syncFromDisk());
     const unlistenTray = listen<string>("tray", (e) => act(() => timeActions[e.payload]()));
+    const unlistenIdle = listen<{ since: string; back: string }>("idle", (e) => act(() => idleReturn(e.payload)));
     // Quick capture (global shortcut or `margin --capture`); HIDDEN: the window was hidden before, so hide it again.
     const unlistenCapture = listen<boolean>("capture", (e) => act(async () => {
       await newTask();
@@ -1001,6 +1021,7 @@
       clearInterval(timer);
       unlisten.then((f) => f());
       unlistenTray.then((f) => f());
+      unlistenIdle.then((f) => f());
       unlistenCapture.then((f) => f());
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("blur", blur);

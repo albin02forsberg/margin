@@ -39,7 +39,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "linux": {
+      "deb": { "depends": ["libxss1"] },
+      "rpm": { "depends": ["libXScrnSaver"] }
+    }
   },
   "plugins": {
     "updater": {

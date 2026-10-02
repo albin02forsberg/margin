@@ -19,6 +19,8 @@ pub struct Config {
     pub close_to_tray: bool,
     /// System-wide shortcut for quick capture, e.g. "Super+Shift+N"; empty to disable.
     pub capture_shortcut: String,
+    /// Ask what to do with the time after this long away from a running timer; 0 to disable.
+    pub idle_threshold_minutes: i64,
     /// Desktop notifications for timed entries and upcoming deadlines.
     pub reminders: bool,
     pub remind_before_minutes: i64,
@@ -51,6 +53,7 @@ impl Default for Config {
             inbox: "inbox.org".into(),
             close_to_tray: true,
             capture_shortcut: "Super+Shift+N".into(),
+            idle_threshold_minutes: 10,
             reminders: true,
             remind_before_minutes: 10,
             deadline_warning_days: 1,

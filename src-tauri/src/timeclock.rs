@@ -179,11 +179,25 @@ impl Tc {
 
     /// Returns false if not clocked in.
     pub fn clock_out(&self, note: &str) -> Result<bool, String> {
+        self.clock_out_at(note, now())
+    }
+
+    fn clock_out_at(&self, note: &str, t: NaiveDateTime) -> Result<bool, String> {
         let Some((start, project, _)) = self.current() else { return Ok(false) };
-        let t = now();
         let note = note.trim();
         self.append(&Event::Out { t, note: note.into() })?;
         append_diary(&self.diary, &project, note, hours(t - start), t).map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+
+    /// Drop time spent away: clock out at SINCE (not before the session start), then
+    /// back in on the same project and task at BACK, or stay out if None.
+    pub fn discard_idle(&self, since: NaiveDateTime, back: Option<NaiveDateTime>, note: &str) -> Result<bool, String> {
+        let Some((start, project, task)) = self.current() else { return Ok(false) };
+        self.clock_out_at(note, since.max(start))?;
+        if let Some(t) = back {
+            self.append(&Event::In { t, project, task })?;
+        }
         Ok(true)
     }
 
@@ -748,6 +762,37 @@ mod tests {
         assert!(diary.contains("*Acme* (30m): Automatically switched to Other"), "{diary}");
         assert!(diary.contains("*Other* (0m): done"));
         assert!(doctor(&tc.read_log(), now()).is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn discard_idle_sessions() {
+        let dir = std::env::temp_dir().join(format!("tc-idle-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), expected: 8.0 };
+        let start = |tc: &Tc| {
+            let _ = fs::remove_file(tc.log_path());
+            tc.append(&Event::In { t: dt("2026-10-01 09:00"), project: "Acme".into(), task: "Review".into() }).unwrap();
+        };
+        let at = |tc: &Tc| sessions(&tc.events(), dt("2026-10-01 12:00")).iter().map(|s| (s.start.to_string(), s.end.to_string(), s.desc.clone())).collect::<Vec<_>>();
+        let s = |a: &str, b: &str, d: &str| (format!("{a}:00"), format!("{b}:00"), d.to_string());
+        // Keep: nothing changes (the open session isn't in `sessions` yet).
+        start(&tc);
+        assert!(at(&tc).is_empty());
+        // Discard: out at the idle start, back in on the same project and task on return.
+        assert!(tc.discard_idle(dt("2026-10-01 10:00"), Some(dt("2026-10-01 10:30")), "").unwrap());
+        assert_eq!(at(&tc), vec![s("09:00", "10:00", "")]);
+        assert_eq!(tc.current().unwrap(), (dt("2026-10-01 10:30"), "Acme".into(), "Review".into()));
+        // Discard and stop: out at the idle start, not before the session began.
+        start(&tc);
+        assert!(tc.discard_idle(dt("2026-10-01 08:00"), None, "done").unwrap());
+        assert!(at(&tc).is_empty()); // zero-length session
+        start(&tc);
+        assert!(tc.discard_idle(dt("2026-10-01 10:00"), None, "done").unwrap());
+        assert_eq!(at(&tc), vec![s("09:00", "10:00", "done")]);
+        assert!(tc.current().is_none());
+        assert!(fs::read_to_string(&tc.diary).unwrap().contains("[10:00] *Acme* (1h 00m): done"));
+        assert!(!tc.discard_idle(dt("2026-10-01 10:00"), None, "").unwrap());
         let _ = fs::remove_dir_all(&dir);
     }
 
