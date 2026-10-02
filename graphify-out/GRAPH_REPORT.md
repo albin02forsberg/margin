@@ -1,183 +1,259 @@
-# Graph Report - tool  (2026-10-02)
+# Graph Report - margin  (2026-10-02)
 
 ## Corpus Check
-- Corpus is ~38,310 words - fits in a single context window. You may not need a graph.
+- 59 files · ~72,934 words
+- Verdict: corpus is large enough that graph structure adds value.
+- Unclassified: 5 file(s) not represented in the graph (top: (none) 2, .icns 1, .ico 1)
 
 ## Summary
-- 621 nodes · 1359 edges · 31 communities (23 shown, 8 thin omitted)
-- Extraction: 95% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 19 edges (avg confidence: 0.85)
+- 960 nodes · 2084 edges · 60 communities (34 shown, 26 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 19 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
+## Graph Freshness
+- Built from commit: `d835edbd`
+- Run `git rev-parse HEAD` and compare to check if the graph is stale.
+- Run `graphify update .` after code changes (no API cost).
+
 ## Community Hubs (Navigation)
-- Core UI Components
-- Tauri Backend Core
-- Svelte Components
-- Data Models
-- Configuration & Storage
-- Time & Scheduling
-- Org Format Parsing
-- Tauri Integrations
-- ICS Calendar Export
-- Frontend Routes
-- Menu Components
-- Dialog Components
-- Tauri Plugins
-- Editor Components
-- Task Dialog
-- System Integration
-- Time Component
-- Picker Component
-- Shared Utilities
-- Tray Management
-- Backup & Sync
-- Notifications
-- GitHub Actions
-- Community 23
-- Community 24
-- Community 25
-- Community 26
-- Community 30
+- org.rs
+- timeclock.rs
+- lib.rs
+- editor.ts
+- []
+- remind.rs
+- orgtable.ts
+- tauri.conf.json
+- package.json
+- compilerOptions
+- dependencies
+- Calendar
+- attach.rs
+- GitHub Releases
+- devDependencies
+- scripts
+- Notes
+- AppImage
+- svelte
+- lib/Menu.svelte
+- default.json
+- screenshots.ts
+- activity.rs
+- export.rs
+- notes.rs
+- Sync
+- +layout.ts
+- +page.svelte
+- margin
+- config.rs
+- decorate
+- lib/TaskDialog.svelte
+- curLine
+- level
+- CLAUDE.md
+- ship/SKILL.md
+- implementer.md
+- triager.md
+- release/SKILL.md
+- autopilot/SKILL.md
+- verify-all/SKILL.md
+- App Icon
+- Configuration
+- DMG
+- Tauri Global Shortcut Plugin
+- Windows Installer
+- Journal
+- Node.js
+- Tauri Notification Plugin
+- Tauri Single Instance Plugin
+- Tauri Action
+- Time Tracking
+- TypeScript
 
 ## God Nodes (most connected - your core abstractions)
-1. `App` - 51 edges
-2. `Tc` - 21 edges
-3. `Kw` - 20 edges
-4. `[]` - 20 edges
-5. `level()` - 18 edges
-6. `Margin` - 18 edges
-7. `OrgFile` - 17 edges
-8. `Session` - 16 edges
-9. `curLine()` - 16 edges
-10. `line()` - 14 edges
+1. `App` - 76 edges
+2. `State` - 68 edges
+3. `Tc` - 26 edges
+4. `Kw` - 24 edges
+5. `OrgFile` - 21 edges
+6. `[]` - 19 edges
+7. `Session` - 18 edges
+8. `level()` - 18 edges
+9. `BLOCK` - 16 edges
+10. `curLine()` - 16 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Margin` --uses--> `Rust`  [high]
-  README.md, package.json → src-tauri/Cargo.toml, .github/workflows/ci.yml
-- `Margin` --uses--> `App Icon`  [high]
-  README.md, package.json → assets/icon.svg
-- `Margin` --supports--> `Linux`  [high]
-  README.md, package.json → README.md, .github/workflows/release.yml
-- `Margin` --supports--> `macOS`  [high]
-  README.md, package.json → README.md, .github/workflows/release.yml
-- `Margin` --provides--> `Notifications`  [high]
-  README.md, package.json → README.md, src-tauri/Cargo.toml
+- `picks_due_reminders()` --calls--> `at()`  [INFERRED]
+  src-tauri/src/remind.rs → src-tauri/src/org.rs
+- `[]` --indirect_call--> `priority()`  [INFERRED]
+  src/lib/Agenda.svelte → src/routes/+page.svelte
+- `activity_suggestions()` --references--> `Suggestion`  [EXTRACTED]
+  src-tauri/src/lib.rs → src-tauri/src/activity.rs
+- `generate()` --calls--> `request()`  [INFERRED]
+  src-tauri/src/ai.rs → src-tauri/src/activity.rs
+- `capped()` --references--> `Item`  [EXTRACTED]
+  src-tauri/src/ai.rs → src-tauri/src/org.rs
 
 ## Import Cycles
 - None detected.
 
-## Communities (31 total, 8 thin omitted)
+## Communities (60 total, 26 thin omitted)
 
-### Community 0 - "Core UI Components"
-Cohesion: 0.08
-Nodes (61): add_interval(), agenda(), agenda_week(), archive(), capture_insert(), check_target(), cycle_and_repeat(), cycle_priority() (+53 more)
-
-### Community 1 - "Tauri Backend Core"
-Cohesion: 0.08
-Nodes (43): append_diary(), apply_carry(), breaks_accumulate_and_flex(), csv(), csv_field(), csv_quotes_and_comma(), d(), daily_report() (+35 more)
-
-### Community 2 - "Svelte Components"
-Cohesion: 0.11
-Nodes (51): agenda(), App, backup_now(), capture(), capture_insert(), capture_path(), config(), date() (+43 more)
-
-### Community 3 - "Data Models"
-Cohesion: 0.06
-Nodes (57): applyText(), Block, BULLETS, clicks, codeTokens(), createState(), curLine(), decorate() (+49 more)
-
-### Community 4 - "Configuration & Storage"
-Cohesion: 0.05
-Nodes (29): svelte, [], dateChip(), dayInput(), fmtDay(), goToday(), key(), monday() (+21 more)
-
-### Community 5 - "Time & Scheduling"
+### Community 0 - "org.rs"
 Cohesion: 0.07
-Nodes (22): Config, expand(), View, builds_feed(), event(), feed(), fnv(), fold() (+14 more)
+Nodes (75): add_interval(), agenda(), agenda_week(), ALIAS, all_tags(), archive(), at(), Cache (+67 more)
 
-### Community 6 - "Org Format Parsing"
-Cohesion: 0.10
+### Community 1 - "timeclock.rs"
+Cohesion: 0.07
+Nodes (46): add_past_sessions(), append_diary(), apply_carry(), breaks_accumulate_and_flex(), csv(), csv_field(), csv_quotes_and_comma(), d() (+38 more)
+
+### Community 2 - "lib.rs"
+Cohesion: 0.07
+Nodes (79): activity_dismiss(), activity_suggestions(), agenda(), ai_day_prompt(), ai_draft(), ai_note_prompt(), App, attach() (+71 more)
+
+### Community 3 - "editor.ts"
+Cohesion: 0.09
+Nodes (22): applyText(), Block, BULLETS, clicks, diffChange(), hide, hooks, LANG_ALIAS (+14 more)
+
+### Community 4 - "[]"
+Cohesion: 0.18
+Nodes (11): [], dateChip(), dayInput(), fmtDay(), goToday(), key(), monday(), op() (+3 more)
+
+### Community 5 - "remind.rs"
+Cohesion: 0.05
+Nodes (20): builds_feed(), event(), feed(), fnv(), fold(), source(), start(), step() (+12 more)
+
+### Community 6 - "orgtable.ts"
+Cohesion: 0.12
 Nodes (33): align(), applyFormulas(), cells(), colRef(), create(), deleteCol(), deleteRow(), done() (+25 more)
 
-### Community 7 - "Tauri Integrations"
+### Community 7 - "tauri.conf.json"
+Cohesion: 0.06
+Nodes (33): app, security, windows, enable, scope, build, beforeBuildCommand, beforeDevCommand (+25 more)
+
+### Community 8 - "package.json"
 Cohesion: 0.07
-Nodes (26): app, security, windows, enable, scope, build, beforeBuildCommand, beforeDevCommand (+18 more)
+Nodes (26): description, license, name, type, version, @codemirror/commands, @codemirror/language, @codemirror/language-data (+18 more)
 
-### Community 8 - "ICS Calendar Export"
-Cohesion: 0.09
-Nodes (21): description, license, name, type, version, @codemirror/commands, @codemirror/language, @codemirror/language-data (+13 more)
-
-### Community 9 - "Frontend Routes"
+### Community 9 - "compilerOptions"
 Cohesion: 0.14
 Nodes (13): ./.svelte-kit/tsconfig.json, compilerOptions, allowImportingTsExtensions, allowJs, checkJs, esModuleInterop, forceConsistentCasingInFileNames, moduleResolution (+5 more)
 
-### Community 10 - "Menu Components"
+### Community 10 - "dependencies"
 Cohesion: 0.15
 Nodes (13): dependencies, @codemirror/commands, @codemirror/language, @codemirror/language-data, @codemirror/search, @codemirror/state, @codemirror/view, @lezer/highlight (+5 more)
 
-### Community 11 - "Dialog Components"
-Cohesion: 0.22
-Nodes (11): App Icon, Calendar, Configuration, Favicon, Global Hotkey, iCalendar, Journal, Margin (+3 more)
+### Community 11 - "Calendar"
+Cohesion: 0.67
+Nodes (3): Calendar, iCalendar, Tasks
 
-### Community 12 - "Tauri Plugins"
-Cohesion: 0.31
-Nodes (6): backup(), fail(), git(), LAST_FAILURE, LOG, ok()
+### Community 12 - "attach.rs"
+Cohesion: 0.13
+Nodes (12): clean(), LINK, names_and_links(), normalize(), target(), unused(), backup(), fail() (+4 more)
 
-### Community 13 - "Editor Components"
-Cohesion: 0.20
-Nodes (10): GitHub Releases, Tauri Global Shortcut Plugin, Tauri Notification Plugin, Tauri Opener Plugin, Tauri Process Plugin, Tauri Single Instance Plugin, Tauri, Time Tracking (+2 more)
+### Community 14 - "devDependencies"
+Cohesion: 0.18
+Nodes (11): devDependencies, svelte, svelte-check, @sveltejs/adapter-static, @sveltejs/kit, @sveltejs/vite-plugin-svelte, @tauri-apps/cli, @types/node (+3 more)
 
-### Community 14 - "Task Dialog"
-Cohesion: 0.20
-Nodes (10): devDependencies, svelte, svelte-check, @sveltejs/adapter-static, @sveltejs/kit, @sveltejs/vite-plugin-svelte, @tauri-apps/cli, @types/node (+2 more)
+### Community 15 - "scripts"
+Cohesion: 0.15
+Nodes (13): scripts, build, check, check:watch, dev, e2e:build, e2e:run, prepare (+5 more)
 
-### Community 15 - "System Integration"
-Cohesion: 0.22
-Nodes (9): scripts, build, check, check:watch, dev, prepare, preview, tauri (+1 more)
-
-### Community 16 - "Time Component"
+### Community 16 - "Notes"
 Cohesion: 0.29
-Nodes (8): CodeMirror, Links and Backlinks, Notes, Org Format, Search, Syntax Highlighting, Table Formulas, Vim Keys
+Nodes (7): Links and Backlinks, Notes, Org Format, Search, Syntax Highlighting, Table Formulas, Vim Keys
 
-### Community 17 - "Picker Component"
-Cohesion: 0.29
-Nodes (7): AppImage, DMG, Windows Installer, Linux, macOS, Tauri Action, Windows
-
-### Community 18 - "Shared Utilities"
-Cohesion: 0.33
-Nodes (6): GitHub Actions, Node.js, npm, Rust, SvelteKit, Vite
-
-### Community 20 - "Backup & Sync"
+### Community 20 - "default.json"
 Cohesion: 0.33
 Nodes (5): description, identifier, permissions, $schema, windows
 
-### Community 21 - "Notifications"
-Cohesion: 0.67
-Nodes (4): refresh(), setup(), show(), tracking()
+### Community 21 - "screenshots.ts"
+Cohesion: 0.06
+Nodes (43): ADR-0007, ADR-0008, at(), buckets, day, ev(), events, y (+35 more)
 
-### Community 22 - "GitHub Actions"
-Cohesion: 0.40
-Nodes (3): @sveltejs/adapter-static, @sveltejs/vite-plugin-svelte, config
+### Community 22 - "activity.rs"
+Cohesion: 0.07
+Nodes (38): AwEvent, browser_urls(), Bucket, Buckets, CEST, cut(), dismiss(), dismissals() (+30 more)
 
-### Community 25 - "Community 25"
+### Community 23 - "export.rs"
+Cohesion: 0.09
+Nodes (43): BLOCK, Heading, List, Para, Pre, Quote, Rule, Table (+35 more)
+
+### Community 24 - "notes.rs"
+Cohesion: 0.11
+Nodes (22): ANY_LINK, backlinks(), ensure_id(), ensures_ids(), files(), gen_id(), Graph, graph_neighbourhood() (+14 more)
+
+### Community 25 - "Sync"
 Cohesion: 0.67
 Nodes (3): Emacs, Git, Sync
 
+### Community 31 - "config.rs"
+Cohesion: 0.16
+Nodes (13): add_view(), add_views(), atomic_writes(), Config, defaults_round_trip(), expand(), rename_view(), rename_views() (+5 more)
+
+### Community 32 - "decorate"
+Cohesion: 0.13
+Nodes (9): codeTokens(), decorate(), Glyph, imageSrc(), Img, inline(), langFor(), mark() (+1 more)
+
+### Community 33 - "lib/TaskDialog.svelte"
+Cohesion: 0.17
+Nodes (10): svelte, active, close(), closed(), duePreview, error, key(), save() (+2 more)
+
+### Community 34 - "curLine"
+Cohesion: 0.21
+Nodes (14): createState(), curLine(), expandTemplate(), insertBlock(), insertMode(), insertTable(), inTable(), newItem() (+6 more)
+
+### Community 35 - "level"
+Cohesion: 0.41
+Nodes (13): drawerRange(), headingAt(), headings(), level(), line(), moveSubtree(), newHeading(), orgFold (+5 more)
+
+### Community 36 - "CLAUDE.md"
+Cohesion: 0.18
+Nodes (9): Agent Workflow, Build & Test, Code Style, Project, Release & CI/CD, Repo Conventions, Tauri-Specific, Testing (+1 more)
+
+### Community 37 - "ship/SKILL.md"
+Cohesion: 0.25
+Nodes (7): 1. Survey, 2. Dispatch, 3. Review each report, 4. Clean up, 5. Report to the owner, Rules, Running it repeatedly
+
+### Community 38 - "implementer.md"
+Cohesion: 0.40
+Nodes (4): Finish, House rules, Report (your final message), Start
+
+### Community 39 - "triager.md"
+Cohesion: 0.40
+Nodes (4): Pass, Report (ends your run), Rules for what you post, Watch mode (only when asked)
+
+### Community 40 - "release/SKILL.md"
+Cohesion: 0.40
+Nodes (4): Notes, Secrets required (in GitHub repo settings), Usage, What it does
+
+### Community 41 - "autopilot/SKILL.md"
+Cohesion: 0.50
+Nodes (3): Loop, Rules, Stop
+
+### Community 42 - "verify-all/SKILL.md"
+Cohesion: 0.50
+Nodes (3): Usage, What it does, When to use
+
 ## Knowledge Gaps
-- **138 isolated node(s):** `name`, `version`, `description`, `type`, `dev` (+133 more)
-  These have ≤1 connection - possible missing edges. (Counts symbols only; 218 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **8 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **206 isolated node(s):** `y`, `day`, `events`, `app`, `out` (+201 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 337 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **26 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Margin` connect `Dialog Components` to `Configuration & Storage`, `Editor Components`, `Time Component`, `Picker Component`, `Shared Utilities`, `Community 25`?**
-  _High betweenness centrality (0.226) - this node is a cross-community bridge._
-- **Why does `Tauri` connect `Editor Components` to `Notifications`, `Svelte Components`, `Dialog Components`, `Time & Scheduling`?**
-  _High betweenness centrality (0.185) - this node is a cross-community bridge._
-- **Why does `svelte` connect `Configuration & Storage` to `ICS Calendar Export`?**
-  _High betweenness centrality (0.080) - this node is a cross-community bridge._
-- **What connects `name`, `version`, `description` to the rest of the system?**
-  _138 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `Core UI Components` be split into smaller, more focused modules?**
-  _Cohesion score 0.07621326042378673 - nodes in this community are weakly interconnected._
-- **Should `Tauri Backend Core` be split into smaller, more focused modules?**
-  _Cohesion score 0.07567567567567568 - nodes in this community are weakly interconnected._
-- **Should `Svelte Components` be split into smaller, more focused modules?**
-  _Cohesion score 0.10865191146881288 - nodes in this community are weakly interconnected._
+- **Why does `svelte` connect `lib/TaskDialog.svelte` to `package.json`?**
+  _High betweenness centrality (0.023) - this node is a cross-community bridge._
+- **Why does `webdriverio` connect `screenshots.ts` to `package.json`?**
+  _High betweenness centrality (0.017) - this node is a cross-community bridge._
+- **Why does `Tc` connect `timeclock.rs` to `lib.rs`?**
+  _High betweenness centrality (0.016) - this node is a cross-community bridge._
+- **What connects `y`, `day`, `events` to the rest of the system?**
+  _206 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `org.rs` be split into smaller, more focused modules?**
+  _Cohesion score 0.06764346764346764 - nodes in this community are weakly interconnected._
+- **Should `timeclock.rs` be split into smaller, more focused modules?**
+  _Cohesion score 0.07375844842785777 - nodes in this community are weakly interconnected._
+- **Should `lib.rs` be split into smaller, more focused modules?**
+  _Cohesion score 0.06901544401544402 - nodes in this community are weakly interconnected._
