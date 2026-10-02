@@ -233,7 +233,9 @@ month or last month as HTML or PDF (`e t`, or `E` in the Time view). Files go to
 `export_dir` (default `~/Desktop`). PDF writes the HTML page and opens it in your
 browser with the print dialog up — choose "Save as PDF" there. Property drawers,
 planning lines, comments and `#+` keywords other than the title are left out;
-`id:` links become plain text and images link to the original files.
+`id:` links become plain text. Images are embedded in the HTML, so the page
+works on its own; bare URLs become links, and `term :: text` lists and verse
+blocks keep their shape.
 
 ## Reminders
 
