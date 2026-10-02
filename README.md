@@ -16,6 +16,10 @@ the editor has vim keys.
 - **Stays in sync** with Emacs, git or any sync tool editing the same files,
   and updates itself from GitHub releases.
 
+![Today: scheduled tasks, deadlines, a habit and the running timer](docs/screenshots/today.png)
+
+![A note with links, checkboxes, a table with a formula and a code block](docs/screenshots/note.png)
+
 ## Install
 
 Download the latest build from
@@ -62,6 +66,12 @@ tauri-driver --locked`) and `WebKitWebDriver` (`webkit2gtk-driver` on
 Debian/Ubuntu); use `xvfb-run -a npm run test:e2e` without a display. CI runs it
 in the `e2e` job.
 
+The README screenshots come from the same setup: `npm run screenshots` (same
+requirements) starts the app on a made-up demo dataset and writes
+`docs/screenshots/*.png`; or run the **Screenshots** workflow (Actions → Run
+workflow) and download its artifact. Shrink them before committing, e.g.
+`magick mogrify -dither None -colors 256 -strip docs/screenshots/*.png`.
+
 CI runs the checks and tests on every push and PR. To release, bump the
 version in `src-tauri/tauri.conf.json`, then push a tag (`git tag v0.2.0 &&
 git push --tags`): installers for all three OSes land in a draft GitHub release.
@@ -96,6 +106,8 @@ New here? The first start opens a hands-on tutorial note (`Space ?` reopens it).
 | Ctrl+Shift+F | Search all notes as you type |
 | Ctrl+L | Insert a link to another note |
 | Ctrl+S / `:w` | Save (also saves automatically) |
+
+![The command palette](docs/screenshots/palette.png)
 
 If the shortcut doesn't fire (common on Wayland), bind `margin --capture` to a
 key in your desktop's settings instead: it opens the same form in the running app.
@@ -214,6 +226,8 @@ Vim keys everywhere. On top of that:
 | Space n b | Notes linking here, plus unlinked mentions of this note's title (**Link** turns one into an `[[id:]]` link; Space n u undoes) |
 | Space n g | Graph of notes within two links of this one; click a note to open it |
 
+![A note with its local graph](docs/screenshots/graph.png)
+
 Dates accept `today`, `tomorrow`, `fri`, `+3d`, `-1w`, `12-24`,
 `2026-12-24 14:00`; the input shows what it understood.
 
@@ -272,6 +286,8 @@ References: `$3` column, `@2` row, `@2$3` field, relative `@-1` / `$+1`, `@<` /
 vmedian abs round floor ceil sqrt exp ln`; format with `;%.2f` or `;%d`.
 
 ## Time tracking
+
+![The Time view: running timer, today's sessions, the week against expected hours, flex and projects](docs/screenshots/time.png)
 
 The Time view shows what you're tracking, today's sessions (click ✎ to edit),
 the week's hours against expected, flex balance and per-project totals. Keys:
