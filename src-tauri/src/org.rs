@@ -1,6 +1,6 @@
 // Line-based org parser covering what the agenda and zettel index need:
 // headlines, TODO keywords, priority, tags, planning lines, property
-// drawers, active timestamps and id: links. Plus the text transforms
+// drawers, active timestamps and id:/file: links. Plus the text transforms
 // (TODO cycling with repeaters, SCHEDULED/DEADLINE) shared by editor and agenda.
 
 use chrono::{Datelike, Duration, Months, NaiveDate, Weekday};
@@ -15,7 +15,7 @@ static TS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"<(\d{4}-\d{2}-\d{2})(?:\s+[^\s>\d]+)?(?:\s+(\d{1,2}:\d{2})(?:-\d{1,2}:\d{2})?)?(?:\s+(\.\+|\+\+|\+)(\d+)([hdwmy]))?[^>]*>").unwrap()
 });
 static TS_HEAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<\d{4}-\d{2}-\d{2}(?:\s+[^\s>\d]+)?").unwrap());
-static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[id:([^\]]+)\](?:\[([^\]]*)\])?\]").unwrap());
+static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[(id|file):([^\]]+)\](?:\[([^\]]*)\])?\]").unwrap());
 static TAGS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+(:[^\s]+:)\s*$").unwrap());
 static STATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^\s*- State "([^"]+)"\s+from .*?\[(\d{4}-\d{2}-\d{2})"#).unwrap());
 static PROP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*:([^:\s]+):\s*(.*?)\s*$").unwrap());
@@ -64,7 +64,9 @@ pub struct Headline {
 
 #[derive(Serialize, Clone, Debug)]
 pub struct Link {
+    /// An ID, or for `file:` links (FILE set) the raw path.
     pub target: String,
+    pub file: bool,
     pub line: usize,
     pub text: String,
 }
@@ -135,7 +137,7 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
     let mut in_drawer = false;
     for (i, &line) in lines.iter().enumerate() {
         for c in LINK.captures_iter(line) {
-            f.links.push(Link { target: c[1].to_string(), line: i, text: line.trim().to_string() });
+            f.links.push(Link { target: c[2].to_string(), file: &c[1] == "file", line: i, text: line.trim().to_string() });
         }
         if let Some((level, keyword, priority, title, tags)) = split_headline(line, kw) {
             if let Some(h) = cur.take() {
@@ -924,7 +926,7 @@ mod tests {
     }
 
     const DOC: &str = ":PROPERTIES:\n:ID: file-1\n:END:\n#+title: My Note\n#+category: Work\n\
-* TODO [#A] Write report :work:urgent:\nSCHEDULED: <2026-10-01 Thu> DEADLINE: <2026-10-05 Mon 10:00>\n:PROPERTIES:\n:ID: h-1\n:END:\nSee [[id:other][Other]].\n\
+* TODO [#A] Write report :work:urgent:\nSCHEDULED: <2026-10-01 Thu> DEADLINE: <2026-10-05 Mon 10:00>\n:PROPERTIES:\n:ID: h-1\n:END:\nSee [[id:other][Other]] and [[file:b.org]].\n\
 ** NEXT Sub\n:PROPERTIES:\n:CATEGORY: Sub\n:END:\n*** DONE Deep\n* Meeting\n<2026-10-03 Sat 14:00>\n* TODO Water plants\nSCHEDULED: <2026-09-28 Mon +1w>\n";
 
     #[test]
@@ -940,7 +942,8 @@ mod tests {
         assert_eq!(f.headlines[1].category, "Sub");
         assert_eq!(f.headlines[2].category, "Sub"); // inherited
         assert_eq!(f.headlines[3].timestamps[0].time.as_deref(), Some("14:00"));
-        assert_eq!(f.links[0].target, "other");
+        assert_eq!((f.links[0].target.as_str(), f.links[0].file), ("other", false));
+        assert_eq!((f.links[1].target.as_str(), f.links[1].file), ("b.org", true));
     }
 
     #[test]

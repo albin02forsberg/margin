@@ -346,6 +346,21 @@ fn notes_backlinks(s: State<App>, path: PathBuf) -> Vec<notes::Hit> {
 }
 
 #[tauri::command]
+fn notes_graph(s: State<App>, path: PathBuf) -> notes::Graph {
+    notes::graph(&s.files(), &path, 2)
+}
+
+#[tauri::command]
+fn notes_unlinked(s: State<App>, path: PathBuf) -> Vec<notes::Mention> {
+    notes::unlinked(&s.files(), &path, |p| std::fs::read_to_string(p).ok())
+}
+
+#[tauri::command]
+fn notes_ensure_id(text: String) -> (String, String) {
+    notes::ensure_id(&text)
+}
+
+#[tauri::command]
 fn notes_search(s: State<App>, query: String) -> Vec<notes::Hit> {
     notes::search(&s.files(), &query, 300)
 }
@@ -670,7 +685,7 @@ pub fn run() {
             config, reload_config, list_files, read_file, write_file, attach_file, attach_bytes,
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
-            notes_new, notes_nodes, notes_backlinks, notes_search,
+            notes_new, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_report, export_open

@@ -6,8 +6,8 @@ Notes, tasks, a journal and time tracking in one fast desktop app (Linux,
 macOS, Windows). Notes are plain org files, so they stay readable anywhere;
 the editor has vim keys.
 
-- **Notes** — org documents that render like a page: links and backlinks,
-  tables with formulas, code blocks, inline images, folding.
+- **Notes** — org documents that render like a page: links, backlinks,
+  unlinked mentions and a local note graph, tables with formulas, code blocks, inline images, folding.
 - **Tasks** — Today and All tasks views, schedules, deadlines, priorities,
   tags, repeaters; capture from anywhere with a global shortcut.
 - **Journal** — a daily note, one keypress away.
@@ -148,6 +148,8 @@ Vim keys everywhere. On top of that:
 | Enter, gf, Ctrl+click | Follow a link |
 | click `[ ]` | Toggle a checkbox |
 | Space x … | Task commands for the heading at the cursor |
+| Space n b | Notes linking here, plus unlinked mentions of this note's title (**Link** turns one into an `[[id:]]` link; Space n u undoes) |
+| Space n g | Graph of notes within two links of this one; click a note to open it |
 
 Dates accept `today`, `tomorrow`, `fri`, `+3d`, `-1w`, `12-24`,
 `2026-12-24 14:00`; the input shows what it understood.
