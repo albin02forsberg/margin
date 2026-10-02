@@ -24,6 +24,8 @@ pub struct Heading {
 #[derive(Debug, PartialEq)]
 pub struct Item {
     check: Option<char>,
+    /// `- term :: text` (description list).
+    term: Option<String>,
     text: String,
     children: Vec<Block>,
 }
@@ -148,7 +150,11 @@ fn blocks(lines: &[&str], kw: &Kw, doc: &mut Doc) -> Vec<Block> {
                     let Block::Para(p) = children.remove(0) else { unreachable!() };
                     text = format!("{text} {p}");
                 }
-                items.push(Item { check: c.get(3).and_then(|m| m.as_str().chars().next()), text, children });
+                let (term, text) = match text.split_once(" :: ") {
+                    Some((t, d)) if !ordered => (Some(t.trim().to_string()), d.trim().to_string()),
+                    _ => (None, text),
+                };
+                items.push(Item { check: c.get(3).and_then(|m| m.as_str().chars().next()), term, text, children });
                 i = j;
             }
             out.push(Block::List(ordered, items));
@@ -190,6 +196,15 @@ fn spans(s: &str) -> Vec<Span> {
             continue;
         }
         let prev_ok = s[..i].chars().last().is_none_or(|p| PRE.contains(p));
+        if prev_ok && (rest.starts_with("https://") || rest.starts_with("http://")) {
+            // A bare URL, minus trailing punctuation that ends the sentence.
+            let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+            let url = rest[..end].trim_end_matches(['.', ',', ';', ':', '!', '?', ')', '\'', '"']);
+            out.extend((!text.is_empty()).then(|| Span::Text(std::mem::take(&mut text))));
+            out.push(Span::Link(url.to_string(), None));
+            i += url.len();
+            continue;
+        }
         if "*/_+=~".contains(c) && prev_ok && rest[1..].starts_with(|n: char| !n.is_whitespace()) {
             // First closing marker that follows a non-space and precedes a boundary.
             let close = rest.char_indices().skip(2).find(|&(j, ch)| {
@@ -208,6 +223,23 @@ fn spans(s: &str) -> Vec<Span> {
     }
     out.extend((!text.is_empty()).then_some(Span::Text(text)));
     out
+}
+
+/// A local image as a data: URI, so the exported page works on its own.
+fn embed(t: &str, base: &Path) -> Option<String> {
+    if t.starts_with("http://") || t.starts_with("https://") {
+        return None;
+    }
+    let p = t.strip_prefix("file:").unwrap_or(t);
+    let p = base.join(p.split("::").next().unwrap_or(p));
+    let ext = p.extension()?.to_string_lossy().to_lowercase();
+    let mime = match ext.as_str() { "jpg" | "jpeg" => "jpeg".into(), "svg" => "svg+xml".into(), e => e.to_string() };
+    Some(format!("data:image/{mime};base64,{}", b64(&std::fs::read(&p).ok()?)))
+}
+
+fn b64(bytes: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(bytes)
 }
 
 fn is_image(t: &str) -> bool {
@@ -246,7 +278,7 @@ fn html_spans(s: &[Span], base: &Path) -> String {
             }
             Span::Link(t, d) => match target(t, d.as_deref(), base) {
                 Err(text) => html_spans(&spans(&text), base),
-                Ok(u) if d.is_none() && is_image(t) => format!("<img src=\"{}\" alt=\"\">", esc(&u)),
+                Ok(u) if d.is_none() && is_image(t) => format!("<img src=\"{}\" alt=\"\">", esc(&embed(t, base).unwrap_or(u))),
                 Ok(u) => format!("<a href=\"{}\">{}</a>", esc(&u), d.as_deref().map_or_else(|| esc(t), |d| html_spans(&spans(d), base))),
             },
         })
@@ -274,6 +306,13 @@ fn html_blocks(bs: &[Block], base: &Path) -> String {
                 o += &format!("</h{n}>\n");
             }
             Block::Para(p) => o += &format!("<p>{}</p>\n", inl(p)),
+            Block::List(_, items) if items.iter().all(|it| it.term.is_some()) => {
+                o += "<dl>\n";
+                for it in items {
+                    o += &format!("<dt>{}</dt><dd>{}{}</dd>\n", inl(it.term.as_deref().unwrap_or("")), inl(&it.text), html_blocks(&it.children, base));
+                }
+                o += "</dl>\n";
+            }
             Block::List(ordered, items) => {
                 let tag = if *ordered { "ol" } else { "ul" };
                 o += &format!("<{tag}>\n");
@@ -296,6 +335,7 @@ fn html_blocks(bs: &[Block], base: &Path) -> String {
                 }
                 o += "</table>\n";
             }
+            Block::Pre(kind, _, body) if kind == "verse" => o += &format!("<p class=\"verse\">{}</p>\n", body.lines().map(inl).collect::<Vec<_>>().join("<br>\n")),
             Block::Pre(kind, lang, body) => {
                 let lang = if lang.is_empty() { String::new() } else { format!(" data-lang=\"{}\"", esc(lang)) };
                 o += &format!("<pre class=\"{}\"{lang}><code>{}</code></pre>\n", esc(kind), esc(body));
@@ -318,6 +358,8 @@ code, pre { font: 14px ui-monospace, monospace; background: var(--code); border-
 code { padding: 0 .25em; }
 pre { padding: .8em 1em; overflow-x: auto; }
 pre code { padding: 0; background: none; }
+dl dt { font-weight: 600; } dl dd { margin: 0 0 .5em 1.5em; }
+.verse { white-space: pre-wrap; font-style: italic; }
 blockquote { margin: 1em 0; padding: 0 1em; border-left: 3px solid var(--line); color: var(--dim); }
 table { border-collapse: collapse; margin: 1em 0; }
 th, td { border: 1px solid var(--line); padding: .3em .7em; text-align: left; }
@@ -411,6 +453,7 @@ fn md_blocks(bs: &[Block], base: &Path) -> String {
                 .map(|(n, it)| {
                     let marker = if *ordered { format!("{}. ", n + 1) } else { "- ".into() };
                     let cb = it.check.map_or("", |c| if c == 'X' || c == 'x' { "[x] " } else { "[ ] " });
+                    let cb = it.term.as_deref().map_or(cb.to_string(), |t| format!("{cb}**{}**: ", inl(t)));
                     let pad = " ".repeat(marker.len());
                     let kids = md_blocks(&it.children, base);
                     let kids: String = kids.lines().map(|l| if l.is_empty() { "\n".into() } else { format!("\n{pad}{l}") }).collect();
@@ -429,6 +472,7 @@ fn md_blocks(bs: &[Block], base: &Path) -> String {
                 }
                 o.join("\n")
             }
+            Block::Pre(kind, _, body) if kind == "verse" => body.lines().map(inl).collect::<Vec<_>>().join("  \n"),
             Block::Pre(kind, lang, body) => {
                 let mut fence = "```".to_string();
                 while body.contains(&fence) {
@@ -532,5 +576,29 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
             assert!(m.contains(want), "missing {want}\n---\n{m}");
         }
         assert!(!m.contains("PROPERTIES") && !m.contains("SCHEDULED") && !m.contains("TBLFM"));
+    }
+
+    #[test]
+    fn followups() {
+        let dir = std::env::temp_dir().join(format!("margin-export-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("dot.png"), [137u8, 80, 78, 71]).unwrap();
+        let note = "See https://example.com/a_b, then (http://x.y).\n\n- Apple :: a fruit\n- Kale :: *green*\n\n#+begin_verse\nRoses /red/\n  violets\n#+end_verse\n\n[[file:dot.png]] [[file:missing.png]]\n";
+        let d = parse(note, &kw());
+        let h = html(&d, "x", &dir, false);
+        for want in [
+            "<a href=\"https://example.com/a_b\">https://example.com/a_b</a>, then (<a href=\"http://x.y\">http://x.y</a>).",
+            "<dl>\n<dt>Apple</dt><dd>a fruit</dd>\n<dt>Kale</dt><dd><b>green</b></dd>\n</dl>",
+            "<p class=\"verse\">Roses <i>red</i><br>\n  violets</p>",
+            "<img src=\"data:image/png;base64,iVBORw==\" alt=\"\">",
+            "missing.png\" alt",
+        ] {
+            assert!(h.contains(want), "missing {want:?} in\n{h}");
+        }
+        let m = markdown(&d, "x", &dir);
+        for want in ["- **Apple**: a fruit", "Roses *red*  \n  violets", "[https://example.com/a\\_b](https://example.com/a_b)"] {
+            assert!(m.contains(want), "missing {want:?} in\n{m}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
