@@ -484,9 +484,25 @@ fn backup_now(s: State<App>) -> String {
     backup::last_failure().map_or("☁ Backup done.".into(), |f| format!("⚠ Backup failed: {f}"))
 }
 
+/// Quick capture: show the new-task form, telling the frontend whether the window was hidden.
+fn capture(app: &AppHandle) {
+    let hidden = app.get_webview_window("main").is_some_and(|w| !w.is_visible().unwrap_or(true));
+    tray::show(app);
+    let _ = app.emit("capture", hidden);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // A second launch hands over to the running app; `margin --capture` is the
+        // quick-capture hook for desktops where global shortcuts don't work (Wayland).
+        .plugin(tauri_plugin_single_instance::init(|app, args, _| {
+            if args.iter().any(|a| a == "--capture") {
+                capture(app)
+            } else {
+                tray::show(app)
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
@@ -502,6 +518,25 @@ pub fn run() {
             app.manage(App { cfg_path, cfg: Mutex::new(cfg), profile: Mutex::new(profile), cache: Default::default(), watcher: Mutex::new(None) });
             watch(app.handle());
             tray::setup(app.handle())?;
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+                app.handle().plugin(
+                    tauri_plugin_global_shortcut::Builder::new()
+                        .with_handler(|app, _, ev| {
+                            if ev.state == ShortcutState::Pressed {
+                                capture(app)
+                            }
+                        })
+                        .build(),
+                )?;
+                let key = app.state::<App>().cfg().capture_shortcut;
+                if !key.is_empty() {
+                    if let Err(e) = app.global_shortcut().register(key.as_str()) {
+                        eprintln!("quick capture shortcut {key}: {e}");
+                    }
+                }
+            }
             Ok(())
         })
         .on_window_event(|w, ev| {

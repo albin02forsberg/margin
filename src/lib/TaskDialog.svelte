@@ -17,9 +17,11 @@
   let titleInput = $state<HTMLInputElement>();
   let submit: (s: TaskSpec) => Promise<void> = async () => {};
   let prevFocus: HTMLElement | null = null;
+  let closed = () => {};
 
   export const isOpen = () => active;
 
+  /** Resolves when the dialog closes (saved or cancelled). */
   export async function open(init: Partial<TaskSpec> & { files: string[] }, onSubmit: (s: TaskSpec) => Promise<void>) {
     prevFocus = document.activeElement as HTMLElement | null;
     files = init.files;
@@ -30,11 +32,13 @@
     active = true;
     await tick();
     titleInput?.focus();
+    return new Promise<void>((r) => (closed = r));
   }
 
   function close() {
     active = false;
     prevFocus?.focus();
+    closed();
   }
 
   async function save() {
