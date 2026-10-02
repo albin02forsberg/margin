@@ -1,17 +1,17 @@
 # Graph Report - margin  (2026-10-02)
 
 ## Corpus Check
-- 59 files · ~72,981 words
+- 59 files · ~72,988 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 6 file(s) not represented in the graph (top: (none) 2, .icns 1, .ico 1)
 
 ## Summary
-- 959 nodes · 2084 edges · 64 communities (38 shown, 26 thin omitted)
+- 960 nodes · 2084 edges · 65 communities (38 shown, 27 thin omitted)
 - Extraction: 98% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 20 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `1cdd8796`
+- Built from commit: `b2b1ca63`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -101,11 +101,11 @@
 ## Import Cycles
 - None detected.
 
-## Communities (64 total, 26 thin omitted)
+## Communities (65 total, 27 thin omitted)
 
 ### Community 0 - "org.rs"
 Cohesion: 0.07
-Nodes (76): add_interval(), agenda(), agenda_week(), ALIAS, all_tags(), archive(), at(), Cache (+68 more)
+Nodes (75): add_interval(), agenda(), agenda_week(), ALIAS, all_tags(), archive(), at(), Cache (+67 more)
 
 ### Community 1 - "timeclock.rs"
 Cohesion: 0.07
@@ -152,7 +152,7 @@ Cohesion: 0.67
 Nodes (3): Calendar, iCalendar, Tasks
 
 ### Community 12 - "attach.rs"
-Cohesion: 0.27
+Cohesion: 0.24
 Nodes (6): clean(), LINK, names_and_links(), normalize(), target(), unused()
 
 ### Community 14 - "devDependencies"
@@ -244,8 +244,8 @@ Cohesion: 0.27
 Nodes (5): refresh(), setup(), show(), tracking(), Tray
 
 ### Community 57 - "remind.rs"
-Cohesion: 0.29
-Nodes (4): notify(), picks_due_reminders(), start(), tick()
+Cohesion: 0.27
+Nodes (5): Due, notify(), picks_due_reminders(), start(), tick()
 
 ### Community 61 - "backup.rs"
 Cohesion: 0.31
@@ -257,8 +257,8 @@ Nodes (5): builds_feed(), event(), feed(), fnv(), fold()
 
 ## Knowledge Gaps
 - **206 isolated node(s):** `y`, `day`, `events`, `app`, `out` (+201 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 338 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **26 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 339 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **27 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -266,13 +266,13 @@ _Questions this graph is uniquely positioned to answer:_
 - **Why does `webdriverio` connect `screenshots.ts` to `package.json`?**
   _High betweenness centrality (0.017) - this node is a cross-community bridge._
 - **Why does `Tc` connect `timeclock.rs` to `lib.rs`?**
-  _High betweenness centrality (0.017) - this node is a cross-community bridge._
+  _High betweenness centrality (0.016) - this node is a cross-community bridge._
 - **Why does `App` connect `lib.rs` to `org.rs`, `config.rs`?**
   _High betweenness centrality (0.016) - this node is a cross-community bridge._
 - **What connects `y`, `day`, `events` to the rest of the system?**
   _206 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `org.rs` be split into smaller, more focused modules?**
-  _Cohesion score 0.06545114539504442 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06764346764346764 - nodes in this community are weakly interconnected._
 - **Should `timeclock.rs` be split into smaller, more focused modules?**
   _Cohesion score 0.07375844842785777 - nodes in this community are weakly interconnected._
 - **Should `lib.rs` be split into smaller, more focused modules?**

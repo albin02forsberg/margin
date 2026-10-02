@@ -42,7 +42,7 @@
   "40": "release/SKILL.md",
   "41": "autopilot/SKILL.md",
   "42": "verify-all/SKILL.md",
-  "43": "$lib/graph",
+  "43": "graph",
   "44": "App Icon",
   "45": "pr-shepherd.md",
   "46": "triage/SKILL.md",
@@ -62,5 +62,6 @@
   "60": "wayland_idle.rs",
   "61": "backup.rs",
   "62": "super",
-  "63": "@codemirror/state"
+  "63": "$lib/graph",
+  "64": "@tauri-apps/api/event"
 }
