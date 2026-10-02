@@ -478,7 +478,7 @@
   /** File template T; HIDDEN (quick capture from a hidden window): don't open the file, just flash. */
   async function fileTemplate(t: Tpl, hidden = false) {
     const s = view.state.selection.main;
-    const selection = inFile() ? view.state.sliceDoc(s.from, s.to) : "";
+    const selection = !hidden && inFile() ? view.state.sliceDoc(s.from, s.to) : "";
     const answers: Record<string, string> = {};
     for (const p of await call<string[]>("template_prompts", { body: t.body })) {
       const a = await ask(p);
