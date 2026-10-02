@@ -38,6 +38,16 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "requireSignedVersion": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM0QjE3QTVERUYxQjhERkQKUldUOWpSdnZYWHF4eEdFMnRwTEk5Z1haaGsyRFg3WnZ6WDdUeXg0ZDNBU2dxRS9uVXhra05uZUMK",
+      "endpoints": [
+        "https://github.com/albin02forsberg/margin/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

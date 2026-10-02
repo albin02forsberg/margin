@@ -14,6 +14,9 @@ cd src-tauri && cargo test
 CI runs the checks and tests on every push and PR. To release, bump the
 version in `src-tauri/tauri.conf.json`, then push a tag (`git tag v0.2.0 &&
 git push --tags`): installers for all three OSes land in a draft GitHub release.
+Publishing it makes installed copies offer the update on their next start
+(or `Space f u`). Release builds are signed for the updater with the
+`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repo secrets.
 
 Everything stays in sync on its own: notes save shortly after you stop typing,
 and any change to the notes or time folders — from the app, Emacs or a sync
