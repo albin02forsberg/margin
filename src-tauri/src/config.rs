@@ -84,6 +84,25 @@ impl Default for Config {
     }
 }
 
+/// Replace PATH's contents all at once: write a hidden temp file beside it, sync, rename.
+/// A crash or full disk mid-write leaves the old file instead of a truncated one.
+/// Symlinked files stay links (the target is replaced).
+pub fn write_atomic(path: &Path, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
+    use std::io::Write;
+    let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let name = path.file_name().ok_or_else(|| std::io::Error::other("no file name"))?.to_string_lossy();
+    let tmp = path.with_file_name(format!(".{name}.margin-tmp"));
+    let mut f = std::fs::File::create(&tmp)?;
+    if let Ok(m) = std::fs::metadata(&path) {
+        let _ = f.set_permissions(m.permissions());
+    }
+    let done = f.write_all(contents.as_ref()).and_then(|_| f.sync_all()).and_then(|_| std::fs::rename(&tmp, &path));
+    if done.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    done
+}
+
 pub fn expand(p: &str) -> PathBuf {
     match (p.strip_prefix("~"), std::env::home_dir()) {
         (Some(rest), Some(home)) => home.join(rest.trim_start_matches(['/', '\\'])),
@@ -166,5 +185,25 @@ mod tests {
         let c: Config = toml::from_str(&toml::to_string(&Config::default()).unwrap()).unwrap();
         assert_eq!(c.templates.len(), 2);
         assert!(toml::from_str::<Config>("templates = []").unwrap().templates.is_empty());
+    }
+
+    #[test]
+    fn atomic_writes() {
+        let dir = std::env::temp_dir().join(format!("margin-atomic-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.org");
+        write_atomic(&f, "one").unwrap();
+        write_atomic(&f, "two").unwrap();
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "two");
+        #[cfg(unix)]
+        {
+            let link = dir.join("link.org");
+            std::os::unix::fs::symlink(&f, &link).unwrap();
+            write_atomic(&link, "three").unwrap();
+            assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+            assert_eq!(std::fs::read_to_string(&f).unwrap(), "three");
+        }
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), if cfg!(unix) { 2 } else { 1 }, "no temp files left");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
