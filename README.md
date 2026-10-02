@@ -120,6 +120,8 @@ same keys. Terms are space-separated and must all match; `-` negates one:
 | `due:none`, `scheduled:any` | Has no / has a date |
 | other words, `"a phrase"` | Title contains |
 
+Values can be quoted too: `file:"my notes"`, `-tag:"x y"`.
+
 `<` and `>` are strict: `due:<+7d` leaves out day 7, so `<=` is usually what
 you want.
 
@@ -131,6 +133,9 @@ sidebar; it's kept in settings, where you can rename or edit it:
 name = "Work this week"
 query = "tag:work due:<=+7d"
 ```
+
+Saving a search that already has a view offers to rename that view instead of adding another.
+A search tab is titled by its view's name, or by its query once no view has it.
 
 ### Capture templates
 

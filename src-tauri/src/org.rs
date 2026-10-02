@@ -453,6 +453,7 @@ type Filter = Box<dyn Fn(&OrgFile, &Headline) -> bool>;
 /// `tag:work`, `pri:A`, `file:inbox` (file name contains), `scheduled:` / `due:` with
 /// an optional `<`, `<=`, `>`, `>=` before a read_date date (`due:<+7d`, `due:today`)
 /// or `none` / `any`; anything else (or a `"quoted phrase"`) must appear in the title.
+/// Values may be quoted too: `tag:"my tag"`, `file:"my notes"`.
 /// A leading `-` negates a term. The bool says whether done tasks should be searched
 /// too, i.e. the query asks for a done keyword (`todo:DONE`).
 pub fn query(q: &str, today: NaiveDate, kw: &Kw) -> Result<(Filter, bool), String> {
@@ -477,7 +478,8 @@ pub fn query(q: &str, today: NaiveDate, kw: &Kw) -> Result<(Filter, bool), Strin
             Some(w) if !w.is_empty() => (true, w),
             _ => (false, word.as_str()),
         };
-        let (key, val) = if w.starts_with('"') { ("", w.trim_matches('"')) } else { w.split_once(':').unwrap_or(("", w)) };
+        let (key, val) = if w.starts_with('"') { ("", w) } else { w.split_once(':').unwrap_or(("", w)) };
+        let val = val.trim_matches('"');
         let v = val.to_lowercase();
         let t: Filter = match key.to_lowercase().as_str() {
             "todo" => {
@@ -1212,6 +1214,12 @@ mod tests {
         assert_eq!(q("\"due:none\""), ""); // quoted means title text, not a term
         assert_eq!(q("\"unclosed phrase"), "");
         assert_eq!(q("tag:work -tag:home report"), "Write report");
+        assert_eq!(q("tag:\"work\" file:\"inbox\""), "Write report, Plan trip");
+        assert_eq!(q("-tag:\"home\" todo:\"next\""), "Write report");
+        assert_eq!(q("-file:\"my notes\" -tag:\"x y\" report"), "Write report, Report draft");
+        let mine = [Arc::new(parse(Path::new("/n/my notes.org"), "* TODO My idea :idea:\n", &kw()))];
+        let (f, _) = query("file:\"MY NOTES\" tag:\"idea\" -tag:\"x y\"", t, &kw()).unwrap();
+        assert_eq!(todos(&mine, &kw(), false, f, t).len(), 1);
         assert_eq!(q("todo:TODO tag:home scheduled:<+1m"), "Plan trip, Call mum");
         assert_eq!(q("report -pri:a"), "Report draft");
         assert!(query("due:<someday", t, &kw()).is_err());
