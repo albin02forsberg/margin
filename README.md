@@ -78,6 +78,19 @@ key in your desktop's settings instead: it opens the same form in the running ap
 `v` day/week, `h`/`l` previous/next, `.` today, `/` filter, `?` all keys.
 Click the checkbox to complete a task.
 
+Completing a repeating task logs `- State "DONE" from "TODO" [date]` under it,
+as org does. Give it `:STYLE: habit` in its properties and Today shows a
+21-day consistency bar (done / due / not due) and how many completions in a
+row were on time, like org-habit:
+
+```org
+* TODO Run
+SCHEDULED: <2026-10-02 Fri .+1d>
+:PROPERTIES:
+:STYLE: habit
+:END:
+```
+
 ### Saved searches
 
 "Search tasks…" (`Space v f`) lists the open tasks matching a query, with the
