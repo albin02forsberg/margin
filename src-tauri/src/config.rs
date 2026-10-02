@@ -30,12 +30,26 @@ pub struct Config {
     pub views: Vec<View>,
     /// Where to keep a calendar (.ics) of scheduled tasks and deadlines; empty for none.
     pub calendar_file: String,
+    /// Capture templates (`Space c`): `[[templates]] key name file heading body`.
+    pub templates: Vec<Template>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct View {
     pub name: String,
     pub query: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Template {
+    pub key: String,
+    pub name: String,
+    /// strftime pattern relative to notes_dir; empty means the inbox.
+    #[serde(default)]
+    pub file: String,
+    /// File under this heading (created if missing) instead of at the end.
+    pub heading: Option<String>,
+    pub body: String,
 }
 
 impl Default for Config {
@@ -59,6 +73,10 @@ impl Default for Config {
             deadline_warning_days: 1,
             views: vec![],
             calendar_file: String::new(),
+            templates: vec![
+                Template { key: "n".into(), name: "Note".into(), file: String::new(), heading: None, body: "* %^{Title}\n%U\n%i%?".into() },
+                Template { key: "m".into(), name: "Meeting notes".into(), file: "meetings.org".into(), heading: None, body: "* %^{Meeting} :meeting:\n%U\n- %?".into() },
+            ],
         }
     }
 }
@@ -91,5 +109,17 @@ impl Config {
                 Ok(c)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn defaults_round_trip() {
+        let c: Config = toml::from_str(&toml::to_string(&Config::default()).unwrap()).unwrap();
+        assert_eq!(c.templates.len(), 2);
+        assert!(toml::from_str::<Config>("templates = []").unwrap().templates.is_empty());
     }
 }

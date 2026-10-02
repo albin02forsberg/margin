@@ -254,6 +254,18 @@ fn capture_insert(s: State<App>, text: String, heading: Option<String>, entry: S
     org::capture_insert(&text, heading.as_deref(), &entry, &s.kw())
 }
 
+#[tauri::command]
+fn template_prompts(body: String) -> Vec<String> {
+    org::template_prompts(&body)
+}
+
+/// Expand template BODY with ANSWERS and file it into TEXT: [new text, cursor line, cursor column].
+#[tauri::command]
+fn capture_template(s: State<App>, text: String, heading: Option<String>, body: String, answers: std::collections::HashMap<String, String>, selection: String) -> (String, usize, usize) {
+    let entry = org::expand_template(&body, timeclock::now(), &selection, |p| answers.get(p).cloned().unwrap_or_default());
+    org::capture_template(&text, heading.as_deref(), &entry, &s.kw())
+}
+
 /// Resolve a strftime file pattern under the notes dir for DATE_INPUT (default
 /// now), creating it as an org-roam note titled after its name if missing.
 #[tauri::command]
@@ -635,7 +647,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             config, reload_config, list_files, read_file, write_file,
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
-            org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, task_entry, date_preview, tc_dashboard,
+            org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, notes_nodes, notes_backlinks, notes_search,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,

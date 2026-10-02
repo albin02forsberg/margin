@@ -657,6 +657,58 @@ pub fn capture_insert(dst: &str, heading: Option<&str>, entry: &str, kw: &Kw) ->
     join_nl(d)
 }
 
+/// Stands in for %? between expanding a template and filing it.
+const CURSOR: char = '\u{1}';
+
+/// Expand capture-template BODY: %t %T active date/timestamp, %u %U inactive ones, %^{Prompt}
+/// via ASK, %i the selection SEL, %? the cursor, %% a literal %.
+pub fn expand_template(body: &str, now: chrono::NaiveDateTime, sel: &str, mut ask: impl FnMut(&str) -> String) -> String {
+    let (d, t) = (now.date(), now.format("%H:%M").to_string());
+    let inactive = |s: String| format!("[{}]", &s[1..s.len() - 1]);
+    let (mut out, mut rest) = (String::new(), body);
+    while let Some(i) = rest.find('%') {
+        out.push_str(&rest[..i]);
+        rest = &rest[i + 1..];
+        let prompt = rest.strip_prefix("^{").and_then(|r| r.find('}').map(|e| &r[..e]));
+        let (s, n) = match (rest.chars().next(), prompt) {
+            (Some('t'), _) => (ts_string(d, None), 1),
+            (Some('T'), _) => (ts_string(d, Some(&t)), 1),
+            (Some('u'), _) => (inactive(ts_string(d, None)), 1),
+            (Some('U'), _) => (inactive(ts_string(d, Some(&t))), 1),
+            (Some('i'), _) => (sel.to_string(), 1),
+            (Some('?'), _) => (CURSOR.to_string(), 1),
+            (Some('%'), _) => ("%".into(), 1),
+            (Some('^'), Some(p)) => (ask(p), p.len() + 3),
+            _ => ("%".into(), 0),
+        };
+        out.push_str(&s);
+        rest = &rest[n..];
+    }
+    out + rest
+}
+
+/// The distinct %^{Prompt} names in BODY, in order, for the UI to ask before expanding.
+pub fn template_prompts(body: &str) -> Vec<String> {
+    let mut v: Vec<String> = vec![];
+    expand_template(body, chrono::NaiveDateTime::default(), "", |p| {
+        if !v.iter().any(|x| x == p) {
+            v.push(p.into());
+        }
+        String::new()
+    });
+    v
+}
+
+/// capture_insert an expanded template ENTRY; returns the new text and the (line, UTF-16 column)
+/// of its %? cursor, or of the entry's end if it has none.
+pub fn capture_template(dst: &str, heading: Option<&str>, entry: &str, kw: &Kw) -> (String, usize, usize) {
+    let entry = if entry.contains(CURSOR) { entry.to_string() } else { format!("{}{CURSOR}", entry.trim_end()) };
+    let text = capture_insert(dst, heading, &entry, kw);
+    let i = text.find(CURSOR).unwrap_or(text.len());
+    let bol = text[..i].rfind('\n').map_or(0, |j| j + 1);
+    (text.replacen(CURSOR, "", 1), text[..i].matches('\n').count(), text[bol..i].encode_utf16().count())
+}
+
 /// A new task heading with optional planning line.
 pub fn task_entry(title: &str, keyword: Option<&str>, priority: Option<&str>, tags: Vec<String>, scheduled: Option<(NaiveDate, Option<String>)>, deadline: Option<(NaiveDate, Option<String>)>) -> String {
     let p = Parts { level: 1, keyword: keyword.map(String::from), priority: priority.map(String::from), title: title.trim().into(), tags };
@@ -888,6 +940,21 @@ mod tests {
         assert_eq!(task_entry("Call", Some("TODO"), Some("A"), vec!["home".into()], Some((d("2026-10-02"), None)), Some((d("2026-10-05"), Some("09:00".into())))),
             "* TODO [#A] Call :home:\nSCHEDULED: <2026-10-02 Fri> DEADLINE: <2026-10-05 Mon 09:00>\n");
         assert_eq!(task_entry("x", Some("TODO"), None, vec![], None, None), "* TODO x\n");
+    }
+
+    #[test]
+    fn templates() {
+        let now = chrono::NaiveDateTime::parse_from_str("2026-10-02 14:30", "%Y-%m-%d %H:%M").unwrap();
+        let body = "* %^{Title} %t\n%U %T %u 100%% %x %^{Who} %^{Title}\n%i%?";
+        assert_eq!(template_prompts(body), ["Title", "Who"]);
+        let ans = |p: &str| if p == "Title" { "Sync".into() } else { "Ann".into() };
+        let e = expand_template(body, now, "sel", ans);
+        assert_eq!(e, "* Sync <2026-10-02 Fri>\n[2026-10-02 Fri 14:30] <2026-10-02 Fri 14:30> [2026-10-02 Fri] 100% %x Ann Sync\nsel\u{1}");
+        assert_eq!(expand_template("%^{open %", now, "", ans), "%^{open %");
+        let (t, l, c) = capture_template("* Meetings\n* Z\n", Some("Meetings"), &e, &kw());
+        assert_eq!(t, "* Meetings\n** Sync <2026-10-02 Fri>\n[2026-10-02 Fri 14:30] <2026-10-02 Fri 14:30> [2026-10-02 Fri] 100% %x Ann Sync\nsel\n* Z\n");
+        assert_eq!((l, c), (3, 3));
+        assert_eq!(capture_template("", None, "* Ä\n", &kw()), ("* Ä\n".into(), 0, 3));
     }
 
     #[test]
