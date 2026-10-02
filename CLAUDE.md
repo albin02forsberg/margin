@@ -79,7 +79,7 @@ Parallel work runs through checked-in agents and skills (see `.claude/`):
 - `/ship [issues…] [--max N]` — coordinator: runs `implementer` agents (one worktree per issue, PR → CI → squash-merge) and `pr-shepherd` agents for open PRs, files follow-ups, cleans up worktrees.
 - Implementers assign the issue to the owner (`albin02forsberg`) when they start, unless it is already assigned to someone else, and unassign it if they give up.
 - Approval gate: `/ship` builds issues labelled `approved` (owner adds it) or ones named explicitly. `needs-decision` = waiting on the owner.
-- `/autopilot [issues…] [--max N] [--hours H] [--all-ready]` — one command for continuous runs: triager in watch mode plus `/ship` rounds, until the queue is empty or time is up. Same approval gate.
+- `/autopilot [issues…] [--max N] [--hours H] [--all-ready] [--overnight]` — one command for continuous runs: triager in watch mode plus `/ship` rounds, until the queue is empty or time is up (`--overnight`: 12 h, idles on cheap `gh` polling instead of stopping). Same approval gate.
 - Repeat with `/loop /ship`, or `/schedule` a cloud routine for unattended runs. Releases stay manual (`/release`).
 
 ## Tools
