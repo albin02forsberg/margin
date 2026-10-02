@@ -304,55 +304,55 @@
 
 <style>
   .agenda { height: 100%; display: flex; flex-direction: column; outline: none; font-family: var(--sans); position: relative; }
-  header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; padding: 20px 28px 12px; }
+  header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: var(--s3); padding: 20px 28px var(--s3); }
   .titles h1 { margin: 0; font-size: 22px; font-weight: 650; }
-  .titles span { color: var(--dim); font-size: 13px; }
+  .titles span { color: var(--dim); font-size: var(--fs-md); }
   .controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-  .controls button, .seg button { background: var(--panel); border: 1px solid var(--border); color: var(--fg); border-radius: 6px; padding: 5px 10px; font: 13px var(--sans); cursor: pointer; }
+  .controls button, .seg button { background: var(--panel); border: 1px solid var(--border); color: var(--fg); border-radius: var(--radius); padding: 5px 10px; font: var(--fs-md) var(--sans); cursor: pointer; }
   .controls .primary { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
   .seg { display: flex; }
   .seg button { border-radius: 0; }
-  .seg button:first-child { border-radius: 6px 0 0 6px; }
+  .seg button:first-child { border-radius: var(--radius) 0 0 6px; }
   .seg button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
   .seg button.on { background: var(--sel); }
-  .controls input { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); padding: 5px 9px; font: 13px var(--sans); width: 140px; }
-  .list { flex: 1; overflow-y: auto; padding: 0 28px 24px; }
-  h2 { font-size: 13px; font-weight: 650; margin: 16px 0 4px; color: var(--h2); display: flex; gap: 8px; align-items: baseline; }
+  .controls input { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg); padding: 5px 9px; font: var(--fs-md) var(--sans); width: 140px; }
+  .list { flex: 1; overflow-y: auto; padding: 0 28px var(--s5); }
+  h2 { font-size: var(--fs-md); font-weight: 650; margin: var(--s4) 0 var(--s1); color: var(--h2); display: flex; gap: var(--s2); align-items: baseline; }
   h2.today { color: var(--accent); }
   h2 small { color: var(--dim); font-weight: 400; }
-  .row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; cursor: default; font-size: 14px; min-height: 22px; }
+  .row { display: flex; align-items: center; gap: var(--s2); padding: 5px var(--s2); border-radius: var(--radius); cursor: default; font-size: var(--fs-base); min-height: 22px; }
   .row:hover { background: var(--active); }
   .row.sel { background: var(--sel); }
   .row.done .title { text-decoration: line-through; color: var(--dim); }
-  .check { width: 15px; height: 15px; border: 1.5px solid var(--dim); border-radius: 4px; flex: none; display: grid; place-items: center; font-size: 11px; color: var(--done); cursor: pointer; }
+  .check { width: 15px; height: 15px; border: 1.5px solid var(--dim); border-radius: var(--radius-sm); flex: none; display: grid; place-items: center; font-size: var(--fs-xs); color: var(--done); cursor: pointer; }
   .row.done .check { border-color: var(--done); }
   .check:hover { border-color: var(--accent); }
-  .prio { font-size: 11px; font-weight: 700; border-radius: 4px; padding: 0 5px; background: var(--active); color: var(--dim); }
+  .prio { font-size: var(--fs-xs); font-weight: 700; border-radius: var(--radius-sm); padding: 0 5px; background: var(--active); color: var(--dim); }
   .prio.pA { color: var(--todo); }
   .prio.pB { color: var(--h5); }
-  .kw { font-size: 11px; font-weight: 700; color: var(--link); letter-spacing: 0.03em; }
+  .kw { font-size: var(--fs-xs); font-weight: 700; color: var(--link); letter-spacing: 0.03em; }
   .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-  .tag { font-size: 11px; color: var(--dim); background: var(--active); border-radius: 999px; padding: 0 7px; white-space: nowrap; }
+  .tag { font-size: var(--fs-xs); color: var(--dim); background: var(--active); border-radius: 999px; padding: 0 7px; white-space: nowrap; }
   .spacer { flex: 1; }
   .habit { display: inline-flex; gap: 1px; }
   .habit i { width: 4px; height: 12px; border-radius: 1px; background: var(--active); }
   .habit i.x { background: var(--done); }
   .habit i.ok { background: var(--accent); }
   .habit i.due { background: var(--todo); }
-  .time { font: 12px var(--mono); color: var(--date); }
-  .meta { font-size: 12px; color: var(--dim); white-space: nowrap; }
+  .time { font: var(--fs-sm) var(--mono); color: var(--date); }
+  .meta { font-size: var(--fs-sm); color: var(--dim); white-space: nowrap; }
   .meta.warn { color: var(--todo); }
-  .cat { font-size: 12px; color: var(--dim); max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .now { display: flex; align-items: center; gap: 8px; color: var(--accent); font-size: 11px; margin: 2px 0; }
+  .cat { font-size: var(--fs-sm); color: var(--dim); max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .now { display: flex; align-items: center; gap: var(--s2); color: var(--accent); font-size: var(--fs-xs); margin: 2px 0; }
   .now::after { content: ""; flex: 1; border-top: 1px dashed var(--accent); }
-  .none { color: var(--dim); margin: 0 0 0 8px; font-size: 12px; }
+  .none { color: var(--dim); margin: 0 0 0 var(--s2); font-size: var(--fs-sm); }
   .empty { color: var(--dim); text-align: center; margin-top: 15vh; }
-  kbd { font: 11px var(--mono); background: var(--active); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; margin-right: 5px; color: var(--fg); }
-  .actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 20px; border-top: 1px solid var(--border); background: var(--panel); }
-  .actions button { background: none; border: 0; color: var(--fg); font: 12px var(--sans); padding: 3px 6px; border-radius: 4px; cursor: pointer; }
+  kbd { font: var(--fs-xs) var(--mono); background: var(--active); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--s1); margin-right: 5px; color: var(--fg); }
+  .actions { display: flex; flex-wrap: wrap; gap: var(--s1); padding: var(--s2) 20px; border-top: 1px solid var(--border); background: var(--panel); }
+  .actions button { background: none; border: 0; color: var(--fg); font: var(--fs-sm) var(--sans); padding: 3px 6px; border-radius: var(--radius-sm); cursor: pointer; }
   .actions button:hover { background: var(--active); }
-  .help { position: absolute; right: 20px; bottom: 52px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; box-shadow: 0 12px 32px rgb(0 0 0 / 0.35); }
-  .help h3 { margin: 0 0 8px; font-size: 13px; }
+  .help { position: absolute; right: 20px; bottom: 52px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; box-shadow: var(--shadow); }
+  .help h3 { margin: 0 0 var(--s2); font-size: var(--fs-md); }
   .help h3 small { color: var(--dim); font-weight: 400; }
-  .keys { display: grid; grid-template-columns: repeat(2, minmax(200px, auto)); gap: 4px 20px; font-size: 13px; }
+  .keys { display: grid; grid-template-columns: repeat(2, minmax(200px, auto)); gap: var(--s1) 20px; font-size: var(--fs-md); }
 </style>

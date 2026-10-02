@@ -54,11 +54,11 @@
 <style>
   .menu {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 400; background: var(--panel);
-    border-top: 1px solid var(--border); padding: 8px 16px 12px; font: 13px var(--mono);
+    border-top: 1px solid var(--border); padding: var(--s2) var(--s4) var(--s3); font: var(--fs-md) var(--mono);
   }
   .crumb { color: var(--accent); margin-bottom: 6px; }
-  .crumb span { color: var(--dim); margin-left: 8px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 3px 16px; }
+  .crumb span { color: var(--dim); margin-left: var(--s2); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 3px var(--s4); }
   kbd { color: var(--todo); font: inherit; display: inline-block; min-width: 2.5ch; }
   .group { color: var(--link); }
 </style>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import "$lib/theme.css";
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -1420,82 +1421,61 @@
 <TaskDialog bind:this={taskDialog} />
 
 <style>
-  :global(:root) {
-    --mono: "JetBrains Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
-    --sans: system-ui, -apple-system, "Segoe UI", Inter, sans-serif;
-    --editor-font: var(--sans);
-    --bg: #1b1d20; --fg: #dcdcda; --panel: #232529; --border: #34373c; --dim: #8a8f95;
-    --active: #2a2d31; --sel: #31435a; --accent: #e6a23c;
-    --h1: #8fb0d6; --h2: #b9a0c9; --h3: #8abeb7; --h4: #b5bd68; --h5: #f0c674; --h6: #de935f;
-    --todo: #e8707a; --done: #98c379; --date: #8abeb7; --link: #6cb6f5; --code: #b5bd68;
-    --kw: #d38cf0;
-    color-scheme: dark;
-  }
-  @media (prefers-color-scheme: light) {
-    :global(:root) {
-      --bg: #fbfbfa; --fg: #262626; --panel: #f2f2f0; --border: #dcdcd8; --dim: #7d7d7a;
-      --active: #ebebe8; --sel: #d3e4f7; --accent: #c4720a;
-      --h1: #2d5f9a; --h2: #7a3e9d; --h3: #1f7a73; --h4: #5a7a12; --h5: #9a6a00; --h6: #b4501a;
-      --todo: #c0392b; --done: #2e8b3e; --date: #1f7a73; --link: #1a66c2; --code: #5a7a12;
-      --kw: #9a2aa6;
-      color-scheme: light;
-    }
-  }
-  :global(html, body) { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px var(--sans); overflow: hidden; }
+  :global(html, body) { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: var(--fs-base) var(--sans); overflow: hidden; }
   :global(button) { font-family: inherit; }
   .app { display: flex; height: 100vh; }
   .app.mono { --editor-font: var(--mono); }
   :global(.cm-plain) { font-family: var(--mono); }
   .maincol { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
-  .side { width: 232px; flex: none; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 10px 8px; gap: 4px; box-sizing: border-box; }
-  .side button { background: none; border: 0; color: var(--fg); text-align: left; cursor: pointer; border-radius: 6px; font-size: 13px; }
-  .cmdk { white-space: nowrap; overflow: hidden; display: flex; gap: 6px; justify-content: space-between; align-items: center; border: 1px solid var(--border) !important; padding: 7px 9px; color: var(--dim) !important; margin-bottom: 8px; }
+  .side { width: 232px; flex: none; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 10px var(--s2); gap: var(--s1); box-sizing: border-box; }
+  .side button { background: none; border: 0; color: var(--fg); text-align: left; cursor: pointer; border-radius: var(--radius); font-size: var(--fs-md); }
+  .cmdk { white-space: nowrap; overflow: hidden; display: flex; gap: 6px; justify-content: space-between; align-items: center; border: 1px solid var(--border) !important; padding: 7px 9px; color: var(--dim) !important; margin-bottom: var(--s2); }
   nav button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 6px 9px; }
   nav button:hover, .notes button:hover { background: var(--active); }
   nav button.on, .notes button.on { background: var(--sel); }
   nav button kbd { margin-left: auto; }
   .ico { width: 16px; text-align: center; color: var(--dim); }
-  kbd { font: 10px var(--mono); color: var(--dim); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; background: var(--bg); }
-  .sec { display: flex; align-items: center; gap: 2px; margin: 14px 4px 2px 9px; color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+  kbd { font: 10px var(--mono); color: var(--dim); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--s1); background: var(--bg); }
+  .sec { display: flex; align-items: center; gap: 2px; margin: 14px var(--s1) 2px 9px; color: var(--dim); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.05em; }
   .sec span { flex: 1; }
-  .sec button { color: var(--dim); font-size: 15px; padding: 0 6px; }
+  .sec button { color: var(--dim); font-size: var(--fs-lg); padding: 0 6px; }
   .notes { flex: 1; overflow-y: auto; min-height: 0; }
-  .notes button { display: block; width: 100%; padding: 4px 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .notes p { color: var(--dim); font-size: 12px; margin: 4px 9px; }
-  .timer { border-top: 1px solid var(--border); padding-top: 8px; }
-  .timer .what { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; width: 100%; padding: 6px 9px; align-items: center; }
-  .timer .what small { grid-column: 2; color: var(--dim); font-size: 11px; }
+  .notes button { display: block; width: 100%; padding: var(--s1) 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .notes p { color: var(--dim); font-size: var(--fs-sm); margin: var(--s1) 9px; }
+  .timer { border-top: 1px solid var(--border); padding-top: var(--s2); }
+  .timer .what { display: grid; grid-template-columns: auto 1fr; gap: 0 var(--s2); width: 100%; padding: 6px 9px; align-items: center; }
+  .timer .what small { grid-column: 2; color: var(--dim); font-size: var(--fs-xs); }
   .timer .what span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
   .timer.on .dot { background: var(--done); }
-  .tbtns { display: flex; gap: 6px; padding: 4px 9px; }
-  .tbtns button { border: 1px solid var(--border) !important; padding: 3px 10px; font-size: 12px; }
-  .warn { color: var(--todo); font-size: 11px; margin: 4px 9px; }
+  .tbtns { display: flex; gap: 6px; padding: var(--s1) 9px; }
+  .tbtns button { border: 1px solid var(--border) !important; padding: 3px 10px; font-size: var(--fs-sm); }
+  .warn { color: var(--todo); font-size: var(--fs-xs); margin: var(--s1) 9px; }
 
   .tabs { display: flex; background: var(--panel); border-bottom: 1px solid var(--border); overflow-x: auto; flex: none; min-height: 33px; }
   .tab { display: flex; align-items: center; border-right: 1px solid var(--border); }
-  .tab button { background: none; border: 0; color: var(--dim); padding: 8px 4px 8px 14px; font-size: 12px; cursor: pointer; white-space: nowrap; }
-  .tab .x { padding: 4px 8px; opacity: 0; font-size: 14px; }
+  .tab button { background: none; border: 0; color: var(--dim); padding: var(--s2) var(--s1) var(--s2) 14px; font-size: var(--fs-sm); cursor: pointer; white-space: nowrap; }
+  .tab .x { padding: var(--s1) var(--s2); opacity: 0; font-size: var(--fs-base); }
   .tab:hover .x, .tab.cur .x { opacity: 0.7; }
   .tab.cur { background: var(--bg); }
   .tab.cur button { color: var(--fg); }
   main { flex: 1; display: flex; min-height: 0; }
   .pane { flex: 1; min-width: 0; position: relative; }
-  .drop-cue { position: absolute; inset: 6px; border: 2px dashed var(--accent); border-radius: 8px; pointer-events: none; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 24px; color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .drop-cue { position: absolute; inset: 6px; border: 2px dashed var(--accent); border-radius: 8px; pointer-events: none; display: flex; align-items: flex-end; justify-content: center; padding-bottom: var(--s5); color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--accent) 6%, transparent); }
   .editor, .view { height: 100%; }
-  .links { width: min(280px, 35vw); border-left: 1px solid var(--border); background: var(--panel); overflow-y: auto; padding: 10px 8px; flex: none; }
-  .links h3 { margin: 4px 6px 8px; font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; }
-  .links button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--fg); padding: 6px; border-radius: 6px; cursor: pointer; }
+  .links { width: min(280px, 35vw); border-left: 1px solid var(--border); background: var(--panel); overflow-y: auto; padding: 10px var(--s2); flex: none; }
+  .links h3 { margin: var(--s1) 6px var(--s2); font-size: var(--fs-sm); color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; }
+  .links button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--fg); padding: 6px; border-radius: var(--radius); cursor: pointer; }
   .links button:hover { background: var(--active); }
-  .links button span { display: block; color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .links p { color: var(--dim); margin: 6px; font-size: 12px; }
+  .links button span { display: block; color: var(--dim); font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .links p { color: var(--dim); margin: 6px; font-size: var(--fs-sm); }
   .mention { display: flex; align-items: center; }
   .mention button:first-child { min-width: 0; }
-  .links .link-it { width: auto; flex: none; color: var(--link); font-size: 12px; }
-  .status { display: flex; gap: 12px; align-items: center; padding: 3px 10px; background: var(--panel); border-top: 1px solid var(--border); font: 11px var(--mono); flex: none; min-height: 20px; }
-  .mode { color: var(--bg); background: var(--accent); padding: 0 6px; border-radius: 3px; font-weight: 700; }
+  .links .link-it { width: auto; flex: none; color: var(--link); font-size: var(--fs-sm); }
+  .status { display: flex; gap: var(--s3); align-items: center; padding: 3px 10px; background: var(--panel); border-top: 1px solid var(--border); font: var(--fs-xs) var(--mono); flex: none; min-height: 20px; }
+  .mode { color: var(--bg); background: var(--accent); padding: 0 6px; border-radius: var(--radius-sm); font-weight: 700; }
   .file { color: var(--dim); }
   .msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .hint { background: none; border: 0; color: var(--dim); font: 11px var(--sans); cursor: pointer; }
+  .hint { background: none; border: 0; color: var(--dim); font: var(--fs-xs) var(--sans); cursor: pointer; }
 </style>
