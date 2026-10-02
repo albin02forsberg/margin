@@ -81,3 +81,8 @@ Parallel work runs through checked-in agents and skills (see `.claude/`):
 - Approval gate: `/ship` builds issues labelled `approved` (owner adds it) or ones named explicitly. `needs-decision` = waiting on the owner.
 - `/autopilot [issues…] [--max N] [--hours H] [--all-ready]` — one command for continuous runs: triager in watch mode plus `/ship` rounds, until the queue is empty or time is up. Same approval gate.
 - Repeat with `/loop /ship`, or `/schedule` a cloud routine for unattended runs. Releases stay manual (`/release`).
+
+## Tools
+
+- **graphify** (`graphify-out/`): for architecture / "where is X" questions, read `graphify-out/GRAPH_REPORT.md` and use `graphify query|path|explain` before grepping. The `graphify` workflow refreshes the graph on `main` after each merge; do not commit `graphify-out/` changes in feature PRs.
+- **ponytail** ([plugin](https://github.com/dietrichgebert/ponytail), enabled in `.claude/settings.json`): write the minimum code that works — reuse what exists, stdlib before dependencies, no speculative abstractions, one runnable check for non-trivial logic.

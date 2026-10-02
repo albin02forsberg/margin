@@ -1,0 +1,36 @@
+name: graphify
+
+# Keeps graphify-out/ (code graph the agents query) current on main. AST-only: no LLM key needed.
+# Semantic (docs/images) extraction is not refreshed here; run `/graphify --update` locally for that.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['graphify-out/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: graphify
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv tool install graphifyy==0.9.74
+      - run: graphify update .
+      - name: Commit graph
+        run: |
+          # Backups graphify makes of a curated graph are local noise.
+          rm -rf graphify-out/20??-??-??
+          git add graphify-out
+          git diff --cached --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: refresh graphify graph [skip ci]"
+          git pull --rebase origin main
+          git push
