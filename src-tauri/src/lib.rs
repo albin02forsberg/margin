@@ -102,7 +102,7 @@ fn reload_config(app: AppHandle, s: State<App>) -> R<()> {
 #[tauri::command]
 fn save_view(app: AppHandle, s: State<App>, name: String, query: String) -> R<()> {
     let text = std::fs::read_to_string(&s.cfg_path).map_err(|e| e.to_string())?;
-    std::fs::write(&s.cfg_path, config::add_view(&text, &name, &query)?).map_err(|e| e.to_string())?;
+    config::write_atomic(&s.cfg_path, config::add_view(&text, &name, &query)?).map_err(|e| e.to_string())?;
     reload_config(app, s)
 }
 
@@ -155,7 +155,7 @@ fn write_file(app: AppHandle, s: State<App>, path: PathBuf, text: String) -> R<(
     if let Some(d) = path.parent() {
         std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
     }
-    std::fs::write(&path, text).map_err(|e| e.to_string())?;
+    config::write_atomic(&path, text).map_err(|e| e.to_string())?;
     if path == s.cfg_path {
         reload_config(app, s)?;
     }

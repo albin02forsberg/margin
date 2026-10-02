@@ -111,7 +111,7 @@ impl Tc {
         let mut lines: Vec<String> = text.lines().map(String::from).collect();
         let l = lines.get_mut(idx).ok_or("line not found")?;
         *l = serde_json::to_string(ev).unwrap();
-        fs::write(self.log_path(), lines.join("\n") + "\n").map_err(|e| e.to_string())
+        crate::config::write_atomic(&self.log_path(), lines.join("\n") + "\n").map_err(|e| e.to_string())
     }
 
     pub fn projects(&self) -> Projects {
@@ -120,7 +120,7 @@ impl Tc {
 
     pub fn save_projects(&self, p: &Projects) -> Result<(), String> {
         fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
-        fs::write(self.projects_path(), toml::to_string(p).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+        crate::config::write_atomic(&self.projects_path(), toml::to_string(p).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
     }
 
     pub fn sessions(&self) -> Vec<Session> {
@@ -625,7 +625,7 @@ pub fn append_diary(path: &Path, project: &str, reason: &str, h: f64, now: Naive
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
-    fs::write(path, text)
+    crate::config::write_atomic(path, text)
 }
 
 // ---------------------------------------------------------------- emacs import
