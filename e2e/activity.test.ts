@@ -44,7 +44,9 @@ describe("ActivityWatch suggestions", () => {
   after(async () => { await close(); aw.close(); }, { timeout: 30_000 });
 
   it("shows URLs, dismisses for good, and accepts with edited times", async () => {
+    await find(".agenda h1", "Today");
     await browser.keys([Key.Ctrl, "4"]);
+    await find(".time h1", "Time");
     await find(".suggested p", "Nothing to suggest");
     await browser.keys("h");
     const row = (text: string) => find(".suggested tr", text);
