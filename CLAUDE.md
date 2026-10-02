@@ -71,3 +71,11 @@ CI/CD secrets needed: `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PA
 - Main branch: `main` (PRs / CI required before merge)
 - Commits: Conventional or clear description (no strict format enforced)
 - Conflict resolution: When files sync (Emacs, git, or app editing), non-overlapping changes auto-merge; conflicts flagged
+
+## Agent Workflow
+
+Parallel work runs through checked-in agents and skills (see `.claude/`):
+- `/triage [watch]` — the `triager` agent plans issues (`## Plan` comment), labels them, answers comments. Comments it posts start with "🤖 *Claude:*".
+- `/ship [issues…] [--max N]` — coordinator: runs `implementer` agents (one worktree per issue, PR → CI → squash-merge) and `pr-shepherd` agents for open PRs, files follow-ups, cleans up worktrees.
+- Approval gate: `/ship` builds issues labelled `approved` (owner adds it) or ones named explicitly. `needs-decision` = waiting on the owner.
+- Repeat with `/loop /ship`, or `/schedule` a cloud routine for unattended runs. Releases stay manual (`/release`).
