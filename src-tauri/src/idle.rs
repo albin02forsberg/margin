@@ -23,16 +23,15 @@ pub fn step(away: Option<NaiveDateTime>, last: NaiveDateTime, idle: Duration, th
     }
 }
 
-/// Poll every 5 s. Without an idle source (Wayland, no X display) it logs once and stays off.
+/// Poll every 5 s. Without an idle source (Wayland, no X display) only sleep and
+/// suspend are caught, from the gap between polls.
 pub fn start(app: &AppHandle) {
     // The X11 backend reads XScreenSaver idle, which is wrong under Wayland and crashes without a display.
     #[cfg(target_os = "linux")]
-    if std::env::var_os("WAYLAND_DISPLAY").is_some() || std::env::var_os("DISPLAY").is_none() {
-        return eprintln!("idle detection: no X11 session, disabled");
-    }
-    if let Err(e) = UserIdle::get_time() {
-        return eprintln!("idle detection unavailable: {e:?}");
-    }
+    let source = std::env::var_os("WAYLAND_DISPLAY").is_none() && std::env::var_os("DISPLAY").is_some();
+    #[cfg(not(target_os = "linux"))]
+    let source = true;
+    let source = source && UserIdle::get_time().map_err(|e| eprintln!("idle time unavailable ({e:?}); only catching sleep")).is_ok();
     let app = app.clone();
     std::thread::spawn(move || {
         let (mut away, mut last) = (None, now());
@@ -40,10 +39,10 @@ pub fn start(app: &AppHandle) {
             std::thread::sleep(std::time::Duration::from_secs(5));
             let s = app.state::<App>();
             let mins = s.cfg().idle_threshold_minutes;
-            let Ok(idle) = UserIdle::get_time() else { continue };
+            let idle = if source { UserIdle::get_time().map_or(0, |i| i.as_seconds()) } else { 0 };
             let t = now();
             let running = mins > 0 && s.tc().current().is_some();
-            let (a, back) = step(away, last, Duration::seconds(idle.as_seconds() as i64), Duration::minutes(mins), running, t);
+            let (a, back) = step(away, last, Duration::seconds(idle as i64), Duration::minutes(mins), running, t);
             (away, last) = (a, t);
             if let Some((since, back)) = back {
                 tray::show(&app);
