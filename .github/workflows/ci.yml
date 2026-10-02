@@ -17,7 +17,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           run=true
-          if [ "${{ github.event_name }}" = pull_request ] && ! gh pr diff ${{ github.event.pull_request.number }} -R ${{ github.repository }} --name-only | grep -qvE '^(\.claude/|docs/|README\.md$|CLAUDE\.md$)'; then run=false; fi
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            files=$(gh pr diff ${{ github.event.pull_request.number }} -R ${{ github.repository }} --name-only) # errors abort the step: never skip CI on a failed lookup
+            if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qvE '^(\.claude/|docs/|README\.md$|CLAUDE\.md$)'; then run=false; fi
+          fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
       - if: steps.gate.outputs.run == 'true'
         uses: actions/checkout@v5
@@ -57,7 +60,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           run=true
-          if [ "${{ github.event_name }}" = pull_request ] && ! gh pr diff ${{ github.event.pull_request.number }} -R ${{ github.repository }} --name-only | grep -qvE '^(\.claude/|docs/|README\.md$|CLAUDE\.md$)'; then run=false; fi
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            files=$(gh pr diff ${{ github.event.pull_request.number }} -R ${{ github.repository }} --name-only) # errors abort the step: never skip CI on a failed lookup
+            if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qvE '^(\.claude/|docs/|README\.md$|CLAUDE\.md$)'; then run=false; fi
+          fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
       - if: steps.gate.outputs.run == 'true'
         uses: actions/checkout@v5
