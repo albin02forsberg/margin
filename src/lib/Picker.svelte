@@ -149,19 +149,19 @@
   .picker {
     position: fixed; top: 12%; left: 50%; transform: translateX(-50%);
     width: min(680px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--border);
-    border-radius: 10px; box-shadow: 0 16px 48px rgb(0 0 0 / 0.4); z-index: 500; overflow: hidden;
+    border-radius: 10px; box-shadow: var(--shadow); z-index: 500; overflow: hidden;
   }
-  label { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
-  label span { color: var(--dim); font-size: 12px; }
+  label { display: flex; flex-direction: column; gap: 6px; padding: var(--s3) 14px; border-bottom: 1px solid var(--border); }
+  label span { color: var(--dim); font-size: var(--fs-sm); }
   input { background: none; border: 0; outline: 0; color: var(--fg); font: 16px var(--sans); }
-  .body { margin: 0; padding: 8px 14px; max-height: 40vh; overflow-y: auto; white-space: pre-wrap; font: 12px var(--mono); color: var(--dim); border-bottom: 1px solid var(--border); }
-  .preview { padding: 6px 14px; color: var(--done); font-size: 13px; border-bottom: 1px solid var(--border); }
+  .body { margin: 0; padding: var(--s2) 14px; max-height: 40vh; overflow-y: auto; white-space: pre-wrap; font: var(--fs-sm) var(--mono); color: var(--dim); border-bottom: 1px solid var(--border); }
+  .preview { padding: 6px 14px; color: var(--done); font-size: var(--fs-md); border-bottom: 1px solid var(--border); }
   .preview.bad { color: var(--todo); }
-  ul { list-style: none; margin: 0; padding: 4px; max-height: 50vh; overflow-y: auto; }
-  li { padding: 6px 10px; display: flex; justify-content: space-between; gap: 12px; cursor: pointer; border-radius: 6px; font-size: 14px; }
+  ul { list-style: none; margin: 0; padding: var(--s1); max-height: 50vh; overflow-y: auto; }
+  li { padding: 6px 10px; display: flex; justify-content: space-between; gap: var(--s3); cursor: pointer; border-radius: var(--radius); font-size: var(--fs-base); }
   li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   li.sel { background: var(--sel); }
   li small { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; max-width: 50%; }
   li.empty { color: var(--dim); cursor: default; }
-  footer { padding: 6px 14px; font-size: 11px; color: var(--dim); border-top: 1px solid var(--border); }
+  footer { padding: 6px 14px; font-size: var(--fs-xs); color: var(--dim); border-top: 1px solid var(--border); }
 </style>

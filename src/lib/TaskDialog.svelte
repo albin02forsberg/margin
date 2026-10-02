@@ -128,24 +128,24 @@
   .dialog {
     position: fixed; top: 10%; left: 50%; transform: translateX(-50%); z-index: 500;
     width: min(560px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--border);
-    border-radius: 12px; box-shadow: 0 16px 48px rgb(0 0 0 / 0.4); padding: 18px 20px; outline: none;
+    border-radius: 12px; box-shadow: var(--shadow); padding: 18px 20px; outline: none;
   }
-  h2 { margin: 0 0 12px; font-size: 13px; color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
-  input, select { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); font: 14px var(--sans); padding: 7px 9px; width: 100%; box-sizing: border-box; }
+  h2 { margin: 0 0 var(--s3); font-size: var(--fs-md); color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+  input, select { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg); font: var(--fs-base) var(--sans); padding: 7px 9px; width: 100%; box-sizing: border-box; }
   input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-  .title { font-size: 17px; padding: 10px 12px; margin-bottom: 14px; }
-  .grid { display: grid; grid-template-columns: 70px 1fr; gap: 10px 12px; align-items: start; }
-  .grid label, .lbl { color: var(--dim); font-size: 13px; padding-top: 8px; }
+  .title { font-size: 17px; padding: 10px var(--s3); margin-bottom: 14px; }
+  .grid { display: grid; grid-template-columns: 70px 1fr; gap: 10px var(--s3); align-items: start; }
+  .grid label, .lbl { color: var(--dim); font-size: var(--fs-md); padding-top: var(--s2); }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
   .grid > .chips { margin-top: 2px; }
-  .chips button { background: var(--bg); border: 1px solid var(--border); color: var(--fg); border-radius: 999px; padding: 3px 10px; font: 12px var(--sans); cursor: pointer; }
+  .chips button { background: var(--bg); border: 1px solid var(--border); color: var(--fg); border-radius: 999px; padding: 3px 10px; font: var(--fs-sm) var(--sans); cursor: pointer; }
   .chips button.on { border-color: var(--accent); color: var(--accent); }
   .prio.pA.on { border-color: var(--todo); color: var(--todo); }
-  .pv { font-size: 12px; color: var(--done); margin-left: 4px; }
+  .pv { font-size: var(--fs-sm); color: var(--done); margin-left: var(--s1); }
   .pv.bad { color: var(--todo); }
-  .error { color: var(--todo); font-size: 13px; margin: 12px 0 0; }
-  footer { display: flex; gap: 8px; align-items: center; margin-top: 18px; }
-  footer span { flex: 1; color: var(--dim); font-size: 11px; }
-  footer button { background: var(--bg); border: 1px solid var(--border); color: var(--fg); border-radius: 6px; padding: 7px 14px; font: 13px var(--sans); cursor: pointer; }
+  .error { color: var(--todo); font-size: var(--fs-md); margin: var(--s3) 0 0; }
+  footer { display: flex; gap: var(--s2); align-items: center; margin-top: 18px; }
+  footer span { flex: 1; color: var(--dim); font-size: var(--fs-xs); }
+  footer button { background: var(--bg); border: 1px solid var(--border); color: var(--fg); border-radius: var(--radius); padding: 7px 14px; font: var(--fs-md) var(--sans); cursor: pointer; }
   footer .primary { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
 </style>
