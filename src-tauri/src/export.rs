@@ -2,8 +2,9 @@
 // (headings, paragraphs, lists, tables, blocks) plus inline markup; drawers,
 // planning lines, comments and #+ keywords other than title/subtitle are dropped.
 
-use crate::org::{self, Kw};
+use crate::org::{self, Kw, OrgFile};
 use regex::Regex;
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::LazyLock;
 
@@ -42,6 +43,9 @@ pub enum Block {
     Quote(Vec<Block>),
     Rule,
 }
+
+/// id → file name of the exported page holding it.
+pub type Ids = HashMap<String, String>;
 
 pub struct Doc {
     pub title: Option<String>,
@@ -247,10 +251,13 @@ fn is_image(t: &str) -> bool {
     [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"].iter().any(|e| t.ends_with(e))
 }
 
-/// Resolve a link target: Ok(url) or Err(plain text) for id: links. file: paths
+/// Resolve a link target: Ok(url) or Err(plain text) for id: links not in IDS (id → exported page). file: paths
 /// become absolute file:// URLs (relative to BASE, the note's folder).
-fn target(t: &str, desc: Option<&str>, base: &Path) -> Result<String, String> {
+fn target(t: &str, desc: Option<&str>, base: &Path, ids: &Ids) -> Result<String, String> {
     if let Some(id) = t.strip_prefix("id:") {
+        if let Some(page) = ids.get(id) {
+            return Ok(page.clone());
+        }
         return Err(desc.unwrap_or(id).to_string());
     }
     match t.strip_prefix("file:") {
@@ -262,31 +269,66 @@ fn target(t: &str, desc: Option<&str>, base: &Path) -> Result<String, String> {
     }
 }
 
+/// NAME, or the first free `stem (2).ext`, `stem (3).ext`… when TAKEN.
+pub fn free_name(name: &str, taken: impl Fn(&str) -> bool) -> String {
+    let (stem, ext) = name.rfind('.').filter(|&i| i > 0).map_or((name, ""), |i| name.split_at(i));
+    std::iter::once(name.to_string()).chain((2..).map(|n| format!("{stem} ({n}){ext}"))).find(|n| !taken(n)).unwrap()
+}
+
+/// ROOT plus the notes it reaches by id: links within DEPTH hops (from FILES, where ROOT's
+/// own entry is ignored), each with a unique `<stem>.html` name, and the ids those pages hold.
+pub fn bundle<'a>(files: &[&'a OrgFile], root: &'a OrgFile, depth: usize) -> (Vec<(&'a OrgFile, String)>, Ids) {
+    let all: Vec<&OrgFile> = std::iter::once(root).chain(files.iter().copied().filter(|f| f.path != root.path)).collect();
+    let ids_of = |f: &'a OrgFile| f.id.iter().chain(f.headlines.iter().filter_map(|h| h.id.as_ref()));
+    let by_id: HashMap<&str, &OrgFile> = all.iter().flat_map(|&f| ids_of(f).map(move |id| (id.as_str(), f))).collect();
+    let mut pages = vec![root];
+    let mut frontier = vec![root];
+    for _ in 0..depth {
+        let mut next = vec![];
+        for l in frontier.iter().flat_map(|f| &f.links).filter(|l| !l.file) {
+            if let Some(&g) = by_id.get(l.target.as_str()).filter(|g| !pages.iter().any(|p| p.path == g.path)) {
+                pages.push(g);
+                next.push(g);
+            }
+        }
+        frontier = next;
+    }
+    let mut out: Vec<(&OrgFile, String)> = vec![];
+    let mut ids = Ids::new();
+    for f in pages {
+        let stem = f.path.file_stem().map_or("note".into(), |s| s.to_string_lossy().to_string());
+        let name = free_name(&format!("{stem}.html"), |n| out.iter().any(|(_, o)| o.eq_ignore_ascii_case(n)));
+        ids.extend(ids_of(f).map(|id| (id.clone(), name.clone())));
+        out.push((f, name));
+    }
+    (out, ids)
+}
+
 // ---------------------------------------------------------------- HTML
 
 pub fn esc(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;")
 }
 
-fn html_spans(s: &[Span], base: &Path) -> String {
+fn html_spans(s: &[Span], base: &Path, ids: &Ids) -> String {
     s.iter()
         .map(|sp| match sp {
             Span::Text(t) => esc(t),
             Span::Mark(m, inner) => {
                 let tag = match m { '*' => "b", '/' => "i", '_' => "u", '+' => "del", _ => "code" };
-                format!("<{tag}>{}</{tag}>", html_spans(inner, base))
+                format!("<{tag}>{}</{tag}>", html_spans(inner, base, ids))
             }
-            Span::Link(t, d) => match target(t, d.as_deref(), base) {
-                Err(text) => html_spans(&spans(&text), base),
+            Span::Link(t, d) => match target(t, d.as_deref(), base, ids) {
+                Err(text) => html_spans(&spans(&text), base, ids),
                 Ok(u) if d.is_none() && is_image(t) => format!("<img src=\"{}\" alt=\"\">", esc(&embed(t, base).unwrap_or(u))),
-                Ok(u) => format!("<a href=\"{}\">{}</a>", esc(&u), d.as_deref().map_or_else(|| esc(t), |d| html_spans(&spans(d), base))),
+                Ok(u) => format!("<a href=\"{}\">{}</a>", esc(&u), d.as_deref().map_or_else(|| esc(t), |d| html_spans(&spans(d), base, ids))),
             },
         })
         .collect()
 }
 
-fn html_blocks(bs: &[Block], base: &Path) -> String {
-    let inl = |s: &str| html_spans(&spans(s), base);
+fn html_blocks(bs: &[Block], base: &Path, ids: &Ids) -> String {
+    let inl = |s: &str| html_spans(&spans(s), base, ids);
     let mut o = String::new();
     for b in bs {
         match b {
@@ -309,7 +351,7 @@ fn html_blocks(bs: &[Block], base: &Path) -> String {
             Block::List(_, items) if items.iter().all(|it| it.term.is_some()) => {
                 o += "<dl>\n";
                 for it in items {
-                    o += &format!("<dt>{}</dt><dd>{}{}</dd>\n", inl(it.term.as_deref().unwrap_or("")), inl(&it.text), html_blocks(&it.children, base));
+                    o += &format!("<dt>{}</dt><dd>{}{}</dd>\n", inl(it.term.as_deref().unwrap_or("")), inl(&it.text), html_blocks(&it.children, base, ids));
                 }
                 o += "</dl>\n";
             }
@@ -318,7 +360,7 @@ fn html_blocks(bs: &[Block], base: &Path) -> String {
                 o += &format!("<{tag}>\n");
                 for it in items {
                     let cb = it.check.map_or(String::new(), |c| format!("<input type=\"checkbox\" disabled{}> ", if c == 'X' || c == 'x' { " checked" } else { "" }));
-                    o += &format!("<li>{cb}{}{}</li>\n", inl(&it.text), html_blocks(&it.children, base));
+                    o += &format!("<li>{cb}{}{}</li>\n", inl(&it.text), html_blocks(&it.children, base, ids));
                 }
                 o += &format!("</{tag}>\n");
             }
@@ -340,7 +382,7 @@ fn html_blocks(bs: &[Block], base: &Path) -> String {
                 let lang = if lang.is_empty() { String::new() } else { format!(" data-lang=\"{}\"", esc(lang)) };
                 o += &format!("<pre class=\"{}\"{lang}><code>{}</code></pre>\n", esc(kind), esc(body));
             }
-            Block::Quote(inner) => o += &format!("<blockquote>\n{}</blockquote>\n", html_blocks(inner, base)),
+            Block::Quote(inner) => o += &format!("<blockquote>\n{}</blockquote>\n", html_blocks(inner, base, ids)),
             Block::Rule => o += "<hr>\n",
         }
     }
@@ -373,15 +415,15 @@ li:has(> input[type=checkbox]) { list-style: none; margin-left: -1.3em; }
 @media print { body { margin: 0; max-width: none; } a { color: inherit; } }
 ";
 
-/// Self-contained HTML page. BASE resolves relative file: links; PRINT opens the print dialog on load.
-pub fn html(d: &Doc, fallback_title: &str, base: &Path, print: bool) -> String {
+/// Self-contained HTML page. BASE resolves relative file: links, IDS maps id: links to sibling pages; PRINT opens the print dialog on load.
+pub fn html(d: &Doc, fallback_title: &str, base: &Path, ids: &Ids, print: bool) -> String {
     let title = d.title.as_deref().unwrap_or(fallback_title);
     let mut o = format!("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>{}</title>\n<style>{CSS}</style>\n</head>\n<body>\n", esc(title));
-    o += &format!("<h1>{}</h1>\n", html_spans(&spans(title), base));
+    o += &format!("<h1>{}</h1>\n", html_spans(&spans(title), base, ids));
     if let Some(s) = &d.subtitle {
-        o += &format!("<p class=\"subtitle\">{}</p>\n", html_spans(&spans(s), base));
+        o += &format!("<p class=\"subtitle\">{}</p>\n", html_spans(&spans(s), base, ids));
     }
-    o += &html_blocks(&d.blocks, base);
+    o += &html_blocks(&d.blocks, base, ids);
     if print {
         o += "<script>addEventListener(\"load\", () => print())</script>\n";
     }
@@ -414,7 +456,7 @@ fn md_spans(s: &[Span], base: &Path) -> String {
                 let (a, b) = match m { '*' => ("**", "**"), '/' => ("*", "*"), '+' => ("~~", "~~"), _ => ("<u>", "</u>") };
                 format!("{a}{}{b}", md_spans(inner, base))
             }
-            Span::Link(t, d) => match target(t, d.as_deref(), base) {
+            Span::Link(t, d) => match target(t, d.as_deref(), base, &Ids::new()) {
                 Err(text) => md_spans(&spans(&text), base),
                 Ok(u) => {
                     let u = if u.contains([' ', '(', ')', '<', '>']) { format!("<{}>", u.replace('<', "%3C").replace('>', "%3E")) } else { u };
@@ -537,7 +579,7 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
 
     #[test]
     fn to_html() {
-        let h = html(&parse(NOTE, &kw()), "x", Path::new("/notes"), false);
+        let h = html(&parse(NOTE, &kw()), "x", Path::new("/notes"), &Ids::new(), false);
         for want in [
             "<title>Plans &lt;&amp;&gt;</title>",
             "<h1>Plans &lt;&amp;&gt;</h1>",
@@ -559,7 +601,7 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
         for gone in ["PROPERTIES", "SCHEDULED", "filetags", "TBLFM", "comment", "abc", "<script"] {
             assert!(!h.contains(gone), "{gone} leaked\n{h}");
         }
-        assert!(html(&parse("x", &kw()), "t", Path::new("/"), true).contains("print()"));
+        assert!(html(&parse("x", &kw()), "t", Path::new("/"), &Ids::new(), true).contains("print()"));
     }
 
     #[test]
@@ -585,7 +627,7 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
         std::fs::write(dir.join("dot.png"), [137u8, 80, 78, 71]).unwrap();
         let note = "See https://example.com/a_b, then (http://x.y).\n\n- Apple :: a fruit\n- Kale :: *green*\n\n#+begin_verse\nRoses /red/\n  violets\n#+end_verse\n\n[[file:dot.png]] [[file:missing.png]]\n";
         let d = parse(note, &kw());
-        let h = html(&d, "x", &dir, false);
+        let h = html(&d, "x", &dir, &Ids::new(), false);
         for want in [
             "<a href=\"https://example.com/a_b\">https://example.com/a_b</a>, then (<a href=\"http://x.y\">http://x.y</a>).",
             "<dl>\n<dt>Apple</dt><dd>a fruit</dd>\n<dt>Kale</dt><dd><b>green</b></dd>\n</dl>",
@@ -600,5 +642,30 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
             assert!(m.contains(want), "missing {want:?} in\n{m}");
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn free_names() {
+        let taken = ["a.html", "a (2).html", "b"];
+        let t = |n: &str| taken.contains(&n);
+        assert_eq!(free_name("c.html", t), "c.html");
+        assert_eq!(free_name("a.html", t), "a (3).html");
+        assert_eq!(free_name("b", t), "b (2)");
+    }
+
+    #[test]
+    fn linked_notes() {
+        let p = |path: &str, text: &str| org::parse(Path::new(path), text, &kw());
+        let a = p("/n/a.org", ":PROPERTIES:\n:ID: a\n:END:\nTo [[id:bh][B's heading]], [[id:gone][lost]], [[id:a][me]].\n");
+        let b = p("/n/b.org", "* H\n:PROPERTIES:\n:ID: bh\n:END:\nOn to [[id:c]].\n");
+        let c = p("/n/sub/b.org", ":PROPERTIES:\n:ID: c\n:END:\nBack to [[id:a][A]].\n");
+        let stale = p("/n/a.org", "old text\n");
+        let files = [&stale, &b, &c];
+        let names = |d| bundle(&files, &a, d).0.into_iter().map(|(f, n)| (f.path.to_string_lossy().to_string(), n)).collect::<Vec<_>>();
+        assert_eq!(names(1), [("/n/a.org".into(), "a.html".into()), ("/n/b.org".into(), "b.html".into())]);
+        assert_eq!(names(2)[2], ("/n/sub/b.org".into(), "b (2).html".into()));
+        let (_, ids) = bundle(&files, &a, 1);
+        let h = html(&parse(&a.text, &kw()), "a", Path::new("/n"), &ids, false);
+        assert!(h.contains("To <a href=\"b.html\">B&#39;s heading</a>, lost, <a href=\"a.html\">me</a>."), "{h}");
     }
 }

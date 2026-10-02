@@ -277,13 +277,17 @@ elsewhere only sleep and suspend are noticed.
 
 `Space e` exports the open note (including unsaved edits) as HTML (`e h`),
 Markdown (`e m`) or PDF (`e p`), and the time report for the last 7 days, this
-month or last month as HTML or PDF (`e t`, or `E` in the Time view). Files go to
-`export_dir` (default `~/Desktop`). PDF writes the HTML page and opens it in your
-browser with the print dialog up — choose "Save as PDF" there. Property drawers,
-planning lines, comments and `#+` keywords other than the title are left out;
-`id:` links become plain text. Images are embedded in the HTML, so the page
-works on its own; bare URLs become links, and `term :: text` lists and verse
-blocks keep their shape.
+month, last month or a custom range as HTML or PDF (`e t`, or `E` in the Time
+view). Files go to `export_dir` (default `~/Desktop`); if one is already there you
+choose Overwrite, Keep both (saves `name (2).html`) or Cancel. PDF writes the
+HTML page and opens it in your browser with the print dialog up — choose "Save as
+PDF" there. Property drawers, planning lines, comments and `#+` keywords other
+than the title are left out; `id:` links become plain text. Images are embedded
+in the HTML, so the page works on its own; bare URLs become links, and
+`term :: text` lists and verse blocks keep their shape.
+
+`e a` exports the note plus the notes it links to by `id:` (one hop, or two) as
+HTML pages in a folder `export_dir/<note>/`, where links between them work.
 
 ## Reminders
 
