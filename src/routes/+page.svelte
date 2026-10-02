@@ -760,23 +760,55 @@
   /** Export the open note to the export folder; PDF opens the HTML in the browser to print from. */
   async function exportNote(format: "html" | "md" | "pdf") {
     if (!inFile()) return flash("Open a note first.");
-    await exported(await call("export_note", { path: tab.path, text: view.state.doc.toString(), format }), format === "pdf");
+    const path = await exportTo("export_note", { path: tab.path, text: view.state.doc.toString(), format });
+    if (path) await exported(path, format === "pdf");
+  }
+
+  /** The open note plus the notes it links to by id:, as HTML pages in a folder that link to each other. */
+  async function exportLinked() {
+    if (!inFile()) return flash("Open a note first.");
+    const depth = await pick({ prompt: "Include notes", items: [{ label: "Linked from this note", value: 1 }, { label: "…and the notes they link to", value: 2 }] });
+    if (depth == null) return;
+    const path = await exportTo("export_linked", { path: tab.path, text: view.state.doc.toString(), depth });
+    if (path) await exported(path, false);
+  }
+
+  /** Run export command CMD; if its target exists, ask to overwrite or keep both. Null on cancel. */
+  async function exportTo(cmd: string, args: Record<string, unknown>): Promise<string | null> {
+    try {
+      return await call<string>(cmd, args);
+    } catch (e) {
+      const m = String(e).match(/^exists:(.*)$/s);
+      if (!m) throw e;
+      const overwrite = await pick({
+        prompt: `${base(m[1])} already exists`,
+        items: [{ label: "Overwrite", value: "y" }, { label: "Keep both", detail: "adds (2), (3)… to the name", value: "n" }, { label: "Cancel", value: "" }],
+      });
+      return overwrite ? call<string>(cmd, { ...args, overwrite: overwrite === "y" }) : null;
+    }
   }
 
   async function exportReport() {
     const t = new Date();
     const day = (m: number, d: number) => new Date(t.getFullYear(), t.getMonth() + m, d).toLocaleDateString("sv-SE");
-    const range: string[] | null = await pick({
+    let range: string[] | "custom" | null = await pick({
       prompt: "Time report for",
       items: [
         { label: "Last 7 days", value: [day(0, t.getDate() - 7), day(0, t.getDate())] },
         { label: "This month", value: [day(0, 1), day(0, t.getDate())] },
         { label: "Last month", value: [day(-1, 1), day(0, 0)] },
+        { label: "Custom range…", value: "custom" },
       ],
     });
+    if (range === "custom") {
+      const start = await datePick("Report from");
+      const end = start && (await datePick("Report to"));
+      range = end ? [start, end] : null;
+    }
     if (!range) return;
     const fmt = await pick({ prompt: "Export as", items: [{ label: "PDF (print from the browser)", value: "pdf" }, { label: "HTML", value: "html" }] });
-    if (fmt) await exported(await call("export_report", { start: range[0], end: range[1], print: fmt === "pdf" }), fmt === "pdf");
+    const path = fmt && (await exportTo("export_report", { start: range[0], end: range[1], print: fmt === "pdf" }));
+    if (path) await exported(path, fmt === "pdf");
   }
 
   /** Flash where an export went; PRINT opens it right away, otherwise offer to. */
@@ -979,6 +1011,7 @@
     { label: "Export: note as HTML", leader: "e h", run: () => exportNote("html") },
     { label: "Export: note as Markdown", leader: "e m", run: () => exportNote("md") },
     { label: "Export: note as PDF", leader: "e p", run: () => exportNote("pdf") },
+    { label: "Export: note and linked notes as HTML…", leader: "e a", run: exportLinked },
     { label: "Export: time report (HTML/PDF)…", leader: "e t", run: exportReport },
   ];
 

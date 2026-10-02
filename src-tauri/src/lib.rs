@@ -628,41 +628,77 @@ fn tc_csv(s: State<App>, start: String, end: String, path: PathBuf) -> R<String>
 
 // ---------------------------------------------------------------- export
 
-fn write_export(s: &App, name: &str, body: String) -> R<PathBuf> {
+/// NAME in export_dir. If it exists, OVERWRITE None refuses with `exists:<path>` (so the
+/// frontend can ask), Some(true) reuses it, Some(false) picks a free `name (2).ext`.
+fn export_path(s: &App, name: &str, overwrite: Option<bool>) -> R<PathBuf> {
     let dir = config::expand(&s.cfg().export_dir);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let p = dir.join(name);
-    std::fs::write(&p, body).map_err(|e| e.to_string())?;
+    match overwrite {
+        _ if !p.exists() => Ok(p),
+        None => Err(format!("exists:{}", p.display())),
+        Some(true) => Ok(p),
+        Some(false) => Ok(dir.join(export::free_name(name, |n| dir.join(n).exists()))),
+    }
+}
+
+fn write_export(s: &App, name: &str, body: String, overwrite: Option<bool>) -> R<PathBuf> {
+    let p = export_path(s, name, overwrite)?;
+    config::write_atomic(&p, body).map_err(|e| e.to_string())?;
     Ok(p)
+}
+
+fn stem(path: &Path) -> String {
+    path.file_stem().map_or("note".into(), |x| x.to_string_lossy().to_string())
 }
 
 /// Export note TEXT (the buffer of PATH) to export_dir. FORMAT: html | md | pdf (HTML that opens the print dialog).
 #[tauri::command]
-fn export_note(s: State<App>, path: PathBuf, text: String, format: String) -> R<PathBuf> {
+fn export_note(s: State<App>, path: PathBuf, text: String, format: String, overwrite: Option<bool>) -> R<PathBuf> {
     let d = export::parse(&text, &s.kw());
-    let stem = path.file_stem().map_or("note".into(), |x| x.to_string_lossy().to_string());
+    let stem = stem(&path);
     let base = path.parent().unwrap_or(Path::new(""));
     match format.as_str() {
-        "md" => write_export(&s, &format!("{stem}.md"), export::markdown(&d, &stem, base)),
-        f => write_export(&s, &format!("{stem}.html"), export::html(&d, &stem, base, f == "pdf")),
+        "md" => write_export(&s, &format!("{stem}.md"), export::markdown(&d, &stem, base), overwrite),
+        f => write_export(&s, &format!("{stem}.html"), export::html(&d, &stem, base, &export::Ids::new(), f == "pdf"), overwrite),
     }
+}
+
+/// Export note TEXT (the buffer of PATH) and the notes it reaches by id: links within DEPTH hops
+/// as HTML pages in `<export_dir>/<stem>/`, id: links between them made relative. Returns PATH's page.
+#[tauri::command]
+fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, overwrite: Option<bool>) -> R<PathBuf> {
+    let kw = s.kw();
+    let root = org::parse(&path, &text, &kw);
+    let files = s.files();
+    let files: Vec<&org::OrgFile> = files.iter().map(|f| &**f).collect();
+    let (pages, ids) = export::bundle(&files, &root, depth);
+    let dir = export_path(&s, &stem(&path), overwrite)?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    for (f, name) in &pages {
+        let html = export::html(&export::parse(&f.text, &kw), &stem(&f.path), f.path.parent().unwrap_or(Path::new("")), &ids, false);
+        config::write_atomic(&dir.join(name), html).map_err(|e| e.to_string())?;
+    }
+    Ok(dir.join(&pages[0].1))
 }
 
 /// The time report for START..END as an HTML page in export_dir; PRINT opens the print dialog.
 #[tauri::command]
-fn export_report(s: State<App>, start: String, end: String, print: bool) -> R<PathBuf> {
+fn export_report(s: State<App>, start: String, end: String, print: bool, overwrite: Option<bool>) -> R<PathBuf> {
     let tc = s.tc();
     let (start, end) = (date(&start)?, date(&end)?);
     let org = timeclock::weekly_report(&tc.sessions(), &tc.projects(), start, end, &s.profile());
-    let html = export::html(&export::parse(&org, &s.kw()), "Time report", Path::new(""), print);
-    write_export(&s, &format!("time_report_{}_{start}_{end}.html", s.profile().to_lowercase()), html)
+    let html = export::html(&export::parse(&org, &s.kw()), "Time report", Path::new(""), &export::Ids::new(), print);
+    write_export(&s, &format!("time_report_{}_{start}_{end}.html", s.profile().to_lowercase()), html, overwrite)
 }
 
-/// Open an exported file with its default app (only files in export_dir).
+/// Open an exported file with its default app (only files in export_dir or a folder in it).
 #[tauri::command]
 fn export_open(app: AppHandle, s: State<App>, path: PathBuf) -> R<()> {
     use tauri_plugin_opener::OpenerExt;
-    if path.parent() != Some(config::expand(&s.cfg().export_dir).as_path()) {
+    let dir = config::expand(&s.cfg().export_dir);
+    let parent = path.parent();
+    if path.components().any(|c| c == std::path::Component::ParentDir) || !(parent == Some(dir.as_path()) || parent.and_then(Path::parent) == Some(dir.as_path())) {
         return Err(format!("{} is not in the export folder", path.display()));
     }
     app.opener().open_path(path.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
@@ -788,7 +824,7 @@ pub fn run() {
             notes_new, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
-            export_note, export_report, export_open
+            export_note, export_linked, export_report, export_open
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
