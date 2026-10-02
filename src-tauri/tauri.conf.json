@@ -43,7 +43,8 @@
     "linux": {
       "deb": { "depends": ["libxss1"] },
       "rpm": { "depends": ["libXScrnSaver"] }
-    }
+    },
+    "macOS": { "signingIdentity": "-" }
   },
   "plugins": {
     "updater": {

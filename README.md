@@ -22,8 +22,25 @@ Download the latest build from
 [Releases](https://github.com/albin02forsberg/margin/releases/latest):
 
 - **Linux** — `.AppImage` (updates itself; `chmod +x` and run), or `.deb` / `.rpm`
-- **macOS** — `.dmg` (universal). Not signed yet: right-click → Open the first time.
+- **macOS** — `.dmg` (universal). Ad-hoc signed, not notarized: the first time,
+  right-click Margin → Open. If macOS still refuses, run
+  `xattr -dr com.apple.quarantine /Applications/Margin.app`.
 - **Windows** — `-setup.exe`. Not signed yet: SmartScreen → More info → Run anyway.
+
+## Code signing policy
+
+Release installers are built only by this repository's GitHub Actions
+([release.yml](.github/workflows/release.yml)) from a tagged commit on `main`;
+nothing is built or signed on a personal machine. Releases are drafted by CI
+and published by the maintainer, Albin Forsberg, who approves every release.
+Update bundles are signed with the project's updater key so installed copies
+only accept builds from this pipeline. macOS builds are ad-hoc signed. Windows
+signing via [SignPath Foundation](https://signpath.org) is planned (#13); once
+enabled, free code signing will be provided by SignPath.io, certificate by
+SignPath Foundation.
+
+Margin sends nothing anywhere except update checks to GitHub Releases (and,
+if your time-data folder is a git repo with a remote, backup pushes to it).
 
 ## Build from source
 
