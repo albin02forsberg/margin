@@ -3,7 +3,7 @@
 // drawers, active timestamps and id:/file: links. Plus the text transforms
 // (TODO cycling with repeaters, SCHEDULED/DEADLINE) shared by editor and agenda.
 
-use chrono::{Datelike, Duration, Months, NaiveDate, Weekday};
+use chrono::{Datelike, Duration, Months, NaiveDate, NaiveDateTime, Weekday};
 use regex::Regex;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -12,7 +12,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::SystemTime;
 
 static TS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"<(\d{4}-\d{2}-\d{2})(?:\s+[^\s>\d]+)?(?:\s+(\d{1,2}:\d{2})(?:-\d{1,2}:\d{2})?)?(?:\s+(\.\+|\+\+|\+)(\d+)([hdwmy]))?[^>]*>").unwrap()
+    Regex::new(r"<(\d{4}-\d{2}-\d{2})(?:\s+[^\s>\d]+)?(?:\s+(\d{1,2}:\d{2})(?:-\d{1,2}:\d{2})?)?(?:\s+(\.\+|\+\+|\+)(\d+)([hdwmy])(?:/(\d+)([hdwmy]))?)?[^>]*>").unwrap()
 });
 static TS_HEAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<\d{4}-\d{2}-\d{2}(?:\s+[^\s>\d]+)?").unwrap());
 static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[(id|file):([^\]]+)\](?:\[([^\]]*)\])?\]").unwrap());
@@ -41,6 +41,8 @@ pub struct Ts {
     pub time: Option<String>,
     /// (kind "+", "++" or ".+", n, unit)
     pub repeater: Option<(String, u32, char)>,
+    /// Habit max of `.+2d/3d`: (3, 'd').
+    pub max: Option<(u32, char)>,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -86,6 +88,7 @@ fn parse_ts(c: &regex::Captures) -> Option<Ts> {
         date: c[1].parse().ok()?,
         time: c.get(2).map(|m| m.as_str().to_string()),
         repeater: c.get(3).map(|k| (k.as_str().to_string(), c[4].parse().unwrap_or(1), c[5].chars().next().unwrap())),
+        max: c.get(6).map(|m| (m.as_str().parse().unwrap_or(1), c[7].chars().next().unwrap())),
     })
 }
 
@@ -264,7 +267,7 @@ pub struct Item {
     pub title: String,
     pub tags: Vec<String>,
     pub category: String,
-    /// Set on today's entry of a habit.
+    /// Set on today's agenda entry of a habit, and on its Tasks entry.
     pub habit: Option<Habit>,
 }
 
@@ -288,36 +291,53 @@ fn item(f: &OrgFile, h: &Headline, date: NaiveDate, kind: &'static str, label: S
 pub const HABIT_DAYS: i64 = 21;
 
 /// A habit's last HABIT_DAYS days ending today, one char per day: 'x' done,
-/// '!' due but not done, '.' not due; STREAK counts completions in a row
-/// with none late (0 when overdue now).
+/// '-' due but not yet overdue (between min and max of `.+2d/3d`), '!' due
+/// and overdue, '.' not due; STREAK counts completions in a row with none
+/// late (0 when overdue now).
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Habit {
     pub bar: String,
     pub streak: u32,
 }
 
-/// History of H if it is a habit. Before the last completion, due dates are
-/// taken as previous completion + interval (exact for `.+`); after it, the
-/// SCHEDULED date. The max of org-habit's `.+2d/3d` is ignored.
+/// History of H if it is a habit. The due date in effect before each logged
+/// completion is rebuilt from the repeater as org would have shifted it:
+/// `.+` previous completion + interval; `+` SCHEDULED minus one interval per
+/// later completion; `++` the first SCHEDULED - k·interval after the previous
+/// completion (early completions aren't recorded, so they're assumed on time).
+/// Before the first completion it is unknown, except for `+`.
 pub fn habit(h: &Headline, today: NaiveDate) -> Option<Habit> {
     let s = h.scheduled.as_ref().filter(|_| h.habit)?;
-    let (_, n, u) = s.repeater.clone()?;
+    let (k, n, u) = s.repeater.clone()?;
     let mut done = h.done_log.clone();
     done.sort();
     done.dedup();
-    let due = |d: NaiveDate| match done.iter().rev().find(|&&c| c < d) {
-        None => done.is_empty() && d >= s.date,
-        Some(c) if Some(c) == done.last() => d >= s.date,
-        Some(&c) => d >= add_interval(c, n, u),
+    let m = done.len();
+    let back = |j: usize| sub_interval(s.date, n * j as u32, u);
+    // Due date before done[i]; i == m is now.
+    let due = |i: usize| match k.as_str() {
+        _ if i == m => Some(s.date),
+        "+" => Some(back(m - i)),
+        _ if i == 0 => None,
+        ".+" => Some(add_interval(done[i - 1], n, u)),
+        _ => (0..2000).map(back).take_while(|&g| g > done[i - 1]).last(),
     };
+    // Overdue after this; the due date itself without a max.
+    let late = |d: NaiveDate| s.max.map_or(d, |(mn, mu)| d + (add_interval(d, mn, mu) - add_interval(d, n, u)));
     let bar = (0..HABIT_DAYS)
         .map(|i| today - Duration::days(HABIT_DAYS - 1 - i))
-        .map(|d| if done.contains(&d) { 'x' } else if due(d) { '!' } else { '.' })
+        .map(|d| {
+            let i = done.partition_point(|&c| c < d);
+            match due(i) {
+                _ if done.get(i) == Some(&d) => 'x',
+                Some(due) if d >= due && d <= late(due) && late(due) > due => '-',
+                Some(due) if d >= due => '!',
+                _ => '.',
+            }
+        })
         .collect();
-    let mut streak = (!done.is_empty() && s.date >= today) as u32;
-    if streak == 1 {
-        streak += done.windows(2).rev().take_while(|w| w[1] <= add_interval(w[0], n, u)).count() as u32;
-    }
+    let on_time = |i: usize| due(i).is_none_or(|d| done[i] <= late(d));
+    let streak = if m == 0 || today > late(s.date) { 0 } else { 1 + (1..m).rev().take_while(|&i| on_time(i)).count() as u32 };
     Some(Habit { bar, streak })
 }
 
@@ -328,6 +348,14 @@ pub fn add_interval(d: NaiveDate, n: u32, unit: char) -> NaiveDate {
         'm' => d.checked_add_months(Months::new(n)).unwrap_or(d),
         'y' => d.checked_add_months(Months::new(n * 12)).unwrap_or(d),
         _ => d,
+    }
+}
+
+fn sub_interval(d: NaiveDate, n: u32, unit: char) -> NaiveDate {
+    match unit {
+        'm' => d.checked_sub_months(Months::new(n)).unwrap_or(d),
+        'y' => d.checked_sub_months(Months::new(n * 12)).unwrap_or(d),
+        _ => d - (add_interval(d, n, unit) - d),
     }
 }
 
@@ -396,13 +424,13 @@ pub fn agenda(files: &[Arc<OrgFile>], kw: &Kw, start: NaiveDate, days: i64, toda
 }
 
 /// Tasks for which KEEP holds (open ones only, unless DONE), by priority then date.
-pub fn todos(files: &[Arc<OrgFile>], kw: &Kw, done: bool, keep: impl Fn(&OrgFile, &Headline) -> bool) -> Vec<Item> {
+pub fn todos(files: &[Arc<OrgFile>], kw: &Kw, done: bool, keep: impl Fn(&OrgFile, &Headline) -> bool, today: NaiveDate) -> Vec<Item> {
     let mut out = vec![];
     for f in files {
         for h in &f.headlines {
             if let Some(k) = h.keyword.as_deref().filter(|k| (done || !kw.is_done(k)) && keep(f, h)) {
                 let date = h.scheduled.as_ref().or(h.deadline.as_ref()).map_or(NaiveDate::MAX, |t| t.date);
-                out.push(item(f, h, date, "todo", k.to_string(), None));
+                out.push(Item { habit: habit(h, today), ..item(f, h, date, "todo", k.to_string(), None) });
             }
         }
     }
@@ -552,10 +580,11 @@ fn edit_heading(text: &str, line: usize, kw: &Kw, f: impl FnOnce(&mut Parts)) ->
 }
 
 /// Set the TODO keyword (None clears it). Marking a repeating task done
-/// shifts its dates, logs `- State "DONE" from "TODO" [date]` below the
-/// planning line and drawers (inside a LOGBOOK if there is one) and resets
-/// it, like org.
-pub fn set_keyword(text: &str, line: usize, kw: &Kw, new: Option<&str>, today: NaiveDate) -> String {
+/// shifts its dates, sets `:LAST_REPEAT:`, logs `- State "DONE" from "TODO"
+/// [date time]` below the planning line and drawers (inside a LOGBOOK if
+/// there is one) and resets it, like org.
+pub fn set_keyword(text: &str, line: usize, kw: &Kw, new: Option<&str>, now: NaiveDateTime) -> String {
+    let today = now.date();
     let mut lines = to_lines(text);
     let Some(hl) = headline_at(&lines, line) else { return text.to_string() };
     let Some(mut p) = Parts::parse(&lines[hl], kw) else { return text.to_string() };
@@ -579,8 +608,19 @@ pub fn set_keyword(text: &str, line: usize, kw: &Kw, new: Option<&str>, today: N
                 })
             });
         }
+        let stamp = format!("[{}]", now.format("%Y-%m-%d %a %H:%M"));
+        let last = format!(":LAST_REPEAT: {stamp}");
+        if lines.get(hl + 2).is_some_and(|l| l.trim().eq_ignore_ascii_case(":PROPERTIES:")) {
+            let end = (hl + 3..lines.len()).find(|&j| lines[j].trim().eq_ignore_ascii_case(":END:")).unwrap_or(lines.len());
+            match (hl + 3..end).find(|&j| lines[j].trim_start().to_ascii_uppercase().starts_with(":LAST_REPEAT:")) {
+                Some(j) => lines[j] = last,
+                None => lines.insert(end, last),
+            }
+        } else {
+            lines.splice(hl + 2..hl + 2, [":PROPERTIES:".into(), last, ":END:".into()]);
+        }
         let q = |k: Option<&str>| format!("\"{}\"", k.unwrap_or(""));
-        let log = format!("- State {:<12} from {:<12} [{}]", q(next.as_deref()), q(p.keyword.as_deref()), today.format("%Y-%m-%d %a"));
+        let log = format!("- State {:<12} from {:<12} {stamp}", q(next.as_deref()), q(p.keyword.as_deref()));
         let mut i = hl + 2;
         if lines.get(i).is_some_and(|l| l.trim().eq_ignore_ascii_case(":PROPERTIES:")) {
             i = (i..lines.len()).find(|&j| lines[j].trim().eq_ignore_ascii_case(":END:")).map_or(i, |j| j + 1);
@@ -597,11 +637,11 @@ pub fn set_keyword(text: &str, line: usize, kw: &Kw, new: Option<&str>, today: N
 }
 
 /// Cycle the TODO keyword of the headline at LINE by DIR (+1/-1).
-pub fn cycle_todo(text: &str, line: usize, kw: &Kw, dir: i32, today: NaiveDate) -> String {
+pub fn cycle_todo(text: &str, line: usize, kw: &Kw, dir: i32, now: NaiveDateTime) -> String {
     let Some(p) = heading(text, line, kw) else { return text.to_string() };
     let seq: Vec<Option<&str>> = std::iter::once(None).chain(kw.todo.iter().chain(&kw.done).map(|s| Some(s.as_str()))).collect();
     let i = seq.iter().position(|k| *k == p.keyword.as_deref()).unwrap_or(0) as i32;
-    set_keyword(text, line, kw, seq[(i + dir).rem_euclid(seq.len() as i32) as usize], today)
+    set_keyword(text, line, kw, seq[(i + dir).rem_euclid(seq.len() as i32) as usize], now)
 }
 
 pub fn set_priority(text: &str, line: usize, kw: &Kw, prio: Option<&str>) -> String {
@@ -944,6 +984,9 @@ mod tests {
     fn kw() -> Kw {
         Kw { todo: vec!["TODO".into(), "NEXT".into()], done: vec!["DONE".into()] }
     }
+    fn at() -> NaiveDateTime {
+        d("2026-10-02").and_hms_opt(14, 30, 0).unwrap()
+    }
     fn d(s: &str) -> NaiveDate {
         s.parse().unwrap()
     }
@@ -983,18 +1026,24 @@ mod tests {
 
     #[test]
     fn cycle_and_repeat() {
+        let log = |from: &str| format!(":PROPERTIES:\n:LAST_REPEAT: [2026-10-02 Fri 14:30]\n:END:\n- State \"DONE\"       from \"{from}\"       [2026-10-02 Fri 14:30]");
         let t = "* TODO Water plants\nSCHEDULED: <2026-09-28 Mon +1w>\n";
-        let next = cycle_todo(t, 0, &kw(), 1, d("2026-10-02"));
+        let next = cycle_todo(t, 0, &kw(), 1, at());
         assert_eq!(next, "* NEXT Water plants\nSCHEDULED: <2026-09-28 Mon +1w>\n");
-        let done = cycle_todo(&next, 1, &kw(), 1, d("2026-10-02"));
-        assert_eq!(done, "* NEXT Water plants\nSCHEDULED: <2026-10-05 Mon +1w>\n- State \"DONE\"       from \"NEXT\"       [2026-10-02 Fri]\n");
-        let catchup = cycle_todo("* NEXT X\nDEADLINE: <2026-09-01 Tue ++1w>", 0, &kw(), 1, d("2026-10-02"));
-        assert_eq!(catchup, "* NEXT X\nDEADLINE: <2026-10-06 Tue ++1w>\n- State \"DONE\"       from \"NEXT\"       [2026-10-02 Fri]");
-        // Logged after the property drawer, inside a LOGBOOK when present.
-        let t = "* TODO H\nSCHEDULED: <2026-10-01 Thu .+1d>\n:PROPERTIES:\n:STYLE: habit\n:END:\n:LOGBOOK:\n:END:\n";
-        let done = set_keyword(t, 0, &kw(), Some("DONE"), d("2026-10-02"));
-        assert_eq!(done.lines().nth(6), Some("- State \"DONE\"       from \"TODO\"       [2026-10-02 Fri]"));
-        assert_eq!(parse(Path::new("h.org"), &done, &kw()).headlines[0].done_log, vec![d("2026-10-02")]);
+        let done = cycle_todo(&next, 1, &kw(), 1, at());
+        assert_eq!(done, format!("* NEXT Water plants\nSCHEDULED: <2026-10-05 Mon +1w>\n{}\n", log("NEXT")));
+        let catchup = cycle_todo("* NEXT X\nDEADLINE: <2026-09-01 Tue ++1w>", 0, &kw(), 1, at());
+        assert_eq!(catchup, format!("* NEXT X\nDEADLINE: <2026-10-06 Tue ++1w>\n{}", log("NEXT")));
+        // LAST_REPEAT goes into an existing drawer (replacing an old one); log after it, inside a LOGBOOK.
+        let t = "* TODO H\nSCHEDULED: <2026-10-01 Thu .+1d/3d>\n:PROPERTIES:\n:STYLE: habit\n:LAST_REPEAT: [2026-09-30 Wed 08:00]\n:END:\n:LOGBOOK:\n- State \"DONE\"       from \"TODO\"       [2026-09-30 Wed]\n:END:\n";
+        let done = set_keyword(t, 0, &kw(), Some("DONE"), at());
+        assert_eq!(done, "* TODO H\nSCHEDULED: <2026-10-03 Sat .+1d/3d>\n:PROPERTIES:\n:STYLE: habit\n:LAST_REPEAT: [2026-10-02 Fri 14:30]\n:END:\n:LOGBOOK:\n- State \"DONE\"       from \"TODO\"       [2026-10-02 Fri 14:30]\n- State \"DONE\"       from \"TODO\"       [2026-09-30 Wed]\n:END:\n");
+        // Both timed and date-only entries are read.
+        let h = &parse(Path::new("h.org"), &done, &kw()).headlines[0];
+        assert_eq!(h.done_log, vec![d("2026-10-02"), d("2026-09-30")]);
+        assert_eq!(h.scheduled.as_ref().unwrap().max, Some((3, 'd')));
+        let t = "* TODO H\nSCHEDULED: <2026-10-01 Thu .+1d>\n:PROPERTIES:\n:STYLE: habit\n:END:\n";
+        assert!(set_keyword(t, 0, &kw(), Some("DONE"), at()).contains(":STYLE: habit\n:LAST_REPEAT: [2026-10-02 Fri 14:30]\n:END:\n- State"));
     }
 
     #[test]
@@ -1014,14 +1063,26 @@ mod tests {
         // Weekly: only days past the due date count as due.
         let h = hab("2026-10-05 Mon ++1w", &["2026-09-21", "2026-09-28"], "2026-10-02");
         assert_eq!((&h.bar[9..], h.streak), ("x......x....", 2));
+        // `+`: due dates step back one interval per completion from SCHEDULED.
+        let h = hab("2026-10-05 Mon +1w", &["2026-09-23", "2026-09-30"], "2026-10-02");
+        assert_eq!((&h.bar[9..], h.streak), ("!!x....!!x..", 1));
+        // `++`: due on the first grid day after the previous completion.
+        let h = hab("2026-10-05 Mon ++1w", &["2026-09-16", "2026-09-30"], "2026-10-02");
+        assert_eq!((&h.bar[4..], h.streak), ("x....!!!!!!!!!x..", 1));
+        // `.+2d/4d`: '-' from due until the max, then '!'.
+        let h = hab("2026-10-02 Fri .+2d/4d", &["2026-09-26", "2026-09-30"], "2026-10-03");
+        assert_eq!((&h.bar[13..], h.streak), ("x.--x.--", 2));
+        let h = hab("2026-10-02 Fri .+2d/4d", &["2026-09-30"], "2026-10-05");
+        assert_eq!((&h.bar[15..], h.streak), ("x.---!", 0));
         // Not a habit without STYLE.
         assert!(habit(&parse(Path::new("h.org"), "* TODO X\nSCHEDULED: <2026-10-01 Thu .+1d>\n", &kw()).headlines[0], d("2026-10-02")).is_none());
         // Agenda carries it on today's entry only.
-        let f = Arc::new(parse(Path::new("h.org"), &doc("2026-10-02 Fri .+1d", &[]), &kw()));
-        let items = agenda(&[f], &kw(), d("2026-10-02"), 2, d("2026-10-02"));
+        let fs = [Arc::new(parse(Path::new("h.org"), &doc("2026-10-02 Fri .+1d", &[]), &kw()))];
+        let items = agenda(&fs, &kw(), d("2026-10-02"), 2, d("2026-10-02"));
         assert_eq!(items.iter().map(|i| i.habit.as_ref().map(|h| &h.bar[19..])).collect::<Vec<_>>(), vec![Some(".!"), None]);
-        assert_eq!(cycle_todo("* X :t:", 0, &kw(), 1, d("2026-10-02")), "* TODO X :t:");
-        assert_eq!(cycle_todo("* DONE X", 0, &kw(), 1, d("2026-10-02")), "* X");
+        assert!(todos(&fs, &kw(), false, |_, _| true, d("2026-10-02"))[0].habit.is_some());
+        assert_eq!(cycle_todo("* X :t:", 0, &kw(), 1, at()), "* TODO X :t:");
+        assert_eq!(cycle_todo("* DONE X", 0, &kw(), 1, at()), "* X");
     }
 
     #[test]
@@ -1032,7 +1093,7 @@ mod tests {
         assert_eq!(cycle_priority("* [#A] X", 0, &kw(), 1), "* X");
         assert_eq!(set_priority(t, 0, &kw(), None), "* TODO Task :a:\nbody\n");
         assert_eq!(set_tags(t, 0, &kw(), vec!["x".into(), "y".into()]), "* TODO [#B] Task :x:y:\nbody\n");
-        assert_eq!(set_keyword(t, 0, &kw(), None, d("2026-10-02")), "* [#B] Task :a:\nbody\n");
+        assert_eq!(set_keyword(t, 0, &kw(), None, at()), "* [#B] Task :a:\nbody\n");
         assert_eq!(heading(t, 1, &kw()).unwrap().title, "Task");
         let s = "* TODO A\nSCHEDULED: <2026-10-02 Fri> DEADLINE: <2026-10-09 Fri +1w>\n";
         assert_eq!(shift_date(s, 0, "SCHEDULED", 1), "* TODO A\nSCHEDULED: <2026-10-03 Sat> DEADLINE: <2026-10-09 Fri +1w>\n");
@@ -1097,7 +1158,7 @@ mod tests {
         let files = [Arc::new(parse(Path::new("/n/inbox.org"), doc, &kw())), Arc::new(parse(Path::new("/n/projects.org"), "* TODO Report draft\n", &kw()))];
         let q = |s: &str| {
             let (f, done) = query(s, t, &kw()).unwrap();
-            todos(&files, &kw(), done, f).into_iter().map(|i| i.title).collect::<Vec<_>>().join(", ")
+            todos(&files, &kw(), done, f, t).into_iter().map(|i| i.title).collect::<Vec<_>>().join(", ")
         };
         assert_eq!(q(""), "Write report, Plan trip, Call mum, Report draft");
         assert_eq!(q("todo:next"), "Write report");

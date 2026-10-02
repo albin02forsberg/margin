@@ -78,10 +78,13 @@ key in your desktop's settings instead: it opens the same form in the running ap
 `v` day/week, `h`/`l` previous/next, `.` today, `/` filter, `?` all keys.
 Click the checkbox to complete a task.
 
-Completing a repeating task logs `- State "DONE" from "TODO" [date]` under it,
-as org does. Give it `:STYLE: habit` in its properties and Today shows a
-21-day consistency bar (done / due / not due) and how many completions in a
-row were on time, like org-habit:
+Completing a repeating task logs `- State "DONE" from "TODO" [date time]`
+under it and sets `:LAST_REPEAT:`, as org does. Give it `:STYLE: habit` in its
+properties and Today (and Tasks) shows a 21-day consistency bar and how many
+completions in a row were on time, like org-habit. Past due days follow the
+repeater: `+` steps back from the scheduled date, `++` stays on its grid, `.+`
+counts from each completion. With a max (`.+2d/3d`) the days between min and
+max show amber (due, not yet overdue), after it red:
 
 ```org
 * TODO Run
