@@ -523,6 +523,10 @@
   }
 
   onMount(() => {
+    if (!("__TAURI_INTERNALS__" in window)) {
+      message = "This page only works inside the app window — run `npm run tauri dev` instead of opening it in a browser.";
+      return;
+    }
     act(async () => {
       cfg = await call("config");
       view = new EditorView({ parent: editorEl! });
