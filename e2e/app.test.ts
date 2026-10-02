@@ -57,7 +57,13 @@ async function find(css: string, text: string) {
     for (const el of await browser.$$(css)) if ((await el.isDisplayed()) && (await el.getText()).includes(text)) return el;
     return false;
   };
-  return (await browser.waitUntil(hit, { timeoutMsg: `no ${css} with “${text}”` })) as unknown as WebdriverIO.Element;
+  try {
+    return (await browser.waitUntil(hit)) as unknown as WebdriverIO.Element;
+  } catch {
+    const seen = [];
+    for (const el of await browser.$$(css)) seen.push(`${await el.isDisplayed()} ${JSON.stringify(await el.getText())} ${JSON.stringify(await el.getProperty("textContent"))}`);
+    throw new Error(`no ${css} with “${text}”; saw (displayed, text, textContent):\n${seen.join("\n")}`);
+  }
 }
 
 /** Press keys one at a time (keys("abc") would hold them all down together). */
@@ -65,10 +71,12 @@ async function type(s: string) {
   for (const c of s) await browser.keys(c);
 }
 
-/** Wait for the picker with PROMPT, type TEXT and press Enter. */
+/** Wait for the picker with PROMPT, replace its text with TEXT and press Enter.
+ *  Typed as key presses: WebDriver's clear blurs the input, and blur cancels the picker. */
 async function answer(prompt: string, text: string) {
   await find(".picker label span", prompt);
-  await browser.$(".picker input").setValue(text);
+  await browser.keys([Key.Ctrl, "a"]);
+  await type(text);
   await browser.keys(Key.Enter);
 }
 
@@ -96,7 +104,7 @@ after(async () => {
   await browser?.deleteSession().catch(() => {});
   driver?.kill();
   rmSync(root, { recursive: true, force: true });
-});
+}, { timeout: 30_000 });
 
 describe("Margin", () => {
   it("starts on Today", async () => {
@@ -112,18 +120,18 @@ describe("Margin", () => {
     await type("Typed by e2e");
     await browser.keys(Key.Escape);
     await browser.keys([Key.Ctrl, "s"]);
-    await fileMatches(join(notes, "scratch.org"), (s) => s.includes("First line.\nTyped by e2e"), "note wasn't saved");
+    await fileMatches(join(notes, "scratch.org"), (s) => /First line\.\n\s*Typed by e2e\n/.test(s), "note wasn't saved");
   });
 
   it("creates a task with Ctrl+N that shows in Today and the inbox", async () => {
     await browser.keys([Key.Ctrl, "1"]);
     await find(".agenda h1", "Today");
     await browser.keys([Key.Ctrl, "n"]);
-    await browser.$(".dialog input.title").setValue("Water the e2e plants");
-    await browser.$(".dialog #sched").setValue("today");
+    await browser.$(".dialog input.title").addValue("Water the e2e plants");
+    await browser.$(".dialog #sched").addValue("today");
     await browser.keys(Key.Enter);
-    await find(".agenda .row .title", "Water the e2e plants");
     await fileMatches(join(notes, "inbox.org"), (s) => /\* TODO Water the e2e plants\n\s*SCHEDULED: </.test(s), "task not in inbox.org");
+    await find(".agenda .row .title", "Water the e2e plants");
   });
 
   it("marks a task done with x in Today", async () => {
