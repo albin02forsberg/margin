@@ -40,6 +40,10 @@ pub struct Config {
     pub activitywatch_url: String,
     /// Regexes (case-insensitive) over app names and window titles that suggestions ignore.
     pub activity_exclude: Vec<String>,
+    /// Ollama model that drafts diary and journal notes, e.g. "llama3.2:3b"; empty = off.
+    pub ai_model: String,
+    /// The Ollama server; only local addresses are allowed.
+    pub ai_url: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -121,6 +125,8 @@ impl Default for Config {
             attachments_dir: "attachments".into(),
             activitywatch_url: String::new(),
             activity_exclude: v(&["KeePass", "1Password", "Bitwarden", "Private Browsing", "Incognito", "InPrivate"]),
+            ai_model: String::new(),
+            ai_url: "http://localhost:11434".into(),
         }
     }
 }

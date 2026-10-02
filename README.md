@@ -319,6 +319,24 @@ restart. `h`/`l` step through days. Only local addresses are accepted, and
 `activity_exclude` (regexes over app names and titles; password managers and
 private browsing by default) keeps windows out of suggestions. Off by default.
 
+### Drafts from a local model
+
+Margin can draft diary and journal notes with a small model running on your own
+machine through [Ollama](https://ollama.com), so it stays free and nothing
+leaves your computer. Install Ollama, run `ollama pull llama3.2:3b` (any 1–3B
+model works; `qwen2.5:3b` is another good one), and set `ai_model =
+"llama3.2:3b"` in settings. `ai_url` defaults to `http://localhost:11434`; only
+local addresses are accepted. Off while `ai_model` is empty (the default).
+
+- **Accept** on a suggestion offers to draft the diary note from that block's
+  project, apps and titles; it lands in the note prompt for you to edit.
+- `Space n s` (Journal: draft summary of today) drafts a few bullet points from
+  today's sessions and, with ActivityWatch on, the top window titles, and adds
+  them under `* Summary` in today's journal. `Space n u` undoes it.
+
+Both show exactly what the model gets and send nothing until you confirm.
+`activity_exclude` titles are never included.
+
 ## Export
 
 `Space e` exports the open note (including unsaved edits) as HTML (`e h`),

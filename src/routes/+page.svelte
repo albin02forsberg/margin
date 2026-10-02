@@ -652,6 +652,32 @@
     flash("Added to today's journal.");
   }
 
+  /** Show PROMPT exactly; on YES, the local model's draft for it (null on NO or an error, which flashes). */
+  async function aiDraft(prompt: string, yes: string, no: string, oneLine: boolean): Promise<string | null> {
+    const model = cfg.config.ai_model;
+    const go = await pick({ prompt: `${yes} with ${model}? It gets exactly this, on this machine:`, body: prompt, items: [{ label: yes, value: true }, { label: no, value: false }] });
+    if (!go) return null;
+    flash(`Drafting with ${model}…`);
+    try {
+      const d = await call<string>("ai_draft", { prompt, oneLine });
+      message = "";
+      return d;
+    } catch (e) {
+      flash(`⚠ ${e}`);
+      return null;
+    }
+  }
+
+  async function draftSummary() {
+    if (!cfg.config.ai_model) return flash(`Set ai_model in settings (Ctrl+,), e.g. "llama3.2:3b", to draft with a local model.`);
+    const draft = await aiDraft(await call("ai_day_prompt", { dateInput: "today" }), "Send", "Cancel", false);
+    if (!draft) return draft === "" && flash("The model sent an empty draft.");
+    const path: string = await call("capture_path", { file: journalFile() });
+    await recorded(() => toFile(path, (text) => call("capture_insert", { text, heading: null, entry: `* Summary\n${draft}` })));
+    await journal();
+    flash("Draft added under “Summary”: edit it, or Space n u to undo.");
+  }
+
   async function openInbox() {
     await openFile(await call("capture_path", { file: cfg.config.inbox }));
   }
@@ -870,7 +896,9 @@
   async function acceptSuggestion(s: Suggestion) {
     const p = await pickProject(`Log ${s.start.slice(11, 16)}–${s.end.slice(11, 16)} to project`, s.project ?? undefined);
     if (!p) return;
-    const note = await ask("What did you do? (optional)", "", "goes into the work diary");
+    const prompt = cfg.config.ai_model && (await call<string>("ai_note_prompt", { project: p.project || null, apps: s.apps, titles: s.titles }));
+    const draft = prompt ? await aiDraft(prompt, "Draft the note", "Write it myself", true) : null;
+    const note = await ask("What did you do? (optional)", draft ?? "", "goes into the work diary");
     if (note != null) await tcDo("tc_add_session", { start: s.start, end: s.end, project: p.project, exportCode: p.code, note });
   }
 
@@ -924,6 +952,7 @@
     { label: "Today's journal", keys: ["Ctrl+J"], leader: "j", run: () => journal() },
     { label: "Journal for another day…", leader: "n J", run: journalPick },
     { label: "Add a line to today's journal", leader: "n e", run: journalEntry },
+    { label: "Journal: draft summary of today (local model)", leader: "n s", run: draftSummary },
     { label: "Insert link to a note…", keys: ["Ctrl+L"], leader: "n i", ctx: "editor", run: insertLink },
     { label: "Show notes linking here", leader: "n b", run: () => { showBacklinks = !showBacklinks; return refreshBacklinks(); } },
     { label: "Jump to a note linking here…", leader: "n l", run: pickBacklink },

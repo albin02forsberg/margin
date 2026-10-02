@@ -8,6 +8,8 @@
     /** One-line feedback for the typed text, e.g. a parsed date. */
     preview?: (query: string) => Promise<string>;
     hint?: string;
+    /** Text shown in full above the list, e.g. what is about to be sent somewhere. */
+    body?: string;
     initial?: string;
     allowCustom?: boolean;
   };
@@ -124,6 +126,7 @@
       <span>{o.prompt}</span>
       <input bind:this={input} bind:value={query} oninput={() => (sel = 0)} onkeydown={key} onblur={() => document.hasFocus() && done(null)} spellcheck="false" />
     </label>
+    {#if o.body}<pre class="body">{o.body}</pre>{/if}
     {#if previewText}<div class="preview" class:bad={previewText.startsWith("✗")}>{previewText}</div>{/if}
     {#if hasList}
       <ul bind:this={list} role="listbox">
@@ -151,6 +154,7 @@
   label { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
   label span { color: var(--dim); font-size: 12px; }
   input { background: none; border: 0; outline: 0; color: var(--fg); font: 16px var(--sans); }
+  .body { margin: 0; padding: 8px 14px; max-height: 40vh; overflow-y: auto; white-space: pre-wrap; font: 12px var(--mono); color: var(--dim); border-bottom: 1px solid var(--border); }
   .preview { padding: 6px 14px; color: var(--done); font-size: 13px; border-bottom: 1px solid var(--border); }
   .preview.bad { color: var(--todo); }
   ul { list-style: none; margin: 0; padding: 4px; max-height: 50vh; overflow-y: auto; }
