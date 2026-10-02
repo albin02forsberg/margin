@@ -15,6 +15,7 @@
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
   import Time, { hm, type Session, type TimeApi } from "$lib/Time.svelte";
   import TaskDialog from "$lib/TaskDialog.svelte";
+  import Graph, { type NoteGraph } from "$lib/Graph.svelte";
 
   type View = "agenda" | "todo" | "time";
   /** SAVED: the text last read from / written to disk, to tell our own writes from outside changes.
@@ -25,6 +26,7 @@
   };
   type NoteNode = { id: string; title: string; path: string; line: number };
   type Hit = { path: string; title: string; line: number; text: string };
+  type Mention = Hit & { col: number; len: number };
   type Target = { path: string; line: number | null; label: string };
   type Parts = { level: number; keyword: string | null; priority: string | null; title: string; tags: string[] };
   type Loc = { path: string; line: number };
@@ -45,6 +47,9 @@
   let tc = $state<any>({});
   let backlinks = $state.raw<Hit[]>([]);
   let showBacklinks = $state(false);
+  let mentions = $state.raw<Mention[]>([]);
+  let graph = $state.raw<NoteGraph | null>(null);
+  let showGraph = $state(false);
   let reload = $state(0);
   const stored = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
   const store = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch {} };
@@ -562,7 +567,30 @@
   }
 
   async function refreshBacklinks() {
-    backlinks = showBacklinks && tab?.kind === "file" ? await call("notes_backlinks", { path: tab.path }) : [];
+    const path = tab?.kind === "file" ? tab.path : null;
+    [backlinks, mentions, graph] = await Promise.all([
+      showBacklinks && path ? call("notes_backlinks", { path }) : [],
+      showBacklinks && path ? call("notes_unlinked", { path }) : [],
+      showGraph && path ? call("notes_graph", { path }) : null,
+    ]);
+  }
+
+  /** Turn an unlinked mention of the current note into an [[id:]] link, giving the note an ID first if needed. Undoable. */
+  async function linkMention(m: Mention) {
+    if (!inFile()) return;
+    const path = tab.path!;
+    let id = (await call<NoteNode[]>("notes_nodes")).find((n) => n.path === path && n.line === 0)?.id;
+    await recorded(async () => {
+      if (!id) await toFile(path, async (text) => { const [t, i] = await call<[string, string]>("notes_ensure_id", { text }); id = i; return t; });
+      await toFile(m.path, async (text) => {
+        const lines = text.split("\n"), l = lines[m.line] ?? "";
+        if (l.trim() !== m.text) throw new Error("That line changed — try again.");
+        lines[m.line] = `${l.slice(0, m.col)}[[id:${id}][${l.slice(m.col, m.col + m.len)}]]${l.slice(m.col + m.len)}`;
+        return lines.join("\n");
+      });
+    });
+    flash(`Linked in ${m.title} — Space n u undoes it`);
+    await refreshBacklinks();
   }
 
   async function pickBacklink() {
@@ -829,6 +857,8 @@
     { label: "Insert link to a note…", keys: ["Ctrl+L"], leader: "n i", ctx: "editor", run: insertLink },
     { label: "Show notes linking here", leader: "n b", run: () => { showBacklinks = !showBacklinks; return refreshBacklinks(); } },
     { label: "Jump to a note linking here…", leader: "n l", run: pickBacklink },
+    { label: "Show note graph", leader: "n g", run: () => { showGraph = !showGraph; return refreshBacklinks(); } },
+    { label: "Undo last edit made from a task view or the links panel", leader: "n u", run: () => undo().then(refreshBacklinks) },
     { label: "Follow link at cursor (also gf, Ctrl+click)", keys: ["Enter"], ctx: "normal", leader: "n o", run: () => (ed.linkAtCursor(view) ? (act(() => followLink()), true) : false) },
 
     { label: "Go to Today", keys: ["Ctrl+1"], leader: "v t", run: () => openView("agenda") },
@@ -1214,6 +1244,12 @@
           {/each}
         {/if}
       </div>
+      {#if showGraph}
+        <aside class="links">
+          <h3>Graph <small>{graph?.nodes.length ?? 0}</small></h3>
+          {#if graph?.nodes.length}<Graph {graph} open={(p) => act(() => openFile(p))} />{:else}<p>Open a note to see its links.</p>{/if}
+        </aside>
+      {/if}
       {#if showBacklinks}
         <aside class="links">
           <h3>Linked from <small>{backlinks.length}</small></h3>
@@ -1222,6 +1258,15 @@
           {:else}
             <p>No notes link here yet. Use {pretty("Ctrl")}+L in another note to add one.</p>
           {/each}
+          {#if mentions.length}
+            <h3>Unlinked mentions <small>{mentions.length}</small></h3>
+            {#each mentions as m}
+              <div class="mention">
+                <button onclick={() => act(() => openFile(m.path, m.line))}><strong>{m.title}</strong><span>{m.text}</span></button>
+                <button class="link-it" title="Turn into a link" onclick={() => act(() => linkMention(m))}>Link</button>
+              </div>
+            {/each}
+          {/if}
         </aside>
       {/if}
     </main>
@@ -1309,6 +1354,9 @@
   .links button:hover { background: var(--active); }
   .links button span { display: block; color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .links p { color: var(--dim); margin: 6px; font-size: 12px; }
+  .mention { display: flex; align-items: center; }
+  .mention button:first-child { min-width: 0; }
+  .links .link-it { width: auto; flex: none; color: var(--link); font-size: 12px; }
   .status { display: flex; gap: 12px; align-items: center; padding: 3px 10px; background: var(--panel); border-top: 1px solid var(--border); font: 11px var(--mono); flex: none; min-height: 20px; }
   .mode { color: var(--bg); background: var(--accent); padding: 0 6px; border-radius: 3px; font-weight: 700; }
   .file { color: var(--dim); }
