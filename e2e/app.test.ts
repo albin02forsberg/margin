@@ -3,7 +3,6 @@
 // (under `xvfb-run` when there's no display). Everything lives in a temp dir:
 // the app reads its config from $XDG_CONFIG_HOME/dev.albin.margin.e2e/config.toml.
 import { after, before, describe, it } from "node:test";
-import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
@@ -44,8 +43,22 @@ let driver: ChildProcess;
 let browser: WebdriverIO.Browser;
 
 /** Wait until FILE's text satisfies OK. */
-const fileMatches = (file: string, ok: (s: string) => boolean, msg: string) =>
-  browser.waitUntil(async () => ok(read(file)), { timeout: 10_000, timeoutMsg: `${msg}; ${file} is:\n${read(file)}` });
+async function fileMatches(file: string, ok: (s: string) => boolean, msg: string) {
+  try {
+    await browser.waitUntil(async () => ok(read(file)));
+  } catch {
+    throw new Error(`${msg}; ${file} is:\n${read(file)}`);
+  }
+}
+
+/** The first displayed element matching CSS whose text includes TEXT, once there is one. */
+async function find(css: string, text: string) {
+  const hit = async () => {
+    for (const el of await browser.$$(css)) if ((await el.isDisplayed()) && (await el.getText()).includes(text)) return el;
+    return false;
+  };
+  return (await browser.waitUntil(hit, { timeoutMsg: `no ${css} with “${text}”` })) as unknown as WebdriverIO.Element;
+}
 
 /** Press keys one at a time (keys("abc") would hold them all down together). */
 async function type(s: string) {
@@ -54,17 +67,10 @@ async function type(s: string) {
 
 /** Wait for the picker with PROMPT, type TEXT and press Enter. */
 async function answer(prompt: string, text: string) {
-  const label = browser.$(".picker label span");
-  await browser.waitUntil(async () => (await label.isExisting()) && (await label.getText()).includes(prompt), { timeoutMsg: `no “${prompt}” prompt` });
+  await find(".picker label span", prompt);
   await browser.$(".picker input").setValue(text);
   await browser.keys(Key.Enter);
 }
-
-const rowTitles = async () => {
-  const out: string[] = [];
-  for (const el of await browser.$$(".agenda .row .title")) if (await el.isDisplayed()) out.push(await el.getText());
-  return out;
-};
 
 before(async () => {
   fixtures();
@@ -94,14 +100,14 @@ after(async () => {
 
 describe("Margin", () => {
   it("starts on Today", async () => {
-    await browser.$(".agenda h1=Today").waitForDisplayed();
-    assert.ok((await rowTitles()).includes("Fixture task"));
+    await find(".agenda h1", "Today");
+    await find(".agenda .row .title", "Fixture task");
   });
 
   it("opens a note with Ctrl+P, edits and saves it", async () => {
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "scratch");
-    await browser.$(".status .file=scratch.org").waitForDisplayed();
+    await find(".status .file", "scratch.org");
     await type("Go");
     await type("Typed by e2e");
     await browser.keys(Key.Escape);
@@ -111,33 +117,28 @@ describe("Margin", () => {
 
   it("creates a task with Ctrl+N that shows in Today and the inbox", async () => {
     await browser.keys([Key.Ctrl, "1"]);
-    await browser.$(".agenda h1=Today").waitForDisplayed();
+    await find(".agenda h1", "Today");
     await browser.keys([Key.Ctrl, "n"]);
     await browser.$(".dialog input.title").setValue("Water the e2e plants");
     await browser.$(".dialog #sched").setValue("today");
     await browser.keys(Key.Enter);
-    await browser.waitUntil(async () => (await rowTitles()).includes("Water the e2e plants"), { timeoutMsg: "new task not in Today" });
+    await find(".agenda .row .title", "Water the e2e plants");
     await fileMatches(join(notes, "inbox.org"), (s) => /\* TODO Water the e2e plants\n\s*SCHEDULED: </.test(s), "task not in inbox.org");
   });
 
   it("marks a task done with x in Today", async () => {
-    for (const el of await browser.$$(".agenda .row .title")) {
-      if ((await el.isDisplayed()) && (await el.getText()) === "Fixture task") {
-        await el.click();
-        break;
-      }
-    }
+    await (await find(".agenda .row .title", "Fixture task")).click();
     await browser.keys("x");
     await fileMatches(join(notes, "tasks.org"), (s) => s.startsWith("* DONE Fixture task"), "task not marked done");
   });
 
   it("starts and stops the timer from the Time view", async () => {
     await browser.keys([Key.Ctrl, "4"]);
-    await browser.$(".time button*=Start tracking").click();
+    await (await find(".time button", "Start tracking")).click();
     await answer("Track time on project", "Acme");
     await answer("What are you working on?", "e2e run");
-    await browser.$(".time .status h2=Acme").waitForDisplayed();
-    await browser.$(".time .buttons button*=Stop").click();
+    await find(".time .status h2", "Acme");
+    await (await find(".time .buttons button", "Stop")).click();
     await answer("What did you do?", "e2e done");
     const log = join(data, "work", "timelog.jsonl");
     await fileMatches(log, (s) => /"ev":"in".*"project":"Acme"/.test(s) && /"ev":"out".*"note":"e2e done"/.test(s), "no in/out entries in the time log");
