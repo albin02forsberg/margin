@@ -54,9 +54,10 @@ impl App {
     /// Parsed notes, minus the capture-template files.
     fn files(&self) -> Vec<Arc<org::OrgFile>> {
         let c = self.cfg();
-        let t = c.notes().join(&c.templates_dir);
         let mut v = org::scan(&c.notes(), &self.kw(), &self.cache);
-        v.retain(|f| c.templates_dir.is_empty() || !f.path.starts_with(&t));
+        if let Some(t) = c.templates_path() {
+            v.retain(|f| !f.path.starts_with(&t));
+        }
         v
     }
     fn backup(&self) {
@@ -297,8 +298,7 @@ fn capture_insert(s: State<App>, text: String, heading: Option<String>, entry: S
 #[tauri::command]
 fn capture_templates(s: State<App>) -> Vec<config::Template> {
     let c = s.cfg();
-    let dir = (!c.templates_dir.is_empty()).then(|| c.notes().join(&c.templates_dir));
-    let mut paths: Vec<PathBuf> = dir.and_then(|d| std::fs::read_dir(d).ok()).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "org")).collect();
+    let mut paths: Vec<PathBuf> = c.templates_path().and_then(|d| std::fs::read_dir(d).ok()).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "org")).collect();
     paths.sort();
     let files = paths.iter().filter_map(|p| Some(config::Template::from_file(&p.file_stem()?.to_string_lossy(), &std::fs::read_to_string(p).ok()?)));
     c.templates.into_iter().chain(files).collect()

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
@@ -69,7 +69,7 @@ impl Template {
                 drawer = true;
             } else if drawer {
                 drawer = !s.eq_ignore_ascii_case(":END:");
-            } else if let Some((k, v)) = s.strip_prefix("#+").and_then(|kv| kv.split_once(':')) {
+            } else if let Some((k, v)) = s.strip_prefix("#+").and_then(|kv| kv.split_once(':')).filter(|(k, _)| !k.contains(char::is_whitespace)) {
                 let v = v.trim().to_string();
                 match k.to_ascii_lowercase().as_str() {
                     "key" if !v.is_empty() => t.key = v,
@@ -151,6 +151,12 @@ impl Config {
     }
     pub fn data(&self) -> PathBuf {
         expand(&self.data_dir)
+    }
+    /// <notes>/<templates_dir>, if that's a folder strictly inside the notes ("", ".", ".." or "/"
+    /// would otherwise turn every note into a template and hide it from the agenda).
+    pub fn templates_path(&self) -> Option<PathBuf> {
+        let (n, t) = (self.notes(), self.notes().join(&self.templates_dir));
+        (t.starts_with(&n) && t != n && !t.components().any(|c| c == Component::ParentDir)).then_some(t)
     }
 
     /// Load PATH, writing the defaults there on first run.
@@ -247,7 +253,19 @@ mod tests {
         let t = Template::from_file("meeting", ":PROPERTIES:\n:ID: x\n:END:\n#+title: Meeting notes\n#+FILE: meetings/%Y.org\n#+heading: Log\n#+filetags: :t:\n\n* %^{Who}\n#+begin_quote\n%i\n");
         assert_eq!((t.key.as_str(), t.name.as_str(), t.file.as_str(), t.heading.as_deref()), ("m", "Meeting notes", "meetings/%Y.org", Some("Log")));
         assert_eq!(t.body, "* %^{Who}\n#+begin_quote\n%i\n");
+        // A block line with a colon later on is body, not a header keyword.
+        assert_eq!(Template::from_file("s", "#+begin_src sh :results output\nls\n").body, "#+begin_src sh :results output\nls\n");
         let t = Template::from_file("journal", "#+key: J\n- %?");
         assert_eq!((t.key.as_str(), t.name.as_str(), t.file.as_str(), t.heading, t.body.as_str()), ("J", "journal", "", None, "- %?"));
+    }
+
+    #[test]
+    fn templates_path() {
+        let c = |d: &str| Config { notes_dir: "/n".into(), templates_dir: d.into(), ..Config::default() }.templates_path();
+        assert_eq!(c("templates"), Some(PathBuf::from("/n/templates")));
+        assert_eq!(c("/n/t"), Some(PathBuf::from("/n/t")));
+        for d in ["", ".", "./", "..", "t/..", "/", "/other"] {
+            assert_eq!(c(d), None, "{d:?}");
+        }
     }
 }
