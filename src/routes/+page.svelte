@@ -14,7 +14,7 @@
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
-  import Time, { hm, type Session, type TimeApi } from "$lib/Time.svelte";
+  import Time, { hm, type Session, type Suggestion, type TimeApi } from "$lib/Time.svelte";
   import TaskDialog from "$lib/TaskDialog.svelte";
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
 
@@ -866,6 +866,14 @@
     await tcDo("tc_edit_session", { line: s.line, note, oldHours: s.hours, newHours: +h });
   }
 
+  /** Log an ActivityWatch suggestion: confirm the project, add an optional note. */
+  async function acceptSuggestion(s: Suggestion) {
+    const p = await pickProject(`Log ${s.start.slice(11, 16)}–${s.end.slice(11, 16)} to project`, s.project ?? undefined);
+    if (!p) return;
+    const note = await ask("What did you do? (optional)", "", "goes into the work diary");
+    if (note != null) await tcDo("tc_add_session", { start: s.start, end: s.end, project: p.project, exportCode: p.code, note });
+  }
+
   async function importEmacs() {
     const dir = await ask(`Import Emacs timeclock files into “${tc.profile}” from`, "~/timeclock");
     if (dir) await tcDo("tc_import", { dir });
@@ -892,7 +900,7 @@
     switch: changeProject, adjust: adjustStart, editSession: (s) => editSession(s), export: exportCsv, exportReport, projects: editProject,
     profile: (n) => switchProfile(n), holidays: () => report("holidays", "Holidays"), daily: dailyReport,
     weekly: () => report("weekly", "Week report"), doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
-    backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), import: importEmacs,
+    backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), import: importEmacs, acceptSuggestion,
     flex: async () => flash(await call("tc_report", { kind: "flex" })), diary: () => openFile(cfg.diary_path),
   };
   const timeApi: TimeApi = { act, run: async (name, arg) => { await timeActions[name](arg); } };

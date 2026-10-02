@@ -161,12 +161,7 @@ impl Tc {
     /// get EXPORT_CODE (or their own name). Returns true if it auto clocked out.
     pub fn clock_in(&self, project: &str, task: &str, export_code: Option<&str>) -> Result<bool, String> {
         let project = project.trim();
-        let mut projects = self.projects();
-        if !project.is_empty() && !projects.contains_key(project) {
-            let code = export_code.map(str::trim).filter(|c| !c.is_empty()).unwrap_or(project);
-            projects.insert(project.into(), Project::new(code));
-            self.save_projects(&projects)?;
-        }
+        self.ensure_project(project, export_code)?;
         let switched = if self.current().is_some() {
             let note = if project.is_empty() { String::new() } else { format!("Automatically switched to {project}") };
             self.clock_out(&note)?
@@ -175,6 +170,45 @@ impl Tc {
         };
         self.append(&Event::In { t: now(), project: project.into(), task: task.trim().into() })?;
         Ok(switched)
+    }
+
+    /// Add PROJECT if new, with EXPORT_CODE (or its own name).
+    fn ensure_project(&self, project: &str, export_code: Option<&str>) -> Result<(), String> {
+        let mut projects = self.projects();
+        if !project.is_empty() && !projects.contains_key(project) {
+            let code = export_code.map(str::trim).filter(|c| !c.is_empty()).unwrap_or(project);
+            projects.insert(project.into(), Project::new(code));
+            self.save_projects(&projects)?;
+        }
+        Ok(())
+    }
+
+    /// Log a finished session START–END after the fact. The `in`/`out` pair goes in at its
+    /// chronological spot, since `sessions` pairs events in file order. Refuses overlaps with
+    /// logged or running time, and spots inside a pause (the paused time would move into it).
+    pub fn add_session(&self, start: NaiveDateTime, end: NaiveDateTime, project: &str, export_code: Option<&str>, note: &str) -> Result<(), String> {
+        let now = now();
+        if start >= end || end > now {
+            return Err("A session must end after it starts, and not in the future.".into());
+        }
+        let text = self.read_log();
+        let events = parse_events(&text);
+        if spans(&events, now).iter().any(|&(s, e)| s < end && start < e) {
+            return Err("That overlaps time already logged.".into());
+        }
+        let before = events.iter().rev().find(|(_, e)| e.t() <= start);
+        if matches!(before, Some((_, Event::Break { .. }))) {
+            return Err("That falls in a paused session; resume or clock it out first.".into());
+        }
+        let (project, note) = (project.trim(), note.trim());
+        self.ensure_project(project, export_code)?;
+        let pos = before.map_or(0, |(i, _)| i + 1);
+        let mut lines: Vec<String> = text.lines().map(String::from).collect();
+        let pair = [Event::In { t: start, project: project.into(), task: String::new() }, Event::Out { t: end, note: note.into() }];
+        lines.splice(pos..pos, pair.iter().map(|e| serde_json::to_string(e).unwrap()));
+        fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
+        crate::config::write_atomic(&self.log_path(), lines.join("\n") + "\n").map_err(|e| e.to_string())?;
+        append_diary(&self.diary, project, note, hours(end - start), end).map_err(|e| e.to_string())
     }
 
     /// Returns false if not clocked in.
@@ -251,6 +285,27 @@ impl Tc {
         }
         Ok(events.len())
     }
+}
+
+impl Event {
+    pub fn t(&self) -> NaiveDateTime {
+        match self {
+            Event::In { t, .. } | Event::Out { t, .. } | Event::Break { t } => *t,
+        }
+    }
+}
+
+/// Worked intervals: `in` until `break`/`out`, an open one until NOW.
+pub fn spans(events: &[(usize, Event)], now: NaiveDateTime) -> Vec<(NaiveDateTime, NaiveDateTime)> {
+    let (mut start, mut out) = (None, vec![]);
+    for (_, ev) in events {
+        match ev {
+            Event::In { t, .. } => start = Some(*t),
+            Event::Break { t } | Event::Out { t, .. } => out.extend(start.take().map(|s| (s, *t))),
+        }
+    }
+    out.extend(start.map(|s| (s, now)));
+    out
 }
 
 pub fn parse_events(text: &str) -> Vec<(usize, Event)> {
@@ -615,13 +670,27 @@ pub fn append_diary(path: &Path, project: &str, reason: &str, h: f64, now: Naive
     }
     let heading = now.format("* %Y-%m-%d %A").to_string();
     let mut text = fs::read_to_string(path).unwrap_or_default();
-    if !text.lines().any(|l| l == heading) {
+    // End of that day's section (before the next heading and its blank lines), for past sessions.
+    let (mut off, mut found, mut at) = (0, false, None);
+    for l in text.split_inclusive('\n') {
+        if found && l.starts_with("* ") {
+            let t = text[..off].trim_end_matches(['\r', '\n']).len();
+            at = Some(t + text[t..].find('\n').unwrap_or(0) + 1);
+            break;
+        }
+        found |= l.trim_end() == heading;
+        off += l.len();
+    }
+    if !found {
         if !text.is_empty() && !text.ends_with('\n') {
             text.push('\n');
         }
         text += &format!("\n{heading}\n");
+    } else if at.is_none() && !text.ends_with('\n') {
+        text.push('\n');
     }
-    text += &format!("- [{}] *{}* ({}): {}\n", now.format("%H:%M"), or_other(project), format_hm(h), reason);
+    let entry = format!("- [{}] *{}* ({}): {}\n", now.format("%H:%M"), or_other(project), format_hm(h), reason);
+    text.insert_str(at.unwrap_or(text.len()), &entry);
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
@@ -792,6 +861,42 @@ mod tests {
         assert!(tc.current().is_none());
         assert!(fs::read_to_string(&tc.diary).unwrap().contains("[10:00] *Acme* (1h 00m): done"));
         assert!(!tc.discard_idle(dt("2026-10-01 10:00"), None, "").unwrap());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn add_past_sessions() {
+        let dir = std::env::temp_dir().join(format!("tc-add-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), expected: 8.0 };
+        let log = [
+            Event::In { t: dt("2024-10-01 08:00"), project: "A".into(), task: String::new() },
+            Event::Out { t: dt("2024-10-01 09:00"), note: "a".into() },
+            Event::In { t: dt("2024-10-01 12:00"), project: "A".into(), task: String::new() },
+            Event::Break { t: dt("2024-10-01 13:00") },
+            Event::In { t: dt("2024-10-01 14:00"), project: "A".into(), task: String::new() },
+            Event::Out { t: dt("2024-10-01 15:00"), note: "b".into() },
+            Event::In { t: dt("2024-10-02 08:00"), project: "B".into(), task: String::new() },
+        ];
+        log.iter().for_each(|e| tc.append(e).unwrap());
+        fs::write(&tc.diary, "* 2024-10-01 Tuesday\n- old\n\n* 2024-10-02 Wednesday\n- today\n").unwrap();
+        let before = sessions(&tc.events(), dt("2024-10-02 09:00"));
+        tc.add_session(dt("2024-10-01 10:00"), dt("2024-10-01 11:30"), "New", Some("N-1"), "planning").unwrap();
+        let after = sessions(&tc.events(), dt("2024-10-02 09:00"));
+        assert_eq!(after.len(), before.len() + 1);
+        assert_eq!((after[1].project.as_str(), after[1].desc.as_str(), after[1].hours), ("New", "planning", 1.5));
+        assert_eq!(after[2], Session { line: Some(7), ..before[1].clone() }); // the break session is untouched
+        assert_eq!(tc.projects()["New"].export_code, "N-1");
+        assert_eq!(fs::read_to_string(&tc.diary).unwrap(), "* 2024-10-01 Tuesday\n- old\n- [11:30] *New* (1h 30m): planning\n\n* 2024-10-02 Wednesday\n- today\n");
+        let err = |a, b| tc.add_session(dt(a), dt(b), "X", None, "").unwrap_err();
+        assert!(err("2024-10-01 08:30", "2024-10-01 08:45").contains("overlaps"));
+        assert!(err("2024-10-01 11:00", "2024-10-01 12:00").contains("overlaps"));
+        assert!(err("2024-10-01 13:15", "2024-10-01 13:45").contains("paused"));
+        assert!(err("2024-10-02 07:00", "2024-10-02 08:01").contains("overlaps")); // the running session
+        assert!(err("2024-10-01 11:00", "2024-10-01 10:00").contains("end after"));
+        // Back to back is fine, and the running session stays last.
+        tc.add_session(dt("2024-10-02 07:00"), dt("2024-10-02 08:00"), "A", None, "").unwrap();
+        assert_eq!(tc.current().unwrap().1, "B");
         let _ = fs::remove_dir_all(&dir);
     }
 

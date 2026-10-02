@@ -1,9 +1,10 @@
 <script lang="ts" module>
+  export type Suggestion = { start: string; end: string; apps: string[]; titles: string[]; project: string | null };
   export type Session = { date: string; project: string; desc: string; hours: number; start: string; end: string; line: number | null };
   export type TimeApi = {
     act: (f: () => unknown) => void;
     /** Named actions: start, stop, pause, resume, switch, adjust, editSession, export, exportReport, projects,
-     *  profile, holidays, daily, weekly, doctor, backup, backupLog, rawLog, import. */
+     *  profile, holidays, daily, weekly, doctor, backup, backupLog, rawLog, import, acceptSuggestion. */
     run: (name: string, arg?: unknown) => Promise<void>;
   };
   export const hm = (h: number) => {
@@ -30,6 +31,29 @@
     const t = setInterval(() => api.act(refresh), 30_000);
     return () => clearInterval(t);
   });
+  // ActivityWatch suggestions for DAY: null when off; errors show as a hint, not a flash.
+  let day = $state(new Date().toLocaleDateString("sv-SE"));
+  let sugg = $state<Suggestion[] | null>(null);
+  let awError = $state("");
+  let dismissed = $state<string[]>([]);
+  async function loadSuggestions() {
+    try {
+      [sugg, awError] = [await invoke("activity_suggestions", { dateInput: day }), ""];
+    } catch (e) {
+      [sugg, awError] = [[], String(e)];
+    }
+  }
+  $effect(() => {
+    void [reload, day];
+    if (active) loadSuggestions();
+  });
+  const shown = $derived((sugg ?? []).filter((s) => !dismissed.includes(s.start)));
+  const shiftDay = (n: number) => {
+    const t = new Date(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10) + n);
+    day = t.toLocaleDateString("sv-SE");
+  };
+  const accept = (s: Suggestion) => api.act(async () => { await api.run("acceptSuggestion", s); await refresh(); await loadSuggestions(); root?.focus(); });
+
   $effect(() => {
     if (active) tick().then(() => root?.focus());
   });
@@ -46,6 +70,7 @@
   const KEYS: Record<string, string> = { i: "start", o: "stop", p: "pause", r: "resume", c: "switch", a: "adjust", e: "export", E: "exportReport", t: "daily", w: "weekly" };
   function key(e: KeyboardEvent) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (sugg && (e.key === "h" || e.key === "l")) return shiftDay(e.key === "h" ? -1 : 1);
     const name = KEYS[e.key];
     if (!name) return;
     e.preventDefault();
@@ -140,6 +165,30 @@
       </section>
     </div>
 
+    {#if sugg}
+      <section class="suggested">
+        <h3>Suggested <span class="dim">from ActivityWatch · {day === todayIso ? "today" : `${dayName(day)} ${day}`} · <kbd>h</kbd><kbd>l</kbd> day</span></h3>
+        {#if awError}
+          <p class="dim">{awError}. Is <a href="https://activitywatch.net/" target="_blank" rel="noreferrer">ActivityWatch</a> running?</p>
+        {:else if shown.length}
+          <table>
+            <tbody>
+              {#each shown as s (s.start)}
+                <tr>
+                  <td class="mono">{clock(s.start)}–{clock(s.end)}</td>
+                  <td>{s.apps.join(", ")} <span class="dim">{s.titles.map((t) => `“${t}”`).join(" ")}</span>{#if s.project} → <strong>{s.project}</strong>?{/if}</td>
+                  <td class="num">{hm((Date.parse(s.end) - Date.parse(s.start)) / 3_600_000)}</td>
+                  <td class="actions"><button onclick={() => accept(s)}>Accept</button><button class="icon" title="Dismiss" onclick={() => (dismissed = [...dismissed, s.start])}>✕</button></td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {:else}
+          <p class="dim">Nothing to suggest.</p>
+        {/if}
+      </section>
+    {/if}
+
     <section>
       <h3>Projects this week</h3>
       {#if d.projects.length}
@@ -223,5 +272,7 @@
   .flex strong { font: 600 18px var(--mono); }
   .flex strong.neg { color: var(--todo); }
   .tools div { display: flex; flex-wrap: wrap; gap: 8px; }
+  .suggested td:nth-child(2) { overflow-wrap: anywhere; }
+  .actions { white-space: nowrap; text-align: right; }
   .error { color: var(--todo); font-size: 13px; }
 </style>

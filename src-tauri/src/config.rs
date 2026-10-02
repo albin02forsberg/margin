@@ -36,6 +36,10 @@ pub struct Config {
     pub templates_dir: String,
     /// Dropped and pasted files go to <attachments_dir>/<note name>/, relative to notes_dir.
     pub attachments_dir: String,
+    /// ActivityWatch server to suggest sessions from, e.g. "http://localhost:5600"; empty = off.
+    pub activitywatch_url: String,
+    /// Regexes (case-insensitive) over app names and window titles that suggestions ignore.
+    pub activity_exclude: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -115,6 +119,8 @@ impl Default for Config {
             ],
             templates_dir: "templates".into(),
             attachments_dir: "attachments".into(),
+            activitywatch_url: String::new(),
+            activity_exclude: v(&["KeePass", "1Password", "Bitwarden", "Private Browsing", "Incognito", "InPrivate"]),
         }
     }
 }
