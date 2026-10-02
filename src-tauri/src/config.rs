@@ -32,6 +32,8 @@ pub struct Config {
     pub calendar_file: String,
     /// Capture templates (`Space c`): `[[templates]] key name file heading body`.
     pub templates: Vec<Template>,
+    /// Dropped and pasted files go to <attachments_dir>/<note name>/, relative to notes_dir.
+    pub attachments_dir: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -77,6 +79,7 @@ impl Default for Config {
                 Template { key: "n".into(), name: "Note".into(), file: String::new(), heading: None, body: "* %^{Title}\n%U\n%i%?".into() },
                 Template { key: "m".into(), name: "Meeting notes".into(), file: "meetings.org".into(), heading: None, body: "* %^{Meeting} :meeting:\n%U\n- %?".into() },
             ],
+            attachments_dir: "attachments".into(),
         }
     }
 }

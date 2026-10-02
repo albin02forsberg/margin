@@ -161,6 +161,11 @@ dates stay monospace (`Space v m` switches everything to monospace).
 
 Image links (`[[file:pic.png]]`, `[[https://…/pic.jpg]]`) show the image inline.
 
+Drop files onto a note, or paste an image (saved as `pasted-YYYYMMDD-HHMMSS.png`),
+and Margin copies them into `attachments/<note name>/` in your notes folder and
+inserts a relative `[[file:…]]` link, so notes stay portable. Same-named files get
+`-1`, `-2` suffixes; set `attachments_dir` to use another folder.
+
 Code blocks (`#+begin_src python` …) are syntax highlighted for any language
 CodeMirror knows (python, rust, js/ts, sh, sql, go, java, c, html, css, yaml, …).
 

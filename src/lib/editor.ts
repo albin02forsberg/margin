@@ -734,8 +734,7 @@ export function headings(state: EditorState) {
   return out;
 }
 
-export function insertText(v: EditorView, text: string) {
-  const at = v.state.selection.main.head;
+export function insertText(v: EditorView, text: string, at = v.state.selection.main.head) {
   v.dispatch({ changes: { from: at, insert: text }, selection: { anchor: at + text.length } });
 }
 

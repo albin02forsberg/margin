@@ -6,6 +6,7 @@
   import { check } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { EditorView } from "@codemirror/view";
   import type { EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
@@ -1057,6 +1058,30 @@
     });
   }
 
+  /** Store attachments for the open note (ADD returns each link target) and link them at POS. */
+  async function attach(add: (note: string) => Promise<string>[], pos?: number) {
+    if (!inFile()) return flash("Open a note first.");
+    const links = await Promise.all(add(tab.path!));
+    ed.insertText(view, links.map((l) => `[[file:${l}]]`).join("\n"), pos);
+    flash(`📎 Attached ${links.length} file${links.length > 1 ? "s" : ""}`);
+  }
+
+  /** Pasted images are saved as pasted-YYYYMMDD-HHMMSS.png next to the note's other attachments. */
+  function onPaste(e: ClipboardEvent) {
+    const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith("image/"));
+    if (!file || !inFile()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const d = new Date();
+    const ext = file.type.slice(6).replace("jpeg", "jpg").replace(/\+.*/, "");
+    const name = `pasted-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.${ext}`;
+    act(async () => {
+      // ponytail: bytes cross IPC as a JSON number array; use a raw-body command if big pastes feel slow.
+      const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
+      await attach((note) => [call<string>("attach_bytes", { note, name, bytes })]);
+    });
+  }
+
   onMount(() => {
     if (!("__TAURI_INTERNALS__" in window)) {
       message = "This page only works inside the app window — run `npm run tauri dev` instead of opening it in a browser.";
@@ -1084,6 +1109,14 @@
       await newTask();
       if (e.payload) await getCurrentWindow().hide();
     }));
+    // Dropped files (real paths from Tauri) are copied next to the note and linked where they land.
+    const unlistenDrop = getCurrentWebview().onDragDropEvent((e) => {
+      if (e.payload.type !== "drop" || !e.payload.paths.length) return;
+      const { paths, position } = e.payload;
+      const at = { x: position.x / devicePixelRatio, y: position.y / devicePixelRatio };
+      act(() => attach((note) => paths.map((src) => call<string>("attach_file", { note, src })), view.posAtCoords(at) ?? undefined));
+    });
+    editorEl!.addEventListener("paste", onPaste, true);
     window.addEventListener("keydown", onKey, true);
     window.addEventListener("blur", blur);
     window.addEventListener("focus", focus);
@@ -1093,6 +1126,7 @@
       unlistenTray.then((f) => f());
       unlistenIdle.then((f) => f());
       unlistenCapture.then((f) => f());
+      unlistenDrop.then((f) => f());
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("blur", blur);
       window.removeEventListener("focus", focus);

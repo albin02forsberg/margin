@@ -1,3 +1,4 @@
+mod attach;
 mod backup;
 mod config;
 mod export;
@@ -149,6 +150,27 @@ fn write_file(app: AppHandle, s: State<App>, path: PathBuf, text: String) -> R<(
         reload_config(app, s)?;
     }
     Ok(())
+}
+
+/// Copy SRC into NOTE's attachment folder; returns the link target relative to the note.
+#[tauri::command]
+fn attach_file(s: State<App>, note: PathBuf, src: PathBuf) -> R<String> {
+    let name = src.file_name().ok_or("not a file")?.to_string_lossy().to_string();
+    attach(&s, &note, &name, |dst| std::fs::copy(&src, dst).map(|_| ()))
+}
+
+/// Save pasted BYTES as NAME in NOTE's attachment folder; returns the link target.
+#[tauri::command]
+fn attach_bytes(s: State<App>, note: PathBuf, name: String, bytes: Vec<u8>) -> R<String> {
+    attach(&s, &note, &name, |dst| std::fs::write(dst, &bytes))
+}
+
+fn attach(s: &App, note: &Path, name: &str, write: impl FnOnce(&Path) -> std::io::Result<()>) -> R<String> {
+    let c = s.cfg();
+    let (dst, link) = attach::target(&c.notes(), &c.attachments_dir, note, name, |p| p.exists())?;
+    std::fs::create_dir_all(dst.parent().unwrap()).map_err(|e| e.to_string())?;
+    write(&dst).map_err(|e| format!("{}: {e}", dst.display()))?;
+    Ok(link)
 }
 
 // ---------------------------------------------------------------- org
@@ -645,7 +667,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            config, reload_config, list_files, read_file, write_file,
+            config, reload_config, list_files, read_file, write_file, attach_file, attach_bytes,
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, notes_nodes, notes_backlinks, notes_search,
