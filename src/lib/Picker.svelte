@@ -114,7 +114,7 @@
   .picker {
     position: fixed; top: 12%; left: 50%; transform: translateX(-50%);
     width: min(720px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--border);
-    border-radius: 8px; box-shadow: 0 12px 40px rgb(0 0 0 / 0.35); z-index: 20; overflow: hidden;
+    border-radius: 8px; box-shadow: 0 12px 40px rgb(0 0 0 / 0.35); z-index: 500; overflow: hidden;
   }
   label { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border); }
   label span { color: var(--accent); white-space: nowrap; font-size: 13px; }

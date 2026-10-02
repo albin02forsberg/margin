@@ -53,7 +53,7 @@
 
 <style>
   .menu {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; background: var(--panel);
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 400; background: var(--panel);
     border-top: 1px solid var(--border); padding: 8px 16px 12px; font: 13px var(--mono);
   }
   .crumb { color: var(--accent); margin-bottom: 6px; }

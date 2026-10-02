@@ -621,7 +621,7 @@
   main { flex: 1; display: flex; min-height: 0; }
   .pane { flex: 1; min-width: 0; position: relative; }
   .editor, .view { height: 100%; }
-  aside { width: 300px; border-left: 1px solid var(--border); background: var(--panel); overflow-y: auto; padding: 8px; flex: none; }
+  aside { width: min(300px, 35vw); border-left: 1px solid var(--border); background: var(--panel); overflow-y: auto; padding: 8px; flex: none; }
   aside h3 { margin: 4px 4px 8px; font-size: 13px; color: var(--accent); }
   aside h3 small { color: var(--dim); }
   aside button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--fg); padding: 6px; border-radius: 4px; cursor: pointer; }
