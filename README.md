@@ -313,11 +313,16 @@ If you run [ActivityWatch](https://activitywatch.net/), set
 **Suggested** sessions for the day: stretches of computer use (gaps under 5
 minutes joined, AFK and already logged time left out, at least 15 minutes),
 with the top apps and window titles and a project guessed from its name
-appearing in them. **Accept** confirms the project and an optional diary note
-and adds the session to the log at its place in the day; ✕ hides it until
-restart. `h`/`l` step through days. Only local addresses are accepted, and
-`activity_exclude` (regexes over app names and titles; password managers and
-private browsing by default) keeps windows out of suggestions. Off by default.
+appearing in them. With the browser extension (aw-watcher-web) installed, time
+in a browser shows as the page's site and path (`github.com/you/repo`) instead
+of its title, which also helps the project guess; private tabs are left out.
+**Accept** confirms the project and an optional diary note and adds the session
+to the log at its place in the day; ✎ lets you change its start and end first;
+✕ hides it, and anything overlapping it, for good (kept in
+`activity_dismissed.json` in the profile's data folder for 30 days). `h`/`l`
+step through days. Only local addresses are accepted, and `activity_exclude`
+(regexes over app names, window titles and URLs; password managers and private
+browsing by default) keeps windows and pages out of suggestions. Off by default.
 
 ### Drafts from a local model
 

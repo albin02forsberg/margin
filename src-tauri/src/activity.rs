@@ -1,10 +1,10 @@
 // Suggested sessions from ActivityWatch (https://activitywatch.net): its local REST API
-// has window and AFK events, which we turn into blocks of work worth logging.
+// has window, AFK and browser tab events, which we turn into blocks of work worth logging.
 
 use chrono::{DateTime, Duration, DurationRound, FixedOffset, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 
@@ -13,13 +13,15 @@ const GAP_SECS: i64 = 5 * 60;
 /// Shorter blocks are noise.
 const MIN_BLOCK_SECS: i64 = 15 * 60;
 
-/// An event as local time. AFK events carry their status ("afk"/"not-afk") as `app`.
+/// An event as local time. AFK events carry their status ("afk"/"not-afk") as `app`;
+/// browser tab events have a `url`.
 #[derive(Clone, Debug)]
 pub struct Span {
     pub start: NaiveDateTime,
     pub end: NaiveDateTime,
     pub app: String,
     pub title: String,
+    pub url: String,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -47,24 +49,36 @@ struct Bucket {
     last_updated: String,
 }
 
-/// `/api/0/buckets/` → the most recently updated (window, afk) bucket ids.
-pub fn pick_buckets(json: &str) -> Result<(Option<String>, Option<String>), String> {
+/// Bucket ids to read: the most recently updated window and AFK ones, and all browser
+/// tab (aw-watcher-web) ones, one per browser.
+#[derive(Debug, PartialEq)]
+pub struct Buckets {
+    window: Option<String>,
+    afk: Option<String>,
+    web: Vec<String>,
+}
+
+/// `/api/0/buckets/` → the buckets to read.
+pub fn pick_buckets(json: &str) -> Result<Buckets, String> {
     let b: HashMap<String, Bucket> = serde_json::from_str(json).map_err(|e| format!("ActivityWatch buckets: {e}"))?;
     // ponytail: ISO strings from one server compare chronologically; parse them if a server mixes offsets.
     let newest = |kind: &str| b.iter().filter(|(_, v)| v.kind == kind).max_by(|x, y| x.1.last_updated.cmp(&y.1.last_updated)).map(|(id, _)| id.clone());
-    Ok((newest("currentwindow"), newest("afkstatus")))
+    let mut web: Vec<String> = b.iter().filter(|(_, v)| v.kind == "web.tab.current").map(|(id, _)| id.clone()).collect();
+    web.sort();
+    Ok(Buckets { window: newest("currentwindow"), afk: newest("afkstatus"), web })
 }
 
-/// `/api/0/buckets/<id>/events` → spans in TZ.
+/// `/api/0/buckets/<id>/events` → spans in TZ. Private (incognito) tabs are left out.
 pub fn parse_events<Tz: TimeZone>(json: &str, tz: &Tz) -> Result<Vec<Span>, String> {
     let evs: Vec<AwEvent> = serde_json::from_str(json).map_err(|e| format!("ActivityWatch events: {e}"))?;
     Ok(evs
         .into_iter()
+        .filter(|e| e.data.get("incognito").and_then(|v| v.as_bool()) != Some(true))
         .map(|e| {
             let s = |k: &str| e.data.get(k).and_then(|v| v.as_str()).map(String::from);
             let end = e.timestamp + Duration::milliseconds((e.duration * 1000.0) as i64);
             let local = |t: DateTime<FixedOffset>| t.with_timezone(tz).naive_local();
-            Span { start: local(e.timestamp), end: local(end), app: s("app").or_else(|| s("status")).unwrap_or_default(), title: s("title").unwrap_or_default() }
+            Span { start: local(e.timestamp), end: local(end), app: s("app").or_else(|| s("status")).unwrap_or_default(), title: s("title").unwrap_or_default(), url: s("url").unwrap_or_default() }
         })
         .collect())
 }
@@ -72,6 +86,39 @@ pub fn parse_events<Tz: TimeZone>(json: &str, tz: &Tz) -> Result<Vec<Span>, Stri
 /// `activity_exclude` patterns, case-insensitive.
 pub fn exclude_rules(pats: &[String]) -> Result<Vec<Regex>, String> {
     pats.iter().map(|p| Regex::new(&format!("(?i){p}")).map_err(|e| format!("activity_exclude: {e}"))).collect()
+}
+
+/// PARTS minus CS–CE.
+fn cut(parts: Vec<(NaiveDateTime, NaiveDateTime)>, cs: NaiveDateTime, ce: NaiveDateTime) -> Vec<(NaiveDateTime, NaiveDateTime)> {
+    parts.into_iter().flat_map(|(s, e)| [(s, e.min(cs)), (s.max(ce), e)]).filter(|(s, e)| s < e).collect()
+}
+
+/// `https://www.github.com/a/b/pull/1?x` → `github.com/a/b`: host and two path segments,
+/// so one repo's or site section's pages add up.
+fn url_label(url: &str) -> String {
+    let u = url.split_once("://").map_or(url, |x| x.1);
+    let u = u.split(['?', '#']).next().unwrap_or(u);
+    u.strip_prefix("www.").unwrap_or(u).split('/').filter(|p| !p.is_empty()).take(3).collect::<Vec<_>>().join("/")
+}
+
+/// WINDOW with browser windows split by the WEB tab events shown in them (the window
+/// title contains the tab title, which also tells several browsers apart): those parts
+/// get the tab's `host/path` as title. Parts showing a tab that EXCLUDE matches (URL or
+/// title) are dropped.
+pub fn with_urls(window: &[Span], web: &[Span], exclude: &[Regex]) -> Vec<Span> {
+    let mut out = vec![];
+    for w in window {
+        let mut rest = vec![(w.start, w.end)];
+        for t in web.iter().filter(|t| t.start < w.end && w.start < t.end && !t.title.is_empty() && w.title.contains(&t.title)) {
+            let (s, e) = (t.start.max(w.start), t.end.min(w.end));
+            if !exclude.iter().any(|r| r.is_match(&t.url) || r.is_match(&t.title)) {
+                out.push(Span { start: s, end: e, title: url_label(&t.url), ..w.clone() });
+            }
+            rest = cut(rest, s, e);
+        }
+        out.extend(rest.into_iter().map(|(start, end)| Span { start, end, ..w.clone() }));
+    }
+    out
 }
 
 /// Blocks of work on DAY: WINDOW events minus EXCLUDEd ones, AFK time and TRACKED spans,
@@ -85,7 +132,7 @@ pub fn suggest(window: &[Span], afk: &[Span], tracked: &[(NaiveDateTime, NaiveDa
     for w in window.iter().filter(|w| !exclude.iter().any(|r| r.is_match(&w.app) || r.is_match(&w.title))) {
         let mut parts = vec![(w.start.max(d0), w.end.min(d1))];
         for &(cs, ce) in &cuts {
-            parts = parts.into_iter().flat_map(|(s, e)| [(s, e.min(cs)), (s.max(ce), e)]).filter(|(s, e)| s < e).collect();
+            parts = cut(parts, cs, ce);
         }
         pieces.extend(parts.into_iter().filter(|(s, e)| s < e).map(|(start, end)| Span { start, end, ..w.clone() }));
     }
@@ -134,6 +181,23 @@ pub fn suggest(window: &[Span], afk: &[Span], tracked: &[(NaiveDateTime, NaiveDa
         .collect()
 }
 
+/// Dismissed suggestions by day, as kept in `activity_dismissed.json`.
+pub type Dismissed = BTreeMap<NaiveDate, Vec<(NaiveDateTime, NaiveDateTime)>>;
+
+/// D plus START–END, without days more than 30 days before TODAY.
+pub fn dismiss(mut d: Dismissed, start: NaiveDateTime, end: NaiveDateTime, today: NaiveDate) -> Dismissed {
+    d.entry(start.date()).or_default().push((start, end));
+    d.retain(|day, _| (today - *day).num_days() <= 30);
+    d
+}
+
+/// S minus suggestions overlapping a dismissed one: blocks shift a little as data arrives.
+pub fn undismissed(mut s: Vec<Suggestion>, d: &Dismissed) -> Vec<Suggestion> {
+    let gone: Vec<_> = d.values().flatten().collect();
+    s.retain(|x| !gone.iter().any(|&&(a, b)| a < x.end && x.start < b));
+    s
+}
+
 /// GET PATH from ActivityWatch at BASE.
 fn get(base: &str, path: &str) -> Result<String, String> {
     match request("ActivityWatch", "activitywatch_url", base, "GET", path, None, 10)? {
@@ -166,9 +230,9 @@ pub fn request(what: &str, key: &str, base: &str, method: &str, path: &str, body
     Ok((head.split_whitespace().nth(1).and_then(|c| c.parse().ok()).unwrap_or(0), body.to_string()))
 }
 
-/// Window and AFK spans around DAY from the server at BASE.
-pub fn fetch(base: &str, day: NaiveDate) -> Result<(Vec<Span>, Vec<Span>), String> {
-    let (window, afk) = pick_buckets(&get(base, "/api/0/buckets/")?)?;
+/// Window spans (`with_urls`) and AFK spans around DAY from the server at BASE.
+pub fn fetch(base: &str, day: NaiveDate, exclude: &[Regex]) -> Result<(Vec<Span>, Vec<Span>), String> {
+    let Buckets { window, afk, web } = pick_buckets(&get(base, "/api/0/buckets/")?)?;
     let window = window.ok_or("ActivityWatch has no window watcher (aw-watcher-window) data")?;
     let utc = |d: NaiveDate| {
         let t = d.and_time(NaiveTime::MIN);
@@ -176,7 +240,11 @@ pub fn fetch(base: &str, day: NaiveDate) -> Result<(Vec<Span>, Vec<Span>), Strin
     };
     let q = format!("start={}&end={}", utc(day), utc(day + Duration::days(1)));
     let events = |id: &str| parse_events(&get(base, &format!("/api/0/buckets/{id}/events?{q}"))?, &Local);
-    Ok((events(&window)?, afk.as_deref().map(events).transpose()?.unwrap_or_default()))
+    let mut tabs = vec![];
+    for id in &web {
+        tabs.extend(events(id)?);
+    }
+    Ok((with_urls(&events(&window)?, &tabs, exclude), afk.as_deref().map(events).transpose()?.unwrap_or_default()))
 }
 
 #[cfg(test)]
@@ -201,10 +269,12 @@ mod tests {
           "aw-watcher-window_old": {"id":"aw-watcher-window_old","type":"currentwindow","client":"aw-watcher-window","hostname":"old","created":"2025-01-01T00:00:00+00:00","last_updated":"2025-06-01T00:00:00+00:00"},
           "aw-watcher-window_pc": {"id":"aw-watcher-window_pc","type":"currentwindow","client":"aw-watcher-window","hostname":"pc","created":"2025-01-01T00:00:00+00:00","last_updated":"2026-10-02T08:00:00+00:00"},
           "aw-watcher-afk_pc": {"id":"aw-watcher-afk_pc","type":"afkstatus","client":"aw-watcher-afk","hostname":"pc","created":"2025-01-01T00:00:00+00:00","last_updated":"2026-10-02T08:00:00+00:00"},
-          "aw-watcher-web-firefox": {"id":"aw-watcher-web-firefox","type":"web.tab.current","client":"aw-client-web","hostname":"pc","created":"2025-01-01T00:00:00+00:00"}
+          "aw-watcher-web-firefox": {"id":"aw-watcher-web-firefox","type":"web.tab.current","client":"aw-client-web","hostname":"pc","created":"2025-01-01T00:00:00+00:00"},
+          "aw-watcher-web-chrome": {"id":"aw-watcher-web-chrome","type":"web.tab.current","client":"aw-client-web","hostname":"pc","created":"2025-01-01T00:00:00+00:00"}
         }"#;
-        assert_eq!(pick_buckets(json).unwrap(), (Some("aw-watcher-window_pc".into()), Some("aw-watcher-afk_pc".into())));
-        assert_eq!(pick_buckets("{}").unwrap(), (None, None));
+        let web = vec!["aw-watcher-web-chrome".into(), "aw-watcher-web-firefox".into()];
+        assert_eq!(pick_buckets(json).unwrap(), Buckets { window: Some("aw-watcher-window_pc".into()), afk: Some("aw-watcher-afk_pc".into()), web });
+        assert_eq!(pick_buckets("{}").unwrap(), Buckets { window: None, afk: None, web: vec![] });
     }
 
     #[test]
@@ -245,6 +315,52 @@ mod tests {
         let s = suggest(&w, &a, &tracked, &rules, &projects, day("2026-10-01"));
         assert_eq!(s.iter().map(|s| (s.start, s.end)).collect::<Vec<_>>(), vec![(dt("2026-10-01 09:10"), dt("2026-10-01 09:50")), (dt("2026-10-01 09:52"), dt("2026-10-01 11:20"))]);
         assert_eq!(s[0].project.as_deref(), Some("Margin"));
+    }
+
+    #[test]
+    fn browser_urls() {
+        let tz = FixedOffset::east_opt(CEST).unwrap();
+        let tab = |url: &str, title: &str| format!(r#"{{"url":"{url}","title":"{title}","audible":false,"incognito":false}}"#);
+        let window = parse_events(&format!("[{}]", [
+            ev("2026-10-01T07:00:00+00:00", 30.0, &win("firefox", "PR #61 · albin02forsberg/margin — Mozilla Firefox")),
+            ev("2026-10-01T07:30:00+00:00", 20.0, &win("Google-chrome", "Inbox - Gmail - Google Chrome")),
+        ].join(",")), &tz).unwrap();
+        // Two browsers' buckets, merged; Firefox's tab stays "current" while Chrome is focused.
+        let web = parse_events(&format!("[{}]", [
+            ev("2026-10-01T07:05:00+00:00", 45.0, &tab("https://github.com/albin02forsberg/margin/pull/61?w=1", "PR #61 · albin02forsberg/margin")),
+            ev("2026-10-01T07:30:00+00:00", 10.0, &tab("https://mail.google.com/mail/u/0/#inbox", "Inbox - Gmail")),
+            ev("2026-10-01T07:40:00+00:00", 10.0, r#"{"url":"https://secret.example/","title":"Inbox - Gmail","incognito":true}"#),
+        ].join(",")), &tz).unwrap();
+        assert_eq!(web.len(), 2, "incognito tabs are dropped");
+        let got = |ex: &[Regex]| with_urls(&window, &web, ex).into_iter().map(|s| (s.start.format("%H:%M").to_string(), s.end.format("%H:%M").to_string(), s.title)).collect::<Vec<_>>();
+        let t = |a: &str, b: &str, c: &str| (a.to_string(), b.to_string(), c.to_string());
+        assert_eq!(got(&[]), vec![
+            t("09:05", "09:30", "github.com/albin02forsberg/margin"),
+            t("09:00", "09:05", "PR #61 · albin02forsberg/margin — Mozilla Firefox"),
+            t("09:30", "09:40", "mail.google.com/mail/u"),
+            t("09:40", "09:50", "Inbox - Gmail - Google Chrome"),
+        ]);
+        let ex = exclude_rules(&["mail\\.google".into()]).unwrap();
+        assert_eq!(got(&ex)[2..], [t("09:40", "09:50", "Inbox - Gmail - Google Chrome")], "an excluded URL drops its part");
+        // The URL feeds the project guess.
+        let s = suggest(&with_urls(&window, &web, &[]), &[], &[], &[], &["margin".into()], "2026-10-01".parse().unwrap());
+        assert!(s[0].titles.contains(&"github.com/albin02forsberg/margin".to_string()));
+        assert_eq!(s[0].project.as_deref(), Some("margin"));
+    }
+
+    #[test]
+    fn dismissals() {
+        let today: NaiveDate = "2026-10-03".parse().unwrap();
+        let mut d = dismiss(Dismissed::new(), dt("2026-08-01 09:00"), dt("2026-08-01 10:00"), today);
+        assert!(d.is_empty(), "days over 30 days old are pruned");
+        d = dismiss(d, dt("2026-09-03 09:00"), dt("2026-09-03 10:00"), today);
+        d = dismiss(d, dt("2026-10-03 09:10"), dt("2026-10-03 11:20"), today);
+        let d: Dismissed = serde_json::from_str(&serde_json::to_string(&d).unwrap()).unwrap();
+        assert_eq!(d.keys().map(|k| k.to_string()).collect::<Vec<_>>(), ["2026-09-03", "2026-10-03"]);
+        let sg = |a: &str, b: &str| Suggestion { start: dt(a), end: dt(b), apps: vec![], titles: vec![], project: None };
+        // The dismissed block has grown a little since; a later one is untouched.
+        let left = undismissed(vec![sg("2026-10-03 09:05", "2026-10-03 11:25"), sg("2026-10-03 11:30", "2026-10-03 12:00")], &d);
+        assert_eq!(left, vec![sg("2026-10-03 11:30", "2026-10-03 12:00")]);
     }
 
     #[test]
