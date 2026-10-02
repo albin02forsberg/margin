@@ -100,6 +100,25 @@ name = "Work this week"
 query = "tag:work due:<+7d"
 ```
 
+### Capture templates
+
+`Space c` (or "Capture with template…" in Ctrl+K) picks a template, asks its
+fields and files the entry, then opens it with the cursor at `%?`. Undo with `u`
+in the task views. Define them in settings:
+
+```toml
+[[templates]]
+key = "m"
+name = "Meeting notes"
+file = "meetings.org"   # under the notes folder; strftime ok; default: inbox
+heading = "Meetings"    # optional: file under this heading, created if missing
+body = "* %^{Title} :meeting:\n%U\n- %?"
+```
+
+`%t`/`%T` date / date+time (`<2026-10-02 Fri 14:30>`), `%u`/`%U` the inactive
+`[…]` forms, `%^{Prompt}` asks (repeat a name to reuse the answer), `%i` the
+selected text, `%?` cursor, `%%` a literal `%`.
+
 ## Editing notes
 
 Vim keys everywhere. On top of that:

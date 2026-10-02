@@ -439,6 +439,35 @@
     });
   }
 
+  /** Capture with a `[[templates]]` entry from settings: ask its prompts, file it, open at %?. */
+  async function captureTemplate() {
+    type Tpl = { key: string; name: string; file: string; heading: string | null; body: string };
+    const tpls: Tpl[] = cfg.config.templates;
+    if (!tpls.length) return flash("No capture templates: add [[templates]] in settings (Ctrl+,).");
+    const t: Tpl | null = await pick({ prompt: "Capture with template", items: tpls.map((t) => ({ label: `${t.key}  ${t.name}`, detail: t.file || cfg.config.inbox, value: t })) });
+    if (!t) return;
+    const s = view.state.selection.main;
+    const selection = inFile() ? view.state.sliceDoc(s.from, s.to) : "";
+    const answers: Record<string, string> = {};
+    for (const p of await call<string[]>("template_prompts", { body: t.body })) {
+      const a = await ask(p);
+      if (a == null) return;
+      answers[p] = a;
+    }
+    const path: string = await call("capture_path", { file: t.file || cfg.config.inbox });
+    let at = [0, 0];
+    await recorded(() =>
+      toFile(path, async (text) => {
+        const [next, line, col] = await call<[string, number, number]>("capture_template", { text, heading: t.heading ?? null, body: t.body, answers, selection });
+        at = [line, col];
+        return next;
+      }),
+    );
+    await openFile(path, at[0]);
+    view.dispatch({ selection: { anchor: view.state.doc.line(at[0] + 1).from + at[1] }, scrollIntoView: true });
+    flash(`✓ Captured “${t.name}” to ${rel(path)}`);
+  }
+
   async function insertDate() {
     if (!inFile()) return;
     const input = await datePick("Insert date");
@@ -791,6 +820,7 @@
     { label: "Open note…", keys: ["Ctrl+P"], leader: ".", run: quickOpen },
     { label: "Search in all notes", keys: ["Ctrl+Shift+F"], leader: "/", run: search },
     { label: "New task", keys: ["Ctrl+N"], leader: "a", run: () => newTask() },
+    { label: "Capture with template…", leader: "c", run: captureTemplate },
     { label: "New note", keys: ["Ctrl+Shift+N"], leader: "n n", run: newNote },
     { label: "Today's journal", keys: ["Ctrl+J"], leader: "j", run: () => journal() },
     { label: "Journal for another day…", leader: "n J", run: journalPick },
