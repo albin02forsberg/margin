@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { EditorView } from "@codemirror/view";
   import type { EditorState } from "@codemirror/state";
@@ -12,7 +13,12 @@
   import TaskDialog from "$lib/TaskDialog.svelte";
 
   type View = "agenda" | "todo" | "time";
-  type Tab = { key: string; title: string; kind: "file" | "report" | View; path?: string; state?: EditorState; dirty: boolean };
+  /** SAVED: the text last read from / written to disk, to tell our own writes from outside changes.
+   *  REPORT: how to regenerate a report tab when the data changes. */
+  type Tab = {
+    key: string; title: string; kind: "file" | "report" | View; path?: string; state?: EditorState; dirty: boolean;
+    saved?: string; report?: { kind: string; dateInput?: string | null }; conflict?: boolean;
+  };
   type NoteNode = { id: string; title: string; path: string; line: number };
   type Hit = { path: string; title: string; line: number; text: string };
   type Target = { path: string; line: number | null; label: string };
@@ -78,8 +84,16 @@
       readOnly,
       ...kw(),
       onChange: () => {
+        if (syncing) return;
         const t = tabs.find((x) => x.key === key);
-        if (t?.kind === "file") t.dirty = true;
+        if (t?.kind !== "file") return;
+        t.dirty = true;
+        // Notes save themselves shortly after you stop typing, so tasks and links update live.
+        // Config and the raw time log only save on :w / tab switch, since half-typed edits there break things.
+        if (t.path!.startsWith(cfg.notes) && /\.org(_archive)?$/.test(t.path!)) {
+          clearTimeout(saveTimers.get(key));
+          saveTimers.set(key, setTimeout(() => act(() => saveTab(tabs.find((x) => x.key === key))), 700));
+        }
       },
     });
   }
@@ -102,13 +116,19 @@
     refreshBacklinks();
   }
 
-  async function saveTab(t?: Tab) {
-    if (!t || t.kind !== "file" || !t.dirty) return;
-    await call("write_file", { path: t.path, text: stateOf(t).doc.toString() });
-    t.dirty = false;
+  /** FORCE (from :w / Ctrl+S) also overwrites a file that changed on disk in a conflicting way. */
+  async function saveTab(t?: Tab, force = false) {
+    if (!t || t.kind !== "file" || !t.dirty || (t.conflict && !force)) return;
+    t.conflict = false;
+    clearTimeout(saveTimers.get(t.key));
+    const text = stateOf(t).doc.toString();
+    await call("write_file", { path: t.path, text });
+    t.saved = text;
+    // Keystrokes typed while the write was in flight keep the tab dirty.
+    if (stateOf(t).doc.toString() === text) t.dirty = false;
     if (t.path === cfg.log_path) {
       const r: string = await call("tc_report", { kind: "doctor" });
-      flash(r.includes("No issues") ? "Saved. Time log looks fine." : "Saved — the time log has problems, see Time → Check log");
+      if (!r.includes("No issues")) flash("Saved — the time log has problems, see Time → Check log");
     } else if (t.path === cfg.config_path) {
       cfg = await call("config");
       flash("Settings reloaded.");
@@ -126,7 +146,7 @@
     let i = tabs.findIndex((t) => t.kind === "file" && t.path === path);
     if (i < 0) {
       const text: string = await call("read_file", { path });
-      tabs.push({ key: path, title: niceName(path), kind: "file", path, dirty: false, state: newState(path, text, path) });
+      tabs.push({ key: path, title: niceName(path), kind: "file", path, dirty: false, saved: text, state: newState(path, text, path) });
       i = tabs.length - 1;
     }
     await show(i);
@@ -140,14 +160,15 @@
     }
   }
 
-  async function openReport(key: string, title: string, text: string) {
+  async function openReport(key: string, title: string, text: string, report?: Tab["report"]) {
     const state = newState(key, text, undefined, true);
     let i = tabs.findIndex((t) => t.key === key);
     if (i < 0) {
-      tabs.push({ key, title, kind: "report", dirty: false, state });
+      tabs.push({ key, title, kind: "report", dirty: false, state, report });
       i = tabs.length - 1;
     } else {
       tabs[i].state = state;
+      tabs[i].report = report;
       if (i === cur) cur = -1; // force the new state in
     }
     await show(i);
@@ -551,7 +572,7 @@
   }
 
   async function report(kind: string, title: string, dateInput?: string | null) {
-    await openReport(`report:${kind}`, title, await call("tc_report", { kind, dateInput }));
+    await openReport(`report:${kind}`, title, await call("tc_report", { kind, dateInput }), { kind, dateInput });
   }
 
   async function dailyReport() {
@@ -656,7 +677,8 @@
     { label: "Go to Time tracking", keys: ["Ctrl+4"], leader: "v c", run: () => openView("time") },
     { label: "Toggle sidebar", keys: ["Ctrl+\\"], leader: "v s", run: () => { sidebar = !sidebar; store("sidebar", sidebar ? "1" : "0"); } },
     { label: "Settings (config file)", keys: ["Ctrl+,"], leader: "f c", run: () => openFile(cfg.config_path) },
-    { label: "Save", keys: ["Ctrl+S"], leader: "f s", run: () => saveTab(tab) },
+    { label: "Save", keys: ["Ctrl+S"], leader: "f s", run: () => saveTab(tab, true) },
+    { label: "Reload from disk (discard unsaved changes)", leader: "f r", run: reloadFromDisk },
     { label: "Save all", leader: "f S", run: saveAll },
     { label: "Switch tab…", leader: "b b", run: switchTab },
     { label: "Next tab (also gt)", keys: ["Ctrl+Tab"], leader: "b n", run: () => cycleTab(1) },
@@ -768,20 +790,86 @@
 
   // ---------------------------------------------------------------- lifecycle
 
-  async function onFocus() {
-    // Pick up edits made outside the app (e.g. in Emacs) in clean tabs.
+  // ---------------------------------------------------------------- live sync
+
+  let syncing = false;
+  const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /** Replace a tab's text with TEXT without marking it edited. */
+  function replaceText(t: Tab, text: string) {
+    const st = stateOf(t);
+    const old = st.doc.toString();
+    if (old === text) return;
+    syncing = true;
+    try {
+      if (t === tabs[cur]) ed.applyText(view, text);
+      else t.state = st.update({ changes: ed.diffChange(old, text) }).state;
+    } finally {
+      syncing = false;
+    }
+  }
+
+  /** Bring every open tab, view, backlink list and the timer up to date with the disk. */
+  async function doSync() {
     for (const t of tabs) {
-      if (t.kind !== "file" || t.dirty) continue;
-      const disk = ((await call("read_file", { path: t.path })) as string).replace(/\r\n?/g, "\n");
-      const st = stateOf(t);
-      if (disk === st.doc.toString()) continue;
-      if (t === tabs[cur]) {
-        ed.applyText(view, disk);
-        t.dirty = false;
-      } else t.state = st.update({ changes: ed.diffChange(st.doc.toString(), disk) }).state;
+      if (t.kind === "report" && t.report) {
+        replaceText(t, await call("tc_report", t.report));
+      } else if (t.kind === "file") {
+        const disk = ((await call("read_file", { path: t.path })) as string).replace(/\r\n?/g, "\n");
+        if (disk === t.saved || disk === stateOf(t).doc.toString()) continue;
+        if (t.dirty) mergeFromDisk(t, disk);
+        else replaceText(t, disk);
+        t.saved = disk;
+      }
     }
     reload++;
     await refreshTc();
+    await refreshBacklinks();
+  }
+
+  /** The file changed on disk while T has unsaved edits: apply the disk change too if the two
+   *  edits don't overlap (e.g. a diary line appended while you edit above it); otherwise flag it. */
+  function mergeFromDisk(t: Tab, disk: string) {
+    const st = stateOf(t);
+    const mine = ed.diffChange(t.saved!, st.doc.toString());
+    const theirs = ed.diffChange(t.saved!, disk);
+    const shift = mine.insert.length - (mine.to - mine.from);
+    let at: { from: number; to: number } | null = null;
+    if (theirs.from > mine.to) at = { from: theirs.from + shift, to: theirs.to + shift };
+    else if (theirs.to < mine.from) at = { from: theirs.from, to: theirs.to };
+    if (!at) {
+      t.conflict = true;
+      flash(`⚠ “${t.title}” was changed elsewhere while you edited it. :w keeps yours, Space f r loads theirs.`);
+      return;
+    }
+    const change = { ...at, insert: theirs.insert };
+    syncing = true;
+    try {
+      if (t === tabs[cur]) view.dispatch({ changes: change });
+      else t.state = st.update({ changes: change }).state;
+    } finally {
+      syncing = false;
+    }
+  }
+
+  async function reloadFromDisk() {
+    if (!inFile()) return;
+    const disk = ((await call("read_file", { path: tab.path })) as string).replace(/\r\n?/g, "\n");
+    replaceText(tab, disk);
+    Object.assign(tab, { saved: disk, dirty: false, conflict: false });
+    flash("Reloaded from disk.");
+  }
+
+  // Coalesce bursts of change events into one sync at a time.
+  let syncChain = Promise.resolve();
+  let syncQueued = false;
+  function syncFromDisk() {
+    if (syncQueued) return;
+    syncQueued = true;
+    syncChain = syncChain.then(async () => {
+      syncQueued = false;
+      await doSync().catch((e) => flash(`⚠ ${e}`));
+    });
   }
 
   onMount(() => {
@@ -792,7 +880,7 @@
     act(async () => {
       cfg = await call("config");
       view = new EditorView({ parent: editorEl! });
-      ed.hooks.save = () => act(() => saveTab(tab));
+      ed.hooks.save = () => act(() => saveTab(tab, true));
       ed.hooks.close = () => act(() => closeTab());
       ed.hooks.follow = (target) => act(() => followLink(target ?? ed.linkAtCursor(view)));
       ed.hooks.tab = (d) => act(() => cycleTab(d));
@@ -801,12 +889,14 @@
     });
     const timer = setInterval(() => act(refreshTc), 60_000);
     const blur = () => act(saveAll);
-    const focus = () => act(onFocus);
+    const focus = () => syncFromDisk();
+    const unlisten = listen("fs-changed", () => syncFromDisk());
     window.addEventListener("keydown", onKey, true);
     window.addEventListener("blur", blur);
     window.addEventListener("focus", focus);
     return () => {
       clearInterval(timer);
+      unlisten.then((f) => f());
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("blur", blur);
       window.removeEventListener("focus", focus);
@@ -903,7 +993,7 @@
 
     <footer class="status">
       {#if isText(tab)}<span class="mode">{mode.toUpperCase()}</span>{/if}
-      <span class="file">{tab?.path ? rel(tab.path) : ""}{tab?.dirty ? " • unsaved" : ""}</span>
+      <span class="file">{tab?.path ? rel(tab.path) : ""}{tab?.conflict ? " • changed on disk (:w keeps yours, Space f r reloads)" : tab?.dirty ? " • unsaved" : ""}</span>
       <span class="msg">{message}</span>
       <button class="hint" onclick={() => act(palette)}>Space menu · {pretty("Ctrl")}+K commands</button>
     </footer>

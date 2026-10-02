@@ -11,6 +11,12 @@ npm run tauri build    # release bundle for the current OS
 cd src-tauri && cargo test
 ```
 
+Everything stays in sync on its own: notes save shortly after you stop typing,
+and any change to the notes or time folders — from the app, Emacs or a sync
+tool — refreshes open tabs, task lists, links, reports and the timer. If a file
+changes underneath unsaved edits, non-overlapping changes are merged; real
+conflicts are flagged (`:w` keeps yours, `Space f r` reloads).
+
 ## Getting around
 
 - **Ctrl+K** — command palette: every action, with its shortcut.

@@ -9,7 +9,8 @@ use config::Config;
 use serde_json::{json, Value};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use tauri::{Manager, RunEvent, State};
+use notify_debouncer_mini::{new_debouncer, notify, DebounceEventResult, Debouncer};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use timeclock::{format_hm, Project, Tc};
 
 type R<T> = Result<T, String>;
@@ -19,6 +20,7 @@ struct App {
     cfg: Mutex<Config>,
     profile: Mutex<String>,
     cache: org::Cache,
+    watcher: Mutex<Option<Debouncer<notify::RecommendedWatcher>>>,
 }
 
 impl App {
@@ -80,10 +82,39 @@ fn config(s: State<App>) -> Value {
 }
 
 #[tauri::command]
-fn reload_config(s: State<App>) -> R<()> {
+fn reload_config(app: AppHandle, s: State<App>) -> R<()> {
     *s.cfg.lock().unwrap() = Config::load(&s.cfg_path)?;
     s.cache.clear();
+    watch(&app);
     Ok(())
+}
+
+/// Watch the notes and data dirs; the UI gets an "fs-changed" event (with the
+/// changed paths) whenever anything there changes — our own writes, Emacs, sync tools.
+fn watch(app: &AppHandle) {
+    let s = app.state::<App>();
+    let c = s.cfg();
+    let handle = app.clone();
+    let debouncer = new_debouncer(std::time::Duration::from_millis(150), move |res: DebounceEventResult| {
+        let Ok(events) = res else { return };
+        let mut paths: Vec<PathBuf> = events.into_iter().map(|e| e.path).filter(|p| !p.components().any(|c| c.as_os_str() == ".git")).collect();
+        paths.sort();
+        paths.dedup();
+        if !paths.is_empty() {
+            let _ = handle.emit("fs-changed", paths);
+        }
+    });
+    let mut d = match debouncer {
+        Ok(d) => d,
+        Err(e) => return eprintln!("file watching unavailable: {e}"),
+    };
+    for dir in [c.notes(), c.data()] {
+        let _ = std::fs::create_dir_all(&dir);
+        if let Err(e) = d.watcher().watch(&dir, notify::RecursiveMode::Recursive) {
+            eprintln!("can't watch {}: {e}", dir.display());
+        }
+    }
+    *s.watcher.lock().unwrap() = Some(d);
 }
 
 #[tauri::command]
@@ -100,14 +131,14 @@ fn read_file(s: State<App>, path: PathBuf) -> R<String> {
 }
 
 #[tauri::command]
-fn write_file(s: State<App>, path: PathBuf, text: String) -> R<()> {
+fn write_file(app: AppHandle, s: State<App>, path: PathBuf, text: String) -> R<()> {
     s.check(&path)?;
     if let Some(d) = path.parent() {
         std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
     }
     std::fs::write(&path, text).map_err(|e| e.to_string())?;
     if path == s.cfg_path {
-        reload_config(s)?;
+        reload_config(app, s)?;
     }
     Ok(())
 }
@@ -463,7 +494,8 @@ pub fn run() {
             });
             let saved = std::fs::read_to_string(cfg.data().join("active-profile.txt")).unwrap_or_default();
             let profile = cfg.profiles.iter().find(|p| **p == saved.trim()).or(cfg.profiles.first()).cloned().unwrap_or("Work".into());
-            app.manage(App { cfg_path, cfg: Mutex::new(cfg), profile: Mutex::new(profile), cache: Default::default() });
+            app.manage(App { cfg_path, cfg: Mutex::new(cfg), profile: Mutex::new(profile), cache: Default::default(), watcher: Mutex::new(None) });
+            watch(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
