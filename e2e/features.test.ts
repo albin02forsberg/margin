@@ -103,7 +103,7 @@ describe("Features", () => {
 
   it("lists an unlinked mention and links it", async () => {
     await browser.keys([Key.Ctrl, "p"]);
-    await answer("Open a note", "alpha");
+    await answer("Open a note", "Alpha Project"); // by #+title, though alpha.org has no :ID:
     await find(".status .file", "alpha.org");
     await browser.keys(" ");
     await type("nb");

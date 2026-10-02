@@ -532,8 +532,8 @@
   }
 
   async function noteItems() {
-    const [files, nodes] = await Promise.all([call<string[]>("list_files"), call<NoteNode[]>("notes_nodes")]);
-    const titles = new Map(nodes.filter((n) => n.line === 0).map((n) => [n.path, n.title]));
+    const [files, nodes, t] = await Promise.all([call<string[]>("list_files"), call<NoteNode[]>("notes_nodes"), call<Record<string, string>>("note_titles")]);
+    const titles = new Map(Object.entries(t));
     const order = (p: string) => (recent.includes(p) ? recent.indexOf(p) : 1e9);
     return { files, nodes, titles, sorted: [...files].sort((a, b) => order(a) - order(b)) };
   }

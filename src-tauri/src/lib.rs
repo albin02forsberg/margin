@@ -436,6 +436,12 @@ fn notes_new(s: State<App>, title: String) -> R<notes::Node> {
     Ok(notes::Node { id, title, path, line: 0 })
 }
 
+/// Every note's title (`#+title`, else the file name), with or without an ID.
+#[tauri::command]
+fn note_titles(s: State<App>) -> std::collections::HashMap<PathBuf, String> {
+    s.files().iter().map(|f| (f.path.clone(), f.title.clone())).collect()
+}
+
 #[tauri::command]
 fn notes_nodes(s: State<App>) -> Vec<notes::Node> {
     notes::nodes(&s.files())
@@ -845,7 +851,7 @@ pub fn run() {
             config, tutorial, reload_config, save_view, list_files, read_file, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
-            notes_new, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
+            notes_new, note_titles, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, activity_suggestions, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_linked, export_report, export_open
