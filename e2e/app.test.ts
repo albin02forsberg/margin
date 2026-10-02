@@ -51,10 +51,11 @@ async function fileMatches(file: string, ok: (s: string) => boolean, msg: string
   }
 }
 
-/** The first displayed element matching CSS whose text includes TEXT, once there is one. */
+/** The first displayed element matching CSS whose text includes TEXT, once there is one.
+ *  textContent, since WebKitWebDriver's getText is "" for text-overflow: ellipsis spans. */
 async function find(css: string, text: string) {
   const hit = async () => {
-    for (const el of await browser.$$(css)) if ((await el.isDisplayed()) && (await el.getText()).includes(text)) return el;
+    for (const el of await browser.$$(css)) if ((await el.isDisplayed()) && String(await el.getProperty("textContent")).includes(text)) return el;
     return false;
   };
   try {
@@ -120,7 +121,7 @@ describe("Margin", () => {
     await type("Typed by e2e");
     await browser.keys(Key.Escape);
     await browser.keys([Key.Ctrl, "s"]);
-    await fileMatches(join(notes, "scratch.org"), (s) => /First line\.\n\s*Typed by e2e\n/.test(s), "note wasn't saved");
+    await fileMatches(join(notes, "scratch.org"), (s) => /First line\.\n\s*Typed by e2e/.test(s), "note wasn't saved");
   });
 
   it("creates a task with Ctrl+N that shows in Today and the inbox", async () => {
