@@ -3,7 +3,7 @@
 export type Pt = { x: number; y: number };
 
 /** Positions for N nodes joined by EDGES, node 0 pinned at the origin. Deterministic: same input, same picture. */
-// ponytail: O(n²) repulsion per step; fine for a ±2-hop neighbourhood, use a quadtree past ~500 nodes.
+// ponytail: O(n²) repulsion per step; the backend caps graphs at 150 nodes, use a quadtree to lift that.
 export function layout(n: number, edges: [number, number][], steps = 300, k = 60): Pt[] {
   // Start on a golden-angle spiral so nothing overlaps and reruns don't jump around.
   const p: Pt[] = Array.from({ length: n }, (_, i) => ({ x: k * Math.sqrt(i) * Math.cos(i * 2.4), y: k * Math.sqrt(i) * Math.sin(i * 2.4) }));
