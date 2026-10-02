@@ -1,5 +1,6 @@
 mod backup;
 mod config;
+mod ics;
 mod notes;
 mod org;
 mod remind;
@@ -104,6 +105,7 @@ fn watch(app: &AppHandle) {
         paths.dedup();
         if !paths.is_empty() {
             tray::refresh(&handle);
+            write_calendar(&handle);
             let _ = handle.emit("fs-changed", paths);
         }
     });
@@ -491,6 +493,22 @@ fn backup_now(s: State<App>) -> String {
     backup::last_failure().map_or("☁ Backup done.".into(), |f| format!("⚠ Backup failed: {f}"))
 }
 
+/// Rewrite the calendar feed if it's enabled and changed (unchanged, so no watcher loop).
+fn write_calendar(app: &AppHandle) {
+    let s = app.state::<App>();
+    let c = s.cfg();
+    if c.calendar_file.is_empty() {
+        return;
+    }
+    let path = config::expand(&c.calendar_file);
+    let text = ics::feed(&s.files(), &s.kw());
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(&text) {
+        if let Err(e) = std::fs::write(&path, text) {
+            eprintln!("calendar {}: {e}", path.display());
+        }
+    }
+}
+
 /// Quick capture: show the new-task form, telling the frontend whether the window was hidden.
 fn capture(app: &AppHandle) {
     let hidden = app.get_webview_window("main").is_some_and(|w| !w.is_visible().unwrap_or(true));
@@ -524,6 +542,7 @@ pub fn run() {
             let profile = cfg.profiles.iter().find(|p| **p == saved.trim()).or(cfg.profiles.first()).cloned().unwrap_or("Work".into());
             app.manage(App { cfg_path, cfg: Mutex::new(cfg), profile: Mutex::new(profile), cache: Default::default(), watcher: Mutex::new(None) });
             watch(app.handle());
+            write_calendar(app.handle());
             tray::setup(app.handle())?;
             app.handle().plugin(tauri_plugin_notification::init())?;
             remind::start(app.handle());

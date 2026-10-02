@@ -185,6 +185,13 @@ pop up a desktop notification 10 minutes before; date-only deadlines remind you
 once a day from the day before. Settings: `reminders`, `remind_before_minutes`,
 `deadline_warning_days`.
 
+## Calendar
+
+Set `calendar_file` (e.g. `"~/Sync/margin.ics"`) and Margin keeps an iCalendar
+file of open tasks' schedules, deadlines and appointments up to date, with
+repeaters. Subscribe to it from your calendar app (or a synced copy of it).
+Timed entries show as one hour; the rest are all-day.
+
 ## Settings
 
 Ctrl+, opens `config.toml` (in the OS config dir): notes folder (`~/notes`),

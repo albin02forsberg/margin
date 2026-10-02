@@ -26,6 +26,8 @@ pub struct Config {
     pub deadline_warning_days: i64,
     /// Saved task searches shown in the sidebar: `[[views]] name = "…" query = "…"`.
     pub views: Vec<View>,
+    /// Where to keep a calendar (.ics) of scheduled tasks and deadlines; empty for none.
+    pub calendar_file: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -53,6 +55,7 @@ impl Default for Config {
             remind_before_minutes: 10,
             deadline_warning_days: 1,
             views: vec![],
+            calendar_file: String::new(),
         }
     }
 }
