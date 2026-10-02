@@ -15,6 +15,7 @@ the editor has vim keys.
   the window or the tray.
 - **Stays in sync** with Emacs, git or any sync tool editing the same files,
   and updates itself from GitHub releases.
+  The running version shows at the bottom of the sidebar (and under "About Margin" in the palette).
 
 ![Today: scheduled tasks, deadlines, a habit and the running timer](docs/screenshots/today.png)
 
