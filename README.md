@@ -122,6 +122,10 @@ the week's hours against expected, flex balance and per-project totals. Keys:
 `i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV.
 Space t … has every timeclock command (same letters as the old Emacs menu).
 
+The tray icon shows what you're tracking and for how long, and has start,
+break, resume, switch and stop. Closing the window while a timer runs hides it
+to the tray (`close_to_tray = false` in settings to quit instead).
+
 ## Settings
 
 Ctrl+, opens `config.toml` (in the OS config dir): notes folder (`~/notes`),

@@ -15,6 +15,8 @@ pub struct Config {
     pub daily_dir: String,
     /// Where new tasks go by default, relative to notes_dir.
     pub inbox: String,
+    /// Closing the window while a timer runs hides it to the tray instead of quitting.
+    pub close_to_tray: bool,
 }
 
 impl Default for Config {
@@ -30,6 +32,7 @@ impl Default for Config {
             done_keywords: v(&["DONE", "CANCELLED"]),
             daily_dir: "daily".into(),
             inbox: "inbox.org".into(),
+            close_to_tray: true,
         }
     }
 }

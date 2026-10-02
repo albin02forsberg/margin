@@ -3,6 +3,7 @@ mod config;
 mod notes;
 mod org;
 mod timeclock;
+mod tray;
 
 use chrono::{Duration, NaiveDate};
 use config::Config;
@@ -10,7 +11,7 @@ use serde_json::{json, Value};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use notify_debouncer_mini::{new_debouncer, notify, DebounceEventResult, Debouncer};
-use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WindowEvent};
 use timeclock::{format_hm, Project, Tc};
 
 type R<T> = Result<T, String>;
@@ -101,6 +102,7 @@ fn watch(app: &AppHandle) {
         paths.sort();
         paths.dedup();
         if !paths.is_empty() {
+            tray::refresh(&handle);
             let _ = handle.emit("fs-changed", paths);
         }
     });
@@ -499,7 +501,17 @@ pub fn run() {
             let profile = cfg.profiles.iter().find(|p| **p == saved.trim()).or(cfg.profiles.first()).cloned().unwrap_or("Work".into());
             app.manage(App { cfg_path, cfg: Mutex::new(cfg), profile: Mutex::new(profile), cache: Default::default(), watcher: Mutex::new(None) });
             watch(app.handle());
+            tray::setup(app.handle())?;
             Ok(())
+        })
+        .on_window_event(|w, ev| {
+            if let WindowEvent::CloseRequested { api, .. } = ev {
+                let app = w.app_handle();
+                if app.state::<App>().cfg().close_to_tray && tray::tracking(app) {
+                    api.prevent_close();
+                    let _ = w.hide();
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             config, reload_config, list_files, read_file, write_file,
@@ -513,8 +525,11 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, ev| {
             // Replaces kill-emacs-hook: commit on exit.
-            if let RunEvent::ExitRequested { .. } = ev {
-                app.state::<App>().backup();
+            match ev {
+                RunEvent::ExitRequested { .. } => app.state::<App>().backup(),
+                #[cfg(target_os = "macos")]
+                RunEvent::Reopen { .. } => tray::show(app), // dock icon click after hiding to tray
+                _ => {}
             }
         });
 }
