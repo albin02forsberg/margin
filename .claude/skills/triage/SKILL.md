@@ -9,6 +9,7 @@ Run the `triager` agent (`.claude/agents/triager.md`) in the background, without
 - Prompt: "Do a pass" (limited to the given issue numbers, if any). If `watch` was passed, add "then watch mode".
 - When it reports, relay to the owner briefly:
   - the issues it planned (links);
+  - issues it closed as duplicates or already done, and ones it flagged but left open for the owner to close;
   - the ready-to-build issues, with their sizes;
   - the decisions only the owner can make.
 - Ready issues still need the owner's `approved` label before `/ship` builds them, unless the owner names them directly (`/ship 63 65`).
