@@ -127,7 +127,12 @@ pub struct GraphNode {
 pub struct Graph {
     pub nodes: Vec<GraphNode>,
     pub edges: Vec<(usize, usize)>,
+    /// Notes left out to keep the picture readable (and the layout fast).
+    pub hidden: usize,
 }
+
+/// At most this many nodes; nearer notes are kept first.
+const MAX_NODES: usize = 150;
 
 pub fn graph(files: &[Arc<OrgFile>], path: &Path, depth: usize) -> Graph {
     let Some(start) = files.iter().position(|f| f.path == path) else { return Graph::default() };
@@ -158,8 +163,10 @@ pub fn graph(files: &[Arc<OrgFile>], path: &Path, depth: usize) -> Graph {
         for &j in &adj[i] {
             if !hops.contains_key(&j) {
                 hops.insert(j, hops[&i] + 1);
-                order.push(j);
-                queue.push_back(j);
+                if order.len() < MAX_NODES {
+                    order.push(j);
+                    queue.push_back(j);
+                }
             }
         }
     }
@@ -169,7 +176,7 @@ pub fn graph(files: &[Arc<OrgFile>], path: &Path, depth: usize) -> Graph {
         edges.extend(adj[i].iter().filter_map(|j| idx.get(j)).filter(|&&m| m > k).map(|&m| (k, m)));
     }
     let nodes = order.iter().map(|&i| GraphNode { path: files[i].path.clone(), title: files[i].title.clone(), hops: hops[&i] }).collect();
-    Graph { nodes, edges }
+    Graph { nodes, edges, hidden: hops.len() - order.len() }
 }
 
 /// A plain-text occurrence of a note's title; COL/LEN in UTF-16 units, for the editor.
@@ -186,15 +193,20 @@ pub struct Mention {
 /// Places in other files where PATH's title appears (case-insensitive, whole word)
 /// outside any link, on lines that don't already link to it. READ gives a file's text.
 // ponytail: reads every file per call, like `search`; cache texts if it gets slow.
-pub fn unlinked(files: &[Arc<OrgFile>], path: &Path, read: impl Fn(&Path) -> Option<String>) -> Vec<Mention> {
-    let Some(f) = files.iter().find(|f| f.path == path && !f.title.trim().is_empty()) else { return vec![] };
-    let title = f.title.trim();
+pub fn unlinked(files: &[Arc<OrgFile>], path: &Path) -> Vec<Mention> {
+    let Some(f) = files.iter().find(|f| f.path == path) else { return vec![] };
+    // The title and aliases, longest first so "Zettel box" wins over "Zettel".
+    let mut names: Vec<&str> = std::iter::once(f.title.trim()).chain(f.aliases.iter().map(|a| a.trim())).filter(|n| !n.is_empty()).collect();
+    names.sort_by_key(|n| std::cmp::Reverse(n.len()));
+    if names.is_empty() {
+        return vec![];
+    }
     let word = |c: Option<char>| if c.is_some_and(|c| c.is_alphanumeric() || c == '_') { r"\b" } else { "" };
-    let Ok(re) = Regex::new(&format!("(?i){}{}{}", word(title.chars().next()), regex::escape(title), word(title.chars().last()))) else { return vec![] };
+    let alts: Vec<String> = names.iter().map(|n| format!("{}{}{}", word(n.chars().next()), regex::escape(n), word(n.chars().last()))).collect();
+    let Ok(re) = Regex::new(&format!("(?i){}", alts.join("|"))) else { return vec![] };
     let mut out = vec![];
     for o in files.iter().filter(|o| o.path != path) {
-        let Some(text) = read(&o.path) else { continue };
-        for (i, l) in text.lines().enumerate() {
+        for (i, l) in o.text.lines().enumerate() {
             let t = l.trim_start();
             if t.starts_with("#+") || t.starts_with(':') || o.links.iter().any(|k| k.line == i && points_to(o, k, f)) {
                 continue;
@@ -232,8 +244,7 @@ pub fn search(files: &[Arc<OrgFile>], query: &str, limit: usize) -> Vec<Hit> {
     let q = query.to_lowercase();
     let mut out = vec![];
     for f in files {
-        let Ok(text) = std::fs::read_to_string(&f.path) else { continue };
-        for (i, l) in text.lines().enumerate() {
+        for (i, l) in f.text.lines().enumerate() {
             if l.to_lowercase().contains(&q) {
                 out.push(Hit { path: f.path.clone(), title: f.title.clone(), line: i, text: l.trim().to_string() });
                 if out.len() >= limit {
@@ -288,6 +299,11 @@ mod tests {
         assert_eq!(g.edges, vec![(0, 1), (0, 2), (1, 3), (2, 4)]);
         assert_eq!(graph(&fs, Path::new("/n/y.org"), 2).nodes.len(), 1);
         assert_eq!(graph(&fs, Path::new("/n/none.org"), 2), Graph::default());
+        // A hub with more neighbours than fit: nearest kept, the rest counted.
+        let docs: Vec<(String, String)> = (0..200).map(|i| (format!("/n/{i}.org"), if i == 0 { String::new() } else { "[[file:0.org]]\n".into() })).collect();
+        let docs: Vec<(&str, &str)> = docs.iter().map(|(p, t)| (p.as_str(), t.as_str())).collect();
+        let g = graph(&files(&docs), Path::new("/n/0.org"), 2);
+        assert_eq!((g.nodes.len(), g.hidden, g.edges.len()), (MAX_NODES, 200 - MAX_NODES, MAX_NODES - 1));
         assert_eq!(resolve(Path::new("/n/sub/c.org"), "../d.org::foo"), PathBuf::from("/n/d.org"));
     }
 
@@ -297,10 +313,19 @@ mod tests {
             ("/n/zk.org", ":PROPERTIES:\n:ID: zk\n:END:\n#+title: Zettel Box\nzettel box itself\n"),
             ("/n/m.org", "#+title: zettel box notes\nI keep a ZETTEL BOX. ö Zettel box!\nzettel boxes and myzettel box\nsee [[id:zk][Zettel Box]], also zettel box\n[[file:other.org][zettel box]] zettel box\n"),
         ];
-        let texts: HashMap<_, _> = docs.iter().map(|(p, t)| (PathBuf::from(p), t.to_string())).collect();
-        let got: Vec<_> = unlinked(&files(&docs), Path::new("/n/zk.org"), |p| texts.get(p).cloned()).into_iter().map(|m| (m.line, m.col, m.len)).collect();
+        let got: Vec<_> = unlinked(&files(&docs), Path::new("/n/zk.org")).into_iter().map(|m| (m.line, m.col, m.len)).collect();
         // line 1 twice (ö is one UTF-16 unit), line 2 has no whole-word match, line 3 already links, line 4 only outside the link.
         assert_eq!(got, vec![(1, 9, 10), (1, 23, 10), (4, 31, 10)]);
+
+        // Aliases match too, the longest name first.
+        let docs = [
+            ("/n/zk.org", ":PROPERTIES:\n:ID: zk\n:ROAM_ALIASES: \"slip box\" ZK\n:END:\n#+title: Zettelkasten\n"),
+            ("/n/m.org", "My slip box, aka zk, not zkx. Zettelkasten!\n"),
+        ];
+        let f = files(&docs);
+        assert_eq!(f[0].aliases, ["slip box", "ZK"]);
+        let got: Vec<_> = unlinked(&f, Path::new("/n/zk.org")).into_iter().map(|m| (m.col, m.len)).collect();
+        assert_eq!(got, vec![(3, 8), (17, 2), (30, 12)]);
     }
 
     #[test]

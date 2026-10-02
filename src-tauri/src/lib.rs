@@ -364,7 +364,7 @@ fn notes_graph(s: State<App>, path: PathBuf) -> notes::Graph {
 
 #[tauri::command]
 fn notes_unlinked(s: State<App>, path: PathBuf) -> Vec<notes::Mention> {
-    notes::unlinked(&s.files(), &path, |p| std::fs::read_to_string(p).ok())
+    notes::unlinked(&s.files(), &path)
 }
 
 #[tauri::command]

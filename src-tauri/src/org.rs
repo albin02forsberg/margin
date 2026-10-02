@@ -14,6 +14,7 @@ use std::time::SystemTime;
 static TS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"<(\d{4}-\d{2}-\d{2})(?:\s+[^\s>\d]+)?(?:\s+(\d{1,2}:\d{2})(?:-\d{1,2}:\d{2})?)?(?:\s+(\.\+|\+\+|\+)(\d+)([hdwmy])(?:/(\d+)([hdwmy]))?)?[^>]*>").unwrap()
 });
+static ALIAS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#""([^"]+)"|(\S+)"#).unwrap());
 static TS_HEAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<\d{4}-\d{2}-\d{2}(?:\s+[^\s>\d]+)?").unwrap());
 static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[(id|file):([^\]]+)\](?:\[([^\]]*)\])?\]").unwrap());
 static TAGS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+(:[^\s]+:)\s*$").unwrap());
@@ -81,6 +82,10 @@ pub struct OrgFile {
     pub id: Option<String>,
     pub headlines: Vec<Headline>,
     pub links: Vec<Link>,
+    /// `:ROAM_ALIASES:` of the file ("quoted names" may contain spaces).
+    pub aliases: Vec<String>,
+    /// The text it was parsed from, so searches needn't re-read the file.
+    pub text: String,
 }
 
 fn parse_ts(c: &regex::Captures) -> Option<Ts> {
@@ -133,7 +138,7 @@ pub(crate) fn split_headline(line: &str, kw: &Kw) -> Option<HeadParts> {
 pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
     let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
     let lines: Vec<&str> = text.lines().collect();
-    let mut f = OrgFile { path: path.to_path_buf(), title: stem.clone(), ..Default::default() };
+    let mut f = OrgFile { path: path.to_path_buf(), title: stem.clone(), text: text.to_string(), ..Default::default() };
     let mut file_cat = stem;
     let mut cats: Vec<(usize, String)> = vec![]; // (level, category) stack
     let mut cur: Option<Headline> = None;
@@ -167,6 +172,8 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
                     f.id = Some(c[2].to_string());
                 } else if c[1].eq_ignore_ascii_case("CATEGORY") {
                     file_cat = c[2].to_string();
+                } else if c[1].eq_ignore_ascii_case("ROAM_ALIASES") {
+                    f.aliases = ALIAS.captures_iter(&c[2]).map(|a| a.get(1).or(a.get(2)).unwrap().as_str().to_string()).collect();
                 }
             }
             continue;
