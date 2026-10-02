@@ -493,7 +493,7 @@ pub fn org_table(rows: &[Vec<String>]) -> String {
 }
 
 fn session_line(s: &Session, indent: &str) -> String {
-    format!("{indent}- [{} - {}] *{}* ({:.2} h) » {}\n", s.start.format("%H:%M:%S"), s.end.format("%H:%M:%S"), s.project, s.hours, s.desc)
+    format!("{indent}- [{} - {}] *{}* ({:.2} h) » {}\n", s.start.format("%H:%M:%S"), s.end.format("%H:%M:%S"), or_other(&s.project), s.hours, s.desc)
 }
 
 pub fn daily_report(sessions: &[Session], projects: &Projects, date: NaiveDate, profile: &str) -> String {
@@ -511,9 +511,8 @@ pub fn daily_report(sessions: &[Session], projects: &Projects, date: NaiveDate, 
     o
 }
 
-pub fn weekly_report(sessions: &[Session], projects: &Projects, today: NaiveDate, profile: &str) -> String {
-    let start = today - Duration::days(7);
-    let in_range = |s: &&Session| start <= s.date && s.date <= today;
+pub fn weekly_report(sessions: &[Session], projects: &Projects, start: NaiveDate, end: NaiveDate, profile: &str) -> String {
+    let in_range = |s: &&Session| start <= s.date && s.date <= end;
     let merged = prepare_report_sessions(sessions);
     let rounded = apply_carry(&merged, projects).0;
     let mut raw_by: HashMap<&str, f64> = HashMap::new();
@@ -529,7 +528,7 @@ pub fn weekly_report(sessions: &[Session], projects: &Projects, today: NaiveDate
     let total_raw: f64 = raw_by.values().sum();
     let total_rnd: f64 = rnd_by.values().sum();
     let count: usize = by_day.values().map(Vec::len).sum();
-    let mut o = format!("#+TITLE: Time Report ({profile})\n#+SUBTITLE: {start} to {today}\n\n* Summary\n");
+    let mut o = format!("#+TITLE: Time Report ({profile})\n#+SUBTITLE: {start} to {end}\n\n* Summary\n");
     o += &format!("  - Hours worked: {total_raw:.2} h\n  - Billable: {total_rnd:.2} h\n  - Sessions: {count}\n\n* Project Breakdown\n");
     let mut rows = vec![["Project", "Code", "Worked", "Billable", "Share"].map(String::from).to_vec()];
     let mut projs: Vec<(&str, f64)> = rnd_by.into_iter().collect();

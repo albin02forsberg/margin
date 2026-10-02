@@ -2,7 +2,7 @@
   export type Session = { date: string; project: string; desc: string; hours: number; start: string; end: string; line: number | null };
   export type TimeApi = {
     act: (f: () => unknown) => void;
-    /** Named actions: start, stop, pause, resume, switch, adjust, editSession, export, projects,
+    /** Named actions: start, stop, pause, resume, switch, adjust, editSession, export, exportReport, projects,
      *  profile, holidays, daily, weekly, doctor, backup, backupLog, rawLog, import. */
     run: (name: string, arg?: unknown) => Promise<void>;
   };
@@ -43,7 +43,7 @@
   const todayIso = $derived(new Date().toLocaleDateString("sv-SE"));
   const signed = (h: number) => `${h >= 0 ? "+" : "−"}${hm(Math.abs(h))}`;
 
-  const KEYS: Record<string, string> = { i: "start", o: "stop", p: "pause", r: "resume", c: "switch", a: "adjust", e: "export", t: "daily", w: "weekly" };
+  const KEYS: Record<string, string> = { i: "start", o: "stop", p: "pause", r: "resume", c: "switch", a: "adjust", e: "export", E: "exportReport", t: "daily", w: "weekly" };
   function key(e: KeyboardEvent) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const name = KEYS[e.key];
@@ -162,6 +162,7 @@
         <button onclick={() => run("daily")}><kbd>t</kbd>Day report</button>
         <button onclick={() => run("weekly")}><kbd>w</kbd>Week report</button>
         <button onclick={() => run("export")}><kbd>e</kbd>Export CSV…</button>
+        <button onclick={() => run("exportReport")}><kbd>E</kbd>Export report (HTML/PDF)…</button>
         <button onclick={() => run("projects")}>Project settings…</button>
         <button onclick={() => run("holidays")}>Public holidays</button>
         <button onclick={() => run("doctor")}>Check log for problems</button>

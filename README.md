@@ -171,7 +171,8 @@ vmedian abs round floor ceil sqrt exp ln`; format with `;%.2f` or `;%d`.
 
 The Time view shows what you're tracking, today's sessions (click ✎ to edit),
 the week's hours against expected, flex balance and per-project totals. Keys:
-`i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV.
+`i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV,
+`E` export a report as HTML/PDF.
 Space t … has every timeclock command (same letters as the old Emacs menu).
 
 The tray icon shows what you're tracking and for how long, and has start,
@@ -182,6 +183,16 @@ Coming back after 10 minutes idle (or asleep) with a timer running asks whether
 to keep that time, discard it (clocked out when you left, back in when you
 returned) or discard it and stop. `idle_threshold_minutes` sets the time, 0
 turns it off. Under Wayland only sleep and suspend are noticed, not idling.
+
+## Export
+
+`Space e` exports the open note (including unsaved edits) as HTML (`e h`),
+Markdown (`e m`) or PDF (`e p`), and the time report for the last 7 days, this
+month or last month as HTML or PDF (`e t`, or `E` in the Time view). Files go to
+`export_dir` (default `~/Desktop`). PDF writes the HTML page and opens it in your
+browser with the print dialog up — choose "Save as PDF" there. Property drawers,
+planning lines, comments and `#+` keywords other than the title are left out;
+`id:` links become plain text and images link to the original files.
 
 ## Reminders
 
