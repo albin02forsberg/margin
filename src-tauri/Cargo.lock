@@ -2243,6 +2243,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "notify-debouncer-mini",
+ "notify-rust",
  "regex",
  "serde",
  "serde_json",

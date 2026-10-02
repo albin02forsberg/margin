@@ -235,7 +235,8 @@ planning lines, comments and `#+` keywords other than the title are left out;
 
 Timed entries (`SCHEDULED: <… 14:00>`, deadlines with a time, appointments)
 pop up a desktop notification 10 minutes before; date-only deadlines remind you
-once a day from the day before. Settings: `reminders`, `remind_before_minutes`,
+once a day from the day before. Clicking one opens the task (Linux; elsewhere
+notifications are display-only for now). Settings: `reminders`, `remind_before_minutes`,
 `deadline_warning_days`.
 
 ## Calendar
