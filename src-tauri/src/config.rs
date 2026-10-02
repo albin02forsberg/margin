@@ -115,9 +115,32 @@ impl Config {
     }
 }
 
+/// TEXT (a config.toml) with a `[[views]]` entry appended; errors if the result won't load.
+pub fn add_view(text: &str, name: &str, query: &str) -> Result<String, String> {
+    // The defaults written on first run say `views = []`, which a `[[views]]` table would redefine.
+    let mut out: String = text.lines().filter(|l| l.trim() != "views = []").map(|l| format!("{l}\n")).collect();
+    let q = |s: &str| toml::Value::String(s.into()).to_string();
+    out += &format!("\n[[views]]\nname = {}\nquery = {}\n", q(name), q(query));
+    toml::from_str::<Config>(&out).map_err(|e| format!("can't add the view to config.toml: {e}"))?;
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn add_views() {
+        let first = toml::to_string(&Config::default()).unwrap();
+        let s = add_view(&first, "Work \"now\"", r"tag:work due:<=+7d \x").unwrap();
+        let c: Config = toml::from_str(&s).unwrap();
+        assert_eq!((c.views[0].name.as_str(), c.views[0].query.as_str()), ("Work \"now\"", r"tag:work due:<=+7d \x"));
+        let s = add_view(&s, "Next", "todo:NEXT").unwrap();
+        assert_eq!(toml::from_str::<Config>(&s).unwrap().views.len(), 2);
+        let mine = "# my notes\nnotes_dir = \"~/org\" # here\n\n[[views]]\nname = \"A\"\nquery = \"a\"\n";
+        assert!(add_view(mine, "B", "b").unwrap().starts_with(mine)); // comments kept
+        assert!(add_view("views = [{ name = \"A\", query = \"a\" }]\n", "B", "b").is_err());
+    }
 
     #[test]
     fn defaults_round_trip() {

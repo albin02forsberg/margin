@@ -395,12 +395,12 @@ pub fn agenda(files: &[Arc<OrgFile>], kw: &Kw, start: NaiveDate, days: i64, toda
     out
 }
 
-/// Open tasks for which KEEP holds, by priority then date.
-pub fn todos(files: &[Arc<OrgFile>], kw: &Kw, keep: impl Fn(&OrgFile, &Headline) -> bool) -> Vec<Item> {
+/// Tasks for which KEEP holds (open ones only, unless DONE), by priority then date.
+pub fn todos(files: &[Arc<OrgFile>], kw: &Kw, done: bool, keep: impl Fn(&OrgFile, &Headline) -> bool) -> Vec<Item> {
     let mut out = vec![];
     for f in files {
         for h in &f.headlines {
-            if let Some(k) = h.keyword.as_deref().filter(|k| !kw.is_done(k) && keep(f, h)) {
+            if let Some(k) = h.keyword.as_deref().filter(|k| (done || !kw.is_done(k)) && keep(f, h)) {
                 let date = h.scheduled.as_ref().or(h.deadline.as_ref()).map_or(NaiveDate::MAX, |t| t.date);
                 out.push(item(f, h, date, "todo", k.to_string(), None));
             }
@@ -416,39 +416,62 @@ type Filter = Box<dyn Fn(&OrgFile, &Headline) -> bool>;
 
 /// Parse a task query: space-separated terms, all of which must hold. `todo:NEXT`,
 /// `tag:work`, `pri:A`, `file:inbox` (file name contains), `scheduled:` / `due:` with
-/// an optional `<`, `<=`, `>`, `>=` before a read_date date (`due:<+7d`, `due:today`);
-/// anything else must appear in the title. A leading `-` negates a term.
-pub fn query(q: &str, today: NaiveDate) -> Result<Filter, String> {
+/// an optional `<`, `<=`, `>`, `>=` before a read_date date (`due:<+7d`, `due:today`)
+/// or `none` / `any`; anything else (or a `"quoted phrase"`) must appear in the title.
+/// A leading `-` negates a term. The bool says whether done tasks should be searched
+/// too, i.e. the query asks for a done keyword (`todo:DONE`).
+pub fn query(q: &str, today: NaiveDate, kw: &Kw) -> Result<(Filter, bool), String> {
+    let mut words = vec![];
+    let (mut cur, mut quoted) = (String::new(), false);
+    for c in q.chars() {
+        if c == '"' {
+            quoted = !quoted;
+        } else if c.is_whitespace() && !quoted {
+            if !cur.is_empty() {
+                words.push(std::mem::take(&mut cur));
+            }
+            continue;
+        }
+        cur.push(c);
+    }
+    words.extend(Some(cur).filter(|c| !c.is_empty()));
     let mut terms: Vec<Filter> = vec![];
-    for word in q.split_whitespace() {
+    let mut done = false;
+    for word in &words {
         let (neg, w) = match word.strip_prefix('-') {
             Some(w) if !w.is_empty() => (true, w),
-            _ => (false, word),
+            _ => (false, word.as_str()),
         };
-        let (key, val) = w.split_once(':').unwrap_or(("", w));
+        let (key, val) = if w.starts_with('"') { ("", w.trim_matches('"')) } else { w.split_once(':').unwrap_or(("", w)) };
         let v = val.to_lowercase();
         let t: Filter = match key.to_lowercase().as_str() {
-            "todo" => Box::new(move |_, h| h.keyword.as_ref().is_some_and(|k| k.to_lowercase() == v)),
+            "todo" => {
+                done |= !neg && kw.done.iter().any(|k| k.to_lowercase() == v);
+                Box::new(move |_, h| h.keyword.as_ref().is_some_and(|k| k.to_lowercase() == v))
+            }
             "tag" => Box::new(move |_, h| h.tags.iter().any(|t| t.to_lowercase() == v)),
             "pri" => Box::new(move |_, h| h.priority.as_ref().is_some_and(|p| p.to_lowercase() == v)),
             "file" => Box::new(move |f, _| f.path.file_stem().is_some_and(|s| s.to_string_lossy().to_lowercase().contains(&v))),
             k @ ("scheduled" | "due") => {
-                let (op, rest) = ["<=", ">=", "<", ">"].iter().find_map(|o| v.strip_prefix(o).map(|r| (*o, r))).unwrap_or(("=", &v));
-                let d = read_date(rest, today).ok_or_else(|| format!("can't read date in \"{word}\""))?.0;
-                let due = k == "due";
-                Box::new(move |_, h| {
-                    let Some(x) = (if due { &h.deadline } else { &h.scheduled }).as_ref().map(|t| t.date) else { return false };
-                    match op { "<=" => x <= d, ">=" => x >= d, "<" => x < d, ">" => x > d, _ => x == d }
-                })
+                let get: fn(&Headline) -> Option<NaiveDate> = if k == "due" { |h: &Headline| h.deadline.as_ref().map(|t| t.date) } else { |h: &Headline| h.scheduled.as_ref().map(|t| t.date) };
+                match v.as_str() {
+                    "none" => Box::new(move |_, h| get(h).is_none()),
+                    "any" => Box::new(move |_, h| get(h).is_some()),
+                    _ => {
+                        let (op, rest) = ["<=", ">=", "<", ">"].iter().find_map(|o| v.strip_prefix(o).map(|r| (*o, r))).unwrap_or(("=", &v));
+                        let d = read_date(rest, today).ok_or_else(|| format!("can't read date in \"{word}\""))?.0;
+                        Box::new(move |_, h| {
+                            let Some(x) = get(h) else { return false };
+                            match op { "<=" => x <= d, ">=" => x >= d, "<" => x < d, ">" => x > d, _ => x == d }
+                        })
+                    }
+                }
             }
-            _ => {
-                let v = w.to_lowercase();
-                Box::new(move |_, h| h.title.to_lowercase().contains(&v))
-            }
+            _ => Box::new(move |_, h| h.title.to_lowercase().contains(&v)),
         };
         terms.push(if neg { Box::new(move |f, h| !t(f, h)) } else { t });
     }
-    Ok(Box::new(move |f, h| terms.iter().all(|t| t(f, h))))
+    Ok((Box::new(move |f, h| terms.iter().all(|t| t(f, h))), done))
 }
 
 // ---------------------------------------------------------------- text transforms
@@ -1073,8 +1096,8 @@ mod tests {
 * TODO [#B] Plan trip :home:work:\nSCHEDULED: <2026-10-20 Tue> DEADLINE: <2026-11-01 Sun>\n* DONE Old report :work:\n";
         let files = [Arc::new(parse(Path::new("/n/inbox.org"), doc, &kw())), Arc::new(parse(Path::new("/n/projects.org"), "* TODO Report draft\n", &kw()))];
         let q = |s: &str| {
-            let f = query(s, t).unwrap();
-            todos(&files, &kw(), f).into_iter().map(|i| i.title).collect::<Vec<_>>().join(", ")
+            let (f, done) = query(s, t, &kw()).unwrap();
+            todos(&files, &kw(), done, f).into_iter().map(|i| i.title).collect::<Vec<_>>().join(", ")
         };
         assert_eq!(q(""), "Write report, Plan trip, Call mum, Report draft");
         assert_eq!(q("todo:next"), "Write report");
@@ -1090,11 +1113,24 @@ mod tests {
         assert_eq!(q("scheduled:<=today"), "Call mum");
         assert_eq!(q("scheduled:>today"), "Plan trip");
         assert_eq!(q("REPORT"), "Write report, Report draft");
-        assert_eq!(q("todo:DONE"), ""); // only open tasks
+        assert_eq!(q("todo:DONE"), "Old report");
+        assert_eq!(q("todo:done report"), "Old report");
+        assert_eq!(q("-todo:DONE report"), "Write report, Report draft"); // done ones still left out
+        assert_eq!(q("due:none"), "Call mum, Report draft");
+        assert_eq!(q("due:any"), "Write report, Plan trip");
+        assert_eq!(q("scheduled:none"), "Write report, Report draft");
+        assert_eq!(q("-scheduled:any"), "Write report, Report draft");
+        assert_eq!(q("scheduled:any due:none"), "Call mum");
+        assert_eq!(q("\"write report\""), "Write report");
+        assert_eq!(q("\"report\" draft"), "Report draft");
+        assert_eq!(q("-\"call mum\" -\"plan trip\""), "Write report, Report draft");
+        assert_eq!(q("\"plan  trip\""), ""); // phrase spacing is literal
+        assert_eq!(q("\"due:none\""), ""); // quoted means title text, not a term
+        assert_eq!(q("\"unclosed phrase"), "");
         assert_eq!(q("tag:work -tag:home report"), "Write report");
         assert_eq!(q("todo:TODO tag:home scheduled:<+1m"), "Plan trip, Call mum");
         assert_eq!(q("report -pri:a"), "Report draft");
-        assert!(query("due:<someday", t).is_err());
+        assert!(query("due:<someday", t, &kw()).is_err());
     }
 
     #[test]
