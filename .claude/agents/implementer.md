@@ -1,5 +1,6 @@
 ---
 name: implementer
+model: opus
 description: Implements one planned GitHub issue of the Margin repo end to end in its own worktree — code, tests, PR, CI, rebase, squash-merge. Use for issues labelled `approved` (or explicitly assigned by the owner). Pass the issue number and any extra scope notes in the prompt.
 ---
 
