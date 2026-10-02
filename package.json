@@ -11,7 +11,8 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri",
-    "test": "node --test src/lib/*.test.ts"
+    "test": "node --test src/lib/*.test.ts",
+    "test:e2e": "tauri build --debug --no-bundle --config src-tauri/tauri.e2e.conf.json && node --test e2e/*.test.ts"
   },
   "license": "MIT",
   "dependencies": {
@@ -37,6 +38,7 @@
     "svelte": "^5.56.3",
     "svelte-check": "^4.6.0",
     "typescript": "~6.0.3",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "webdriverio": "^9.32.0"
   }
 }

@@ -34,6 +34,17 @@ npm run tauri build    # release bundle for the current OS
 cd src-tauri && cargo test
 ```
 
+## Tests
+
+`npm test` and `cargo test` cover the parsers and engines. `npm run test:e2e`
+builds a debug binary (identifier `dev.albin.margin.e2e`, so it never touches
+your running copy or settings) and drives the real app through
+[tauri-driver](https://v2.tauri.app/develop/tests/webdriver/) against fixture
+notes in a temp dir. It needs Linux with `tauri-driver` (`cargo install
+tauri-driver --locked`) and `WebKitWebDriver` (`webkit2gtk-driver` on
+Debian/Ubuntu); use `xvfb-run -a npm run test:e2e` without a display. CI runs it
+in the `e2e` job.
+
 CI runs the checks and tests on every push and PR. To release, bump the
 version in `src-tauri/tauri.conf.json`, then push a tag (`git tag v0.2.0 &&
 git push --tags`): installers for all three OSes land in a draft GitHub release.
