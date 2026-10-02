@@ -790,7 +790,8 @@ pub fn capture_insert(dst: &str, heading: Option<&str>, entry: &str, kw: &Kw) ->
 const CURSOR: char = '\u{1}';
 
 /// Expand capture-template BODY: %t %T active date/timestamp, %u %U inactive ones, %^{Prompt}
-/// via ASK, %i the selection SEL, %? the cursor, %% a literal %.
+/// via ASK, %i the selection SEL (continuation lines indented like the line it's on), %? the
+/// cursor, %% a literal %.
 pub fn expand_template(body: &str, now: chrono::NaiveDateTime, sel: &str, mut ask: impl FnMut(&str) -> String) -> String {
     let (d, t) = (now.date(), now.format("%H:%M").to_string());
     let inactive = |s: String| format!("[{}]", &s[1..s.len() - 1]);
@@ -804,7 +805,10 @@ pub fn expand_template(body: &str, now: chrono::NaiveDateTime, sel: &str, mut as
             (Some('T'), _) => (ts_string(d, Some(&t)), 1),
             (Some('u'), _) => (inactive(ts_string(d, None)), 1),
             (Some('U'), _) => (inactive(ts_string(d, Some(&t))), 1),
-            (Some('i'), _) => (sel.to_string(), 1),
+            (Some('i'), _) => {
+                let ind: String = out[out.rfind('\n').map_or(0, |j| j + 1)..].chars().take_while(|c| c.is_whitespace()).collect();
+                (sel.split('\n').enumerate().map(|(k, l)| if k == 0 || l.is_empty() { l.into() } else { format!("{ind}{l}") }).collect::<Vec<_>>().join("\n"), 1)
+            }
             (Some('?'), _) => (CURSOR.to_string(), 1),
             (Some('%'), _) => ("%".into(), 1),
             (Some('^'), Some(p)) => (ask(p), p.len() + 3),
@@ -829,9 +833,15 @@ pub fn template_prompts(body: &str) -> Vec<String> {
 }
 
 /// capture_insert an expanded template ENTRY; returns the new text and the (line, UTF-16 column)
-/// of its %? cursor, or of the entry's end if it has none.
+/// of its %? cursor, or of the entry's end if it has none. A %? alone on the last line joins the
+/// line before, so it leaves no blank line.
 pub fn capture_template(dst: &str, heading: Option<&str>, entry: &str, kw: &Kw) -> (String, usize, usize) {
-    let entry = if entry.contains(CURSOR) { entry.to_string() } else { format!("{}{CURSOR}", entry.trim_end()) };
+    let e = entry.trim_end();
+    let entry = match e.strip_suffix(CURSOR) {
+        Some(p) => format!("{}{CURSOR}", p.trim_end_matches('\n')),
+        None if e.contains(CURSOR) => entry.to_string(),
+        None => format!("{e}{CURSOR}"),
+    };
     let text = capture_insert(dst, heading, &entry, kw);
     let i = text.find(CURSOR).unwrap_or(text.len());
     let bol = text[..i].rfind('\n').map_or(0, |j| j + 1);
@@ -1136,6 +1146,12 @@ mod tests {
         assert_eq!(t, "* Meetings\n** Sync <2026-10-02 Fri>\n[2026-10-02 Fri 14:30] <2026-10-02 Fri 14:30> [2026-10-02 Fri] 100% %x Ann Sync\nsel\n* Z\n");
         assert_eq!((l, c), (3, 3));
         assert_eq!(capture_template("", None, "* Ä\n", &kw()), ("* Ä\n".into(), 0, 3));
+        // %? ending the body leaves no blank line; one mid-body stays put.
+        let e = expand_template("* N\n%U\n%i%?\n", now, "", ans);
+        assert_eq!(capture_template("", None, &e, &kw()), ("* N\n[2026-10-02 Fri 14:30]\n".into(), 1, 22));
+        assert_eq!(capture_template("", None, "* N\n\u{1}\nx\n", &kw()), ("* N\n\nx\n".into(), 1, 0));
+        // Multi-line %i lines up with the line it's inserted on.
+        assert_eq!(expand_template("* N\n  - %i\n%i", now, "a\n\nb", ans), "* N\n  - a\n\n  b\na\n\nb");
     }
 
     #[test]

@@ -51,8 +51,13 @@ impl App {
         let c = self.cfg();
         org::Kw { todo: c.todo_keywords, done: c.done_keywords }
     }
+    /// Parsed notes, minus the capture-template files.
     fn files(&self) -> Vec<Arc<org::OrgFile>> {
-        org::scan(&self.cfg().notes(), &self.kw(), &self.cache)
+        let c = self.cfg();
+        let t = c.notes().join(&c.templates_dir);
+        let mut v = org::scan(&c.notes(), &self.kw(), &self.cache);
+        v.retain(|f| c.templates_dir.is_empty() || !f.path.starts_with(&t));
+        v
     }
     fn backup(&self) {
         let c = self.cfg();
@@ -286,6 +291,17 @@ fn date_preview(input: String) -> String {
 #[tauri::command]
 fn capture_insert(s: State<App>, text: String, heading: Option<String>, entry: String) -> String {
     org::capture_insert(&text, heading.as_deref(), &entry, &s.kw())
+}
+
+/// Config templates, then one per .org file in <notes>/<templates_dir>/.
+#[tauri::command]
+fn capture_templates(s: State<App>) -> Vec<config::Template> {
+    let c = s.cfg();
+    let dir = (!c.templates_dir.is_empty()).then(|| c.notes().join(&c.templates_dir));
+    let mut paths: Vec<PathBuf> = dir.and_then(|d| std::fs::read_dir(d).ok()).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "org")).collect();
+    paths.sort();
+    let files = paths.iter().filter_map(|p| Some(config::Template::from_file(&p.file_stem()?.to_string_lossy(), &std::fs::read_to_string(p).ok()?)));
+    c.templates.into_iter().chain(files).collect()
 }
 
 #[tauri::command]
@@ -696,7 +712,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             config, reload_config, save_view, list_files, read_file, write_file, attach_file, attach_bytes,
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
-            org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
+            org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,

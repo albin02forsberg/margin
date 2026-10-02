@@ -32,6 +32,8 @@ pub struct Config {
     pub calendar_file: String,
     /// Capture templates (`Space c`): `[[templates]] key name file heading body`.
     pub templates: Vec<Template>,
+    /// More templates, one per .org file, relative to notes_dir; empty to disable.
+    pub templates_dir: String,
     /// Dropped and pasted files go to <attachments_dir>/<note name>/, relative to notes_dir.
     pub attachments_dir: String,
 }
@@ -52,6 +54,38 @@ pub struct Template {
     /// File under this heading (created if missing) instead of at the end.
     pub heading: Option<String>,
     pub body: String,
+}
+
+impl Template {
+    /// A template file named STEM: leading `#+key:` `#+title:` `#+file:` `#+heading:` lines (other
+    /// keywords, blank lines and an ID drawer skipped), then the body. Key defaults to STEM's first letter.
+    pub fn from_file(stem: &str, text: &str) -> Template {
+        let key = stem.chars().next().map(String::from).unwrap_or_default();
+        let mut t = Template { key, name: stem.into(), file: String::new(), heading: None, body: String::new() };
+        let (mut off, mut drawer) = (0, false);
+        for l in text.split_inclusive('\n') {
+            let s = l.trim();
+            if off == 0 && s.eq_ignore_ascii_case(":PROPERTIES:") {
+                drawer = true;
+            } else if drawer {
+                drawer = !s.eq_ignore_ascii_case(":END:");
+            } else if let Some((k, v)) = s.strip_prefix("#+").and_then(|kv| kv.split_once(':')) {
+                let v = v.trim().to_string();
+                match k.to_ascii_lowercase().as_str() {
+                    "key" if !v.is_empty() => t.key = v,
+                    "title" => t.name = v,
+                    "file" => t.file = v,
+                    "heading" => t.heading = Some(v).filter(|h| !h.is_empty()),
+                    _ => {}
+                }
+            } else if !s.is_empty() {
+                break;
+            }
+            off += l.len();
+        }
+        t.body = text[off..].into();
+        t
+    }
 }
 
 impl Default for Config {
@@ -79,6 +113,7 @@ impl Default for Config {
                 Template { key: "n".into(), name: "Note".into(), file: String::new(), heading: None, body: "* %^{Title}\n%U\n%i%?".into() },
                 Template { key: "m".into(), name: "Meeting notes".into(), file: "meetings.org".into(), heading: None, body: "* %^{Meeting} :meeting:\n%U\n- %?".into() },
             ],
+            templates_dir: "templates".into(),
             attachments_dir: "attachments".into(),
         }
     }
@@ -205,5 +240,14 @@ mod tests {
         }
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), if cfg!(unix) { 2 } else { 1 }, "no temp files left");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn template_files() {
+        let t = Template::from_file("meeting", ":PROPERTIES:\n:ID: x\n:END:\n#+title: Meeting notes\n#+FILE: meetings/%Y.org\n#+heading: Log\n#+filetags: :t:\n\n* %^{Who}\n#+begin_quote\n%i\n");
+        assert_eq!((t.key.as_str(), t.name.as_str(), t.file.as_str(), t.heading.as_deref()), ("m", "Meeting notes", "meetings/%Y.org", Some("Log")));
+        assert_eq!(t.body, "* %^{Who}\n#+begin_quote\n%i\n");
+        let t = Template::from_file("journal", "#+key: J\n- %?");
+        assert_eq!((t.key.as_str(), t.name.as_str(), t.file.as_str(), t.heading, t.body.as_str()), ("J", "journal", "", None, "- %?"));
     }
 }

@@ -464,13 +464,19 @@
     });
   }
 
-  /** Capture with a `[[templates]]` entry from settings: ask its prompts, file it, open at %?. */
+  type Tpl = { key: string; name: string; file: string; heading: string | null; body: string };
+  const tplItems = (tpls: Tpl[]) => tpls.map((t) => ({ label: `${t.key}  ${t.name}`, detail: t.file || cfg.config.inbox, value: t }));
+
+  /** Capture with a template (settings or templates folder): ask its prompts, file it, open at %?. */
   async function captureTemplate() {
-    type Tpl = { key: string; name: string; file: string; heading: string | null; body: string };
-    const tpls: Tpl[] = cfg.config.templates;
-    if (!tpls.length) return flash("No capture templates: add [[templates]] in settings (Ctrl+,).");
-    const t: Tpl | null = await pick({ prompt: "Capture with template", items: tpls.map((t) => ({ label: `${t.key}  ${t.name}`, detail: t.file || cfg.config.inbox, value: t })) });
-    if (!t) return;
+    const tpls = await call<Tpl[]>("capture_templates");
+    if (!tpls.length) return flash("No capture templates: add [[templates]] in settings (Ctrl+,) or .org files in notes/templates/.");
+    const t: Tpl | null = await pick({ prompt: "Capture with template", items: tplItems(tpls) });
+    if (t) await fileTemplate(t);
+  }
+
+  /** File template T; HIDDEN (quick capture from a hidden window): don't open the file, just flash. */
+  async function fileTemplate(t: Tpl, hidden = false) {
     const s = view.state.selection.main;
     const selection = inFile() ? view.state.sliceDoc(s.from, s.to) : "";
     const answers: Record<string, string> = {};
@@ -488,8 +494,10 @@
         return next;
       }),
     );
-    await openFile(path, at[0]);
-    view.dispatch({ selection: { anchor: view.state.doc.line(at[0] + 1).from + at[1] }, scrollIntoView: true });
+    if (!hidden) {
+      await openFile(path, at[0]);
+      view.dispatch({ selection: { anchor: view.state.doc.line(at[0] + 1).from + at[1] }, scrollIntoView: true });
+    }
     flash(`✓ Captured “${t.name}” to ${rel(path)}`);
   }
 
@@ -1155,9 +1163,13 @@
     const unlistenTray = listen<string>("tray", (e) => act(() => timeActions[e.payload]()));
     const unlistenOpen = listen<{ path: string; line: number }>("open-entry", (e) => act(() => openFile(e.payload.path, e.payload.line)));
     const unlistenIdle = listen<{ since: string; back: string }>("idle", (e) => act(() => idleReturn(e.payload)));
-    // Quick capture (global shortcut or `margin --capture`); HIDDEN: the window was hidden before, so hide it again.
+    // Quick capture (global shortcut or `margin --capture`): a task, or a template if there are any.
+    // The payload says the window was hidden before, so hide it again.
     const unlistenCapture = listen<boolean>("capture", (e) => act(async () => {
-      await newTask();
+      const tpls = await call<Tpl[]>("capture_templates");
+      const t: Tpl | "task" | null = tpls.length ? await pick({ prompt: "Capture", items: [{ label: "Task", detail: cfg.config.inbox, value: "task" }, ...tplItems(tpls)] }) : "task";
+      if (t === "task") await newTask();
+      else if (t) await fileTemplate(t, e.payload);
       if (e.payload) await getCurrentWindow().hide();
     }));
     // Dropped files (real paths from Tauri) are copied next to the note and linked where they land.
