@@ -34,6 +34,7 @@ function fixtures() {
     `close_to_tray = false`,
     `templates = []`,
   ].join("\n"));
+  writeFileSync(join(cfgDir, "tutorial.org"), ""); // not a first run, so the tutorial doesn't take focus
   writeFileSync(join(notes, "scratch.org"), "#+title: Scratch\n\nFirst line.\n");
   writeFileSync(join(notes, "tasks.org"), `* TODO Fixture task\nSCHEDULED: ${today}\n`);
   writeFileSync(join(data, "work", "projects.toml"), `[Acme]\nexport_code = "ACME"\n`);
