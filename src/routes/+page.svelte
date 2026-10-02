@@ -10,6 +10,7 @@
   import { EditorView } from "@codemirror/view";
   import type { EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
+  import { relativeTo } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
@@ -547,7 +548,7 @@
     if (r == null || r === "") return;
     let link: string;
     if (typeof r === "object") link = `[[id:${r.id}][${r.title}]]`;
-    else if (sorted.includes(r)) link = `[[file:${rel(r)}][${titles.get(r) ?? niceName(r)}]]`;
+    else if (sorted.includes(r)) link = `[[file:${relativeTo(loc.path, r)}][${titles.get(r) ?? niceName(r)}]]`; // org resolves file: links from the note's folder
     else {
       const n: NoteNode = await call("notes_new", { title: r });
       link = `[[id:${n.id}][${n.title}]]`;
