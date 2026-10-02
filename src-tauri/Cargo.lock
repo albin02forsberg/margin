@@ -2251,6 +2251,7 @@ dependencies = [
  "chrono",
  "notify-debouncer-mini",
  "notify-rust",
+ "percent-encoding",
  "regex",
  "serde",
  "serde_json",

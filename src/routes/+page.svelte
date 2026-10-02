@@ -39,6 +39,7 @@
   let tabs = $state<Tab[]>([]);
   let cur = $state(-1);
   let editorEl = $state<HTMLDivElement>();
+  let dropCue = $state(false);
   let view: EditorView;
   let picker = $state<Picker>();
   let menu = $state<Menu>();
@@ -946,6 +947,7 @@
     { label: "Insert web link…", leader: "i w", run: insertWebLink },
     { label: "Insert link to a note…", leader: "i l", run: insertLink },
     { label: "Insert date…", leader: "i d", run: insertDate },
+    { label: "Clean up unused attachments…", run: cleanAttachments },
     { label: "Insert horizontal rule", leader: "i -", run: () => inFile() && ed.insertText(view, "\n-----\n") },
     { label: "Toggle monospace font for notes", leader: "v m", run: () => { monoFont = !monoFont; store("mono-font", monoFont ? "1" : "0"); } },
     { label: "Fold / unfold all headings (Tab folds one)", keys: ["Shift+Tab"], ctx: "normal", run: () => ed.orgShiftTab(view) },
@@ -1134,10 +1136,20 @@
     const ext = file.type.slice(6).replace("jpeg", "jpg").replace(/\+.*/, "");
     const name = `pasted-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.${ext}`;
     act(async () => {
-      // ponytail: bytes cross IPC as a JSON number array; use a raw-body command if big pastes feel slow.
-      const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
-      await attach((note) => [call<string>("attach_bytes", { note, name, bytes })]);
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      await attach((note) => [invoke<string>("attach_bytes", bytes, { headers: { note: encodeURIComponent(note), name: encodeURIComponent(name) } })]);
     });
+  }
+
+  /** Lists attachments no note links to; the picked ones (or all) move to <attachments_dir>/.trash/. */
+  async function cleanAttachments() {
+    const files = await call<string[]>("unused_attachments");
+    if (!files.length) return flash("Every attachment is linked from a note.");
+    const all = `Move all ${files.length} to the attachments .trash folder`;
+    const v = await pick({ prompt: "Unused attachments — pick one to move to .trash, or all", items: [{ label: all, value: files }, ...files.map((f) => ({ label: rel(f), value: [f] }))] });
+    if (!v) return;
+    await call("trash_attachments", { files: v });
+    flash(`🗑 Moved ${v.length} file${v.length > 1 ? "s" : ""} to the attachments .trash folder`);
   }
 
   onMount(() => {
@@ -1174,6 +1186,7 @@
     }));
     // Dropped files (real paths from Tauri) are copied next to the note and linked where they land.
     const unlistenDrop = getCurrentWebview().onDragDropEvent((e) => {
+      dropCue = (e.payload.type === "enter" || e.payload.type === "over") && inFile();
       if (e.payload.type !== "drop" || !e.payload.paths.length) return;
       const { paths, position } = e.payload;
       const at = { x: position.x / devicePixelRatio, y: position.y / devicePixelRatio };
@@ -1264,6 +1277,7 @@
     <main>
       <div class="pane">
         <div class="editor" bind:this={editorEl} style:display={isText(tab) ? "block" : "none"}></div>
+        {#if dropCue}<div class="drop-cue">Drop to attach to {tab.title}</div>{/if}
         {#if cfg}
           {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo" || t.kind === "time") as v (v.key)}
             <div class="view" style:display={v === tab ? "block" : "none"}>
@@ -1379,6 +1393,7 @@
   .tab.cur button { color: var(--fg); }
   main { flex: 1; display: flex; min-height: 0; }
   .pane { flex: 1; min-width: 0; position: relative; }
+  .drop-cue { position: absolute; inset: 6px; border: 2px dashed var(--accent); border-radius: 8px; pointer-events: none; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 24px; color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--accent) 6%, transparent); }
   .editor, .view { height: 100%; }
   .links { width: min(280px, 35vw); border-left: 1px solid var(--border); background: var(--panel); overflow-y: auto; padding: 10px 8px; flex: none; }
   .links h3 { margin: 4px 6px 8px; font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; }

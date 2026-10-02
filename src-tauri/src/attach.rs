@@ -1,7 +1,13 @@
 // Attachments: files dropped or pasted into a note are stored under
 // <notes>/<attachments_dir>/<note stem>/ and linked relative to the note.
 
+use regex::Regex;
+use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
+use std::sync::LazyLock;
+
+/// Link targets: `[[target]]`, `[[target][desc]]` and plain `file:target`.
+static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[([^\]]+)\]|\bfile:([^\s\[\]]+)").unwrap());
 
 /// `[` and `]` would end the org link early.
 fn clean(s: &str) -> String {
@@ -32,6 +38,36 @@ pub fn target(notes: &Path, dir: &str, note: &Path, name: &str, taken: impl Fn(&
     Ok((folder.join(file), link))
 }
 
+/// FILES that no note (path, text) links to, relative or absolute; `file:` and
+/// `::search` suffixes are ignored, and `..`/`.` are resolved lexically.
+pub fn unused(notes: &[(&Path, &str)], files: &[PathBuf]) -> Vec<PathBuf> {
+    let mut used = HashSet::new();
+    for (note, text) in notes {
+        let dir = note.parent().unwrap_or(Path::new(""));
+        for c in LINK.captures_iter(text) {
+            let t = c.get(1).or(c.get(2)).unwrap().as_str();
+            let t = t.strip_prefix("file:").unwrap_or(t);
+            let t = t.split_once("::").map_or(t, |(p, _)| p);
+            used.insert(normalize(&dir.join(t)));
+        }
+    }
+    files.iter().filter(|f| !used.contains(&normalize(f))).cloned().collect()
+}
+
+fn normalize(p: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in p.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -53,5 +89,17 @@ mod tests {
         assert!(t("/elsewhere/idea.org", "pic.png").is_err());
         assert!(target(n, "../out", Path::new("/n/idea.org"), "pic.png", none).is_err());
         assert!(target(n, "/abs", Path::new("/n/idea.org"), "pic.png", none).is_err());
+    }
+
+    #[test]
+    fn unused_files() {
+        let f = |s: &[&str]| s.iter().map(PathBuf::from).collect::<Vec<_>>();
+        let files = f(&["/n/att/idea/a.png", "/n/att/idea/b c.pdf", "/n/att/day/x.png", "/n/att/day/y.png", "/n/att/idea/z.txt", "/n/att/idea/w.png"]);
+        let notes = [
+            (Path::new("/n/idea.org"), "[[file:att/idea/a.png]] and [[file:./att/idea/b c.pdf::3][doc]]"),
+            (Path::new("/n/daily/day.org"), "see file:../att/day/x.png here\n[[/n/att/idea/w.png]]"),
+        ];
+        assert_eq!(unused(&notes, &files), f(&["/n/att/day/y.png", "/n/att/idea/z.txt"]));
+        assert_eq!(unused(&[], &files), files);
     }
 }
