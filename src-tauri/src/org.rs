@@ -306,22 +306,22 @@ pub fn agenda(files: &[Arc<OrgFile>], kw: &Kw, start: NaiveDate, days: i64, toda
                 let overdue = !done && s.date < today && today_in;
                 for d in occurrences(s, start, end) {
                     if !(overdue && d == today) {
-                        out.push(item(f, h, d, "scheduled", "Scheduled:".into(), s.time.clone()));
+                        out.push(item(f, h, d, "scheduled", String::new(), s.time.clone()));
                     }
                 }
                 if overdue {
-                    out.push(item(f, h, today, "scheduled", format!("Sched.{:>3}x:", (today - s.date).num_days()), None));
+                    out.push(item(f, h, today, "scheduled", format!("Scheduled {}d ago", (today - s.date).num_days()), None));
                 }
             }
             if let Some(dl) = &h.deadline {
                 for d in occurrences(dl, start, end) {
-                    out.push(item(f, h, d, "deadline", "Deadline:".into(), dl.time.clone()));
+                    out.push(item(f, h, d, "deadline", "Due".into(), dl.time.clone()));
                 }
                 let diff = (dl.date - today).num_days();
                 if !done && today_in && diff < 0 {
-                    out.push(item(f, h, today, "overdue", format!("{} d. ago:", -diff), None));
+                    out.push(item(f, h, today, "overdue", format!("Overdue {}d", -diff), None));
                 } else if !done && today_in && (1..=14).contains(&diff) {
-                    out.push(item(f, h, today, "warning", format!("In {diff} d.:"), None));
+                    out.push(item(f, h, today, "warning", format!("Due in {diff}d"), None));
                 }
             }
             for ts in &h.timestamps {

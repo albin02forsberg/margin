@@ -8,11 +8,19 @@
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
+  import Time, { hm, type Session, type TimeApi } from "$lib/Time.svelte";
+  import TaskDialog from "$lib/TaskDialog.svelte";
 
-  type Tab = { key: string; title: string; kind: "file" | "report" | "agenda" | "todo"; path?: string; state?: EditorState; dirty: boolean };
+  type View = "agenda" | "todo" | "time";
+  type Tab = { key: string; title: string; kind: "file" | "report" | View; path?: string; state?: EditorState; dirty: boolean };
   type NoteNode = { id: string; title: string; path: string; line: number };
   type Hit = { path: string; title: string; line: number; text: string };
-  type Session = { date: string; project: string; desc: string; hours: number; start: string; end: string; line: number };
+  type Target = { path: string; line: number | null; label: string };
+  type Parts = { level: number; keyword: string | null; priority: string | null; title: string; tags: string[] };
+  type Loc = { path: string; line: number };
+  /** A command: shown in the palette, bound to KEYS, placed in the Space menu at LEADER.
+   *  CTX limits keys to the editor ("editor") or vim normal mode ("normal"). RUN returning false passes the key on. */
+  type Cmd = { label: string; keys?: string[]; leader?: string; ctx?: "editor" | "normal"; run: () => unknown };
 
   let cfg = $state<any>(null);
   let tabs = $state<Tab[]>([]);
@@ -21,23 +29,31 @@
   let view: EditorView;
   let picker = $state<Picker>();
   let menu = $state<Menu>();
+  let taskDialog = $state<TaskDialog>();
   let mode = $state("normal");
   let message = $state("");
   let tc = $state<any>({});
   let backlinks = $state.raw<Hit[]>([]);
   let showBacklinks = $state(false);
   let reload = $state(0);
+  const stored = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
+  const store = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch {} };
+  let sidebar = $state(stored("sidebar", "1") === "1");
+  let recent = $state<string[]>(JSON.parse(stored("recent", "[]")));
 
   const tab = $derived(tabs[cur]);
   const isText = (t?: Tab) => t?.kind === "file" || t?.kind === "report";
   const call = <T = any,>(cmd: string, args?: Record<string, unknown>) => invoke<T>(cmd, args);
   const pick = (o: PickOpts) => picker!.open(o);
-  const ask = (prompt: string, initial = "") => pick({ prompt, initial }) as Promise<string | null>;
+  const ask = (prompt: string, initial = "", hint?: string) => pick({ prompt, initial, hint }) as Promise<string | null>;
   const sep = () => (cfg.notes.includes("\\") ? "\\" : "/");
   const join = (a: string, b: string) => a.replace(/[\\/]$/, "") + sep() + b;
   const base = (p: string) => p.split(/[\\/]/).pop()!;
   const rel = (p: string) => (p.startsWith(cfg.notes) ? p.slice(cfg.notes.length + 1) : p);
-  const hm = (h: number) => (h >= 1 ? `${Math.trunc(h)}h ${String(Math.trunc((h % 1) * 60)).padStart(2, "0")}m` : `${Math.trunc(h * 60)}m`);
+  const niceName = (p: string) => base(p).replace(/\.org(_archive)?$/, "").replace(/^\d{14}-/, "").replace(/_/g, " ");
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const kw = () => ({ todo: cfg.config.todo_keywords as string[], done: cfg.config.done_keywords as string[] });
+  const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 
   let msgTimer: ReturnType<typeof setTimeout>;
   function flash(m: string) {
@@ -51,16 +67,16 @@
     Promise.resolve().then(f).catch((e) => flash(`⚠ ${e}`));
   }
 
-  // ---------------------------------------------------------------- tabs
+  // ---------------------------------------------------------------- tabs & files
 
   const stateOf = (t: Tab) => (t === tabs[cur] && isText(t) ? view.state : t.state!);
+  const fileTab = (path: string) => tabs.find((t) => t.kind === "file" && t.path === path);
 
   function newState(key: string, text: string, path?: string, readOnly = false) {
     return ed.createState(text, {
-      org: !path || path.endsWith(".org"),
+      org: !path || /\.org(_archive)?$/.test(path),
       readOnly,
-      todo: cfg.config.todo_keywords,
-      done: cfg.config.done_keywords,
+      ...kw(),
       onChange: () => {
         const t = tabs.find((x) => x.key === key);
         if (t?.kind === "file") t.dirty = true;
@@ -92,10 +108,10 @@
     t.dirty = false;
     if (t.path === cfg.log_path) {
       const r: string = await call("tc_report", { kind: "doctor" });
-      flash(r.includes("No issues") ? "Saved. Timelog OK." : "Saved — timelog has issues, see SPC t D");
+      flash(r.includes("No issues") ? "Saved. Time log looks fine." : "Saved — the time log has problems, see Time → Check log");
     } else if (t.path === cfg.config_path) {
       cfg = await call("config");
-      flash("Config reloaded.");
+      flash("Settings reloaded.");
     }
     reload++;
     refreshBacklinks();
@@ -110,13 +126,17 @@
     let i = tabs.findIndex((t) => t.kind === "file" && t.path === path);
     if (i < 0) {
       const text: string = await call("read_file", { path });
-      tabs.push({ key: path, title: base(path), kind: "file", path, dirty: false, state: newState(path, text, path) });
+      tabs.push({ key: path, title: niceName(path), kind: "file", path, dirty: false, state: newState(path, text, path) });
       i = tabs.length - 1;
     }
     await show(i);
     if (line != null) {
       const pos = view.state.doc.line(Math.min(line + 1, view.state.doc.lines)).from;
       view.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: "center" }) });
+    }
+    if (path.startsWith(cfg.notes) && path.endsWith(".org")) {
+      recent = [path, ...recent.filter((p) => p !== path)].slice(0, 12);
+      store("recent", JSON.stringify(recent));
     }
   }
 
@@ -128,15 +148,15 @@
       i = tabs.length - 1;
     } else {
       tabs[i].state = state;
-      if (i === cur) cur = -1; // force reload of the new state
+      if (i === cur) cur = -1; // force the new state in
     }
     await show(i);
   }
 
-  async function openView(kind: "agenda" | "todo") {
+  async function openView(kind: View) {
     let i = tabs.findIndex((t) => t.kind === kind);
     if (i < 0) {
-      tabs.push({ key: kind, title: kind === "agenda" ? "Agenda" : "TODOs", kind, dirty: false });
+      tabs.push({ key: kind, title: { agenda: "Today", todo: "Tasks", time: "Time" }[kind], kind, dirty: false });
       i = tabs.length - 1;
     }
     await show(i);
@@ -159,47 +179,206 @@
 
   const cycleTab = (d: number) => tabs.length && show((cur + d + tabs.length) % tabs.length);
 
+  async function switchTab() {
+    const i = await pick({ prompt: "Switch to tab", items: tabs.map((t, i) => ({ label: t.title, detail: t.path ? rel(t.path) : "", value: i })) });
+    if (i != null) await show(i);
+  }
+
+  async function textOf(path: string): Promise<string> {
+    const t = fileTab(path);
+    return t ? stateOf(t).doc.toString() : await call("read_file", { path });
+  }
+
+  // Undo for edits made from the task views: each action records the files' previous text.
+  let recording: { path: string; text: string }[] | null = null;
+  const undoStack: { path: string; text: string }[][] = [];
+
+  async function recorded(f: () => Promise<void>) {
+    recording = [];
+    try {
+      await f();
+    } finally {
+      if (recording.length) undoStack.push(recording);
+      recording = null;
+    }
+  }
+
+  async function undo() {
+    const group = undoStack.pop();
+    if (!group) return flash("Nothing to undo.");
+    for (const r of group.reverse()) await toFile(r.path, async () => r.text);
+    flash("Undone.");
+  }
+
   /** Apply an async text transform to a file, through its open tab if there is one. */
   async function toFile(path: string, f: (text: string) => Promise<string>) {
-    const t = tabs.find((x) => x.kind === "file" && x.path === path);
+    const t = fileTab(path);
+    const old = await textOf(path);
+    const next = await f(old);
+    if (next === old) return;
+    if (recording && !recording.some((r) => r.path === path)) recording.push({ path, text: old });
     if (!t) {
-      const text: string = await call("read_file", { path });
-      await call("write_file", { path, text: await f(text) });
+      await call("write_file", { path, text: next });
+      reload++;
       return;
     }
-    const st = stateOf(t);
-    const old = st.doc.toString();
-    const next = await f(old);
     if (t === tabs[cur]) ed.applyText(view, next);
-    else t.state = st.update({ changes: ed.diffChange(old, next) }).state;
+    else t.state = t.state!.update({ changes: ed.diffChange(old, next) }).state;
     t.dirty = true;
     await saveTab(t);
   }
 
-  // ---------------------------------------------------------------- org editing
+  // ---------------------------------------------------------------- tasks
 
   const curLine0 = () => view.state.doc.lineAt(view.state.selection.main.head).number - 1;
   const inFile = () => tab?.kind === "file";
+  const editorLoc = (): Loc | null => (inFile() ? { path: tab.path!, line: curLine0() } : null);
+  const heading = async (loc: Loc) => call<Parts | null>("org_heading", { text: await textOf(loc.path), line: loc.line });
+  const edit = (loc: Loc, op: string, value?: string) => toFile(loc.path, (text) => call("org_edit", { text, line: loc.line, op, value }));
+  const dateKind = (it?: AgendaItem) => (it && /deadline|overdue|warning/.test(it.kind) ? "DEADLINE" : "SCHEDULED");
 
-  async function cycleTodo(dir: number) {
-    if (!inFile()) return;
-    ed.applyText(view, await call("org_cycle", { text: view.state.doc.toString(), line: curLine0(), dir }));
+  function datePick(prompt: string) {
+    return pick({
+      prompt,
+      items: [
+        { label: "Today", value: "today" }, { label: "Tomorrow", value: "tomorrow" }, { label: "Next Monday", value: "mon" },
+        { label: "In a week", value: "+1w" }, { label: "No date", value: "rm", detail: "remove" },
+      ],
+      allowCustom: true,
+      preview: (q) => call("date_preview", { input: q }),
+      hint: "or type fri, +3d, 12-24, 2026-12-24 14:00",
+    }) as Promise<string | null>;
   }
 
-  async function planning(kind: "SCHEDULED" | "DEADLINE") {
-    if (!inFile()) return;
-    const input = await ask(`${kind} (e.g. today, +3d, fri, 12-24 14:00, rm)`);
-    if (input == null) return;
-    ed.applyText(view, await call("org_planning", { text: view.state.doc.toString(), line: curLine0(), kind, input }));
+  const taskOps: Record<string, (loc: Loc, it?: AgendaItem, arg?: number) => Promise<unknown>> = {
+    async done(loc) {
+      const h = await heading(loc);
+      if (!h) return flash("Not on a task.");
+      const k = kw();
+      await edit(loc, "keyword", h.keyword && k.done.includes(h.keyword) ? k.todo[0] : k.done[0]);
+    },
+    async state(loc) {
+      const k = kw();
+      const v = await pick({ prompt: "Set status", items: [...k.todo, ...k.done, { label: "No status (plain heading)", value: "" }] });
+      if (v != null) await edit(loc, "keyword", v);
+    },
+    cycle: (loc, _it, dir = 1) => edit(loc, "cycle", String(dir)),
+    schedule: (loc) => planDate(loc, "SCHEDULED"),
+    deadline: (loc) => planDate(loc, "DEADLINE"),
+    async priority(loc) {
+      const v = await pick({ prompt: "Priority", items: [{ label: "A — high", value: "A" }, { label: "B — medium", value: "B" }, { label: "C — low", value: "C" }, { label: "None", value: "" }] });
+      if (v != null) await edit(loc, "priority", v);
+    },
+    "priority-up": (loc) => edit(loc, "priority-cycle", "1"),
+    "priority-down": (loc) => edit(loc, "priority-cycle", "-1"),
+    tags: (loc) => editTags(loc),
+    move: (loc) => moveTask(loc),
+    archive: (loc) => archiveTask(loc),
+    later: (loc, it) => edit(loc, "shift", `${dateKind(it)} 1`),
+    earlier: (loc, it) => edit(loc, "shift", `${dateKind(it)} -1`),
+    clockIn: async (loc, it) => clockIn(it?.category ?? (await call("org_context", { path: loc.path, text: await textOf(loc.path), line: loc.line })).category),
+    open: (loc) => openFile(loc.path, loc.line),
+  };
+
+  function atCursor(op: string, arg?: number) {
+    const loc = editorLoc();
+    if (!loc) return flash("Open a note and put the cursor on a task first.");
+    return taskOps[op](loc, undefined, arg);
   }
 
-  async function followLink() {
-    const target = ed.linkAtCursor(view);
-    if (!target) return flash("No link at point");
+  async function planDate(loc: Loc, kind: "SCHEDULED" | "DEADLINE") {
+    const input = await datePick(kind === "SCHEDULED" ? "Schedule for" : "Due date");
+    if (input != null) await toFile(loc.path, (text) => call("org_planning", { text, line: loc.line, kind, input }));
+  }
+
+  async function editTags(loc: Loc) {
+    const h = await heading(loc);
+    if (!h) return flash("Not on a task.");
+    let tags = [...h.tags];
+    const all: string[] = await call("org_tags");
+    const DONE = {};
+    for (;;) {
+      const names = [...new Set([...tags, ...all])];
+      const v = await pick({
+        prompt: `Tags: ${tags.length ? tags.join(", ") : "none"}`,
+        items: [{ label: "✓ Done", value: DONE }, ...names.map((t) => ({ label: `${tags.includes(t) ? "☑" : "☐"} ${t}`, value: t }))],
+        allowCustom: true,
+        hint: "pick to toggle · type a new tag and press Ctrl+↵",
+      });
+      if (v == null) return;
+      if (v === DONE || v === "") break;
+      const t = String(v).trim().replace(/\s+/g, "_");
+      tags = tags.includes(t) ? tags.filter((x) => x !== t) : [...tags, t];
+    }
+    await edit(loc, "tags", tags.join(":"));
+  }
+
+  async function moveTask(loc: Loc) {
+    const targets: Target[] = await call("org_targets");
+    const t: Target | null = await pick({
+      prompt: "Move to…",
+      items: targets.filter((x) => !(x.path === loc.path && x.line === loc.line)).map((x) => ({ label: x.label, value: x })),
+      hint: "a file puts it at the top level; a heading files it underneath",
+    });
+    if (!t) return;
+    if (t.path === loc.path) await toFile(loc.path, (text) => call("org_refile_same", { text, line: loc.line, dstLine: t.line }));
+    else {
+      const src = await textOf(loc.path);
+      let newSrc = src;
+      await toFile(t.path, async (dst) => {
+        const [s, d] = await call<[string, string]>("org_refile", { src, line: loc.line, dst, dstLine: t.line });
+        newSrc = s;
+        return d;
+      });
+      await toFile(loc.path, async () => newSrc);
+    }
+    flash(`Moved to ${t.label}`);
+  }
+
+  async function archiveTask(loc: Loc) {
+    const src = await textOf(loc.path);
+    let newSrc = src;
+    await toFile(loc.path + "_archive", async (dst) => {
+      const [s, d] = await call<[string, string]>("org_archive", { src, line: loc.line, dst, srcPath: loc.path });
+      newSrc = s;
+      return d;
+    });
+    await toFile(loc.path, async () => newSrc);
+    flash(`Archived to ${base(loc.path)}_archive`);
+  }
+
+  async function newTask(scheduled = "") {
+    const files = (await call<string[]>("list_files")).map(rel);
+    const inbox = cfg.config.inbox;
+    await taskDialog!.open({ files: [inbox, ...files.filter((f) => f !== inbox)], scheduled }, async (spec) => {
+      const entry: string = await call("task_entry", { title: spec.title, priority: spec.priority, tags: spec.tags, scheduled: spec.scheduled, deadline: spec.deadline });
+      const path: string = await call("capture_path", { file: spec.file });
+      await recorded(() => toFile(path, (text) => call("capture_insert", { text, heading: null, entry })));
+      flash(`✓ Added “${spec.title}” to ${spec.file}`);
+      reload++;
+    });
+  }
+
+  async function insertDate() {
+    if (!inFile()) return;
+    const input = await datePick("Insert date");
+    if (input == null || input === "rm") return;
+    const iso: string = await call("read_date", { input });
+    const [y, m, d] = iso.split("-").map(Number);
+    const time = input.match(/\d{1,2}:\d{2}/)?.[0];
+    const day = new Date(y, m - 1, d).toLocaleDateString("en-US", { weekday: "short" });
+    ed.insertText(view, `<${iso} ${day}${time ? " " + time : ""}>`);
+    view.focus();
+  }
+
+  // ---------------------------------------------------------------- notes
+
+  async function followLink(target = ed.linkAtCursor(view)) {
+    if (!target) return flash("No link here.");
     if (target.startsWith("id:")) {
       const nodes: NoteNode[] = await call("notes_nodes");
       const n = nodes.find((n) => n.id === target.slice(3));
-      return n ? openFile(n.path, n.line) : flash(`No node with ${target}`);
+      return n ? openFile(n.path, n.line) : flash(`No note with ${target}`);
     }
     if (/^https?:\/\//.test(target)) return openUrl(target);
     const p = target.replace(/^file:/, "").replace(/::.*$/, "");
@@ -207,55 +386,68 @@
     await openFile(/^([\\/]|[A-Za-z]:)/.test(p) ? p : join(dir, p));
   }
 
-  // ---------------------------------------------------------------- notes
+  async function noteItems() {
+    const [files, nodes] = await Promise.all([call<string[]>("list_files"), call<NoteNode[]>("notes_nodes")]);
+    const titles = new Map(nodes.filter((n) => n.line === 0).map((n) => [n.path, n.title]));
+    const order = (p: string) => (recent.includes(p) ? recent.indexOf(p) : 1e9);
+    return { files, nodes, titles, sorted: [...files].sort((a, b) => order(a) - order(b)) };
+  }
 
-  async function findFile() {
-    const files: string[] = await call("list_files");
-    const r = await pick({ prompt: "Find file", items: files.map((p) => ({ label: rel(p), value: p })), allowCustom: true });
+  async function quickOpen() {
+    const { files, nodes, titles, sorted } = await noteItems();
+    const items = [
+      ...sorted.map((p) => ({ label: titles.get(p) ?? niceName(p), detail: rel(p), value: p as unknown })),
+      ...nodes.filter((n) => n.line > 0).map((n) => ({ label: n.title, detail: `heading in ${rel(n.path)}`, value: n as unknown })),
+    ];
+    const r = await pick({ prompt: "Open a note — or type a title to create one", items, allowCustom: true, hint: "Ctrl+↵ creates a note with the typed title" });
     if (r == null || r === "") return;
-    await openFile(files.includes(r) ? r : join(cfg.notes, r.endsWith(".org") ? r : `${r}.org`));
+    if (typeof r === "object") return openFile(r.path, r.line);
+    if (files.includes(r)) return openFile(r);
+    await createNote(r);
   }
 
-  /** Pick a node; typing a new title creates a note. */
-  async function pickNode(prompt: string): Promise<NoteNode | null> {
-    const nodes: NoteNode[] = await call("notes_nodes");
-    const r = await pick({ prompt, items: nodes.map((n) => ({ label: n.title, detail: rel(n.path), value: n })), allowCustom: true });
-    if (r == null || r === "") return null;
-    if (typeof r !== "string") return r;
-    const n: NoteNode = await call("notes_new", { title: r });
-    flash(`Created ${base(n.path)}`);
+  async function createNote(title: string) {
+    const n: NoteNode = await call("notes_new", { title });
+    await openFile(n.path);
+    view.dispatch({ selection: { anchor: view.state.doc.length } });
+    ed.insertMode(view);
     return n;
-  }
-
-  async function findNode() {
-    const n = await pickNode("Find or create node");
-    if (n) await openFile(n.path, n.line);
-  }
-
-  async function insertLink() {
-    if (!inFile()) return;
-    const n = await pickNode("Insert link to");
-    if (!n) return;
-    const at = view.state.selection.main.head;
-    const insert = `[[id:${n.id}][${n.title}]]`;
-    view.dispatch({ changes: { from: at, insert }, selection: { anchor: at + insert.length } });
-    view.focus();
   }
 
   async function newNote() {
     const title = await ask("New note title");
-    if (!title) return;
-    const n: NoteNode = await call("notes_new", { title });
-    await openFile(n.path);
-    view.dispatch({ selection: { anchor: view.state.doc.length } });
+    if (title) await createNote(title);
+  }
+
+  async function insertLink() {
+    if (!inFile()) return flash("Open a note first.");
+    const loc = { path: tab.path!, pos: view.state.selection.main.head };
+    const { nodes, sorted, titles } = await noteItems();
+    const withId = new Set(nodes.filter((n) => n.line === 0).map((n) => n.path));
+    const items = [
+      ...nodes.map((n) => ({ label: n.title, detail: rel(n.path), value: n as unknown })),
+      ...sorted.filter((p) => !withId.has(p) && p !== loc.path).map((p) => ({ label: titles.get(p) ?? niceName(p), detail: rel(p), value: p as unknown })),
+    ];
+    const r = await pick({ prompt: "Link to note — or type a title to create one", items, allowCustom: true, hint: "Ctrl+↵ creates a new note" });
+    if (r == null || r === "") return;
+    let link: string;
+    if (typeof r === "object") link = `[[id:${r.id}][${r.title}]]`;
+    else if (sorted.includes(r)) link = `[[file:${rel(r)}][${titles.get(r) ?? niceName(r)}]]`;
+    else {
+      const n: NoteNode = await call("notes_new", { title: r });
+      link = `[[id:${n.id}][${n.title}]]`;
+      flash(`Created note “${r}”`);
+    }
+    view.dispatch({ changes: { from: loc.pos, insert: link }, selection: { anchor: loc.pos + link.length } });
+    view.focus();
   }
 
   async function search() {
-    const q = await ask("Search notes");
-    if (!q) return;
-    const hits: Hit[] = await call("notes_search", { query: q });
-    if (!hits.length) return flash(`No matches for "${q}"`);
-    const h = await pick({ prompt: `${hits.length} matches`, items: hits.map((h) => ({ label: h.text, detail: `${h.title} · ${rel(h.path)}:${h.line + 1}`, value: h })) });
+    const h: Hit | null = await pick({
+      prompt: "Search all notes",
+      source: async (q) =>
+        q.trim().length < 2 ? [] : (await call<Hit[]>("notes_search", { query: q })).map((h) => ({ label: h.text, detail: `${h.title} · line ${h.line + 1}`, value: h })),
+    });
     if (h) await openFile(h.path, h.line);
   }
 
@@ -266,12 +458,37 @@
   async function pickBacklink() {
     if (!inFile()) return;
     const hits: Hit[] = await call("notes_backlinks", { path: tab.path });
-    if (!hits.length) return flash("No backlinks");
-    const h = await pick({ prompt: "Backlinks", items: hits.map((h) => ({ label: h.title, detail: h.text, value: h })) });
+    if (!hits.length) return flash("Nothing links here yet.");
+    const h = await pick({ prompt: "Notes linking here", items: hits.map((h) => ({ label: h.title, detail: h.text, value: h })) });
     if (h) await openFile(h.path, h.line);
   }
 
-  // ---------------------------------------------------------------- timeclock
+  const journalFile = () => `${cfg.config.daily_dir}/%Y-%m-%d.org`;
+
+  async function journal(dateInput?: string) {
+    await openFile(await call("capture_path", { file: journalFile(), dateInput }));
+    view.dispatch({ selection: { anchor: view.state.doc.length }, scrollIntoView: true });
+  }
+
+  async function journalPick() {
+    const d = await datePick("Open journal for");
+    if (d && d !== "rm") await journal(d);
+  }
+
+  async function journalEntry() {
+    const text = await ask("Add a line to today's journal");
+    if (!text) return;
+    const path: string = await call("capture_path", { file: journalFile() });
+    const t = new Date();
+    await toFile(path, (txt) => call("capture_insert", { text: txt, heading: null, entry: `* ${pad(t.getHours())}:${pad(t.getMinutes())} ${text}` }));
+    flash("Added to today's journal.");
+  }
+
+  async function openInbox() {
+    await openFile(await call("capture_path", { file: cfg.config.inbox }));
+  }
+
+  // ---------------------------------------------------------------- time tracking
 
   async function refreshTc() {
     tc = await call("tc_status");
@@ -280,6 +497,7 @@
   async function tcDo(cmd: string, args?: Record<string, unknown>) {
     flash(await call(cmd, args));
     await refreshTc();
+    reload++;
   }
 
   /** Project picker; new projects also get an export code. Returns null on cancel. */
@@ -287,12 +505,12 @@
     const projects: Record<string, { export_code: string; active: boolean }> = await call("tc_projects");
     const names = Object.keys(projects).filter((p) => projects[p].active);
     const rest = names.filter((n) => n !== suggested);
-    const items = !suggested ? names : names.includes(suggested) ? [suggested, ...rest] : [{ label: suggested, detail: "suggested · new", value: suggested }, ...rest];
-    const project = await pick({ prompt, items, allowCustom: true });
+    const items = !suggested ? names : names.includes(suggested) ? [suggested, ...rest] : [{ label: suggested, detail: "new project", value: suggested }, ...rest];
+    const project = await pick({ prompt, items, allowCustom: true, hint: "type a name + Ctrl+↵ for a new project" });
     if (project == null) return null;
     let code: string | null = null;
     if (project && !projects[project]) {
-      code = await ask(`Export code for NEW project '${project}' (Enter for name)`);
+      code = await ask(`Export code for the new project “${project}”`, "", "leave empty to use the name");
       if (code == null) return null;
     }
     return { project, code };
@@ -302,33 +520,33 @@
     if (suggested == null && tab?.kind === "file") {
       suggested = (await call("org_context", { path: tab.path, text: view.state.doc.toString(), line: curLine0() })).category;
     }
-    const p = await pickProject(suggested ? `Clock in on project (suggested: ${suggested})` : "Clock in on project", suggested);
+    const p = await pickProject("Track time on project", suggested);
     if (!p) return;
     const sugg: string[] = await call("tc_suggestions", { project: p.project });
-    const task = sugg.length ? ((await pick({ prompt: `Task for '${p.project}' (Esc to skip)`, items: sugg, allowCustom: true })) ?? "") : "";
+    const task = (await pick({ prompt: `What are you working on? (optional)`, items: sugg, allowCustom: true, hint: "Esc to skip" })) ?? "";
     await tcDo("tc_in", { project: p.project, task, exportCode: p.code });
   }
 
   async function clockOut() {
     await refreshTc();
-    if (tc.project == null) return flash("Not clocked in.");
-    const note = await ask("Done for now! What did you do under this session?", tc.task ?? "");
+    if (tc.project == null) return flash("You're not tracking anything.");
+    const note = await ask("What did you do?", tc.task ?? "", "goes into the work diary");
     if (note != null) await tcDo("tc_out", { note });
   }
 
   async function changeProject() {
     await refreshTc();
     if (tc.project == null) return clockIn();
-    const note = await ask(`🔄 Switching from '${tc.project}'. What did you do until now?`, tc.task ?? "");
+    const note = await ask(`What did you do on “${tc.project}”?`, tc.task ?? "");
     if (note == null) return;
-    const p = await pickProject("Clock in on new project");
+    const p = await pickProject("Switch to project");
     if (!p) return;
     await call("tc_out", { note });
     await tcDo("tc_in", { project: p.project, task: "", exportCode: p.code });
   }
 
   async function adjustStart() {
-    const m = await ask("Oops, forgot to clock in! How many minutes ago did you start?");
+    const m = await ask("How many minutes ago did you actually start?");
     if (m && !isNaN(+m)) await tcDo("tc_adjust", { minutes: Math.round(+m) });
   }
 
@@ -337,21 +555,21 @@
   }
 
   async function dailyReport() {
-    const d = await ask("Daily summary for date (Enter = today)");
-    if (d != null) await report("daily", "Day report", d);
+    const d = await datePick("Day report for");
+    if (d != null && d !== "rm") await report("daily", "Day report", d);
   }
 
   async function exportCsv() {
-    const start = await ask("Export from (date)", "-1m");
+    const start = await datePick("Export from");
     if (start == null) return;
-    const end = await ask("Export to (date)", "today");
+    const end = await datePick("Export to");
     if (end == null) return;
-    const path = await ask("Save CSV to", join(cfg.export, `time_${tc.profile.toLowerCase()}.csv`));
+    const path = await ask("Save CSV as", join(cfg.export, `time_${tc.profile.toLowerCase()}.csv`));
     if (path) await tcDo("tc_csv", { start, end, path });
   }
 
-  async function switchProfile() {
-    const name = await pick({ prompt: `Switch profile (current: ${tc.profile})`, items: cfg.config.profiles });
+  async function switchProfile(name?: string) {
+    name ??= await pick({ prompt: `Switch profile (now: ${tc.profile})`, items: cfg.config.profiles });
     if (!name) return;
     await tcDo("tc_switch_profile", { name });
     cfg = await call("config");
@@ -359,149 +577,193 @@
 
   async function editProject() {
     const projects: Record<string, any> = await call("tc_projects");
-    const name = await pick({ prompt: "Edit project config", items: Object.keys(projects) });
+    const name = await pick({ prompt: "Project settings", items: Object.keys(projects) });
     if (!name) return;
     const p = projects[name];
-    const code = await ask(`Export code (${p.export_code})`, p.export_code);
+    const code = await ask(`Export code for “${name}”`, p.export_code);
     if (code == null) return;
-    const opts = ["0.5", "0.25", "1.0", "None"];
-    const curR = p.rounding == null ? "None" : String(p.rounding);
-    const r = await pick({ prompt: "Rounding resolution", items: [curR, ...opts.filter((o) => o !== curR)] });
+    const curR = p.rounding == null ? "none" : String(p.rounding);
+    const r = await pick({ prompt: "Round billable hours to", items: [["0.5", "Half hour"], ["0.25", "Quarter hour"], ["1.0", "Whole hour"], ["none", "Don't round"]].map(([v, l]) => ({ label: l, detail: v === curR ? "current" : "", value: v })) });
     if (r == null) return;
-    const rounding = r === "None" ? null : parseFloat(r);
-    const up = rounding != null && (await pick({ prompt: "Always round UP?", items: p.round_up ? ["yes", "no"] : ["no", "yes"] })) === "yes";
-    const active = await pick({ prompt: "Is project ACTIVE?", items: p.active ? ["yes", "no"] : ["no", "yes"] });
+    const rounding = r === "none" ? null : parseFloat(r);
+    const up = rounding != null && (await pick({ prompt: "Always round up?", items: p.round_up ? ["Yes", "No"] : ["No", "Yes"] })) === "Yes";
+    const active = await pick({ prompt: "Show in the project list?", items: p.active ? ["Yes", "No"] : ["No", "Yes"] });
     if (active == null) return;
-    await call("tc_save_project", { name, project: { export_code: code, rounding, round_up: up, active: active === "yes" } });
-    flash(`✅ Project '${name}' updated!`);
+    await call("tc_save_project", { name, project: { export_code: code, rounding, round_up: up, active: active === "Yes" } });
+    flash(`✓ Saved “${name}”`);
   }
 
-  async function editSession() {
-    const d = await ask("Edit session on date (Enter = today)");
-    if (d == null) return;
-    const ss: Session[] = await call("tc_sessions_on", { dateInput: d });
-    if (!ss.length) return flash("No completed sessions on that date.");
-    const s: Session | null = await pick({
-      prompt: "Edit which session",
-      items: ss.map((s) => ({ label: `[${s.start}-${s.end}] ${s.project || "Other"}: ${s.desc || "(no description)"} (${hm(s.hours)})`, value: s })),
-    });
-    if (!s) return;
-    const note = await ask("New description", s.desc);
+  async function editSession(s?: Session) {
+    if (!s) {
+      const d = await datePick("Edit a session on");
+      if (d == null) return;
+      const ss: Session[] = await call("tc_sessions_on", { dateInput: d });
+      if (!ss.length) return flash("No finished sessions that day.");
+      s = await pick({
+        prompt: "Which session?",
+        items: ss.map((s) => ({ label: `${s.start.slice(0, 5)}–${s.end.slice(0, 5)}  ${s.project || "Other"}: ${s.desc || "(no description)"}`, detail: hm(s.hours), value: s })),
+      });
+      if (!s) return;
+    }
+    const note = await ask("Description", s.desc);
     if (note == null) return;
-    const h = await ask(`New duration in hours (currently ${s.hours.toFixed(2)})`, s.hours.toFixed(2));
+    const h = await ask(`Duration in hours (now ${s.hours.toFixed(2)})`, s.hours.toFixed(2));
     if (h == null || isNaN(+h)) return;
     await tcDo("tc_edit_session", { line: s.line, note, oldHours: s.hours, newHours: +h });
   }
 
   async function importEmacs() {
-    const dir = await ask(`Import Emacs timeclock files for ${tc.profile} from`, "~/timeclock");
+    const dir = await ask(`Import Emacs timeclock files into “${tc.profile}” from`, "~/timeclock");
     if (dir) await tcDo("tc_import", { dir });
   }
 
-  // ---------------------------------------------------------------- leader menu
-
-  const m = (key: string, label: string, run: () => unknown): MenuNode => ({ key, label, run: () => act(run) });
-  const g = (key: string, label: string, children: MenuNode[]): MenuNode => ({ key, label, children });
-  const leader: MenuNode[] = [
-    m("SPC", "find file", findFile),
-    m("/", "search notes", search),
-    m(".", "agenda", () => openView("agenda")),
-    g("f", "file", [m("f", "find file", findFile), m("s", "save", () => saveTab(tab)), m("S", "save all", saveAll), m("c", "open config", () => openFile(cfg.config_path))]),
-    g("b", "buffer", [
-      m("b", "switch tab", async () => { const i = await pick({ prompt: "Switch tab", items: tabs.map((t, i) => ({ label: t.title, detail: t.path ? rel(t.path) : t.kind, value: i })) }); if (i != null) await show(i); }),
-      m("n", "next tab", () => cycleTab(1)),
-      m("p", "previous tab", () => cycleTab(-1)),
-      m("d", "close tab", () => closeTab()),
-    ]),
-    g("a", "agenda", [m("a", "week agenda", () => openView("agenda")), m("t", "TODO list", () => openView("todo"))]),
-    g("n", "notes", [
-      m("f", "find node", findNode),
-      m("i", "insert link", insertLink),
-      m("n", "new note", newNote),
-      m("b", "toggle backlinks panel", () => { showBacklinks = !showBacklinks; return refreshBacklinks(); }),
-      m("l", "jump to backlink", pickBacklink),
-      m("d", "open diary", () => openFile(cfg.diary_path)),
-    ]),
-    g("m", "org", [
-      m("t", "cycle TODO", () => cycleTodo(1)),
-      m("T", "cycle TODO back", () => cycleTodo(-1)),
-      m("s", "schedule", () => planning("SCHEDULED")),
-      m("d", "deadline", () => planning("DEADLINE")),
-      m("x", "toggle checkbox", () => inFile() && ed.toggleCheckbox(view)),
-      m("h", "new heading", () => inFile() && ed.newHeading(view)),
-      m("o", "follow link", followLink),
-    ]),
-    g("t", "timeclock", [
-      m("i", "clock IN", () => clockIn()),
-      m("o", "clock OUT", clockOut),
-      m("b", "take BREAK", () => tcDo("tc_break")),
-      m("r", "resume", () => tcDo("tc_resume")),
-      m("c", "switch project", changeProject),
-      m("a", "adjust start time", adjustStart),
-      m("t", "daily summary", dailyReport),
-      m("s", "weekly summary", () => report("weekly", "Week report")),
-      m("f", "show flex", async () => flash(await call("tc_report", { kind: "flex" }))),
-      m("h", "public holidays", () => report("holidays", "Holidays")),
-      m("e", "export CSV", exportCsv),
-      m("p", "switch profile", switchProfile),
-      m("P", "project settings", editProject),
-      m("d", "open diary", () => openFile(cfg.diary_path)),
-      m("E", "edit raw log", () => openFile(cfg.log_path)),
-      m("S", "edit session", editSession),
-      m("B", "git backup", () => tcDo("backup_now")),
-      m("D", "doctor (check log)", () => report("doctor", "Doctor")),
-      m("L", "backup log", () => report("backup", "Backup log")),
-      m("M", "import from Emacs", importEmacs),
-    ]),
-  ];
-
+  const timeActions: Record<string, (arg?: any) => unknown> = {
+    start: () => clockIn(), stop: clockOut, pause: () => tcDo("tc_break"), resume: () => tcDo("tc_resume"),
+    switch: changeProject, adjust: adjustStart, editSession: (s) => editSession(s), export: exportCsv, projects: editProject,
+    profile: (n) => switchProfile(n), holidays: () => report("holidays", "Holidays"), daily: dailyReport,
+    weekly: () => report("weekly", "Week report"), doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
+    backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), import: importEmacs,
+    flex: async () => flash(await call("tc_report", { kind: "flex" })), diary: () => openFile(cfg.diary_path),
+  };
+  const timeApi: TimeApi = { act, run: async (name, arg) => { await timeActions[name](arg); } };
   const agendaApi: AgendaApi = {
-    open: (path, line) => act(() => openFile(path, line)),
-    cycle: (it, dir) => toFile(it.path, (text) => call("org_cycle", { text, line: it.line, dir })),
-    plan: async (it, kind) => {
-      const input = await ask(`${kind} (e.g. today, +3d, fri, 12-24 14:00, rm)`);
-      if (input != null) await toFile(it.path, (text) => call("org_planning", { text, line: it.line, kind, input }));
-    },
-    clockIn: (it: AgendaItem) => act(() => clockIn(it.category)),
-    clockOut: () => act(clockOut),
-    pick: (o) => pick(o),
-    close: () => act(() => closeTab()),
+    run: (op, it) => recorded(async () => { await taskOps[op]({ path: it.path, line: it.line }, it); }),
+    newTask: (s) => act(() => newTask(s ?? "")),
+    undo,
     act,
   };
 
-  // ---------------------------------------------------------------- keys
+  // ---------------------------------------------------------------- commands
 
-  function onKey(e: KeyboardEvent) {
-    if (picker?.isOpen() || menu?.isOpen()) return;
-    if (e.ctrlKey && e.key === "Tab") return stop(e, () => cycleTab(e.shiftKey ? -1 : 1));
-    const inEditor = isText(tab) && view.contentDOM.contains(e.target as Node);
-    if (!inEditor) {
-      if (e.key === " " && !(e.target instanceof HTMLInputElement)) stop(e, () => menu!.show());
-      return;
+  const t = (key: string) => () => timeActions[key]();
+  const cmds: Cmd[] = [
+    { label: "Command palette", keys: ["Ctrl+K"], leader: "SPC", run: () => palette() },
+    { label: "Open note…", keys: ["Ctrl+P"], leader: ".", run: quickOpen },
+    { label: "Search in all notes", keys: ["Ctrl+Shift+F"], leader: "/", run: search },
+    { label: "New task", keys: ["Ctrl+N"], leader: "a", run: () => newTask() },
+    { label: "New note", keys: ["Ctrl+Shift+N"], leader: "n n", run: newNote },
+    { label: "Today's journal", keys: ["Ctrl+J"], leader: "j", run: () => journal() },
+    { label: "Journal for another day…", leader: "n J", run: journalPick },
+    { label: "Add a line to today's journal", leader: "n e", run: journalEntry },
+    { label: "Insert link to a note…", keys: ["Ctrl+L"], leader: "n i", ctx: "editor", run: insertLink },
+    { label: "Show notes linking here", leader: "n b", run: () => { showBacklinks = !showBacklinks; return refreshBacklinks(); } },
+    { label: "Jump to a note linking here…", leader: "n l", run: pickBacklink },
+    { label: "Follow link at cursor (also gf, Ctrl+click)", keys: ["Enter"], ctx: "normal", leader: "n o", run: () => (ed.linkAtCursor(view) ? (act(() => followLink()), true) : false) },
+
+    { label: "Go to Today", keys: ["Ctrl+1"], leader: "v t", run: () => openView("agenda") },
+    { label: "Go to All tasks", keys: ["Ctrl+2"], leader: "v a", run: () => openView("todo") },
+    { label: "Go to Inbox", keys: ["Ctrl+3"], leader: "v i", run: openInbox },
+    { label: "Go to Time tracking", keys: ["Ctrl+4"], leader: "v c", run: () => openView("time") },
+    { label: "Toggle sidebar", keys: ["Ctrl+\\"], leader: "v s", run: () => { sidebar = !sidebar; store("sidebar", sidebar ? "1" : "0"); } },
+    { label: "Settings (config file)", keys: ["Ctrl+,"], leader: "f c", run: () => openFile(cfg.config_path) },
+    { label: "Save", keys: ["Ctrl+S"], leader: "f s", run: () => saveTab(tab) },
+    { label: "Save all", leader: "f S", run: saveAll },
+    { label: "Switch tab…", leader: "b b", run: switchTab },
+    { label: "Next tab (also gt)", keys: ["Ctrl+Tab"], leader: "b n", run: () => cycleTab(1) },
+    { label: "Previous tab (also gT)", keys: ["Ctrl+Shift+Tab"], leader: "b p", run: () => cycleTab(-1) },
+    { label: "Close tab (also :q)", leader: "b d", run: () => closeTab() },
+
+    { label: "Task: mark done / reopen", leader: "x x", run: () => atCursor("done") },
+    { label: "Task: set status…", leader: "x t", run: () => atCursor("state") },
+    { label: "Task: next status / later date", keys: ["Shift+ArrowRight"], ctx: "normal", run: () => ed.shiftTimestamp(view, 1, false) || (ed.onHeading(view) && (act(() => atCursor("cycle", 1)), true)) },
+    { label: "Task: previous status / earlier date", keys: ["Shift+ArrowLeft"], ctx: "normal", run: () => ed.shiftTimestamp(view, -1, false) || (ed.onHeading(view) && (act(() => atCursor("cycle", -1)), true)) },
+    { label: "Task: raise priority / bump date part", keys: ["Shift+ArrowUp"], ctx: "normal", run: () => ed.shiftTimestamp(view, 1) || (ed.onHeading(view) && (act(() => atCursor("priority-up")), true)) },
+    { label: "Task: lower priority / bump date part", keys: ["Shift+ArrowDown"], ctx: "normal", run: () => ed.shiftTimestamp(view, -1) || (ed.onHeading(view) && (act(() => atCursor("priority-down")), true)) },
+    { label: "Task: set priority…", leader: "x p", run: () => atCursor("priority") },
+    { label: "Task: schedule…", leader: "x s", run: () => atCursor("schedule") },
+    { label: "Task: due date…", leader: "x d", run: () => atCursor("deadline") },
+    { label: "Task: tags…", leader: "x g", run: () => atCursor("tags") },
+    { label: "Task: move to…", leader: "x m", run: () => atCursor("move") },
+    { label: "Task: archive", leader: "x A", run: () => atCursor("archive") },
+    { label: "Task: track time on it", leader: "x i", run: () => atCursor("clockIn") },
+    { label: "New heading / list item below", keys: ["Alt+Enter"], ctx: "editor", leader: "x h", run: () => ed.newItem(view) },
+    { label: "New task heading below", keys: ["Alt+Shift+Enter"], ctx: "editor", leader: "x n", run: () => ed.newHeading(view, kw().todo[0]) },
+    { label: "Turn line into heading / back", leader: "x *", run: () => inFile() && ed.toggleHeading(view) },
+    { label: "Toggle checkbox (or click it)", leader: "x c", run: () => inFile() && ed.toggleCheckbox(view) },
+    { label: "Insert date…", leader: "x .", run: insertDate },
+    { label: "Promote heading", keys: ["Alt+H"], ctx: "editor", run: () => ed.shiftHeading(view, -1) },
+    { label: "Demote heading", keys: ["Alt+L"], ctx: "editor", run: () => ed.shiftHeading(view, 1) },
+    { label: "Promote heading with children", keys: ["Alt+Shift+H"], ctx: "editor", run: () => ed.shiftHeading(view, -1, true) },
+    { label: "Demote heading with children", keys: ["Alt+Shift+L"], ctx: "editor", run: () => ed.shiftHeading(view, 1, true) },
+    { label: "Move heading up", keys: ["Alt+K"], ctx: "editor", run: () => ed.moveSubtree(view, -1) },
+    { label: "Move heading down", keys: ["Alt+J"], ctx: "editor", run: () => ed.moveSubtree(view, 1) },
+    { label: "Fold / unfold all headings (Tab folds one)", keys: ["Shift+Tab"], ctx: "normal", run: () => ed.orgShiftTab(view) },
+
+    { label: "Time: start tracking", leader: "t i", run: t("start") },
+    { label: "Time: stop", leader: "t o", run: t("stop") },
+    { label: "Time: take a break", leader: "t b", run: t("pause") },
+    { label: "Time: resume after break", leader: "t r", run: t("resume") },
+    { label: "Time: switch project", leader: "t c", run: t("switch") },
+    { label: "Time: I started earlier…", leader: "t a", run: t("adjust") },
+    { label: "Time: day report", leader: "t t", run: t("daily") },
+    { label: "Time: week report", leader: "t s", run: t("weekly") },
+    { label: "Time: show flex balance", leader: "t f", run: t("flex") },
+    { label: "Time: public holidays", leader: "t h", run: t("holidays") },
+    { label: "Time: export CSV…", leader: "t e", run: t("export") },
+    { label: "Time: switch profile…", leader: "t p", run: () => switchProfile() },
+    { label: "Time: project settings…", leader: "t P", run: t("projects") },
+    { label: "Time: open work diary", leader: "t d", run: t("diary") },
+    { label: "Time: edit raw log", leader: "t E", run: t("rawLog") },
+    { label: "Time: edit a session…", leader: "t S", run: () => editSession() },
+    { label: "Time: back up now", leader: "t B", run: t("backup") },
+    { label: "Time: check log for problems", leader: "t D", run: t("doctor") },
+    { label: "Time: backup log", leader: "t L", run: t("backupLog") },
+    { label: "Time: import from Emacs…", leader: "t M", run: t("import") },
+  ];
+
+  const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", t: "Time tracking", v: "Go to", b: "Tabs" };
+  const leader: MenuNode[] = (() => {
+    const root: MenuNode[] = Object.entries(GROUPS).map(([key, label]) => ({ key, label, children: [] }));
+    for (const c of cmds) {
+      if (!c.leader) continue;
+      const [a, b] = c.leader.split(" ");
+      const node = { key: b ?? a, label: c.label.replace(/^(Task|Time): /, ""), run: () => act(c.run) };
+      if (b) root.find((g) => g.key === a)!.children!.push(node);
+      else root.unshift(node);
     }
-    const idle = ed.vimIdle(view);
-    const k = e.key;
-    if (k === " " && idle && !e.ctrlKey && !e.altKey) return stop(e, () => menu!.show());
-    if (tab.kind !== "file") return;
-    if (e.altKey && !e.ctrlKey) {
-      const ops: Record<string, () => unknown> = {
-        h: () => ed.shiftHeading(view, -1), l: () => ed.shiftHeading(view, 1),
-        k: () => ed.moveSubtree(view, -1), j: () => ed.moveSubtree(view, 1),
-        Enter: () => ed.newHeading(view),
-      };
-      if (ops[k]) return stop(e, ops[k]);
-    }
-    if (k === "Tab" && e.shiftKey) return stop(e, () => ed.orgShiftTab(view));
-    if (e.shiftKey && idle && (k === "ArrowRight" || k === "ArrowLeft") && ed.level(view.state.doc.lineAt(view.state.selection.main.head).text))
-      return stop(e, () => cycleTodo(k === "ArrowRight" ? 1 : -1));
-    if (k === "Enter" && idle && !e.shiftKey && ed.linkAtCursor(view)) return stop(e, followLink);
-    if (e.ctrlKey && k === "c" && idle) return stop(e, () => ed.toggleCheckbox(view));
+    return root;
+  })();
+
+  const pretty = (k: string) =>
+    k.replace("ArrowRight", "→").replace("ArrowLeft", "←").replace("ArrowUp", "↑").replace("ArrowDown", "↓").replace("Ctrl", isMac ? "⌘" : "Ctrl");
+
+  async function palette() {
+    const c: Cmd | null = await pick({
+      prompt: "Run a command",
+      items: cmds.map((c) => ({ label: c.label, detail: [c.keys?.map(pretty).join(" / "), c.leader && `Space ${c.leader}`].filter(Boolean).join(" · "), value: c })),
+    });
+    if (c) act(c.run);
   }
 
-  function stop(e: KeyboardEvent, f: () => unknown) {
-    e.preventDefault();
-    e.stopPropagation();
-    act(f);
+  // ---------------------------------------------------------------- keys
+
+  /** "ctrl+shift+f" style name for a key event (letters by physical key, so Alt works on macOS). */
+  function combo(e: KeyboardEvent) {
+    const k = e.code.startsWith("Key") ? e.code.slice(3) : e.code.startsWith("Digit") ? e.code.slice(5) : e.key;
+    return `${e.ctrlKey || e.metaKey ? "ctrl+" : ""}${e.altKey ? "alt+" : ""}${e.shiftKey ? "shift+" : ""}${k}`.toLowerCase();
+  }
+
+  function onKey(e: KeyboardEvent) {
+    if (picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen()) return;
+    const inEditor = isText(tab) && view.contentDOM.contains(e.target as Node);
+    const idle = inEditor && ed.vimIdle(view);
+    const c = combo(e);
+    for (const cmd of cmds) {
+      if (!cmd.keys?.some((k) => k.toLowerCase() === c)) continue;
+      if (cmd.ctx && !(inEditor && tab.kind === "file" && (cmd.ctx === "editor" || idle))) continue;
+      const r = cmd.run();
+      if (r === false) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (r instanceof Promise) r.catch((err) => flash(`⚠ ${err}`));
+      return;
+    }
+    const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
+    if (e.key === " " && !e.ctrlKey && !e.altKey && !e.metaKey && (inEditor ? idle : !typing)) {
+      e.preventDefault();
+      e.stopPropagation();
+      menu!.show();
+    }
   }
 
   // ---------------------------------------------------------------- lifecycle
@@ -532,7 +794,7 @@
       view = new EditorView({ parent: editorEl! });
       ed.hooks.save = () => act(() => saveTab(tab));
       ed.hooks.close = () => act(() => closeTab());
-      ed.hooks.follow = () => act(followLink);
+      ed.hooks.follow = (target) => act(() => followLink(target ?? ed.linkAtCursor(view)));
       ed.hooks.tab = (d) => act(() => cycleTab(d));
       await openView("agenda");
       await refreshTc();
@@ -551,92 +813,175 @@
     };
   });
 
-  const clock = $derived(
-    tc.project != null ? `[${tc.project || "—"}]` : tc.on_break != null ? `[Break: ${tc.on_break}]` : "[Paused]",
-  );
+  const NAV: { label: string; icon: string; keys: string; on: (t?: Tab) => boolean; run: () => unknown }[] = [
+    { label: "Today", icon: "◎", keys: "1", on: (t) => t?.kind === "agenda", run: () => openView("agenda") },
+    { label: "Tasks", icon: "☑", keys: "2", on: (t) => t?.kind === "todo", run: () => openView("todo") },
+    { label: "Inbox", icon: "⇣", keys: "3", on: (t) => !!t?.path && cfg && base(t.path) === base(cfg.config.inbox), run: openInbox },
+    { label: "Journal", icon: "✎", keys: "J", on: (t) => !!t?.path && cfg && t.path.includes(sep() + cfg.config.daily_dir + sep()), run: () => journal() },
+    { label: "Time", icon: "◷", keys: "4", on: (t) => t?.kind === "time", run: () => openView("time") },
+  ];
 </script>
 
 <div class="app">
-  <nav class="tabs">
-    {#each tabs as t, i (t.key)}
-      <button class:cur={i === cur} onclick={() => act(() => show(i))}>{t.title}{t.dirty ? " ●" : ""}</button>
-    {/each}
-  </nav>
+  {#if sidebar && cfg}
+    <aside class="side">
+      <button class="cmdk" onclick={() => act(palette)}><span>Search or run a command…</span><kbd>{pretty("Ctrl")} K</kbd></button>
+      <nav>
+        {#each NAV as n}
+          <button class:on={n.on(tab)} onclick={() => act(n.run)}><span class="ico">{n.icon}</span>{n.label}<kbd>{pretty("Ctrl")} {n.keys}</kbd></button>
+        {/each}
+      </nav>
+      <div class="sec">
+        <span>Notes</span>
+        <button title="Open note ({pretty('Ctrl')}+P)" onclick={() => act(quickOpen)}>⌕</button>
+        <button title="New note" onclick={() => act(newNote)}>+</button>
+      </div>
+      <div class="notes">
+        {#each recent as p (p)}
+          <button class:on={tab?.path === p} onclick={() => act(() => openFile(p))} title={rel(p)}>{niceName(p)}</button>
+        {:else}
+          <p>No notes opened yet. Press {pretty("Ctrl")}+P to find or create one.</p>
+        {/each}
+      </div>
+      <div class="timer" class:on={tc.project != null}>
+        <button class="what" onclick={() => act(() => openView("time"))}>
+          <span class="dot"></span>
+          <span>{tc.project != null ? tc.project || "No project" : tc.on_break != null ? `Break · ${tc.on_break}` : "Not tracking"}</span>
+          <small>{tc.today} today</small>
+        </button>
+        <div class="tbtns">
+          {#if tc.project != null}
+            <button onclick={() => act(t("pause"))} title="Take a break">Pause</button>
+            <button onclick={() => act(t("stop"))} title="Stop tracking">Stop</button>
+          {:else if tc.on_break != null}
+            <button onclick={() => act(t("resume"))}>Resume</button>
+          {:else}
+            <button onclick={() => act(t("start"))}>Start</button>
+          {/if}
+        </div>
+        {#if tc.backup_error}<p class="warn" title={tc.backup_error}>⚠ Backup failed</p>{/if}
+      </div>
+    </aside>
+  {/if}
 
-  <main>
-    <div class="pane">
-      <div class="editor" bind:this={editorEl} style:display={isText(tab) ? "block" : "none"}></div>
-      {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo") as t (t.key)}
-        <div class="view" style:display={t === tab ? "block" : "none"}>
-          <Agenda mode={t.kind as "agenda" | "todo"} api={agendaApi} active={t === tab} {reload} />
+  <div class="maincol">
+    <nav class="tabs">
+      {#each tabs as t, i (t.key)}
+        <div class="tab" class:cur={i === cur}>
+          <button onclick={() => act(() => show(i))}>{t.title}{t.dirty ? " •" : ""}</button>
+          <button class="x" title="Close" onclick={() => act(() => closeTab(i))}>×</button>
         </div>
       {/each}
-    </div>
-    {#if showBacklinks}
-      <aside>
-        <h3>Backlinks <small>{backlinks.length}</small></h3>
-        {#each backlinks as b}
-          <button onclick={() => act(() => openFile(b.path, b.line))}><strong>{b.title}</strong><span>{b.text}</span></button>
-        {:else}
-          <p>No backlinks.</p>
-        {/each}
-      </aside>
-    {/if}
-  </main>
+    </nav>
 
-  <footer class="status">
-    <span class="mode">{isText(tab) ? mode.toUpperCase() : tab?.kind.toUpperCase() ?? ""}</span>
-    <span class="file">{tab?.path ? rel(tab.path) : (tab?.title ?? "")}{tab?.dirty ? " [+]" : ""}</span>
-    <span class="msg">{message}</span>
-    {#if tc.backup_error}<span class="warn" title={tc.backup_error}>⚠ backup failed</span>{/if}
-    <span class="clock" class:on={tc.project != null}>{tc.profile} {clock} {tc.today}</span>
-  </footer>
+    <main>
+      <div class="pane">
+        <div class="editor" bind:this={editorEl} style:display={isText(tab) ? "block" : "none"}></div>
+        {#if cfg}
+          {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo" || t.kind === "time") as v (v.key)}
+            <div class="view" style:display={v === tab ? "block" : "none"}>
+              {#if v.kind === "time"}
+                <Time api={timeApi} active={v === tab} {reload} />
+              {:else}
+                <Agenda mode={v.kind as "agenda" | "todo"} api={agendaApi} active={v === tab} {reload} {...kw()} />
+              {/if}
+            </div>
+          {/each}
+        {/if}
+      </div>
+      {#if showBacklinks}
+        <aside class="links">
+          <h3>Linked from <small>{backlinks.length}</small></h3>
+          {#each backlinks as b}
+            <button onclick={() => act(() => openFile(b.path, b.line))}><strong>{b.title}</strong><span>{b.text}</span></button>
+          {:else}
+            <p>No notes link here yet. Use {pretty("Ctrl")}+L in another note to add one.</p>
+          {/each}
+        </aside>
+      {/if}
+    </main>
+
+    <footer class="status">
+      {#if isText(tab)}<span class="mode">{mode.toUpperCase()}</span>{/if}
+      <span class="file">{tab?.path ? rel(tab.path) : ""}{tab?.dirty ? " • unsaved" : ""}</span>
+      <span class="msg">{message}</span>
+      <button class="hint" onclick={() => act(palette)}>Space menu · {pretty("Ctrl")}+K commands</button>
+    </footer>
+  </div>
 </div>
 
 <Picker bind:this={picker} />
 <Menu bind:this={menu} root={leader} />
+<TaskDialog bind:this={taskDialog} />
 
 <style>
   :global(:root) {
     --mono: "JetBrains Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
-    --bg: #1d1f21; --fg: #d6d6d4; --panel: #26282b; --border: #3a3d41; --dim: #7c8186;
-    --active: #24272a; --sel: #34495e; --accent: #e6a23c;
-    --h1: #81a2be; --h2: #b294bb; --h3: #8abeb7; --h4: #b5bd68; --h5: #f0c674; --h6: #de935f;
-    --todo: #e06c75; --done: #98c379; --date: #8abeb7; --link: #61afef; --code: #b5bd68;
+    --sans: system-ui, -apple-system, "Segoe UI", Inter, sans-serif;
+    --bg: #1b1d20; --fg: #dcdcda; --panel: #232529; --border: #34373c; --dim: #8a8f95;
+    --active: #2a2d31; --sel: #31435a; --accent: #e6a23c;
+    --h1: #8fb0d6; --h2: #b9a0c9; --h3: #8abeb7; --h4: #b5bd68; --h5: #f0c674; --h6: #de935f;
+    --todo: #e8707a; --done: #98c379; --date: #8abeb7; --link: #6cb6f5; --code: #b5bd68;
     color-scheme: dark;
   }
   @media (prefers-color-scheme: light) {
     :global(:root) {
-      --bg: #fafafa; --fg: #2b2b2b; --panel: #f0f0f0; --border: #d4d4d4; --dim: #8a8a8a;
-      --active: #f2f2f2; --sel: #cfe3f7; --accent: #c4720a;
+      --bg: #fbfbfa; --fg: #262626; --panel: #f2f2f0; --border: #dcdcd8; --dim: #7d7d7a;
+      --active: #ebebe8; --sel: #d3e4f7; --accent: #c4720a;
       --h1: #2d5f9a; --h2: #7a3e9d; --h3: #1f7a73; --h4: #5a7a12; --h5: #9a6a00; --h6: #b4501a;
       --todo: #c0392b; --done: #2e8b3e; --date: #1f7a73; --link: #1a66c2; --code: #5a7a12;
       color-scheme: light;
     }
   }
-  :global(html, body) { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px system-ui, sans-serif; overflow: hidden; }
-  .app { display: flex; flex-direction: column; height: 100vh; }
-  .tabs { display: flex; background: var(--panel); border-bottom: 1px solid var(--border); overflow-x: auto; flex: none; }
-  .tabs button {
-    background: none; border: 0; border-right: 1px solid var(--border); color: var(--dim);
-    padding: 6px 14px; font: 13px var(--mono); cursor: pointer; white-space: nowrap;
-  }
-  .tabs button.cur { color: var(--fg); background: var(--bg); }
+  :global(html, body) { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px var(--sans); overflow: hidden; }
+  :global(button) { font-family: inherit; }
+  .app { display: flex; height: 100vh; }
+  .maincol { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  .side { width: 232px; flex: none; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 10px 8px; gap: 4px; box-sizing: border-box; }
+  .side button { background: none; border: 0; color: var(--fg); text-align: left; cursor: pointer; border-radius: 6px; font-size: 13px; }
+  .cmdk { white-space: nowrap; overflow: hidden; display: flex; gap: 6px; justify-content: space-between; align-items: center; border: 1px solid var(--border) !important; padding: 7px 9px; color: var(--dim) !important; margin-bottom: 8px; }
+  nav button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 6px 9px; }
+  nav button:hover, .notes button:hover { background: var(--active); }
+  nav button.on, .notes button.on { background: var(--sel); }
+  nav button kbd { margin-left: auto; }
+  .ico { width: 16px; text-align: center; color: var(--dim); }
+  kbd { font: 10px var(--mono); color: var(--dim); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; background: var(--bg); }
+  .sec { display: flex; align-items: center; gap: 2px; margin: 14px 4px 2px 9px; color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .sec span { flex: 1; }
+  .sec button { color: var(--dim); font-size: 15px; padding: 0 6px; }
+  .notes { flex: 1; overflow-y: auto; min-height: 0; }
+  .notes button { display: block; width: 100%; padding: 4px 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .notes p { color: var(--dim); font-size: 12px; margin: 4px 9px; }
+  .timer { border-top: 1px solid var(--border); padding-top: 8px; }
+  .timer .what { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; width: 100%; padding: 6px 9px; align-items: center; }
+  .timer .what small { grid-column: 2; color: var(--dim); font-size: 11px; }
+  .timer .what span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+  .timer.on .dot { background: var(--done); }
+  .tbtns { display: flex; gap: 6px; padding: 4px 9px; }
+  .tbtns button { border: 1px solid var(--border) !important; padding: 3px 10px; font-size: 12px; }
+  .warn { color: var(--todo); font-size: 11px; margin: 4px 9px; }
+
+  .tabs { display: flex; background: var(--panel); border-bottom: 1px solid var(--border); overflow-x: auto; flex: none; min-height: 33px; }
+  .tab { display: flex; align-items: center; border-right: 1px solid var(--border); }
+  .tab button { background: none; border: 0; color: var(--dim); padding: 8px 4px 8px 14px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+  .tab .x { padding: 4px 8px; opacity: 0; font-size: 14px; }
+  .tab:hover .x, .tab.cur .x { opacity: 0.7; }
+  .tab.cur { background: var(--bg); }
+  .tab.cur button { color: var(--fg); }
   main { flex: 1; display: flex; min-height: 0; }
   .pane { flex: 1; min-width: 0; position: relative; }
   .editor, .view { height: 100%; }
-  aside { width: min(300px, 35vw); border-left: 1px solid var(--border); background: var(--panel); overflow-y: auto; padding: 8px; flex: none; }
-  aside h3 { margin: 4px 4px 8px; font-size: 13px; color: var(--accent); }
-  aside h3 small { color: var(--dim); }
-  aside button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--fg); padding: 6px; border-radius: 4px; cursor: pointer; }
-  aside button:hover { background: var(--sel); }
-  aside button span { display: block; color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  aside p { color: var(--dim); margin: 4px; }
-  .status { display: flex; gap: 12px; align-items: center; padding: 3px 10px; background: var(--panel); border-top: 1px solid var(--border); font: 12px var(--mono); flex: none; }
+  .links { width: min(280px, 35vw); border-left: 1px solid var(--border); background: var(--panel); overflow-y: auto; padding: 10px 8px; flex: none; }
+  .links h3 { margin: 4px 6px 8px; font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; }
+  .links button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--fg); padding: 6px; border-radius: 6px; cursor: pointer; }
+  .links button:hover { background: var(--active); }
+  .links button span { display: block; color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .links p { color: var(--dim); margin: 6px; font-size: 12px; }
+  .status { display: flex; gap: 12px; align-items: center; padding: 3px 10px; background: var(--panel); border-top: 1px solid var(--border); font: 11px var(--mono); flex: none; min-height: 20px; }
   .mode { color: var(--bg); background: var(--accent); padding: 0 6px; border-radius: 3px; font-weight: 700; }
   .file { color: var(--dim); }
   .msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .warn { color: var(--todo); }
-  .clock { color: var(--dim); }
-  .clock.on { color: var(--done); }
+  .hint { background: none; border: 0; color: var(--dim); font: 11px var(--sans); cursor: pointer; }
 </style>

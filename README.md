@@ -1,7 +1,8 @@
 # tool
 
-Org-mode style notes, agenda and TODOs, Zettelkasten links, vim keys and a
-port of my Emacs timeclock — as a Tauri desktop app for Linux, macOS and Windows.
+Notes, tasks, a journal and time tracking in one fast desktop app (Linux,
+macOS, Windows). Notes are plain org files, so they stay readable anywhere;
+the editor has vim keys.
 
 ```bash
 npm install
@@ -10,33 +11,60 @@ npm run tauri build    # release bundle for the current OS
 cd src-tauri && cargo test
 ```
 
-Config lives in the OS config dir (`~/.config/dev.albin.tool/config.toml` on
-Linux); open it with `SPC f c`. Notes default to `~/notes`, timeclock data to
-`~/timeclock/<profile>/`. Import old Emacs data with `SPC t M`.
+## Getting around
 
-## Keys
+- **Ctrl+K** — command palette: every action, with its shortcut.
+- **Space** (vim normal mode, or in any list view) — the same actions as a menu.
+- Sidebar: **Today** (Ctrl+1), **Tasks** (Ctrl+2), **Inbox** (Ctrl+3),
+  **Journal** (Ctrl+J), **Time** (Ctrl+4), recent notes. Toggle with Ctrl+\\.
 
-`SPC` opens the leader menu (which-key style) in normal mode and in the agenda.
-
-| Keys | Action |
+| | |
 |---|---|
-| `SPC SPC` / `SPC f f` | find file |
-| `SPC /` | full-text search |
-| `SPC a a` / `SPC a t` | week agenda / TODO list |
-| `SPC n f` / `n i` / `n n` | find node / insert `[[id:]]` link / new note |
-| `SPC n b` / `n l` | backlinks panel / jump to backlink |
-| `SPC m t s d x` | cycle TODO, schedule, deadline, checkbox |
-| `SPC t …` | timeclock (same letters as the old `C-c t` transient) |
-| `Tab` / `S-Tab` | fold heading / fold all |
-| `M-h` `M-l` `M-j` `M-k` | promote, demote, move subtree |
-| `M-Enter` | new heading |
-| `S-←` `S-→` | cycle TODO keyword |
-| `Enter` / `gf` | follow link |
-| `gt` / `gT`, `C-Tab` | next / previous tab |
-| `:w` `:q` `:wq` | save / close tab |
+| Ctrl+N | New task (title, when, due, priority, tags, file) |
+| Ctrl+P | Open a note — or type a title to create one |
+| Ctrl+Shift+N | New note |
+| Ctrl+Shift+F | Search all notes as you type |
+| Ctrl+L | Insert a link to another note |
+| Ctrl+S / `:w` | Save (also saves automatically) |
 
-Agenda: `j/k`, `Enter`, `t/T` cycle, `s` schedule, `d` deadline, `I/O` clock
-in/out, `f/b` week, `.` today, `/` filter (TODO list), `q` close.
+## Tasks (Today / Tasks views)
 
-Dates accept org-read-date style input: `today`, `+3d`, `-1w`, `fri`,
-`12-24`, `2026-12-24 14:00`, `rm` (remove).
+`j`/`k` move, `x` done, `s` schedule, `d` due date, `p` priority, `t` status,
+`#` tags, `m` move to another file/heading, `A` archive, `I` track time,
+`Enter` open, `<`/`>` reschedule a day, `+`/`-` priority, `n` new task, `u` undo,
+`v` day/week, `h`/`l` previous/next, `.` today, `/` filter, `?` all keys.
+Click the checkbox to complete a task.
+
+## Editing notes
+
+Vim keys everywhere. On top of that:
+
+| | |
+|---|---|
+| Tab / Shift+Tab | Fold heading / fold everything |
+| Alt+Enter | New heading, or next list item |
+| Alt+Shift+Enter | New task heading |
+| Alt+H / Alt+L (+Shift) | Promote / demote heading (with children) |
+| Alt+J / Alt+K | Move heading down / up |
+| Shift+← / → | Change task status, or move a date by a day |
+| Shift+↑ / ↓ | Change priority, or the date part under the cursor |
+| Enter, gf, Ctrl+click | Follow a link |
+| click `[ ]` | Toggle a checkbox |
+| Space x … | Task commands for the heading at the cursor |
+
+Dates accept `today`, `tomorrow`, `fri`, `+3d`, `-1w`, `12-24`,
+`2026-12-24 14:00`; the input shows what it understood.
+
+## Time tracking
+
+The Time view shows what you're tracking, today's sessions (click ✎ to edit),
+the week's hours against expected, flex balance and per-project totals. Keys:
+`i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV.
+Space t … has every timeclock command (same letters as the old Emacs menu).
+
+## Settings
+
+Ctrl+, opens `config.toml` (in the OS config dir): notes folder (`~/notes`),
+time data folder (`~/timeclock`), inbox file, journal folder, task statuses,
+profiles and expected daily hours. Old Emacs timeclock data can be imported from
+the Time view.
