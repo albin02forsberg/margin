@@ -34,10 +34,9 @@ jobs:
           workspaces: src-tauri
       - if: steps.gate.outputs.run == 'true'
         name: System deps
-        uses: awalsh128/cache-apt-pkgs-action@v1
-        with:
-          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf
-          version: 1
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf
       - if: steps.gate.outputs.run == 'true'
         run: npm ci
       - if: steps.gate.outputs.run == 'true'
@@ -75,10 +74,9 @@ jobs:
           workspaces: src-tauri
       - if: steps.gate.outputs.run == 'true'
         name: System deps
-        uses: awalsh128/cache-apt-pkgs-action@v1
-        with:
-          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf webkit2gtk-driver xvfb
-          version: 1
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf webkit2gtk-driver xvfb
       - if: steps.gate.outputs.run == 'true'
         run: cargo install tauri-driver --locked
       - if: steps.gate.outputs.run == 'true'
