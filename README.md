@@ -83,6 +83,31 @@ dates stay monospace (`Space v m` switches everything to monospace).
 
 Image links (`[[file:pic.png]]`, `[[https://…/pic.jpg]]`) show the image inline.
 
+Code blocks (`#+begin_src python` …) are syntax highlighted for any language
+CodeMirror knows (python, rust, js/ts, sh, sql, go, java, c, html, css, yaml, …).
+
+### Table formulas
+
+Put formulas on a `#+TBLFM:` line under the table, separated by `::` — or type
+`=expr` (whole column) or `:=expr` (just this cell) into a cell and press Tab.
+They recalculate as you Tab/Enter through the table, on `Space T r`, or with Tab
+on the `#+TBLFM` line.
+
+```org
+| Item   | Qty | Price | Total |
+|--------+-----+-------+-------|
+| Coffee |   3 |   2.5 |   7.5 |
+| Paper  |  10 |   0.2 |     2 |
+|--------+-----+-------+-------|
+| Sum    |  13 |       |  9.50 |
+#+TBLFM: $4=$2*$3::@>$4=vsum(@I..@II);%.2f::@>$2=vsum(@I..@II)
+```
+
+References: `$3` column, `@2` row, `@2$3` field, relative `@-1` / `$+1`, `@<` /
+`@>` first / last row, `@I` / `@II` separator lines, ranges `@2..@-1` or
+`@2$1..@4$3`. Operators `+ - * / ^`; functions `vsum vmean vmin vmax vcount
+vmedian abs round floor ceil sqrt exp ln`; format with `;%.2f` or `;%d`.
+
 ## Time tracking
 
 The Time view shows what you're tracking, today's sessions (click ✎ to edit),

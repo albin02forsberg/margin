@@ -1,12 +1,14 @@
 // CodeMirror 6 setup: vim, org styling (decorations that hide markup except on
 // the line being edited), folding, tables, blocks and the structure-editing ops.
-import { EditorState, Facet, Prec, type Extension, type Range } from "@codemirror/state";
+import { EditorState, Facet, Prec, StateEffect, type Extension, type Range } from "@codemirror/state";
 import {
   Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, highlightActiveLine, keymap, type DecorationSet, type ViewUpdate,
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
-import { codeFolding, foldService, foldAll, unfoldAll, toggleFold, foldedRanges, foldEffect } from "@codemirror/language";
+import { codeFolding, foldService, foldAll, unfoldAll, toggleFold, foldedRanges, foldEffect, LanguageDescription, type Language } from "@codemirror/language";
+import { languages } from "@codemirror/language-data";
+import { highlightTree, classHighlighter } from "@lezer/highlight";
 import { vim, Vim, getCM } from "@replit/codemirror-vim";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import * as tbl from "./orgtable";
@@ -161,6 +163,53 @@ function imageSrc(target: string, notePath?: string): string | null {
   return convertFileSrc(abs);
 }
 
+// ---------------------------------------------------------------- code block highlighting
+
+const LANG_ALIAS: Record<string, string> = { elisp: "lisp", "emacs-lisp": "lisp", "c++": "cpp" };
+const langs = new Map<string, Language | null | "loading">();
+const langLoaded = StateEffect.define<null>();
+
+/** The parser for a src block language, loading it on first use (then VIEW re-renders). */
+function langFor(name: string, view: EditorView): Language | null {
+  const key = name.toLowerCase();
+  const known = langs.get(key);
+  if (known !== undefined) return known === "loading" ? null : known;
+  const desc = LanguageDescription.matchLanguageName(languages, LANG_ALIAS[key] ?? key, true);
+  if (!desc) {
+    langs.set(key, null);
+    return null;
+  }
+  if (desc.support) {
+    langs.set(key, desc.support.language);
+    return desc.support.language;
+  }
+  langs.set(key, "loading");
+  desc.load().then(
+    (sup) => { langs.set(key, sup.language); view.dispatch({ effects: langLoaded.of(null) }); },
+    () => langs.set(key, null),
+  );
+  return null;
+}
+
+const tokenCache = new Map<string, [number, number, string][]>();
+
+/** Highlight token ranges for CODE, cached by content so cursor moves don't re-parse. */
+function codeTokens(lang: Language, code: string): [number, number, string][] {
+  const key = `${lang.name}\0${code}`;
+  let toks = tokenCache.get(key);
+  if (!toks) {
+    toks = [];
+    const out = toks;
+    highlightTree(lang.parser.parse(code), classHighlighter, (from, to, cls) => out.push([from, to, cls]));
+    if (tokenCache.size > 300) tokenCache.clear();
+    tokenCache.set(key, toks);
+  }
+  return toks;
+}
+
+const markCache = new Map<string, Decoration>();
+const tokMark = (cls: string) => markCache.get(cls) ?? (markCache.set(cls, Decoration.mark({ class: cls })), markCache.get(cls)!);
+
 /** Inline markup on one line: links, dates, emphasis, footnotes, cookies. */
 function inline(out: Range<Decoration>[], text: string, from: number, active: boolean, conf: OrgConf) {
   const taken: [number, number][] = [];
@@ -210,6 +259,7 @@ function decorate(view: EditorView, blocks: Block[], tables: Tbl[]): DecorationS
   const conf = view.state.facet(orgConf);
   const activeLines = new Set(view.state.selection.ranges.map((r) => doc.lineAt(r.head).number));
   const isKw = (w: string) => conf.todo.includes(w) || conf.done.includes(w);
+  const highlighted = new Set<Block>();
   let last = 0;
   for (const vr of view.visibleRanges) {
     for (let pos = vr.from; pos <= vr.to; ) {
@@ -224,6 +274,14 @@ function decorate(view: EditorView, blocks: Block[], tables: Tbl[]): DecorationS
       if (block) {
         const code = block.kind === "src" || block.kind === "example";
         const cls = `cm-org-block cm-org-block-${code ? "code" : block.kind}`;
+        if (code && block.lang && block.end > block.start + 1 && !highlighted.has(block)) {
+          highlighted.add(block);
+          const lang = langFor(block.lang, view);
+          if (lang) {
+            const start = doc.line(block.start + 1).from;
+            for (const [a, b, c] of codeTokens(lang, doc.sliceString(start, doc.line(block.end - 1).to))) out.push(tokMark(c).range(start + a, start + b));
+          }
+        }
         if (n === block.start) {
           out.push(line(`${cls} cm-org-block-begin`).range(from));
           if (!active && t.length) out.push(Decoration.replace({ widget: new Glyph(block.lang || block.kind, "cm-org-block-label") }).range(from, ln.to));
@@ -328,7 +386,8 @@ const orgStyle = ViewPlugin.fromClass(
     }
     update(u: ViewUpdate) {
       if (u.docChanged) ({ blocks: this.blocks, tables: this.tables } = scan(u.state));
-      if (u.docChanged || u.viewportChanged || u.selectionSet) this.decorations = decorate(u.view, this.blocks, this.tables);
+      const loaded = u.transactions.some((tr) => tr.effects.some((e) => e.is(langLoaded)));
+      if (u.docChanged || u.viewportChanged || u.selectionSet || loaded) this.decorations = decorate(u.view, this.blocks, this.tables);
     }
   },
   { decorations: (v) => v.decorations },
@@ -412,7 +471,7 @@ export function insertBlock(v: EditorView, kind: string, lang = "", at?: { from:
 }
 
 export function orgTab(v: EditorView): boolean {
-  if (tableOp(v, "next")) return true;
+  if (tableOp(v, "next") || tableOp(v, "recalc")) return true;
   if (expandTemplate(v)) return true;
   const t = curLine(v).text;
   if (!level(t) && !DRAWER.test(t) && !/^\s*#\+begin_/i.test(t)) return false;
@@ -605,35 +664,53 @@ export function shiftTimestamp(v: EditorView, dir: number, field = true): boolea
 // ---------------------------------------------------------------- tables
 
 export const inTable = (v: EditorView) => tbl.isTableLine(curLine(v).text);
+const TBLFM = /^\s*#\+TBLFM:\s*/i;
 
-type TableOp = "next" | "prev" | "enter" | "align" | "rowBelow" | "rowAbove" | "delRow" | "colRight" | "delCol"
+type TableOp = "next" | "prev" | "enter" | "align" | "recalc" | "rowBelow" | "rowAbove" | "delRow" | "colRight" | "delCol"
   | "rowDown" | "rowUp" | "colLeft" | "colRightMove" | "sep" | "sort" | "sortDesc";
+/** Ops that recalculate #+TBLFM formulas, like moving through cells in a spreadsheet. */
+const RECALC = new Set<TableOp>(["next", "prev", "enter", "align", "recalc"]);
 
-/** Run a table edit at the cursor. Returns false when the cursor is not in a table. */
+/** Run a table edit at the cursor (also "recalc" from the #+TBLFM line under a table).
+ *  Returns false when the cursor is not in a table. */
 export function tableOp(v: EditorView, op: TableOp): boolean {
-  if (!inTable(v)) return false;
   const s = v.state;
-  const ln = curLine(v);
+  let ln = curLine(v);
+  const onFormula = op === "recalc" && TBLFM.test(ln.text) && ln.number > 1 && tbl.isTableLine(s.doc.line(ln.number - 1).text);
+  if (onFormula) ln = s.doc.line(ln.number - 1);
+  else if (!tbl.isTableLine(ln.text)) return false;
   let a = ln.number, b = ln.number;
   while (a > 1 && tbl.isTableLine(s.doc.line(a - 1).text)) a--;
   while (b < s.doc.lines && tbl.isTableLine(s.doc.line(b + 1).text)) b++;
+  const fmLine = b < s.doc.lines && TBLFM.test(s.doc.line(b + 1).text) ? b + 1 : 0;
+  let fm = fmLine ? s.doc.line(fmLine).text.replace(TBLFM, "").trim() : "";
   const lines = Array.from({ length: b - a + 1 }, (_, i) => s.doc.line(a + i).text);
-  const t: tbl.Table = { lines, row: ln.number - a, col: tbl.cellIndex(ln.text, s.selection.main.head - ln.from) };
+  const col = onFormula ? 0 : tbl.cellIndex(ln.text, s.selection.main.head - ln.from);
+  const t: tbl.Table = { lines, row: ln.number - a, col };
   const ops: Record<TableOp, () => tbl.Table | null> = {
     next: () => tbl.nextCell(t, 1), prev: () => tbl.nextCell(t, -1), enter: () => tbl.nextRow(t),
-    align: () => ({ ...t, lines: tbl.align(lines) }), rowBelow: () => tbl.insertRow(t, true), rowAbove: () => tbl.insertRow(t, false),
+    align: () => t, recalc: () => t, rowBelow: () => tbl.insertRow(t, true), rowAbove: () => tbl.insertRow(t, false),
     delRow: () => tbl.deleteRow(t), colRight: () => tbl.insertCol(t), delCol: () => tbl.deleteCol(t),
     rowDown: () => tbl.moveRow(t, 1), rowUp: () => tbl.moveRow(t, -1), colLeft: () => tbl.moveCol(t, -1), colRightMove: () => tbl.moveCol(t, 1),
     sep: () => tbl.insertSep(t), sort: () => tbl.sortRows(t), sortDesc: () => tbl.sortRows(t, true),
   };
   const r = ops[op]();
   if (!r) return true;
+  // Cells typed as =expr / :=expr become formulas; then recalculate and align.
+  const ex = tbl.extractCellFormulas(r.lines);
+  if (ex.formulas.length) fm = tbl.mergeTblfm(fm, ex.formulas);
+  const out = tbl.align(fm && (RECALC.has(op) || ex.formulas.length) ? tbl.applyFormulas(ex.lines, fm) : ex.lines);
   const from = s.doc.line(a).from;
-  const text = r.lines.join("\n");
+  const text = out.join("\n") + (fm ? `\n#+TBLFM: ${fm}` : "");
   let off = 0;
-  for (let i = 0; i < r.row; i++) off += r.lines[i].length + 1;
-  const cell = tbl.isSep(r.lines[r.row]) ? 1 : tbl.cellOffset(r.lines[r.row], r.col);
-  v.dispatch({ changes: { from, to: s.doc.line(b).to, insert: text }, selection: { anchor: from + off + cell }, scrollIntoView: true });
+  for (let i = 0; i < r.row; i++) off += out[i].length + 1;
+  const cell = tbl.isSep(out[r.row]) ? 1 : tbl.cellOffset(out[r.row], r.col);
+  const anchor = onFormula ? s.selection.main.head : from + off + cell;
+  const to = s.doc.line(fmLine || b).to;
+  const change = { from, to, insert: text };
+  // Keep the cursor on the formula line when recalculating from there.
+  const mapped = onFormula ? from + text.length - (to - anchor) : anchor;
+  v.dispatch({ changes: change, selection: { anchor: Math.min(mapped, from + text.length) }, scrollIntoView: true });
   return true;
 }
 
@@ -750,6 +827,16 @@ const theme = EditorView.theme({
   ".cm-org-block-begin": { borderTopRightRadius: "6px", paddingTop: "0.2em", fontSize: "0.85em", color: "var(--dim)", fontFamily: "var(--mono)" },
   ".cm-org-block-end": { borderBottomRightRadius: "6px", fontSize: "0.85em", color: "var(--dim)", fontFamily: "var(--mono)" },
   ".cm-org-block-label": { fontSize: "0.85em", color: "var(--dim)", textTransform: "lowercase" },
+  ".cm-org-block-code .tok-keyword, .cm-org-block-code .tok-operatorKeyword, .cm-org-block-code .tok-controlKeyword": { color: "var(--kw)" },
+  ".cm-org-block-code .tok-string, .cm-org-block-code .tok-string2": { color: "var(--done)" },
+  ".cm-org-block-code .tok-comment": { color: "var(--dim)", fontStyle: "italic" },
+  ".cm-org-block-code .tok-number, .cm-org-block-code .tok-bool, .cm-org-block-code .tok-atom": { color: "var(--h6)" },
+  ".cm-org-block-code .tok-typeName, .cm-org-block-code .tok-className, .cm-org-block-code .tok-namespace": { color: "var(--h5)" },
+  ".cm-org-block-code .tok-definition, .cm-org-block-code .tok-macroName": { color: "var(--link)" },
+  ".cm-org-block-code .tok-propertyName, .cm-org-block-code .tok-labelName": { color: "var(--h3)" },
+  ".cm-org-block-code .tok-variableName2, .cm-org-block-code .tok-meta": { color: "var(--todo)" },
+  ".cm-org-block-code .tok-operator, .cm-org-block-code .tok-punctuation": { color: "color-mix(in srgb, var(--fg) 75%, var(--dim))" },
+  ".cm-org-block-code .tok-invalid": { color: "var(--todo)", textDecoration: "underline wavy" },
 
   // tables
   ".cm-org-table": { fontFamily: "var(--mono)", fontSize: "0.9em" },

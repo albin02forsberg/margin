@@ -756,6 +756,7 @@
     { label: "Table: delete column", leader: "T h", run: tableCmd("delCol") },
     { label: "Table: add separator line below", leader: "T -", run: tableCmd("sep") },
     { label: "Table: align", leader: "T a", run: tableCmd("align") },
+    { label: "Table: recalculate formulas (#+TBLFM)", leader: "T r", run: tableCmd("recalc") },
     { label: "Table: sort by this column", leader: "T s", run: tableCmd("sort") },
     { label: "Table: sort by this column, descending", leader: "T S", run: tableCmd("sortDesc") },
     { label: "Insert table…", leader: "i t", run: insertTable },
@@ -1070,6 +1071,7 @@
     --active: #2a2d31; --sel: #31435a; --accent: #e6a23c;
     --h1: #8fb0d6; --h2: #b9a0c9; --h3: #8abeb7; --h4: #b5bd68; --h5: #f0c674; --h6: #de935f;
     --todo: #e8707a; --done: #98c379; --date: #8abeb7; --link: #6cb6f5; --code: #b5bd68;
+    --kw: #d38cf0;
     color-scheme: dark;
   }
   @media (prefers-color-scheme: light) {
@@ -1078,6 +1080,7 @@
       --active: #ebebe8; --sel: #d3e4f7; --accent: #c4720a;
       --h1: #2d5f9a; --h2: #7a3e9d; --h3: #1f7a73; --h4: #5a7a12; --h5: #9a6a00; --h6: #b4501a;
       --todo: #c0392b; --done: #2e8b3e; --date: #1f7a73; --link: #1a66c2; --code: #5a7a12;
+      --kw: #9a2aa6;
       color-scheme: light;
     }
   }

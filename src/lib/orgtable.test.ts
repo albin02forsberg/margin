@@ -47,3 +47,28 @@ test("sort keeps the header above the separator", () => {
   assert.deepEqual(T.sortRows(t).lines, ["|   n |", "|-----|", "|   9 |", "|  10 |", "| 100 |"]);
   assert.deepEqual(T.create(2, 1), ["| Column 1 | Column 2 |", "|----------+----------|", "|          |          |"]);
 });
+
+test("formulas: column, field, ranges, functions, format", () => {
+  const t = ["| Item | Qty | Price | Total |", "|-", "| a | 2 | 1.5 | |", "| b | 3 | 2 | |", "| | | | |", "|-", "| Sum | | | |"];
+  const out = T.align(T.applyFormulas(T.align(t), "$4=$2*$3::@>$4=vsum(@I..@II);%.2f::@>$2=vsum(@I$2..@II$2)"));
+  assert.deepEqual(out, [
+    "| Item | Qty | Price | Total |",
+    "|------+-----+-------+-------|",
+    "| a    |   2 |   1.5 |     3 |",
+    "| b    |   3 |     2 |     6 |",
+    "|      |     |       |       |",
+    "|------+-----+-------+-------|",
+    "| Sum  |   5 |       |  9.00 |",
+  ]);
+  const g = (rows: string[]) => T.applyFormulas(rows, "$3=$1+$-1*2^2::@2$1=vmean(@1$2..@>$2)+abs(-1)");
+  assert.deepEqual(g(["| 1 | 2 | |", "| 3 | 4 | |"]), ["| 1 | 2 | 9 |", "| 4 | 4 | 20 |"]);
+  assert.deepEqual(T.applyFormulas(["| 1 | |"], "$2=$1+"), ["| 1 | #ERROR |"]);
+  assert.deepEqual(T.applyFormulas(["| 1 | |"], "$2=nope($1)"), ["| 1 | #ERROR |"]);
+  assert.deepEqual(T.applyFormulas(["| 1 | 2 | |"], "$3=vsum($1..$2)/3;%.3f"), ["| 1 | 2 | 1.000 |"]);
+});
+
+test("cell formulas move into TBLFM", () => {
+  const r = T.extractCellFormulas(["| a | =$1*2 |", "| b | :=vsum(@1..@2) |"]);
+  assert.deepEqual(r, { lines: ["| a |  |", "| b |  |"], formulas: ["$2=$1*2", "@2$2=vsum(@1..@2)"] });
+  assert.equal(T.mergeTblfm("$2=$1::@1$1=3", ["$2=$1*2", "$3=1"]), "$2=$1*2::@1$1=3::$3=1");
+});
