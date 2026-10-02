@@ -175,18 +175,77 @@ fn attach_file(s: State<App>, note: PathBuf, src: PathBuf) -> R<String> {
     attach(&s, &note, &name, |dst| std::fs::copy(&src, dst).map(|_| ()))
 }
 
-/// Save pasted BYTES as NAME in NOTE's attachment folder; returns the link target.
+/// Save the pasted bytes (raw body) as header `name` in header `note`'s attachment
+/// folder; both headers percent-encoded. Returns the link target.
 #[tauri::command]
-fn attach_bytes(s: State<App>, note: PathBuf, name: String, bytes: Vec<u8>) -> R<String> {
-    attach(&s, &note, &name, |dst| std::fs::write(dst, &bytes))
+fn attach_bytes(s: State<App>, request: tauri::ipc::Request) -> R<String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("expected raw bytes".into()) };
+    let header = |k: &str| -> R<String> {
+        let v = request.headers().get(k).ok_or(format!("missing {k}"))?.to_str().map_err(|e| e.to_string())?;
+        Ok(percent_encoding::percent_decode_str(v).decode_utf8().map_err(|e| e.to_string())?.into_owned())
+    };
+    attach(&s, Path::new(&header("note")?), &header("name")?, |dst| std::fs::write(dst, bytes))
 }
 
+/// Reserves the name with `create_new`, so concurrent attaches of one name don't collide.
 fn attach(s: &App, note: &Path, name: &str, write: impl FnOnce(&Path) -> std::io::Result<()>) -> R<String> {
     let c = s.cfg();
-    let (dst, link) = attach::target(&c.notes(), &c.attachments_dir, note, name, |p| p.exists())?;
-    std::fs::create_dir_all(dst.parent().unwrap()).map_err(|e| e.to_string())?;
-    write(&dst).map_err(|e| format!("{}: {e}", dst.display()))?;
-    Ok(link)
+    loop {
+        let (dst, link) = attach::target(&c.notes(), &c.attachments_dir, note, name, |p| p.exists())?;
+        std::fs::create_dir_all(dst.parent().unwrap()).map_err(|e| e.to_string())?;
+        match std::fs::File::create_new(&dst) {
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("{}: {e}", dst.display())),
+            Ok(_) => {}
+        }
+        return write(&dst).map(|_| link).map_err(|e| {
+            let _ = std::fs::remove_file(&dst);
+            format!("{}: {e}", dst.display())
+        });
+    }
+}
+
+/// Files under the attachments folder (outside `.trash`) that no note links to.
+#[tauri::command]
+fn unused_attachments(s: State<App>) -> Vec<PathBuf> {
+    let c = s.cfg();
+    let files: Vec<PathBuf> = walkdir::WalkDir::new(c.notes().join(&c.attachments_dir))
+        .into_iter()
+        .filter_entry(|e| e.file_name() != ".trash")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .map(|e| e.into_path())
+        .collect();
+    let notes = org::scan(&c.notes(), &s.kw(), &s.cache);
+    let notes: Vec<(&Path, &str)> = notes.iter().map(|f| (f.path.as_path(), f.text.as_str())).collect();
+    let mut v = attach::unused(&notes, &files);
+    v.sort();
+    v
+}
+
+/// Move attachment FILES to `<attachments_dir>/.trash/`, keeping their subpaths.
+#[tauri::command]
+fn trash_attachments(s: State<App>, files: Vec<PathBuf>) -> R<()> {
+    let c = s.cfg();
+    let root = c.notes().join(&c.attachments_dir);
+    let trash = root.join(".trash");
+    for f in files {
+        let bad = || format!("{} is not an attachment", f.display());
+        let rel = f.strip_prefix(&root).map_err(|_| bad())?;
+        if rel.starts_with(".trash") || rel.components().any(|c| !matches!(c, Component::Normal(_))) {
+            return Err(bad());
+        }
+        let mut dst = trash.join(rel);
+        for i in 1.. {
+            if !dst.exists() {
+                break;
+            }
+            dst = trash.join(format!("{}.{i}", rel.display()));
+        }
+        std::fs::create_dir_all(dst.parent().unwrap()).map_err(|e| e.to_string())?;
+        std::fs::rename(&f, &dst).map_err(|e| format!("{}: {e}", f.display()))?;
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------- org
@@ -710,7 +769,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            config, reload_config, save_view, list_files, read_file, write_file, attach_file, attach_bytes,
+            config, reload_config, save_view, list_files, read_file, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
