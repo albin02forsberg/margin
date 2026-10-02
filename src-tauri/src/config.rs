@@ -199,6 +199,39 @@ pub fn add_view(text: &str, name: &str, query: &str) -> Result<String, String> {
     Ok(out)
 }
 
+/// TEXT with the `name = …` line of the first `[[views]]` entry whose query is QUERY
+/// rewritten to NAME; errors if anything but that name would change.
+pub fn rename_view(text: &str, query: &str, name: &str) -> Result<String, String> {
+    let err = |e: toml::de::Error| format!("can't rename the view in config.toml: {e}");
+    let mut want: toml::Table = text.parse().map_err(err)?;
+    let views = want.get_mut("views").and_then(|v| v.as_array_mut());
+    let Some((i, v)) = views.and_then(|v| v.iter_mut().enumerate().find(|(_, v)| v.get("query").and_then(|q| q.as_str()) == Some(query))) else {
+        return Err("no saved view has that query".into());
+    };
+    v.as_table_mut().ok_or("bad [[views]] entry")?.insert("name".into(), name.into());
+    // Count `[[views]]` headers to reach entry I, then swap its first `name =` line.
+    let (mut seen, mut done) = (0, false);
+    let out: String = text
+        .split_inclusive('\n')
+        .map(|l| {
+            let t = l.trim_start();
+            if t.starts_with('[') {
+                seen += usize::from(t.split('#').next().unwrap_or("").trim_end() == "[[views]]");
+            } else if !done && seen == i + 1 && t.split_once('=').is_some_and(|(k, _)| k.trim() == "name") {
+                done = true;
+                let eol = &l[l.trim_end_matches(['\r', '\n']).len()..];
+                return format!("{}name = {}{eol}", &l[..l.len() - t.len()], toml::Value::String(name.into()));
+            }
+            l.to_string()
+        })
+        .collect();
+    if !done || out.parse::<toml::Table>().map_err(err)? != want {
+        return Err("can't rename the view in config.toml without changing other settings; edit it by hand".into());
+    }
+    toml::from_str::<Config>(&out).map_err(err)?;
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,6 +252,20 @@ mod tests {
         // A `views = []` line that isn't the top-level key is the user's text, not ours to drop.
         let body = "[[templates]]\nkey = \"v\"\nname = \"V\"\nbody = \"\"\"\nviews = []\n\"\"\"\n";
         assert!(add_view(body, "B", "b").is_err_and(|e| e.contains("changing")));
+    }
+
+    #[test]
+    fn rename_views() {
+        let text = "# mine\r\nnotes_dir = \"~/org\"\r\n\r\n[[views]]\r\nname = \"A\"\r\nquery = \"a\"\r\n\r\n[[views]] # second\r\n  name = \"B\" # old\r\nquery = 'tag:\"x y\"'\r\n";
+        let s = rename_view(text, "tag:\"x y\"", "New \"b\"").unwrap();
+        assert_eq!(s, text.replace("  name = \"B\" # old", "  name = 'New \"b\"'")); // only that line; CRLF, comments kept
+        let c: Config = toml::from_str(&rename_view(&s, "a", "Z").unwrap()).unwrap();
+        assert_eq!((c.views[0].name.as_str(), c.views[1].name.as_str()), ("Z", "New \"b\""));
+        assert!(rename_view(text, "nope", "X").is_err());
+        assert!(rename_view("views = [{ name = \"A\", query = \"a\" }]\n", "a", "X").is_err()); // inline: by hand
+        // A `[[views]]` lookalike inside a multi-line string is refused, not miswritten.
+        let body = "[[templates]]\nkey = \"v\"\nname = \"V\"\nbody = \"\"\"\n[[views]]\nname = x\n\"\"\"\n\n[[views]]\nname = \"A\"\nquery = \"a\"\n";
+        assert!(rename_view(body, "a", "X").is_err_and(|e| e.contains("changing")));
     }
 
     #[test]

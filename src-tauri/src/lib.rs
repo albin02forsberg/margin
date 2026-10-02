@@ -104,11 +104,12 @@ fn reload_config(app: AppHandle, s: State<App>) -> R<()> {
     Ok(())
 }
 
-/// Add a `[[views]]` entry to config.toml, leaving the rest of the file as written.
+/// Add a `[[views]]` entry to config.toml (or RENAME the one with QUERY), leaving the rest of the file as written.
 #[tauri::command]
-fn save_view(app: AppHandle, s: State<App>, name: String, query: String) -> R<()> {
+fn save_view(app: AppHandle, s: State<App>, name: String, query: String, rename: bool) -> R<()> {
     let text = std::fs::read_to_string(&s.cfg_path).map_err(|e| e.to_string())?;
-    config::write_atomic(&s.cfg_path, config::add_view(&text, &name, &query)?).map_err(|e| e.to_string())?;
+    let new = if rename { config::rename_view(&text, &query, &name)? } else { config::add_view(&text, &name, &query)? };
+    config::write_atomic(&s.cfg_path, new).map_err(|e| e.to_string())?;
     reload_config(app, s)
 }
 

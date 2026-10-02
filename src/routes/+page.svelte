@@ -215,18 +215,20 @@
   async function saveView() {
     const query = tab?.query;
     if (query == null) return flash("Open a task search first (Space v f).");
-    const name = await ask("Save this search as a view named", tab.title === query ? "" : tab.title, query);
+    const old = cfg.config.views?.find((v: { query: string }) => v.query === query)?.name;
+    const rename = old != null && (await pick({ prompt: `“${old}” already shows this search`, items: [{ label: "Rename existing view", value: "rename" }, { label: "Keep both", value: "both" }] }));
+    if (rename === null) return;
+    const name = await ask(rename === "rename" ? `Rename “${old}” to` : "Save this search as a view named", tab.title === query ? "" : tab.title, query);
     if (!name?.trim()) return;
-    await call("save_view", { name: name.trim(), query });
+    await call("save_view", { name: name.trim(), query, rename: rename === "rename" });
     cfg = await call("config");
     flash(`Saved “${name.trim()}” to the sidebar.`);
   }
 
-  // Search tabs take the name of the view with their query, so saving or renaming a view retitles them.
+  // Search tabs take the name of the view with their query, or the query itself once no view has it.
   $effect(() => {
     for (const t of tabs) {
-      const v = t.query != null && cfg?.config.views?.find((v: { query: string }) => v.query === t.query);
-      if (v) t.title = v.name;
+      if (t.query != null) t.title = cfg?.config.views?.find((v: { query: string }) => v.query === t.query)?.name ?? t.query;
     }
   });
 
