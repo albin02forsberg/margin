@@ -61,6 +61,28 @@ Vim keys everywhere. On top of that:
 Dates accept `today`, `tomorrow`, `fri`, `+3d`, `-1w`, `12-24`,
 `2026-12-24 14:00`; the input shows what it understood.
 
+## Writing in org
+
+Notes render like a document: markup (stars, link brackets, `*bold*` markers,
+checkbox brackets, block delimiters) is hidden except on the line you're on, so
+the file stays plain org text. Prose uses a proportional font; tables, code and
+dates stay monospace (`Space v m` switches everything to monospace).
+
+| | |
+|---|---|
+| Tab / Shift+Tab in a table | Align and move to the next / previous cell (adds rows at the end) |
+| Enter in a table (insert mode) | Same column, next row |
+| Alt+H/J/K/L in a table | Move column / row |
+| Alt+Shift+H/L, Alt+Shift+J/K | Delete / insert column, insert / delete row |
+| `\|-` then Tab | Expands into a separator line |
+| `<s`, `<q`, `<e`, `<v` + Tab | Code, quote, example, verse block |
+| Ctrl+Shift+O | Go to a heading in this note |
+| Space i … | Insert table, code block, quote, link, date, rule |
+| Space T … | Table: rows, columns, separator, sort, align |
+| `[/]` or `[%]` in a heading | Progress cookie, updated when you tick checkboxes or finish child tasks |
+
+Image links (`[[file:pic.png]]`, `[[https://…/pic.jpg]]`) show the image inline.
+
 ## Time tracking
 
 The Time view shows what you're tracking, today's sessions (click ✎ to edit),

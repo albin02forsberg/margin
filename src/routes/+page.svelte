@@ -83,6 +83,7 @@
       org: !path || /\.org(_archive)?$/.test(path),
       readOnly,
       ...kw(),
+      path,
       onChange: () => {
         if (syncing) return;
         const t = tabs.find((x) => x.key === key);
@@ -304,8 +305,46 @@
   function atCursor(op: string, arg?: number) {
     const loc = editorLoc();
     if (!loc) return flash("Open a note and put the cursor on a task first.");
-    return taskOps[op](loc, undefined, arg);
+    return Promise.resolve(taskOps[op](loc, undefined, arg)).then(() => {
+      if (tab === fileTab(loc.path)) ed.updateCookies(view);
+    });
   }
+
+  async function goToHeading() {
+    if (!inFile()) return flash("Open a note first.");
+    const hs = ed.headings(view.state);
+    if (!hs.length) return flash("This note has no headings.");
+    const h = await pick({ prompt: "Go to heading", items: hs.map((h) => ({ label: `${"  ".repeat(h.level - 1)}${h.text}`, value: h })) });
+    if (h) await openFile(tab.path!, h.line);
+  }
+
+  async function insertTable() {
+    if (!inFile()) return flash("Open a note first.");
+    const size = await ask("Table size: columns × rows", "3x2", "e.g. 4x3 — then Tab moves between cells");
+    const m = size?.match(/(\d+)\s*[x×*, ]\s*(\d+)/);
+    if (m) ed.insertTable(view, Math.max(1, +m[1]), Math.max(1, +m[2]));
+  }
+
+  async function insertCodeBlock() {
+    if (!inFile()) return flash("Open a note first.");
+    const lang = await pick({ prompt: "Code block language", items: ["python", "javascript", "typescript", "rust", "shell", "sql", "json", "yaml", "html", "css", "go", "java", "c", "elisp", "text"], allowCustom: true });
+    if (lang != null) ed.insertBlock(view, "src", lang === "text" ? "" : lang);
+  }
+
+  async function insertWebLink() {
+    if (!inFile()) return flash("Open a note first.");
+    const url = await ask("Link address (URL)");
+    if (!url) return;
+    const desc = await ask("Link text (optional)");
+    if (desc == null) return;
+    ed.insertText(view, desc ? `[[${url}][${desc}]]` : `[[${url}]]`);
+    view.focus();
+  }
+
+  /** Alt+H/J/K/L act on the table when the cursor is in one, otherwise on headings. */
+  const tableOr = (op: Parameters<typeof ed.tableOp>[1], other: () => unknown) => () => ed.tableOp(view, op) || other();
+  const tableCmd = (op: Parameters<typeof ed.tableOp>[1]) => () => (inFile() && ed.tableOp(view, op)) || flash("Put the cursor in a table first.");
+  let monoFont = $state(stored("mono-font", "0") === "1");
 
   async function planDate(loc: Loc, kind: "SCHEDULED" | "DEADLINE") {
     const input = await datePick(kind === "SCHEDULED" ? "Schedule for" : "Due date");
@@ -698,17 +737,35 @@
     { label: "Task: move to…", leader: "x m", run: () => atCursor("move") },
     { label: "Task: archive", leader: "x A", run: () => atCursor("archive") },
     { label: "Task: track time on it", leader: "x i", run: () => atCursor("clockIn") },
-    { label: "New heading / list item below", keys: ["Alt+Enter"], ctx: "editor", leader: "x h", run: () => ed.newItem(view) },
+    { label: "New heading / list item / table row below", keys: ["Alt+Enter"], ctx: "editor", leader: "x h", run: tableOr("rowBelow", () => ed.newItem(view)) },
     { label: "New task heading below", keys: ["Alt+Shift+Enter"], ctx: "editor", leader: "x n", run: () => ed.newHeading(view, kw().todo[0]) },
     { label: "Turn line into heading / back", leader: "x *", run: () => inFile() && ed.toggleHeading(view) },
     { label: "Toggle checkbox (or click it)", leader: "x c", run: () => inFile() && ed.toggleCheckbox(view) },
-    { label: "Insert date…", leader: "x .", run: insertDate },
-    { label: "Promote heading", keys: ["Alt+H"], ctx: "editor", run: () => ed.shiftHeading(view, -1) },
-    { label: "Demote heading", keys: ["Alt+L"], ctx: "editor", run: () => ed.shiftHeading(view, 1) },
-    { label: "Promote heading with children", keys: ["Alt+Shift+H"], ctx: "editor", run: () => ed.shiftHeading(view, -1, true) },
-    { label: "Demote heading with children", keys: ["Alt+Shift+L"], ctx: "editor", run: () => ed.shiftHeading(view, 1, true) },
-    { label: "Move heading up", keys: ["Alt+K"], ctx: "editor", run: () => ed.moveSubtree(view, -1) },
-    { label: "Move heading down", keys: ["Alt+J"], ctx: "editor", run: () => ed.moveSubtree(view, 1) },
+    { label: "Update progress cookies [2/5]", leader: "x u", run: () => inFile() && ed.updateCookies(view) },
+    { label: "Go to heading…", keys: ["Ctrl+Shift+O"], leader: "n h", run: goToHeading },
+    { label: "Promote heading / move table column left", keys: ["Alt+H"], ctx: "editor", run: tableOr("colLeft", () => ed.shiftHeading(view, -1)) },
+    { label: "Demote heading / move table column right", keys: ["Alt+L"], ctx: "editor", run: tableOr("colRightMove", () => ed.shiftHeading(view, 1)) },
+    { label: "Promote heading with children / delete table column", keys: ["Alt+Shift+H"], ctx: "editor", run: tableOr("delCol", () => ed.shiftHeading(view, -1, true)) },
+    { label: "Demote heading with children / insert table column", keys: ["Alt+Shift+L"], ctx: "editor", run: tableOr("colRight", () => ed.shiftHeading(view, 1, true)) },
+    { label: "Move heading / table row up", keys: ["Alt+K"], ctx: "editor", run: tableOr("rowUp", () => ed.moveSubtree(view, -1)) },
+    { label: "Move heading / table row down", keys: ["Alt+J"], ctx: "editor", run: tableOr("rowDown", () => ed.moveSubtree(view, 1)) },
+    { label: "Table: delete row", keys: ["Alt+Shift+K"], ctx: "editor", leader: "T d", run: tableCmd("delRow") },
+    { label: "Table: insert row below", keys: ["Alt+Shift+J"], ctx: "editor", leader: "T j", run: tableCmd("rowBelow") },
+    { label: "Table: insert row above", leader: "T k", run: tableCmd("rowAbove") },
+    { label: "Table: insert column", leader: "T l", run: tableCmd("colRight") },
+    { label: "Table: delete column", leader: "T h", run: tableCmd("delCol") },
+    { label: "Table: add separator line below", leader: "T -", run: tableCmd("sep") },
+    { label: "Table: align", leader: "T a", run: tableCmd("align") },
+    { label: "Table: sort by this column", leader: "T s", run: tableCmd("sort") },
+    { label: "Table: sort by this column, descending", leader: "T S", run: tableCmd("sortDesc") },
+    { label: "Insert table…", leader: "i t", run: insertTable },
+    { label: "Insert code block…", leader: "i c", run: insertCodeBlock },
+    { label: "Insert quote block", leader: "i q", run: () => inFile() && ed.insertBlock(view, "quote") },
+    { label: "Insert web link…", leader: "i w", run: insertWebLink },
+    { label: "Insert link to a note…", leader: "i l", run: insertLink },
+    { label: "Insert date…", leader: "i d", run: insertDate },
+    { label: "Insert horizontal rule", leader: "i -", run: () => inFile() && ed.insertText(view, "\n-----\n") },
+    { label: "Toggle monospace font for notes", leader: "v m", run: () => { monoFont = !monoFont; store("mono-font", monoFont ? "1" : "0"); } },
     { label: "Fold / unfold all headings (Tab folds one)", keys: ["Shift+Tab"], ctx: "normal", run: () => ed.orgShiftTab(view) },
 
     { label: "Time: start tracking", leader: "t i", run: t("start") },
@@ -733,7 +790,7 @@
     { label: "Time: import from Emacs…", leader: "t M", run: t("import") },
   ];
 
-  const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", t: "Time tracking", v: "Go to", b: "Tabs" };
+  const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", i: "Insert", T: "Table", t: "Time tracking", v: "Go to & view", b: "Tabs" };
   const leader: MenuNode[] = (() => {
     const root: MenuNode[] = Object.entries(GROUPS).map(([key, label]) => ({ key, label, children: [] }));
     for (const c of cmds) {
@@ -912,7 +969,7 @@
   ];
 </script>
 
-<div class="app">
+<div class="app" class:mono={monoFont}>
   {#if sidebar && cfg}
     <aside class="side">
       <button class="cmdk" onclick={() => act(palette)}><span>Search or run a command…</span><kbd>{pretty("Ctrl")} K</kbd></button>
@@ -1008,6 +1065,7 @@
   :global(:root) {
     --mono: "JetBrains Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
     --sans: system-ui, -apple-system, "Segoe UI", Inter, sans-serif;
+    --editor-font: var(--sans);
     --bg: #1b1d20; --fg: #dcdcda; --panel: #232529; --border: #34373c; --dim: #8a8f95;
     --active: #2a2d31; --sel: #31435a; --accent: #e6a23c;
     --h1: #8fb0d6; --h2: #b9a0c9; --h3: #8abeb7; --h4: #b5bd68; --h5: #f0c674; --h6: #de935f;
@@ -1026,6 +1084,8 @@
   :global(html, body) { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px var(--sans); overflow: hidden; }
   :global(button) { font-family: inherit; }
   .app { display: flex; height: 100vh; }
+  .app.mono { --editor-font: var(--mono); }
+  :global(.cm-plain) { font-family: var(--mono); }
   .maincol { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
   .side { width: 232px; flex: none; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 10px 8px; gap: 4px; box-sizing: border-box; }

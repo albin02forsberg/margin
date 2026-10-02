@@ -1,14 +1,15 @@
-// CodeMirror 6 setup: vim, org highlighting, folding (headings + drawers),
-// readable links, clickable checkboxes and the structure-editing ops.
-import { EditorState, Prec, RangeSetBuilder, type Extension } from "@codemirror/state";
-import { Decoration, EditorView, ViewPlugin, drawSelection, highlightActiveLine, keymap, type DecorationSet, type ViewUpdate } from "@codemirror/view";
+// CodeMirror 6 setup: vim, org styling (decorations that hide markup except on
+// the line being edited), folding, tables, blocks and the structure-editing ops.
+import { EditorState, Facet, Prec, type Extension, type Range } from "@codemirror/state";
+import {
+  Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, highlightActiveLine, keymap, type DecorationSet, type ViewUpdate,
+} from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
-import {
-  StreamLanguage, HighlightStyle, syntaxHighlighting, codeFolding, foldService, foldAll, unfoldAll, toggleFold, foldedRanges, foldEffect,
-} from "@codemirror/language";
-import { Tag } from "@lezer/highlight";
+import { codeFolding, foldService, foldAll, unfoldAll, toggleFold, foldedRanges, foldEffect } from "@codemirror/language";
 import { vim, Vim, getCM } from "@replit/codemirror-vim";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import * as tbl from "./orgtable";
 
 /** Set by the app; vim ex commands, mappings and clicks call through these. */
 export const hooks = {
@@ -28,158 +29,51 @@ Vim.defineAction("prevTab", () => hooks.tab(-1));
 Vim.mapCommand("gt", "action", "nextTab", {}, { context: "normal" });
 Vim.mapCommand("gT", "action", "prevTab", {}, { context: "normal" });
 
-// ---------------------------------------------------------------- highlighting
+type OrgConf = { todo: string[]; done: string[]; path?: string };
+const orgConf = Facet.define<OrgConf, OrgConf>({ combine: (v) => v[0] ?? { todo: [], done: [] } });
 
-const T = Object.fromEntries(
-  ["h1", "h2", "h3", "h4", "h5", "h6", "stars", "todo", "done", "tag", "date", "link", "prio", "planning", "prop", "meta", "title", "checkbox", "comment", "code", "bold"]
-    .map((n) => [n, Tag.define()]),
-);
-
-const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-function orgLanguage(todo: string[], done: string[]) {
-  const todoRe = new RegExp(`^(${todo.map(esc).join("|") || "\\b\\B"})(?= |$)`);
-  const doneRe = new RegExp(`^(${done.map(esc).join("|") || "\\b\\B"})(?= |$)`);
-  type S = { h: number; kw: boolean };
-  return StreamLanguage.define<S>({
-    name: "org",
-    startState: () => ({ h: 0, kw: false }),
-    tokenTable: T,
-    token(stream, st) {
-      if (stream.sol()) {
-        st.h = 0;
-        const m = stream.match(/^\*+(?= )/) as RegExpMatchArray | null;
-        if (m) {
-          st.h = Math.min(m[0].length, 6);
-          st.kw = true;
-          return "stars";
-        }
-        if (stream.match(/^\s*#\+title:.*$/i)) return "title";
-        if (stream.match(/^\s*#\+\w+:?/)) return "meta";
-        if (stream.match(/^\s*#( .*)?$/)) return "comment";
-        if (stream.match(/^\s*(SCHEDULED|DEADLINE|CLOSED):/)) return "planning";
-        if (stream.match(/^\s*:[\w-]+:/)) return "prop";
-        if (stream.match(/^\s*([-+]|\d+[.)])\s+\[[ xX-]\]/)) return "checkbox";
-      }
-      if (st.h && st.kw) {
-        st.kw = false;
-        if (stream.eatSpace()) return `h${st.h}`;
-      }
-      if (st.h && stream.match(todoRe)) return "todo";
-      if (st.h && stream.match(doneRe)) return "done";
-      if (stream.match(/^\[\[[^\]]+\](\[[^\]]*\])?\]/)) return "link";
-      if (stream.match(/^<\d{4}-\d{2}-\d{2}[^>]*>/) || stream.match(/^\[\d{4}-\d{2}-\d{2}[^\]]*\]/)) return "date";
-      if (st.h && stream.match(/^\[#[A-Z]\]/)) return "prio";
-      if (st.h && stream.match(/^:[\w@#%:]+:\s*$/)) return "tag";
-      if (stream.match(/^[=~][^=~\s](?:[^=~]*[^=~\s])?[=~](?=\W|$)/)) return "code";
-      if (stream.match(/^\*[^*\s](?:[^*]*[^*\s])?\*(?=\W|$)/)) return "bold";
-      stream.next();
-      stream.eatWhile(/[^[<:*=~\s]/);
-      return st.h ? `h${st.h}` : null;
-    },
-  });
-}
-
-const orgHighlight = HighlightStyle.define([
-  ...[1, 2, 3, 4, 5, 6].map((n) => ({ tag: T[`h${n}`], color: `var(--h${n})`, fontWeight: "600", fontSize: n === 1 ? "1.15em" : n === 2 ? "1.07em" : undefined })),
-  { tag: T.stars, color: "var(--dim)" },
-  { tag: T.todo, color: "var(--todo)", fontWeight: "700" },
-  { tag: T.done, color: "var(--done)", fontWeight: "700" },
-  { tag: T.tag, color: "var(--dim)", fontStyle: "italic" },
-  { tag: T.date, color: "var(--date)" },
-  { tag: T.link, color: "var(--link)" },
-  { tag: T.prio, color: "var(--todo)" },
-  { tag: T.planning, color: "var(--dim)" },
-  { tag: T.prop, color: "var(--dim)" },
-  { tag: T.meta, color: "var(--dim)" },
-  { tag: T.title, color: "var(--h1)", fontWeight: "700", fontSize: "1.35em" },
-  { tag: T.checkbox, color: "var(--date)" },
-  { tag: T.comment, color: "var(--dim)", fontStyle: "italic" },
-  { tag: T.code, color: "var(--code)" },
-  { tag: T.bold, fontWeight: "700" },
-]);
-
-// ---------------------------------------------------------------- readable links
-
-const LINK = /\[\[([^\]]+)\](?:\[([^\]]+)\])?\]/g;
-const hidden = Decoration.replace({});
-const linkMark = Decoration.mark({ class: "cm-org-link" });
-
-/** Show `[[target][Title]]` as just "Title" except on lines with a cursor. */
-function linkDecorations(view: EditorView): DecorationSet {
-  const b = new RangeSetBuilder<Decoration>();
-  const doc = view.state.doc;
-  const active = new Set(view.state.selection.ranges.map((r) => doc.lineAt(r.head).number));
-  let last = 0;
-  for (const { from, to } of view.visibleRanges) {
-    for (let pos = from; pos <= to; ) {
-      const line = doc.lineAt(pos);
-      pos = line.to + 1;
-      if (line.number <= last || active.has(line.number)) continue;
-      last = line.number;
-      for (const m of line.text.matchAll(LINK)) {
-        const s = line.from + m.index!;
-        const e = s + m[0].length;
-        const textFrom = m[2] ? e - 2 - m[2].length : s + 2;
-        b.add(s, textFrom, hidden);
-        b.add(textFrom, e - 2, linkMark);
-        b.add(e - 2, e, hidden);
-      }
-    }
-  }
-  return b.finish();
-}
-
-const readableLinks = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet;
-    constructor(v: EditorView) { this.decorations = linkDecorations(v); }
-    update(u: ViewUpdate) {
-      if (u.docChanged || u.viewportChanged || u.selectionSet) this.decorations = linkDecorations(u.view);
-    }
-  },
-  { decorations: (v) => v.decorations },
-);
-
-export function linkAt(state: EditorState, pos: number): string | null {
-  const line = state.doc.lineAt(pos);
-  const col = pos - line.from;
-  for (const m of line.text.matchAll(LINK)) {
-    if (m.index! <= col && col < m.index! + m[0].length) return m[1];
-  }
-  return null;
-}
-
-export const linkAtCursor = (v: EditorView) => linkAt(v.state, v.state.selection.main.head);
-
-const CHECKBOX = /^(\s*(?:[-+]|\d+[.)])\s+\[)([ xX-])\]/;
-
-/** Ctrl/Cmd-click follows links; clicking a [ ] checkbox toggles it. */
-const clicks = EditorView.domEventHandlers({
-  mousedown(e, v) {
-    const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
-    if (pos == null) return false;
-    if (e.ctrlKey || e.metaKey) {
-      const target = linkAt(v.state, pos);
-      if (!target) return false;
-      e.preventDefault();
-      hooks.follow(target);
-      return true;
-    }
-    const line = v.state.doc.lineAt(pos);
-    const m = CHECKBOX.exec(line.text);
-    const box = m ? line.from + m[1].length - 1 : -1;
-    if (!m || pos < box || pos > box + 3 || v.state.readOnly) return false;
-    e.preventDefault();
-    v.dispatch({ changes: { from: box + 1, to: box + 2, insert: m[2] === " " ? "X" : " " } });
-    return true;
-  },
-});
-
-// ---------------------------------------------------------------- structure
+// ---------------------------------------------------------------- document structure
 
 export const level = (text: string) => /^(\*+) /.exec(text)?.[1].length ?? 0;
 const DRAWER = /^\s*:(PROPERTIES|LOGBOOK):\s*$/i;
+const CHECKBOX = /^(\s*(?:[-+]|\d+[.)])\s+\[)([ xX-])\]/;
+const ITEM = /^(\s*)([-+]|\d+[.)]|\*(?=\s))(\s+)(\[[ xX-]\]\s+)?/;
+const LINK = /\[\[([^\]]+)\](?:\[([^\]]+)\])?\]/g;
+const TS = /([<[])(\d{4})-(\d{2})-(\d{2})(?: ([^\s\]>\d]+))?(?: (\d{1,2}):(\d{2}))?([^\]>]*)([>\]])/dg;
+const IMAGE = /\.(png|jpe?g|gif|svg|webp|bmp)$/i;
+
+type Block = { start: number; end: number; kind: string; lang: string };
+type Tbl = { start: number; end: number; sep: number };
+
+/** Blocks (#+begin_x … #+end_x) and tables, by 1-based line number. */
+function scan(state: EditorState) {
+  const blocks: Block[] = [];
+  const tables: Tbl[] = [];
+  const doc = state.doc;
+  for (let i = 1; i <= doc.lines; i++) {
+    const t = doc.line(i).text;
+    const b = /^\s*#\+begin_(\w+)\s*(\S*)/i.exec(t);
+    if (b) {
+      const endRe = new RegExp(`^\\s*#\\+end_${b[1]}\\b`, "i");
+      let j = i + 1;
+      while (j <= doc.lines && !endRe.test(doc.line(j).text)) j++;
+      if (j <= doc.lines) {
+        blocks.push({ start: i, end: j, kind: b[1].toLowerCase(), lang: b[2] });
+        i = j;
+      }
+      continue;
+    }
+    if (tbl.isTableLine(t)) {
+      let j = i;
+      while (j < doc.lines && tbl.isTableLine(doc.line(j + 1).text)) j++;
+      let sep = 0;
+      for (let k = i; k <= j && !sep; k++) if (tbl.isSep(doc.line(k).text)) sep = k;
+      tables.push({ start: i, end: j, sep });
+      i = j;
+    }
+  }
+  return { blocks, tables };
+}
 
 /** Last line number (1-based) of the subtree whose heading is on line N. */
 function subtreeEnd(state: EditorState, n: number): number {
@@ -210,10 +104,272 @@ function drawerRange(state: EditorState, n: number) {
 
 const orgFold = foldService.of((state, from) => {
   const line = state.doc.lineAt(from);
-  if (!level(line.text)) return drawerRange(state, line.number);
+  if (!level(line.text)) {
+    const b = /^\s*#\+begin_(\w+)/i.exec(line.text);
+    if (b) {
+      const endRe = new RegExp(`^\\s*#\\+end_${b[1]}\\b`, "i");
+      for (let j = line.number + 1; j <= state.doc.lines; j++) {
+        if (endRe.test(state.doc.line(j).text)) return { from: line.to, to: state.doc.line(j).to };
+      }
+    }
+    return drawerRange(state, line.number);
+  }
   const end = state.doc.line(subtreeEnd(state, line.number));
   return end.number > line.number ? { from: line.to, to: end.to } : null;
 });
+
+// ---------------------------------------------------------------- styling
+
+class Glyph extends WidgetType {
+  constructor(readonly text: string, readonly cls: string) { super(); }
+  eq(o: Glyph) { return o.text === this.text && o.cls === this.cls; }
+  toDOM() {
+    const s = document.createElement("span");
+    s.className = this.cls;
+    s.textContent = this.text;
+    return s;
+  }
+  ignoreEvent() { return false; }
+}
+
+class Img extends WidgetType {
+  constructor(readonly src: string) { super(); }
+  eq(o: Img) { return o.src === this.src; }
+  toDOM() {
+    const s = document.createElement("span");
+    s.className = "cm-org-img";
+    const img = document.createElement("img");
+    img.src = this.src;
+    img.alt = "";
+    s.appendChild(img);
+    return s;
+  }
+}
+
+const BULLETS = ["◉", "○", "◈", "◇", "▸", "•"];
+const hide = Decoration.replace({});
+const mark = (cls: string) => Decoration.mark({ class: cls });
+const line = (cls: string) => Decoration.line({ class: cls });
+
+/** Resolve an image link target relative to the note, for display through the asset protocol. */
+function imageSrc(target: string, notePath?: string): string | null {
+  if (/^https?:\/\//.test(target)) return IMAGE.test(target) ? target : null;
+  const p = target.replace(/^file:/, "");
+  if (!IMAGE.test(p) || p.includes("://") || !notePath || !("__TAURI_INTERNALS__" in window)) return null;
+  const sep = notePath.includes("\\") ? "\\" : "/";
+  const abs = /^([\\/]|[A-Za-z]:)/.test(p) ? p : notePath.replace(/[\\/][^\\/]*$/, "") + sep + p.replace(/^\.\//, "");
+  return convertFileSrc(abs);
+}
+
+/** Inline markup on one line: links, dates, emphasis, footnotes, cookies. */
+function inline(out: Range<Decoration>[], text: string, from: number, active: boolean, conf: OrgConf) {
+  const taken: [number, number][] = [];
+  const free = (a: number, b: number) => !taken.some(([x, y]) => a < y && b > x);
+  for (const m of text.matchAll(LINK)) {
+    const s = from + m.index!, e = s + m[0].length;
+    taken.push([s, e]);
+    const img = !m[2] && imageSrc(m[1], conf.path);
+    if (img) out.push(Decoration.widget({ widget: new Img(img), side: 1 }).range(e));
+    if (active) { out.push(mark("cm-org-link-raw").range(s, e)); continue; }
+    const textFrom = m[2] ? e - 2 - m[2].length : s + 2;
+    out.push(hide.range(s, textFrom), mark("cm-org-link").range(textFrom, e - 2), hide.range(e - 2, e));
+  }
+  for (const m of text.matchAll(TS)) {
+    const s = from + m.index!, e = s + m[0].length;
+    if (!free(s, e)) continue;
+    taken.push([s, e]);
+    const cls = m[1] === "<" ? "cm-org-ts" : "cm-org-ts cm-org-ts-inactive";
+    if (active) out.push(mark(cls).range(s, e));
+    else out.push(hide.range(s, s + 1), mark(cls).range(s + 1, e - 1), hide.range(e - 1, e));
+  }
+  for (const m of text.matchAll(/\[(\d*%|\d*\/\d*)\]/g)) {
+    const s = from + m.index!, e = s + m[0].length;
+    if (!free(s, e)) continue;
+    taken.push([s, e]);
+    const [a, b] = m[1].split("/");
+    const complete = m[1].endsWith("%") ? m[1] === "100%" : a !== "" && a === b;
+    out.push(mark(`cm-org-cookie${complete ? " cm-org-cookie-done" : ""}`).range(s, e));
+  }
+  for (const m of text.matchAll(/\[fn:[^\]\s]+\]/g)) {
+    const s = from + m.index!, e = s + m[0].length;
+    if (free(s, e)) { taken.push([s, e]); out.push(mark("cm-org-fn").range(s, e)); }
+  }
+  const EM: Record<string, string> = { "*": "b", "/": "i", _: "u", "=": "v", "~": "c", "+": "s" };
+  for (const m of text.matchAll(/(^|[\s\-({'"])([*/_=~+])(\S|\S.*?\S)\2(?=[\s\-.,:!?;'")}\]]|$)/g)) {
+    const s = from + m.index! + m[1].length, e = s + m[3].length + 2;
+    if (!free(s, e)) continue;
+    taken.push([s, e]);
+    out.push(mark(`cm-org-em-${EM[m[2]]}`).range(s + 1, e - 1));
+    if (!active) out.push(hide.range(s, s + 1), hide.range(e - 1, e));
+  }
+}
+
+function decorate(view: EditorView, blocks: Block[], tables: Tbl[]): DecorationSet {
+  const out: Range<Decoration>[] = [];
+  const doc = view.state.doc;
+  const conf = view.state.facet(orgConf);
+  const activeLines = new Set(view.state.selection.ranges.map((r) => doc.lineAt(r.head).number));
+  const isKw = (w: string) => conf.todo.includes(w) || conf.done.includes(w);
+  let last = 0;
+  for (const vr of view.visibleRanges) {
+    for (let pos = vr.from; pos <= vr.to; ) {
+      const ln = doc.lineAt(pos);
+      pos = ln.to + 1;
+      if (ln.number <= last) continue;
+      last = ln.number;
+      const n = ln.number, t = ln.text, from = ln.from;
+      const active = activeLines.has(n);
+
+      const block = blocks.find((b) => n >= b.start && n <= b.end);
+      if (block) {
+        const code = block.kind === "src" || block.kind === "example";
+        const cls = `cm-org-block cm-org-block-${code ? "code" : block.kind}`;
+        if (n === block.start) {
+          out.push(line(`${cls} cm-org-block-begin`).range(from));
+          if (!active && t.length) out.push(Decoration.replace({ widget: new Glyph(block.lang || block.kind, "cm-org-block-label") }).range(from, ln.to));
+        } else if (n === block.end) {
+          out.push(line(`${cls} cm-org-block-end`).range(from));
+          if (!active && t.length) out.push(hide.range(from, ln.to));
+        } else {
+          out.push(line(cls).range(from));
+          if (!code) inline(out, t, from, active, conf);
+        }
+        continue;
+      }
+
+      const table = tables.find((x) => n >= x.start && n <= x.end);
+      if (table) {
+        const head = table.sep && n < table.sep ? " cm-org-table-head" : "";
+        out.push(line(`cm-org-table${tbl.isSep(t) ? " cm-org-table-sep" : head}`).range(from));
+        for (const m of t.matchAll(/[|+]/g)) out.push(mark("cm-org-pipe").range(from + m.index!, from + m.index! + 1));
+        continue;
+      }
+
+      const lvl = level(t);
+      if (lvl) {
+        const words = t.slice(lvl + 1).split(" ");
+        const kw = isKw(words[0]) ? words[0] : "";
+        const done = conf.done.includes(kw);
+        out.push(line(`cm-org-h cm-org-h${Math.min(lvl, 6)}${done ? " cm-org-h-done" : ""}`).range(from));
+        if (!active) out.push(Decoration.replace({ widget: new Glyph(BULLETS[(lvl - 1) % BULLETS.length], `cm-org-bullet cm-org-bullet${Math.min(lvl, 6)}`) }).range(from, from + lvl));
+        let at = from + lvl + 1;
+        if (kw) {
+          out.push(mark(`cm-org-kw ${done ? "cm-org-kw-done" : "cm-org-kw-todo"} cm-org-kw-${kw}`).range(at, at + kw.length));
+          at += kw.length + 1;
+        }
+        const pm = /^\[#([A-Z])\]/.exec(doc.sliceString(at, ln.to));
+        if (pm) {
+          out.push(mark(`cm-org-prio cm-org-prio-${pm[1]}`).range(at, at + 4));
+          at += 5;
+        }
+        let end = ln.to;
+        const tm = /\s(:[\w@#%:]+:)\s*$/.exec(t);
+        if (tm) {
+          const ts = from + tm.index! + 1;
+          end = ts;
+          let p = ts;
+          for (const part of tm[1].split(/(:)/)) {
+            if (part === ":") { if (!active) out.push(hide.range(p, p + 1)); }
+            else if (part) out.push(mark("cm-org-tag").range(p, p + part.length));
+            p += part.length;
+          }
+        }
+        if (done && at < end) out.push(mark("cm-org-done-title").range(at, end));
+        if (at < end) inline(out, doc.sliceString(at, end), at, active, conf);
+        continue;
+      }
+
+      if (/^\s*#\+title:/i.test(t)) {
+        out.push(line("cm-org-title").range(from));
+        const k = t.indexOf(":") + 1;
+        if (!active) out.push(hide.range(from, from + k + (t[k] === " " ? 1 : 0)));
+        continue;
+      }
+      if (/^\s*#\+\w+/.test(t)) { out.push(line("cm-org-meta").range(from)); continue; }
+      if (/^\s*#(\s|$)/.test(t)) { out.push(line("cm-org-comment").range(from)); continue; }
+      if (/^\s*(SCHEDULED|DEADLINE|CLOSED):/.test(t)) { out.push(line("cm-org-planning").range(from)); inline(out, t, from, active, conf); continue; }
+      if (/^\s*:[\w-]+:/.test(t)) { out.push(line("cm-org-drawer").range(from)); continue; }
+      if (/^\s*-{5,}\s*$/.test(t)) {
+        out.push(line("cm-org-hr").range(from));
+        if (!active) out.push(hide.range(from, ln.to));
+        continue;
+      }
+
+      const item = ITEM.exec(t);
+      if (item) {
+        const b = from + item[1].length;
+        const bullet = item[2];
+        if (!active && (bullet === "-" || bullet === "+" || bullet === "*")) {
+          out.push(Decoration.replace({ widget: new Glyph("•", "cm-org-li") }).range(b, b + 1));
+        } else out.push(mark("cm-org-li-n").range(b, b + bullet.length));
+        if (item[4]) {
+          const cb = b + bullet.length + item[3].length;
+          const st = item[4][1];
+          if (st === "X" || st === "x") out.push(line("cm-org-checked").range(from));
+          const box = new Glyph(st === " " ? "" : st === "-" ? "–" : "✓", `cm-org-check${st === " " ? "" : " cm-org-check-on"}`);
+          if (!active) out.push(Decoration.replace({ widget: box }).range(cb, cb + 3));
+          else out.push(mark("cm-org-check-raw").range(cb, cb + 3));
+        }
+      }
+      inline(out, t, from, active, conf);
+    }
+  }
+  return Decoration.set(out, true);
+}
+
+const orgStyle = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    blocks: Block[];
+    tables: Tbl[];
+    constructor(v: EditorView) {
+      ({ blocks: this.blocks, tables: this.tables } = scan(v.state));
+      this.decorations = decorate(v, this.blocks, this.tables);
+    }
+    update(u: ViewUpdate) {
+      if (u.docChanged) ({ blocks: this.blocks, tables: this.tables } = scan(u.state));
+      if (u.docChanged || u.viewportChanged || u.selectionSet) this.decorations = decorate(u.view, this.blocks, this.tables);
+    }
+  },
+  { decorations: (v) => v.decorations },
+);
+
+export function linkAt(state: EditorState, pos: number): string | null {
+  const ln = state.doc.lineAt(pos);
+  const col = pos - ln.from;
+  for (const m of ln.text.matchAll(LINK)) {
+    if (m.index! <= col && col <= m.index! + m[0].length) return m[1];
+  }
+  return null;
+}
+
+export const linkAtCursor = (v: EditorView) => linkAt(v.state, v.state.selection.main.head);
+
+/** Ctrl/Cmd-click follows links; clicking a checkbox toggles it. */
+const clicks = EditorView.domEventHandlers({
+  mousedown(e, v) {
+    const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
+    if (pos == null) return false;
+    if (e.ctrlKey || e.metaKey) {
+      const target = linkAt(v.state, pos);
+      if (!target) return false;
+      e.preventDefault();
+      hooks.follow(target);
+      return true;
+    }
+    const ln = v.state.doc.lineAt(pos);
+    const m = CHECKBOX.exec(ln.text);
+    const box = m ? ln.from + m[1].length - 1 : -1;
+    const onWidget = (e.target as HTMLElement).classList?.contains("cm-org-check");
+    if (!m || v.state.readOnly || (!onWidget && (pos < box || pos > box + 3))) return false;
+    e.preventDefault();
+    v.dispatch({ changes: { from: box + 1, to: box + 2, insert: m[2] === " " ? "X" : " " } });
+    updateCookies(v, ln.number);
+    return true;
+  },
+});
+
+// ---------------------------------------------------------------- editing ops
 
 const curLine = (v: EditorView) => v.state.doc.lineAt(v.state.selection.main.head);
 export const onHeading = (v: EditorView) => !!level(curLine(v).text);
@@ -233,12 +389,38 @@ export function applyText(view: EditorView, text: string) {
   if (old !== text) view.dispatch({ changes: diffChange(old, text) });
 }
 
+/** Org's "<s" + Tab: expand a block template. */
+function expandTemplate(v: EditorView): boolean {
+  const ln = curLine(v);
+  const m = /^(\s*)<([sqevc])$/.exec(ln.text);
+  if (!m || v.state.selection.main.head !== ln.to) return false;
+  const kind = { s: "src", q: "quote", e: "example", v: "verse", c: "center" }[m[2]]!;
+  insertBlock(v, kind, "", { from: ln.from, to: ln.to, indent: m[1] });
+  return true;
+}
+
+export function insertBlock(v: EditorView, kind: string, lang = "", at?: { from: number; to: number; indent: string }) {
+  const ln = curLine(v);
+  const indent = at?.indent ?? /^\s*/.exec(ln.text)![0];
+  const from = at?.from ?? (ln.text.trim() ? ln.to : ln.from);
+  const lead = !at && ln.text.trim() ? "\n" : "";
+  const begin = `${indent}#+begin_${kind}${kind === "src" ? " " + lang : ""}`;
+  const insert = `${lead}${begin}\n${indent}\n${indent}#+end_${kind}`;
+  const cursor = kind === "src" && !lang ? from + lead.length + begin.length : from + lead.length + begin.length + 1 + indent.length;
+  v.dispatch({ changes: { from, to: at?.to ?? from, insert }, selection: { anchor: cursor } });
+  insertMode(v);
+}
+
 export function orgTab(v: EditorView): boolean {
-  if (!level(curLine(v).text) && !DRAWER.test(curLine(v).text)) return false;
+  if (tableOp(v, "next")) return true;
+  if (expandTemplate(v)) return true;
+  const t = curLine(v).text;
+  if (!level(t) && !DRAWER.test(t) && !/^\s*#\+begin_/i.test(t)) return false;
   return toggleFold(v);
 }
 
 export function orgShiftTab(v: EditorView): boolean {
+  if (tableOp(v, "prev")) return true;
   let any = false;
   foldedRanges(v.state).between(0, v.state.doc.length, () => { any = true; });
   return any ? unfoldAll(v) : foldAll(v);
@@ -253,8 +435,8 @@ export function shiftHeading(v: EditorView, d: -1 | 1, subtree = false): boolean
   const last = subtree ? subtreeEnd(s, n) : n;
   const changes = [];
   for (let i = n; i <= last; i++) {
-    const line = s.doc.line(i);
-    if (level(line.text)) changes.push(d > 0 ? { from: line.from, insert: "*" } : { from: line.from, to: line.from + 1 });
+    const ln = s.doc.line(i);
+    if (level(ln.text)) changes.push(d > 0 ? { from: ln.from, insert: "*" } : { from: ln.from, to: ln.from + 1 });
   }
   v.dispatch({ changes });
   return true;
@@ -300,58 +482,106 @@ export function newHeading(v: EditorView, todo = ""): boolean {
   return true;
 }
 
-const ITEM = /^(\s*)([-+]|\d+[.)])(\s+)(\[[ xX-]\]\s+)?/;
-
 /** Continue a list (new item after this line); otherwise a new heading. */
 export function newItem(v: EditorView): boolean {
-  const line = curLine(v);
-  const m = ITEM.exec(line.text);
-  if (!m) return newHeading(v);
+  const ln = curLine(v);
+  const m = ITEM.exec(ln.text);
+  if (!m || level(ln.text)) return newHeading(v);
   const bullet = /\d/.test(m[2]) ? parseInt(m[2]) + 1 + m[2].slice(-1) : m[2];
   const insert = `\n${m[1]}${bullet}${m[3]}${m[4] ? "[ ] " : ""}`;
-  v.dispatch({ changes: { from: line.to, insert }, selection: { anchor: line.to + insert.length }, scrollIntoView: true });
+  v.dispatch({ changes: { from: ln.to, insert }, selection: { anchor: ln.to + insert.length }, scrollIntoView: true });
   insertMode(v);
   return true;
 }
 
-/** Enter in insert mode on a list item: continue the list, or end it on an empty item. */
-function listEnter(v: EditorView): boolean {
-  const line = curLine(v);
-  const m = ITEM.exec(line.text);
-  if (!m || v.state.selection.main.head !== line.to) return false;
-  if (m[0].length === line.text.length) {
-    v.dispatch({ changes: { from: line.from, to: line.to, insert: "" } });
+/** Enter in insert mode: next table row, or continue / end a list. */
+function smartEnter(v: EditorView): boolean {
+  if (tableOp(v, "enter")) return true;
+  const ln = curLine(v);
+  const m = ITEM.exec(ln.text);
+  if (!m || level(ln.text) || v.state.selection.main.head !== ln.to) return false;
+  if (m[0].length === ln.text.length) {
+    v.dispatch({ changes: { from: ln.from, to: ln.to, insert: "" } });
     return true;
   }
   return newItem(v);
 }
 
 export function toggleHeading(v: EditorView): boolean {
-  const line = curLine(v);
-  const lvl = level(line.text);
-  v.dispatch(lvl ? { changes: { from: line.from, to: line.from + lvl + 1 } } : { changes: { from: line.from, insert: "* " } });
+  const ln = curLine(v);
+  const lvl = level(ln.text);
+  v.dispatch(lvl ? { changes: { from: ln.from, to: ln.from + lvl + 1 } } : { changes: { from: ln.from, insert: "* " } });
   return true;
 }
 
 export function toggleCheckbox(v: EditorView): boolean {
-  const line = curLine(v);
-  const m = CHECKBOX.exec(line.text);
-  if (!m) return false;
-  const pos = line.from + m[1].length;
+  const ln = curLine(v);
+  const m = CHECKBOX.exec(ln.text);
+  if (!m) {
+    // Turn a list item into a checkbox item.
+    const it = ITEM.exec(ln.text);
+    if (!it || level(ln.text)) return false;
+    v.dispatch({ changes: { from: ln.from + it[0].length, insert: "[ ] " } });
+    return true;
+  }
+  const pos = ln.from + m[1].length;
   v.dispatch({ changes: { from: pos, to: pos + 1, insert: m[2] === " " ? "X" : " " } });
+  updateCookies(v, ln.number);
   return true;
 }
 
-const TS = /([<[])(\d{4})-(\d{2})-(\d{2})(?: ([^\s\]>\d]+))?(?: (\d{1,2}):(\d{2}))?([^\]>]*)([>\]])/dg;
+/** Refresh the [n/m] / [n%] cookie of heading H: counts the checkboxes in
+ *  its body, or else its child tasks. */
+function updateCookie(v: EditorView, h: number) {
+  const s = v.state;
+  const conf = s.facet(orgConf);
+  const hl = s.doc.line(h);
+  const lvl = level(hl.text);
+  const cm = /\[(\d*%|\d*\/\d*)\]/.exec(hl.text);
+  if (!cm) return;
+  let done = 0, total = 0;
+  const end = subtreeEnd(s, h);
+  for (let i = h + 1; i <= end; i++) {
+    const t = s.doc.line(i).text;
+    if (level(t)) break;
+    const c = CHECKBOX.exec(t);
+    if (c) { total++; if (/[xX]/.test(c[2])) done++; }
+  }
+  if (!total) {
+    for (let i = h + 1; i <= end; i++) {
+      const t = s.doc.line(i).text;
+      if (level(t) !== lvl + 1) continue;
+      const kw = t.slice(lvl + 1).split(" ")[0];
+      if (conf.todo.includes(kw)) total++;
+      else if (conf.done.includes(kw)) { total++; done++; }
+    }
+  }
+  const val = cm[1].includes("%") ? `${total ? Math.round((done * 100) / total) : 0}%` : `${done}/${total}`;
+  const from = hl.from + cm.index + 1;
+  if (val !== cm[1]) v.dispatch({ changes: { from, to: from + cm[1].length, insert: val } });
+}
+
+/** Update the progress cookies of the heading owning line N and of its parent. */
+export function updateCookies(v: EditorView, n = curLine(v).number) {
+  let h = headingAt(v.state, n);
+  for (let round = 0; h && round < 2; round++) {
+    updateCookie(v, h);
+    const lvl = level(v.state.doc.line(h).text);
+    let p = headingAt(v.state, h - 1);
+    while (p && level(v.state.doc.line(p).text) >= lvl) p = headingAt(v.state, p - 1);
+    h = p;
+  }
+}
+
 const pad = (n: number) => String(n).padStart(2, "0");
 
 /** Nudge the timestamp under the cursor. With FIELD, the part under the
  *  cursor (year/month/day/hour/5 minutes) changes; otherwise the day. */
 export function shiftTimestamp(v: EditorView, dir: number, field = true): boolean {
-  const line = curLine(v);
+  const ln = curLine(v);
   const head = v.state.selection.main.head;
-  const col = head - line.from;
-  for (const m of line.text.matchAll(TS)) {
+  const col = head - ln.from;
+  for (const m of ln.text.matchAll(TS)) {
     if (col < m.index! || col >= m.index! + m[0].length) continue;
     const ix = (m as any).indices as ([number, number] | undefined)[];
     const on = (g: number) => field && !!ix[g] && ix[g]![0] <= col && col <= ix[g]![1];
@@ -365,11 +595,66 @@ export function shiftTimestamp(v: EditorView, dir: number, field = true): boolea
     let s = `${m[1]}${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${day}`;
     if (m[6]) s += ` ${pad(d.getHours())}:${pad(d.getMinutes())}`;
     s += m[8] + m[9];
-    const from = line.from + m.index!;
+    const from = ln.from + m.index!;
     v.dispatch({ changes: { from, to: from + m[0].length, insert: s }, selection: { anchor: head } });
     return true;
   }
   return false;
+}
+
+// ---------------------------------------------------------------- tables
+
+export const inTable = (v: EditorView) => tbl.isTableLine(curLine(v).text);
+
+type TableOp = "next" | "prev" | "enter" | "align" | "rowBelow" | "rowAbove" | "delRow" | "colRight" | "delCol"
+  | "rowDown" | "rowUp" | "colLeft" | "colRightMove" | "sep" | "sort" | "sortDesc";
+
+/** Run a table edit at the cursor. Returns false when the cursor is not in a table. */
+export function tableOp(v: EditorView, op: TableOp): boolean {
+  if (!inTable(v)) return false;
+  const s = v.state;
+  const ln = curLine(v);
+  let a = ln.number, b = ln.number;
+  while (a > 1 && tbl.isTableLine(s.doc.line(a - 1).text)) a--;
+  while (b < s.doc.lines && tbl.isTableLine(s.doc.line(b + 1).text)) b++;
+  const lines = Array.from({ length: b - a + 1 }, (_, i) => s.doc.line(a + i).text);
+  const t: tbl.Table = { lines, row: ln.number - a, col: tbl.cellIndex(ln.text, s.selection.main.head - ln.from) };
+  const ops: Record<TableOp, () => tbl.Table | null> = {
+    next: () => tbl.nextCell(t, 1), prev: () => tbl.nextCell(t, -1), enter: () => tbl.nextRow(t),
+    align: () => ({ ...t, lines: tbl.align(lines) }), rowBelow: () => tbl.insertRow(t, true), rowAbove: () => tbl.insertRow(t, false),
+    delRow: () => tbl.deleteRow(t), colRight: () => tbl.insertCol(t), delCol: () => tbl.deleteCol(t),
+    rowDown: () => tbl.moveRow(t, 1), rowUp: () => tbl.moveRow(t, -1), colLeft: () => tbl.moveCol(t, -1), colRightMove: () => tbl.moveCol(t, 1),
+    sep: () => tbl.insertSep(t), sort: () => tbl.sortRows(t), sortDesc: () => tbl.sortRows(t, true),
+  };
+  const r = ops[op]();
+  if (!r) return true;
+  const from = s.doc.line(a).from;
+  const text = r.lines.join("\n");
+  let off = 0;
+  for (let i = 0; i < r.row; i++) off += r.lines[i].length + 1;
+  const cell = tbl.isSep(r.lines[r.row]) ? 1 : tbl.cellOffset(r.lines[r.row], r.col);
+  v.dispatch({ changes: { from, to: s.doc.line(b).to, insert: text }, selection: { anchor: from + off + cell }, scrollIntoView: true });
+  return true;
+}
+
+export function insertTable(v: EditorView, cols: number, rows: number) {
+  const ln = curLine(v);
+  const lines = tbl.create(cols, rows);
+  const lead = ln.text.trim() ? "\n" : "";
+  const from = ln.text.trim() ? ln.to : ln.from;
+  v.dispatch({ changes: { from, to: ln.text.trim() ? from : ln.to, insert: lead + lines.join("\n") }, selection: { anchor: from + lead.length + 2 } });
+  insertMode(v);
+}
+
+/** All headings in the doc, for a "go to heading" picker. */
+export function headings(state: EditorState) {
+  const out: { line: number; level: number; text: string }[] = [];
+  for (let i = 1; i <= state.doc.lines; i++) {
+    const t = state.doc.line(i).text;
+    const l = level(t);
+    if (l) out.push({ line: i - 1, level: l, text: t.slice(l + 1).replace(/\s+:[\w@#%:]+:\s*$/, "").replace(/\[\[(?:[^\]]+)\]\[([^\]]+)\]\]/g, "$1") });
+  }
+  return out;
 }
 
 export function insertText(v: EditorView, text: string) {
@@ -396,20 +681,84 @@ export function onModeChange(v: EditorView, f: (mode: string) => void) {
 
 const theme = EditorView.theme({
   "&": { height: "100%", fontSize: "15px", backgroundColor: "var(--bg)", color: "var(--fg)" },
-  ".cm-scroller": { fontFamily: "var(--mono)", lineHeight: "1.6" },
-  ".cm-content": { padding: "20px 0 40vh", maxWidth: "100ch", margin: "0 auto", caretColor: "var(--accent)" },
-  ".cm-line": { padding: "0 32px" },
+  ".cm-scroller": { fontFamily: "var(--editor-font)", lineHeight: "1.65" },
+  ".cm-content": { padding: "24px 0 40vh", maxWidth: "88ch", margin: "0 auto", caretColor: "var(--accent)" },
+  ".cm-line": { padding: "0 36px" },
   ".cm-activeLine": { backgroundColor: "var(--active)" },
-  ".cm-foldPlaceholder": { background: "none", border: "none", color: "var(--dim)", padding: "0 4px" },
-  ".cm-org-link": { color: "var(--link)", textDecoration: "underline", textUnderlineOffset: "3px", cursor: "pointer" },
+  ".cm-foldPlaceholder": { background: "var(--active)", border: "none", color: "var(--dim)", padding: "0 6px", borderRadius: "4px", margin: "0 4px" },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": { backgroundColor: "var(--sel) !important" },
   ".cm-fat-cursor": { background: "var(--accent) !important", color: "var(--bg) !important" },
   "&:not(.cm-focused) .cm-fat-cursor": { outline: "1px solid var(--accent)", background: "none !important" },
   ".cm-panels": { backgroundColor: "var(--panel)", color: "var(--fg)", fontFamily: "var(--mono)" },
   ".cm-vim-panel input": { color: "var(--fg)", fontFamily: "var(--mono)" },
+
+  // headings
+  ".cm-org-h": { fontWeight: "650", paddingTop: "0.35em" },
+  ".cm-org-h1": { fontSize: "1.5em", color: "var(--h1)" },
+  ".cm-org-h2": { fontSize: "1.28em", color: "var(--h2)" },
+  ".cm-org-h3": { fontSize: "1.12em", color: "var(--h3)" },
+  ".cm-org-h4": { color: "var(--h4)" },
+  ".cm-org-h5": { color: "var(--h5)" },
+  ".cm-org-h6": { color: "var(--h6)" },
+  ".cm-org-h-done": { color: "var(--dim)" },
+  ".cm-org-done-title": { textDecoration: "line-through", textDecorationColor: "color-mix(in srgb, var(--dim) 60%, transparent)" },
+  ".cm-org-bullet": { display: "inline-block", width: "1.1em", color: "var(--dim)", fontSize: "0.8em", verticalAlign: "0.1em", textDecoration: "none" },
+  ".cm-org-kw": { fontSize: "0.68em", fontWeight: "700", letterSpacing: "0.04em", padding: "0.15em 0.5em", borderRadius: "4px", verticalAlign: "0.18em", fontFamily: "var(--sans)", textDecoration: "none", display: "inline-block" },
+  ".cm-org-kw-todo": { background: "color-mix(in srgb, var(--todo) 18%, transparent)", color: "var(--todo)" },
+  ".cm-org-kw-NEXT": { background: "color-mix(in srgb, var(--link) 18%, transparent)", color: "var(--link)" },
+  ".cm-org-kw-WAIT": { background: "color-mix(in srgb, var(--h5) 18%, transparent)", color: "var(--h5)" },
+  ".cm-org-kw-done": { background: "color-mix(in srgb, var(--done) 18%, transparent)", color: "var(--done)" },
+  ".cm-org-prio": { fontSize: "0.68em", fontWeight: "700", color: "var(--dim)", border: "1px solid var(--border)", borderRadius: "4px", padding: "0 0.35em", verticalAlign: "0.18em", fontFamily: "var(--sans)", display: "inline-block", textDecoration: "none" },
+  ".cm-org-prio-A": { color: "var(--todo)", borderColor: "color-mix(in srgb, var(--todo) 45%, transparent)" },
+  ".cm-org-prio-B": { color: "var(--h5)", borderColor: "color-mix(in srgb, var(--h5) 45%, transparent)" },
+  ".cm-org-tag": { fontSize: "0.68em", fontWeight: "500", color: "var(--dim)", background: "var(--active)", borderRadius: "999px", padding: "0.1em 0.6em", marginLeft: "0.3em", verticalAlign: "0.18em", fontFamily: "var(--sans)", display: "inline-block" },
+  ".cm-org-cookie": { fontSize: "0.75em", color: "var(--dim)", fontFamily: "var(--mono)" },
+  ".cm-org-cookie-done": { color: "var(--done)" },
+
+  // inline
+  ".cm-org-link": { color: "var(--link)", textDecoration: "underline", textUnderlineOffset: "3px", textDecorationColor: "color-mix(in srgb, var(--link) 45%, transparent)", cursor: "pointer" },
+  ".cm-org-link-raw": { color: "var(--link)" },
+  ".cm-org-ts": { fontFamily: "var(--mono)", fontSize: "0.82em", color: "var(--date)", background: "color-mix(in srgb, var(--date) 12%, transparent)", borderRadius: "4px", padding: "0.1em 0.35em" },
+  ".cm-org-ts-inactive": { color: "var(--dim)", background: "var(--active)" },
+  ".cm-org-fn": { color: "var(--link)", fontSize: "0.8em", verticalAlign: "0.3em" },
+  ".cm-org-em-b": { fontWeight: "700" },
+  ".cm-org-em-i": { fontStyle: "italic" },
+  ".cm-org-em-u": { textDecoration: "underline" },
+  ".cm-org-em-s": { textDecoration: "line-through", color: "var(--dim)" },
+  ".cm-org-em-v, .cm-org-em-c": { fontFamily: "var(--mono)", fontSize: "0.88em", background: "var(--active)", color: "var(--code)", borderRadius: "4px", padding: "0.1em 0.3em" },
+  ".cm-org-img img": { display: "block", maxWidth: "100%", maxHeight: "420px", borderRadius: "8px", margin: "8px 0" },
+
+  // lists
+  ".cm-org-li": { color: "var(--accent)", fontWeight: "700" },
+  ".cm-org-li-n": { color: "var(--accent)" },
+  ".cm-org-check": { display: "inline-grid", placeItems: "center", width: "0.95em", height: "0.95em", border: "1.5px solid var(--dim)", borderRadius: "4px", verticalAlign: "-0.12em", fontSize: "0.8em", lineHeight: "1", cursor: "pointer", boxSizing: "border-box", marginRight: "0.1em" },
+  ".cm-org-check-on": { background: "var(--done)", borderColor: "var(--done)", color: "var(--bg)", fontWeight: "700" },
+  ".cm-org-check-raw": { color: "var(--date)", fontFamily: "var(--mono)" },
+  ".cm-org-checked": { color: "var(--dim)" },
+
+  // lines
+  ".cm-org-title": { fontSize: "1.9em", fontWeight: "750", color: "var(--fg)", paddingTop: "0.2em", paddingBottom: "0.3em", lineHeight: "1.25" },
+  ".cm-org-meta, .cm-org-comment, .cm-org-drawer, .cm-org-planning": { color: "var(--dim)", fontSize: "0.85em" },
+  ".cm-org-drawer, .cm-org-planning": { fontFamily: "var(--mono)" },
+  ".cm-org-comment": { fontStyle: "italic" },
+  ".cm-org-hr": { backgroundImage: "linear-gradient(var(--border), var(--border))", backgroundSize: "calc(100% - 72px) 1px", backgroundRepeat: "no-repeat", backgroundPosition: "center" },
+
+  // blocks
+  ".cm-org-block": { background: "var(--panel)", borderLeft: "3px solid var(--border)" },
+  ".cm-org-block-code": { fontFamily: "var(--mono)", fontSize: "0.88em" },
+  ".cm-org-block-quote, .cm-org-block-verse": { fontStyle: "italic", borderLeftColor: "var(--accent)", color: "color-mix(in srgb, var(--fg) 85%, var(--dim))" },
+  ".cm-org-block-begin": { borderTopRightRadius: "6px", paddingTop: "0.2em", fontSize: "0.85em", color: "var(--dim)", fontFamily: "var(--mono)" },
+  ".cm-org-block-end": { borderBottomRightRadius: "6px", fontSize: "0.85em", color: "var(--dim)", fontFamily: "var(--mono)" },
+  ".cm-org-block-label": { fontSize: "0.85em", color: "var(--dim)", textTransform: "lowercase" },
+
+  // tables
+  ".cm-org-table": { fontFamily: "var(--mono)", fontSize: "0.9em" },
+  ".cm-org-table-head": { fontWeight: "700" },
+  ".cm-org-table-sep": { color: "var(--border)" },
+  ".cm-org-pipe": { color: "var(--border)" },
 });
 
-export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; onChange: () => void }) {
+export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; path?: string; onChange: () => void }) {
   const ext: Extension[] = [
     vim({ status: true }),
     history(),
@@ -417,7 +766,7 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
     highlightActiveLine(),
     highlightSelectionMatches(),
     EditorView.lineWrapping,
-    codeFolding({ placeholderText: "…" }),
+    codeFolding({ placeholderText: "⋯" }),
     keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
     theme,
     EditorState.readOnly.of(opts.readOnly),
@@ -425,10 +774,10 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
   ];
   if (opts.org) {
     ext.push(
-      orgLanguage(opts.todo, opts.done), syntaxHighlighting(orgHighlight), orgFold, readableLinks, clicks,
-      Prec.high(keymap.of([{ key: "Tab", run: orgTab }, { key: "Enter", run: listEnter }])),
+      orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path }), orgStyle, orgFold, clicks,
+      Prec.high(keymap.of([{ key: "Tab", run: orgTab }, { key: "Shift-Tab", run: orgShiftTab }, { key: "Enter", run: smartEnter }])),
     );
-  }
+  } else ext.push(EditorView.contentAttributes.of({ class: "cm-plain" }));
   let state = EditorState.create({ doc, extensions: ext });
   if (opts.org) {
     // Start with property/logbook drawers folded, like org.
