@@ -1,112 +1,24 @@
-// End-to-end tests: drive the real app through tauri-driver (WebDriver).
-// Needs `tauri-driver` and WebKitWebDriver on PATH; run with `npm run test:e2e`
-// (under `xvfb-run` when there's no display). Everything lives in a temp dir:
-// the app reads its config from $XDG_CONFIG_HOME/dev.albin.margin.e2e/config.toml.
+// End-to-end tests of the basics; setup and helpers are in setup.ts.
 import { after, before, describe, it } from "node:test";
-import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { connect } from "node:net";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { remote, Key } from "webdriverio";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { answer, browser, close, fileMatches, find, Key, launch, today, type, type Dirs } from "./setup.ts";
 
-const app = resolve("src-tauri/target/debug/margin");
-const root = mkdtempSync(join(tmpdir(), "margin-e2e-"));
-const notes = join(root, "notes");
-const data = join(root, "data");
-const read = (p: string) => { try { return readFileSync(p, "utf8"); } catch { return ""; } };
-
-const now = new Date();
-const pad = (n: number) => String(n).padStart(2, "0");
-const today = `<${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${now.toLocaleDateString("en-US", { weekday: "short" })}>`;
-
-function fixtures() {
-  const cfgDir = join(root, "config", "dev.albin.margin.e2e");
-  for (const d of [cfgDir, notes, join(data, "work")]) mkdirSync(d, { recursive: true });
-  writeFileSync(join(cfgDir, "config.toml"), [
-    `notes_dir = ${JSON.stringify(notes)}`,
-    `data_dir = ${JSON.stringify(data)}`,
-    `export_dir = ${JSON.stringify(join(root, "export"))}`,
-    `profiles = ["Work"]`,
-    `capture_shortcut = ""`,
-    `reminders = false`,
-    `idle_threshold_minutes = 0`,
-    `close_to_tray = false`,
-    `templates = []`,
-  ].join("\n"));
-  writeFileSync(join(cfgDir, "tutorial.org"), ""); // not a first run, so the tutorial doesn't take focus
-  writeFileSync(join(notes, "scratch.org"), "#+title: Scratch\n\nFirst line.\n");
-  writeFileSync(join(notes, "tasks.org"), `* TODO Fixture task\nSCHEDULED: ${today}\n`);
-  writeFileSync(join(data, "work", "projects.toml"), `[Acme]\nexport_code = "ACME"\n`);
-}
-
-let driver: ChildProcess;
-let browser: WebdriverIO.Browser;
-
-/** Wait until FILE's text satisfies OK. */
-async function fileMatches(file: string, ok: (s: string) => boolean, msg: string) {
-  try {
-    await browser.waitUntil(async () => ok(read(file)));
-  } catch {
-    throw new Error(`${msg}; ${file} is:\n${read(file)}`);
-  }
-}
-
-/** The first displayed element matching CSS whose text includes TEXT, once there is one.
- *  textContent, since WebKitWebDriver's getText is "" for text-overflow: ellipsis spans. */
-async function find(css: string, text: string) {
-  const hit = async () => {
-    for (const el of await browser.$$(css)) if ((await el.isDisplayed()) && String(await el.getProperty("textContent")).includes(text)) return el;
-    return false;
-  };
-  try {
-    return (await browser.waitUntil(hit)) as unknown as WebdriverIO.Element;
-  } catch {
-    const seen = [];
-    for (const el of await browser.$$(css)) seen.push(`${await el.isDisplayed()} ${JSON.stringify(await el.getText())} ${JSON.stringify(await el.getProperty("textContent"))}`);
-    throw new Error(`no ${css} with “${text}”; saw (displayed, text, textContent):\n${seen.join("\n")}`);
-  }
-}
-
-/** Press keys one at a time (keys("abc") would hold them all down together). */
-async function type(s: string) {
-  for (const c of s) await browser.keys(c);
-}
-
-/** Wait for the picker with PROMPT, replace its text with TEXT and press Enter.
- *  Typed as key presses: WebDriver's clear blurs the input, and blur cancels the picker. */
-async function answer(prompt: string, text: string) {
-  await find(".picker label span", prompt);
-  await browser.keys([Key.Ctrl, "a"]);
-  await type(text);
-  await browser.keys(Key.Enter);
-}
+let notes: string, data: string;
 
 before(async () => {
-  fixtures();
-  const env = { ...process.env, XDG_CONFIG_HOME: join(root, "config"), XDG_DATA_HOME: join(root, "share"), XDG_CACHE_HOME: join(root, "cache") };
-  driver = spawn("tauri-driver", [], { stdio: "inherit", env });
-  // Wait for tauri-driver to listen.
-  for (let i = 0; ; i++) {
-    const up = await new Promise<boolean>((r) => { const s = connect(4444, "127.0.0.1").once("connect", () => { s.end(); r(true); }).once("error", () => r(false)); });
-    if (up) break;
-    if (i > 50) throw new Error("tauri-driver didn't start");
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  browser = await remote({
-    hostname: "127.0.0.1",
-    port: 4444,
-    logLevel: "warn",
-    waitforTimeout: 10_000,
-    capabilities: { "tauri:options": { application: app }, "wdio:enforceWebDriverClassic": true } as WebdriverIO.Capabilities,
+  const d: Dirs = await launch({
+    config: [`templates = []`],
+    files: ({ notes, data }) => {
+      writeFileSync(join(notes, "scratch.org"), "#+title: Scratch\n\nFirst line.\n");
+      writeFileSync(join(notes, "tasks.org"), `* TODO Fixture task\nSCHEDULED: ${today}\n`);
+      writeFileSync(join(data, "work", "projects.toml"), `[Acme]\nexport_code = "ACME"\n`);
+    },
   });
+  ({ notes, data } = d);
 });
 
-after(async () => {
-  await browser?.deleteSession().catch(() => {});
-  driver?.kill();
-  rmSync(root, { recursive: true, force: true });
-}, { timeout: 30_000 });
+after(close, { timeout: 30_000 });
 
 describe("Margin", () => {
   it("starts on Today", async () => {
