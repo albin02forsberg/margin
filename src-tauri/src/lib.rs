@@ -1,13 +1,15 @@
 mod backup;
 mod config;
 mod ics;
+#[cfg(desktop)]
+mod idle;
 mod notes;
 mod org;
 mod remind;
 mod timeclock;
 mod tray;
 
-use chrono::{Duration, NaiveDate};
+use chrono::{Duration, NaiveDate, NaiveDateTime};
 use config::Config;
 use serde_json::{json, Value};
 use std::path::{Component, Path, PathBuf};
@@ -399,6 +401,16 @@ fn tc_out(s: State<App>, note: String) -> R<String> {
     Ok(if note.trim().is_empty() { "⏱ Clocked out.".into() } else { format!("⏱ Clocked out. Task: {note}") })
 }
 
+/// Idle prompt: clock out at SINCE, and back in at BACK unless stopping.
+#[tauri::command]
+fn tc_idle(s: State<App>, since: NaiveDateTime, back: Option<NaiveDateTime>, note: String) -> R<String> {
+    if !s.tc().discard_idle(since, back, &note)? {
+        return Ok("Not clocked in.".into());
+    }
+    s.backup();
+    Ok(if back.is_some() { "⏱ Idle time discarded.".into() } else { "⏱ Idle time discarded and clocked out.".into() })
+}
+
 #[tauri::command]
 fn tc_break(s: State<App>) -> R<String> {
     Ok(match s.tc().take_break()? {
@@ -548,6 +560,7 @@ pub fn run() {
             remind::start(app.handle());
             #[cfg(desktop)]
             {
+                idle::start(app.handle());
                 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
@@ -581,7 +594,7 @@ pub fn run() {
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, task_entry, date_preview, tc_dashboard,
             notes_new, notes_nodes, notes_backlinks, notes_search,
-            tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_break, tc_resume, tc_adjust,
+            tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now
         ])
         .build(tauri::generate_context!())

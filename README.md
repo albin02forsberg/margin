@@ -178,6 +178,11 @@ The tray icon shows what you're tracking and for how long, and has start,
 break, resume, switch and stop. Closing the window while a timer runs hides it
 to the tray (`close_to_tray = false` in settings to quit instead).
 
+Coming back after 10 minutes idle (or asleep) with a timer running asks whether
+to keep that time, discard it (clocked out when you left, back in when you
+returned) or discard it and stop. `idle_threshold_minutes` sets the time, 0
+turns it off. On Linux this needs an X11 session; under Wayland it stays off.
+
 ## Reminders
 
 Timed entries (`SCHEDULED: <… 14:00>`, deadlines with a time, appointments)
