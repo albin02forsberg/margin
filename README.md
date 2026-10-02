@@ -1,8 +1,31 @@
+<img src="assets/icon.svg" width="96" align="right" alt="">
+
 # Margin
 
 Notes, tasks, a journal and time tracking in one fast desktop app (Linux,
 macOS, Windows). Notes are plain org files, so they stay readable anywhere;
 the editor has vim keys.
+
+- **Notes** — org documents that render like a page: links and backlinks,
+  tables with formulas, code blocks, inline images, folding.
+- **Tasks** — Today and All tasks views, schedules, deadlines, priorities,
+  tags, repeaters; capture from anywhere with a global shortcut.
+- **Journal** — a daily note, one keypress away.
+- **Time** — a timeclock with breaks, projects, flex balance and reports, in
+  the window or the tray.
+- **Stays in sync** with Emacs, git or any sync tool editing the same files,
+  and updates itself from GitHub releases.
+
+## Install
+
+Download the latest build from
+[Releases](https://github.com/albin02forsberg/margin/releases/latest):
+
+- **Linux** — `.AppImage` (updates itself; `chmod +x` and run), or `.deb` / `.rpm`
+- **macOS** — `.dmg` (universal). Not signed yet: right-click → Open the first time.
+- **Windows** — `-setup.exe`. Not signed yet: SmartScreen → More info → Run anyway.
+
+## Build from source
 
 ```bash
 npm install
@@ -17,6 +40,8 @@ git push --tags`): installers for all three OSes land in a draft GitHub release.
 Publishing it makes installed copies offer the update on their next start
 (or `Space f u`). Release builds are signed for the updater with the
 `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repo secrets.
+
+## Staying in sync
 
 Everything stays in sync on its own: notes save shortly after you stop typing,
 and any change to the notes or time folders — from the app, Emacs or a sync
