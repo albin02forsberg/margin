@@ -14,6 +14,13 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/search": "^6.7.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
+    "@lezer/highlight": "^1.2.5",
+    "@replit/codemirror-vim": "^6.4.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2"
   },
@@ -21,10 +28,10 @@
     "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.65.1",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "@tauri-apps/cli": "^2",
     "svelte": "^5.56.3",
     "svelte-check": "^4.6.0",
     "typescript": "~6.0.3",
-    "vite": "^8.0.16",
-    "@tauri-apps/cli": "^2"
+    "vite": "^8.0.16"
   }
 }
