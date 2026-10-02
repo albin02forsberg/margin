@@ -1,0 +1,51 @@
+#+title: Welcome to Margin
+
+Margin keeps notes, tasks, a journal and your time in plain org files. This
+page is one of them: tick each box as you try it (click it, or =Space x c=).
+Reopen it any time with =Space ?= or "Help: tutorial" in =Ctrl+K=.
+
+* Find anything [/]
+- [ ] Press =Ctrl+K= for the command palette: every action, with its shortcut.
+- [ ] Press =Escape=, then =Space= (in normal mode): the same actions as a menu.
+- [ ] =Ctrl+\= hides and shows the sidebar.
+
+* Tasks [/]
+- [ ] =Ctrl+N= creates a task. Try "Water the plants", when =tomorrow=.
+- [ ] =Ctrl+1= opens *Today*, =Ctrl+2= *All tasks*.
+- [ ] In a list: =j= / =k= to move, =x= to finish, =s= to schedule, =d= for a due
+  date, =p= for priority, =#= for tags, =u= to undo, =?= for every key.
+- [ ] =Space v f= searches tasks: =todo:NEXT tag:work due:<=+7d=.
+
+* Notes [/]
+- [ ] =Ctrl+P= opens a note, or creates one if you type a new title.
+- [ ] =Ctrl+L= links to another note; =Enter= on a link follows it.
+- [ ] =Space n b= shows notes linking here, =Space n g= the note graph.
+- [ ] =Ctrl+J= opens today's journal.
+- [ ] Drop a file or paste an image into a note to attach it.
+
+The editor has vim keys. =i= to type, =Escape= to stop, =:w= to save (it also
+saves on its own).
+
+* Writing [/]
+- [ ] =Tab= on a heading folds it; =Alt+Enter= adds a heading or list item.
+- [ ] Type =|Name|Qty|=, press =Tab=: tables align themselves.
+- [ ] =<s= then =Tab= starts a code block.
+
+| Item   | Qty |
+|--------+-----|
+| Coffee |   3 |
+
+* Capture [/]
+- [ ] =Super+Shift+N= captures a task from anywhere, even with Margin hidden.
+- [ ] =Space c= captures with a template (meeting notes, …).
+
+* Time [/]
+- [ ] =Ctrl+4= opens Time. =i= starts tracking, =p= takes a break, =o= stops.
+- [ ] The tray icon shows the running timer; closing the window keeps it going.
+- [ ] Coming back after a while away asks what to do with that time.
+
+* And also
+- Reminders pop up before timed tasks and deadlines.
+- =Space e= exports a note as HTML, Markdown or PDF.
+- =Ctrl+,= opens the settings file: notes folder, templates, views, …
+- Margin updates itself; =Space f u= checks now.

@@ -62,6 +62,8 @@ conflicts are flagged (`:w` keeps yours, `Space f r` reloads).
 
 ## Getting around
 
+New here? The first start opens a hands-on tutorial note (`Space ?` reopens it).
+
 - **Ctrl+K** — command palette: every action, with its shortcut.
 - **Space** (vim normal mode, or in any list view) — the same actions as a menu.
 - Sidebar: **Today** (Ctrl+1), **Tasks** (Ctrl+2), **Inbox** (Ctrl+3),
