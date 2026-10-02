@@ -42,3 +42,4 @@ strip = true
 tauri-plugin-updater = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-notification = "2"
