@@ -667,6 +667,41 @@
     if (path) await tcDo("tc_csv", { start, end, path });
   }
 
+  // ---------------------------------------------------------------- export
+
+  /** Export the open note to the export folder; PDF opens the HTML in the browser to print from. */
+  async function exportNote(format: "html" | "md" | "pdf") {
+    if (!inFile()) return flash("Open a note first.");
+    await exported(await call("export_note", { path: tab.path, text: view.state.doc.toString(), format }), format === "pdf");
+  }
+
+  async function exportReport() {
+    const t = new Date();
+    const day = (m: number, d: number) => new Date(t.getFullYear(), t.getMonth() + m, d).toLocaleDateString("sv-SE");
+    const range: string[] | null = await pick({
+      prompt: "Time report for",
+      items: [
+        { label: "Last 7 days", value: [day(0, t.getDate() - 7), day(0, t.getDate())] },
+        { label: "This month", value: [day(0, 1), day(0, t.getDate())] },
+        { label: "Last month", value: [day(-1, 1), day(0, 0)] },
+      ],
+    });
+    if (!range) return;
+    const fmt = await pick({ prompt: "Export as", items: [{ label: "PDF (print from the browser)", value: "pdf" }, { label: "HTML", value: "html" }] });
+    if (fmt) await exported(await call("export_report", { start: range[0], end: range[1], print: fmt === "pdf" }), fmt === "pdf");
+  }
+
+  /** Flash where an export went; PRINT opens it right away, otherwise offer to. */
+  async function exported(path: string, print: boolean) {
+    if (print) {
+      await call("export_open", { path });
+      return flash(`Opened ${path} — print it to PDF from the browser`);
+    }
+    flash(`✓ Exported to ${path}`);
+    const open = await pick({ prompt: `Exported to ${path}`, items: [{ label: "Open it", value: true }, { label: "Done", value: false }] });
+    if (open) await call("export_open", { path });
+  }
+
   async function switchProfile(name?: string) {
     name ??= await pick({ prompt: `Switch profile (now: ${tc.profile})`, items: cfg.config.profiles });
     if (!name) return;
@@ -734,7 +769,7 @@
 
   const timeActions: Record<string, (arg?: any) => unknown> = {
     start: () => clockIn(), stop: clockOut, pause: () => tcDo("tc_break"), resume: () => tcDo("tc_resume"),
-    switch: changeProject, adjust: adjustStart, editSession: (s) => editSession(s), export: exportCsv, projects: editProject,
+    switch: changeProject, adjust: adjustStart, editSession: (s) => editSession(s), export: exportCsv, exportReport, projects: editProject,
     profile: (n) => switchProfile(n), holidays: () => report("holidays", "Holidays"), daily: dailyReport,
     weekly: () => report("weekly", "Week report"), doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
     backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), import: importEmacs,
@@ -846,15 +881,20 @@
     { label: "Time: check log for problems", leader: "t D", run: t("doctor") },
     { label: "Time: backup log", leader: "t L", run: t("backupLog") },
     { label: "Time: import from Emacs…", leader: "t M", run: t("import") },
+
+    { label: "Export: note as HTML", leader: "e h", run: () => exportNote("html") },
+    { label: "Export: note as Markdown", leader: "e m", run: () => exportNote("md") },
+    { label: "Export: note as PDF", leader: "e p", run: () => exportNote("pdf") },
+    { label: "Export: time report (HTML/PDF)…", leader: "e t", run: exportReport },
   ];
 
-  const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", i: "Insert", T: "Table", t: "Time tracking", v: "Go to & view", b: "Tabs" };
+  const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", i: "Insert", T: "Table", t: "Time tracking", e: "Export", v: "Go to & view", b: "Tabs" };
   const leader: MenuNode[] = (() => {
     const root: MenuNode[] = Object.entries(GROUPS).map(([key, label]) => ({ key, label, children: [] }));
     for (const c of cmds) {
       if (!c.leader) continue;
       const [a, b] = c.leader.split(" ");
-      const node = { key: b ?? a, label: c.label.replace(/^(Task|Time): /, ""), run: () => act(c.run) };
+      const node = { key: b ?? a, label: c.label.replace(/^(Task|Time|Export): /, ""), run: () => act(c.run) };
       if (b) root.find((g) => g.key === a)!.children!.push(node);
       else root.unshift(node);
     }

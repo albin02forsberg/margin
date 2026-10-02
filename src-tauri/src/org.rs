@@ -87,13 +87,16 @@ fn heading_level(line: &str) -> Option<usize> {
     (n > 0 && line[n..].starts_with(' ')).then_some(n)
 }
 
-fn is_planning(line: &str) -> bool {
+pub(crate) fn is_planning(line: &str) -> bool {
     let t = line.trim_start();
     t.starts_with("SCHEDULED:") || t.starts_with("DEADLINE:") || t.starts_with("CLOSED:")
 }
 
-/// Split a headline into (level, keyword, priority, title, tags).
-fn split_headline(line: &str, kw: &Kw) -> Option<(usize, Option<String>, Option<String>, String, Vec<String>)> {
+/// (level, keyword, priority, title, tags)
+pub(crate) type HeadParts = (usize, Option<String>, Option<String>, String, Vec<String>);
+
+/// Split a headline into its parts.
+pub(crate) fn split_headline(line: &str, kw: &Kw) -> Option<HeadParts> {
     let level = heading_level(line)?;
     let mut rest = line[level..].trim();
     let mut tags = vec![];

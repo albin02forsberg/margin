@@ -1,5 +1,6 @@
 mod backup;
 mod config;
+mod export;
 mod ics;
 #[cfg(desktop)]
 mod idle;
@@ -451,7 +452,7 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
     let profile = s.profile();
     Ok(match kind.as_str() {
         "daily" => timeclock::daily_report(&tc.sessions(), &tc.projects(), date(date_input.as_deref().unwrap_or(""))?, &profile),
-        "weekly" => timeclock::weekly_report(&tc.sessions(), &tc.projects(), today(), &profile),
+        "weekly" => timeclock::weekly_report(&tc.sessions(), &tc.projects(), today() - Duration::days(7), today(), &profile),
         "holidays" => timeclock::holidays_report(date(date_input.as_deref().unwrap_or(""))?.format("%Y").to_string().parse().unwrap()),
         "flex" => {
             let t = today();
@@ -474,6 +475,48 @@ fn tc_csv(s: State<App>, start: String, end: String, path: PathBuf) -> R<String>
     let tc = s.tc();
     std::fs::write(&path, timeclock::csv(&tc.sessions(), &tc.projects(), date(&start)?, date(&end)?)).map_err(|e| e.to_string())?;
     Ok(format!("✅ CSV exported to {}", path.display()))
+}
+
+// ---------------------------------------------------------------- export
+
+fn write_export(s: &App, name: &str, body: String) -> R<PathBuf> {
+    let dir = config::expand(&s.cfg().export_dir);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let p = dir.join(name);
+    std::fs::write(&p, body).map_err(|e| e.to_string())?;
+    Ok(p)
+}
+
+/// Export note TEXT (the buffer of PATH) to export_dir. FORMAT: html | md | pdf (HTML that opens the print dialog).
+#[tauri::command]
+fn export_note(s: State<App>, path: PathBuf, text: String, format: String) -> R<PathBuf> {
+    let d = export::parse(&text, &s.kw());
+    let stem = path.file_stem().map_or("note".into(), |x| x.to_string_lossy().to_string());
+    let base = path.parent().unwrap_or(Path::new(""));
+    match format.as_str() {
+        "md" => write_export(&s, &format!("{stem}.md"), export::markdown(&d, &stem, base)),
+        f => write_export(&s, &format!("{stem}.html"), export::html(&d, &stem, base, f == "pdf")),
+    }
+}
+
+/// The time report for START..END as an HTML page in export_dir; PRINT opens the print dialog.
+#[tauri::command]
+fn export_report(s: State<App>, start: String, end: String, print: bool) -> R<PathBuf> {
+    let tc = s.tc();
+    let (start, end) = (date(&start)?, date(&end)?);
+    let org = timeclock::weekly_report(&tc.sessions(), &tc.projects(), start, end, &s.profile());
+    let html = export::html(&export::parse(&org, &s.kw()), "Time report", Path::new(""), print);
+    write_export(&s, &format!("time_report_{}_{start}_{end}.html", s.profile().to_lowercase()), html)
+}
+
+/// Open an exported file with its default app (only files in export_dir).
+#[tauri::command]
+fn export_open(app: AppHandle, s: State<App>, path: PathBuf) -> R<()> {
+    use tauri_plugin_opener::OpenerExt;
+    if path.parent() != Some(config::expand(&s.cfg().export_dir).as_path()) {
+        return Err(format!("{} is not in the export folder", path.display()));
+    }
+    app.opener().open_path(path.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -595,7 +638,8 @@ pub fn run() {
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, task_entry, date_preview, tc_dashboard,
             notes_new, notes_nodes, notes_backlinks, notes_search,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_edit_session, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now
+            tc_sessions_on, tc_edit_session, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
+            export_note, export_report, export_open
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
