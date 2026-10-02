@@ -23,15 +23,24 @@ pub fn step(away: Option<NaiveDateTime>, last: NaiveDateTime, idle: Duration, th
     }
 }
 
-/// Poll every 5 s. Without an idle source (Wayland, no X display) only sleep and
-/// suspend are caught, from the gap between polls.
-pub fn start(app: &AppHandle) {
-    // The X11 backend reads XScreenSaver idle, which is wrong under Wayland and crashes without a display.
+/// How long since the last input, if this desktop can tell: X11, macOS and Windows
+/// through user-idle, Wayland through ext-idle-notify (threshold fixed at startup).
+fn source(threshold: Duration) -> Option<Box<dyn Fn() -> Duration + Send>> {
+    let user_idle = || Box::new(|| Duration::seconds(UserIdle::get_time().map_or(0, |i| i.as_seconds() as i64))) as Box<dyn Fn() -> Duration + Send>;
     #[cfg(target_os = "linux")]
-    let source = std::env::var_os("WAYLAND_DISPLAY").is_none() && std::env::var_os("DISPLAY").is_some();
-    #[cfg(not(target_os = "linux"))]
-    let source = true;
-    let source = source && UserIdle::get_time().map_err(|e| eprintln!("idle time unavailable ({e:?}); only catching sleep")).is_ok();
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        return crate::wayland_idle::start(threshold).map(|f| Box::new(f) as _).map_err(|e| eprintln!("idle time unavailable ({e}); only catching sleep")).ok();
+    } else if std::env::var_os("DISPLAY").is_none() {
+        return None; // user-idle's X11 backend crashes without a display
+    }
+    let _ = threshold;
+    UserIdle::get_time().map_err(|e| eprintln!("idle time unavailable ({e:?}); only catching sleep")).ok().map(|_| user_idle())
+}
+
+/// Poll every 5 s. Without an idle source only sleep and suspend are caught, from the gap between polls.
+pub fn start(app: &AppHandle) {
+    let mins = app.state::<App>().cfg().idle_threshold_minutes;
+    let source = if mins > 0 { source(Duration::minutes(mins)) } else { None };
     let app = app.clone();
     std::thread::spawn(move || {
         let (mut away, mut last) = (None, now());
@@ -39,10 +48,10 @@ pub fn start(app: &AppHandle) {
             std::thread::sleep(std::time::Duration::from_secs(5));
             let s = app.state::<App>();
             let mins = s.cfg().idle_threshold_minutes;
-            let idle = if source { UserIdle::get_time().map_or(0, |i| i.as_seconds()) } else { 0 };
+            let idle = source.as_ref().map_or(Duration::zero(), |f| f());
             let t = now();
             let running = mins > 0 && s.tc().current().is_some();
-            let (a, back) = step(away, last, Duration::seconds(idle as i64), Duration::minutes(mins), running, t);
+            let (a, back) = step(away, last, idle, Duration::minutes(mins), running, t);
             (away, last) = (a, t);
             if let Some((since, back)) = back {
                 tray::show(&app);

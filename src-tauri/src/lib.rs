@@ -5,6 +5,8 @@ mod export;
 mod ics;
 #[cfg(desktop)]
 mod idle;
+#[cfg(target_os = "linux")]
+mod wayland_idle;
 mod notes;
 mod org;
 mod remind;

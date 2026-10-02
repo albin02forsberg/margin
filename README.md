@@ -221,7 +221,9 @@ to the tray (`close_to_tray = false` in settings to quit instead).
 Coming back after 10 minutes idle (or asleep) with a timer running asks whether
 to keep that time, discard it (clocked out when you left, back in when you
 returned) or discard it and stop. `idle_threshold_minutes` sets the time, 0
-turns it off. Under Wayland only sleep and suspend are noticed, not idling.
+turns it off. On Wayland this uses the compositor's idle notifications
+(KDE Plasma 6, Sway/wlroots, GNOME 46+), and the threshold applies after a restart;
+elsewhere only sleep and suspend are noticed.
 
 ## Export
 
