@@ -486,7 +486,10 @@ fn backup_now(s: State<App>) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             let cfg_path = app.path().app_config_dir()?.join("config.toml");
             let cfg = Config::load(&cfg_path).unwrap_or_else(|e| {
                 eprintln!("{e}; using defaults");

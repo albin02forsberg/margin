@@ -3,6 +3,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { openUrl } from "@tauri-apps/plugin-opener";
+  import { check } from "@tauri-apps/plugin-updater";
+  import { relaunch } from "@tauri-apps/plugin-process";
   import { EditorView } from "@codemirror/view";
   import type { EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
@@ -677,6 +679,22 @@
     if (dir) await tcDo("tc_import", { dir });
   }
 
+  // ---------------------------------------------------------------- updates
+
+  /** Look for a newer release. QUIET (at startup) only mentions it; otherwise offer to install and restart. */
+  async function checkUpdate(quiet = false) {
+    const u = await check();
+    if (!u) return quiet || flash("Margin is up to date.");
+    if (quiet) return flash(`Margin ${u.version} is available — Space f u to install.`);
+    const yes = await pick({ prompt: `Install Margin ${u.version} and restart?`, items: [{ label: "Install and restart", value: true }, { label: "Not now", value: false }] });
+    if (!yes) return;
+    flash(`Downloading Margin ${u.version}…`);
+    await u.download();
+    await saveAll(); // the Windows installer closes the app as soon as it starts
+    await u.install();
+    await relaunch();
+  }
+
   const timeActions: Record<string, (arg?: any) => unknown> = {
     start: () => clockIn(), stop: clockOut, pause: () => tcDo("tc_break"), resume: () => tcDo("tc_resume"),
     switch: changeProject, adjust: adjustStart, editSession: (s) => editSession(s), export: exportCsv, projects: editProject,
@@ -719,6 +737,7 @@
     { label: "Save", keys: ["Ctrl+S"], leader: "f s", run: () => saveTab(tab, true) },
     { label: "Reload from disk (discard unsaved changes)", leader: "f r", run: reloadFromDisk },
     { label: "Save all", leader: "f S", run: saveAll },
+    { label: "Check for updates", leader: "f u", run: () => checkUpdate() },
     { label: "Switch tab…", leader: "b b", run: switchTab },
     { label: "Next tab (also gt)", keys: ["Ctrl+Tab"], leader: "b n", run: () => cycleTab(1) },
     { label: "Previous tab (also gT)", keys: ["Ctrl+Shift+Tab"], leader: "b p", run: () => cycleTab(-1) },
@@ -944,6 +963,7 @@
       ed.hooks.tab = (d) => act(() => cycleTab(d));
       await openView("agenda");
       await refreshTc();
+      if (!import.meta.env.DEV) checkUpdate(true).catch(() => {}); // offline or no release yet: stay quiet
     });
     const timer = setInterval(() => act(refreshTc), 60_000);
     const blur = () => act(saveAll);
