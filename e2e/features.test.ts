@@ -40,6 +40,8 @@ describe("Features", () => {
         writeFileSync(join(notes, "tasks.org"), "* TODO Write report :work:\n* TODO Buy milk :home:\n* NEXT Call the bank :work:money:\n");
         writeFileSync(join(notes, "alpha.org"), "#+title: Alpha Project\n\nAbout it.\n");
         writeFileSync(join(notes, "beta.org"), "#+title: Beta\n\nWe discussed the Alpha Project today.\n");
+        writeFileSync(join(notes, "hub.org"), "#+title: Hub\n\nSee [[id:leaf-id][the leaf]].\n");
+        writeFileSync(join(notes, "leaf.org"), ":PROPERTIES:\n:ID: leaf-id\n:END:\n#+title: Leaf\n\nA leaf.\n");
         writeFileSync(join(notes, "exportme.org"), "#+title: Export me\n\nSome *bold* text.\n\n* A heading\n- one item\n");
       },
     });
@@ -101,7 +103,7 @@ describe("Features", () => {
 
   it("lists an unlinked mention and links it", async () => {
     await browser.keys([Key.Ctrl, "p"]);
-    await answer("Open a note", "Alpha Project");
+    await answer("Open a note", "alpha");
     await find(".status .file", "alpha.org");
     await browser.keys(" ");
     await type("nb");
@@ -127,5 +129,27 @@ describe("Features", () => {
     await browser.keys(Key.Escape);
     assert.ok(existsSync(md), "no exportme.md");
     assert.match(read(md), /^# Export me\n\nSome \*\*bold\*\* text\.\n[\s\S]*A heading[\s\S]*- one item\n/);
+
+    // Again: asks before overwriting; "Keep both" writes a numbered copy.
+    await browser.keys(" ");
+    await type("em");
+    await answer("exportme.md already exists", "Keep both");
+    await find(".picker label span", "Exported to");
+    await browser.keys(Key.Escape);
+    assert.equal(read(join(d.exportDir, "exportme (2).md")), read(md));
+  });
+
+  it("exports a note and the notes it links to as linked HTML pages", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "hub");
+    await find(".status .file", "hub.org");
+    await browser.keys(" ");
+    await type("ea");
+    await answer("Include notes", "Linked from this note");
+    await find(".picker label span", "Exported to");
+    await browser.keys(Key.Escape);
+    const dir = join(d.exportDir, "hub");
+    assert.match(read(join(dir, "hub.html")), /<a href="leaf\.html"[^>]*>the leaf<\/a>/);
+    assert.match(read(join(dir, "leaf.html")), /A leaf\./);
   });
 });
