@@ -1078,6 +1078,7 @@
     const focus = () => syncFromDisk();
     const unlisten = listen("fs-changed", () => syncFromDisk());
     const unlistenTray = listen<string>("tray", (e) => act(() => timeActions[e.payload]()));
+    const unlistenOpen = listen<{ path: string; line: number }>("open-entry", (e) => act(() => openFile(e.payload.path, e.payload.line)));
     const unlistenIdle = listen<{ since: string; back: string }>("idle", (e) => act(() => idleReturn(e.payload)));
     // Quick capture (global shortcut or `margin --capture`); HIDDEN: the window was hidden before, so hide it again.
     const unlistenCapture = listen<boolean>("capture", (e) => act(async () => {
@@ -1091,6 +1092,7 @@
       clearInterval(timer);
       unlisten.then((f) => f());
       unlistenTray.then((f) => f());
+      unlistenOpen.then((f) => f());
       unlistenIdle.then((f) => f());
       unlistenCapture.then((f) => f());
       window.removeEventListener("keydown", onKey, true);

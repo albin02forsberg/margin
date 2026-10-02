@@ -4,7 +4,7 @@ use crate::org::{self, Item, Kw};
 use crate::App;
 use chrono::{Duration, NaiveDateTime, NaiveTime};
 use std::collections::BTreeSet;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 
 #[derive(Debug, PartialEq)]
@@ -13,6 +13,9 @@ pub struct Due {
     pub key: String,
     pub title: String,
     pub body: String,
+    /// The entry, for opening it from the notification.
+    pub path: std::path::PathBuf,
+    pub line: usize,
 }
 
 /// Reminders that are due at NOW: timed entries (scheduled, deadline, appointment)
@@ -31,7 +34,8 @@ pub fn due(items: &[Item], kw: &Kw, now: NaiveDateTime, before: Duration, warn_d
                 let at = it.date.and_time(t);
                 if at - before <= now && now <= at {
                     let what = if it.kind == "deadline" { "Due" } else { "At" };
-                    out.push(Due { key: format!("{} {} {place} {t}", it.date, it.kind), title: it.title.clone(), body: format!("{what} {}", t.format("%H:%M")) });
+                    let (key, body) = (format!("{} {} {place} {t}", it.date, it.kind), format!("{what} {}", t.format("%H:%M")));
+                    out.push(Due { key, title: it.title.clone(), body, path: it.path.clone(), line: it.line });
                 }
             }
             ("deadline", None) => {
@@ -42,7 +46,7 @@ pub fn due(items: &[Item], kw: &Kw, now: NaiveDateTime, before: Duration, warn_d
                         1 => "Due tomorrow".into(),
                         n => format!("Due in {n} days"),
                     };
-                    out.push(Due { key: format!("{} deadline {place}", now.date()), title: it.title.clone(), body });
+                    out.push(Due { key: format!("{} deadline {place}", now.date()), title: it.title.clone(), body, path: it.path.clone(), line: it.line });
                 }
             }
             _ => {}
@@ -76,14 +80,32 @@ fn tick(app: &AppHandle) {
     sent.retain(|k| k.get(..10).and_then(|d| d.parse::<chrono::NaiveDate>().ok()).is_some_and(|d| d >= today));
     let mut changed = sent.len() != before;
     for d in due {
-        if sent.insert(d.key) {
+        if sent.insert(d.key.clone()) {
             changed = true;
-            let _ = app.notification().builder().title(&d.title).body(&d.body).show();
+            notify(app, d);
         }
     }
     if changed {
         let _ = std::fs::write(&file, sent.into_iter().map(|k| k + "\n").collect::<String>());
     }
+}
+
+/// Show D; clicking it opens the entry where the desktop reports clicks (Linux, via D-Bus).
+fn notify(app: &AppHandle, d: Due) {
+    #[cfg(target_os = "linux")]
+    if let Ok(h) = notify_rust::Notification::new().appname("Margin").summary(&d.title).body(&d.body).action("default", "Open").show() {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            h.wait_for_action(|a| {
+                if a == "default" {
+                    crate::tray::show(&app);
+                    let _ = app.emit("open-entry", serde_json::json!({ "path": d.path, "line": d.line }));
+                }
+            })
+        });
+        return;
+    }
+    let _ = app.notification().builder().title(&d.title).body(&d.body).show();
 }
 
 #[cfg(test)]
