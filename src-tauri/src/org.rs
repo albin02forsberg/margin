@@ -366,64 +366,306 @@ fn ts_string(d: NaiveDate, time: Option<&str>) -> String {
     }
 }
 
-/// Replace the date (and day name) of the timestamp following KIND on a planning line.
-fn shift_planning(line: &str, kind: &str, f: impl Fn(NaiveDate, &(String, u32, char)) -> NaiveDate) -> String {
+/// Replace the date (and day name) of the timestamp following KIND on a
+/// planning line; F returns None to leave it alone.
+fn shift_planning(line: &str, kind: &str, f: impl Fn(&Ts) -> Option<NaiveDate>) -> String {
     let Some(pos) = line.find(&format!("{kind}:")) else { return line.to_string() };
     let rest = &line[pos..];
     let Some(c) = TS.captures(rest) else { return line.to_string() };
-    let Some(ts) = parse_ts(&c) else { return line.to_string() };
-    let Some(rep) = &ts.repeater else { return line.to_string() };
+    let Some(new) = parse_ts(&c).and_then(|ts| f(&ts)) else { return line.to_string() };
     let m = c.get(0).unwrap();
-    let shifted = TS_HEAD.replace(m.as_str(), format!("<{}", f(ts.date, rep).format("%Y-%m-%d %a")));
+    let shifted = TS_HEAD.replace(m.as_str(), format!("<{}", new.format("%Y-%m-%d %a")));
     format!("{}{}{}{}", &line[..pos], &rest[..m.start()], shifted, &rest[m.end()..])
 }
 
-/// Cycle the TODO keyword of the headline at LINE by DIR (+1/-1). Marking a
-/// repeating task done shifts its dates and resets it, like org.
-pub fn cycle_todo(text: &str, line: usize, kw: &Kw, dir: i32, today: NaiveDate) -> String {
-    let mut lines: Vec<String> = text.lines().map(String::from).collect();
-    let Some(hl) = headline_at(&lines, line) else { return text.to_string() };
-    let Some((level, cur, prio, title, tags)) = split_headline(&lines[hl], kw) else { return text.to_string() };
-    let seq: Vec<Option<&str>> = std::iter::once(None).chain(kw.todo.iter().chain(&kw.done).map(|s| Some(s.as_str()))).collect();
-    let i = seq.iter().position(|k| *k == cur.as_deref()).unwrap_or(0) as i32;
-    let mut next = seq[(i + dir).rem_euclid(seq.len() as i32) as usize].map(String::from);
+/// The editable parts of a headline.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Parts {
+    pub level: usize,
+    pub keyword: Option<String>,
+    pub priority: Option<String>,
+    pub title: String,
+    pub tags: Vec<String>,
+}
 
+impl Parts {
+    fn parse(line: &str, kw: &Kw) -> Option<Parts> {
+        split_headline(line, kw).map(|(level, keyword, priority, title, tags)| Parts { level, keyword, priority, title, tags })
+    }
+    fn line(&self) -> String {
+        let mut s = "*".repeat(self.level);
+        if let Some(k) = &self.keyword {
+            s += &format!(" {k}");
+        }
+        if let Some(p) = &self.priority {
+            s += &format!(" [#{p}]");
+        }
+        if !self.title.is_empty() {
+            s += &format!(" {}", self.title);
+        }
+        if !self.tags.is_empty() {
+            s += &format!(" :{}:", self.tags.join(":"));
+        }
+        s
+    }
+}
+
+fn to_lines(text: &str) -> Vec<String> {
+    text.lines().map(String::from).collect()
+}
+
+/// The headline at or above LINE.
+pub fn heading(text: &str, line: usize, kw: &Kw) -> Option<Parts> {
+    let lines = to_lines(text);
+    Parts::parse(&lines[headline_at(&lines, line)?], kw)
+}
+
+fn edit_heading(text: &str, line: usize, kw: &Kw, f: impl FnOnce(&mut Parts)) -> String {
+    let mut lines = to_lines(text);
+    let Some(hl) = headline_at(&lines, line) else { return text.to_string() };
+    let Some(mut p) = Parts::parse(&lines[hl], kw) else { return text.to_string() };
+    f(&mut p);
+    lines[hl] = p.line();
+    join(lines, text)
+}
+
+/// Set the TODO keyword (None clears it). Marking a repeating task done
+/// shifts its dates and resets it, like org.
+pub fn set_keyword(text: &str, line: usize, kw: &Kw, new: Option<&str>, today: NaiveDate) -> String {
+    let mut lines = to_lines(text);
+    let Some(hl) = headline_at(&lines, line) else { return text.to_string() };
+    let Some(mut p) = Parts::parse(&lines[hl], kw) else { return text.to_string() };
+    let mut next = new.map(String::from);
     let planning = hl + 1 < lines.len() && is_planning(&lines[hl + 1]);
     let repeats = planning && TS.captures_iter(&lines[hl + 1]).any(|c| c.get(3).is_some());
     if next.as_deref().is_some_and(|k| kw.is_done(k)) && repeats {
         for kind in ["SCHEDULED", "DEADLINE"] {
-            lines[hl + 1] = shift_planning(&lines[hl + 1], kind, |d, (k, n, u)| match k.as_str() {
-                ".+" => add_interval(today, *n, *u),
-                "++" => {
-                    let mut d = add_interval(d, *n, *u);
-                    while d <= today {
-                        d = add_interval(d, *n, *u);
+            lines[hl + 1] = shift_planning(&lines[hl + 1], kind, |ts| {
+                let (k, n, u) = ts.repeater.as_ref()?;
+                Some(match k.as_str() {
+                    ".+" => add_interval(today, *n, *u),
+                    "++" => {
+                        let mut d = add_interval(ts.date, *n, *u);
+                        while d <= today {
+                            d = add_interval(d, *n, *u);
+                        }
+                        d
                     }
-                    d
-                }
-                _ => add_interval(d, *n, *u),
+                    _ => add_interval(ts.date, *n, *u),
+                })
             });
         }
-        next = cur.filter(|k| !kw.is_done(k)).or(kw.todo.first().cloned());
+        next = p.keyword.clone().filter(|k| !kw.is_done(k)).or(kw.todo.first().cloned());
     }
-    lines[hl] = build_headline(level, next.as_deref(), prio.as_deref(), &title, &tags);
+    p.keyword = next;
+    lines[hl] = p.line();
     join(lines, text)
 }
 
-fn build_headline(level: usize, kw: Option<&str>, prio: Option<&str>, title: &str, tags: &[String]) -> String {
-    let mut s = "*".repeat(level);
-    if let Some(k) = kw {
-        s += &format!(" {k}");
+/// Cycle the TODO keyword of the headline at LINE by DIR (+1/-1).
+pub fn cycle_todo(text: &str, line: usize, kw: &Kw, dir: i32, today: NaiveDate) -> String {
+    let Some(p) = heading(text, line, kw) else { return text.to_string() };
+    let seq: Vec<Option<&str>> = std::iter::once(None).chain(kw.todo.iter().chain(&kw.done).map(|s| Some(s.as_str()))).collect();
+    let i = seq.iter().position(|k| *k == p.keyword.as_deref()).unwrap_or(0) as i32;
+    set_keyword(text, line, kw, seq[(i + dir).rem_euclid(seq.len() as i32) as usize], today)
+}
+
+pub fn set_priority(text: &str, line: usize, kw: &Kw, prio: Option<&str>) -> String {
+    edit_heading(text, line, kw, |p| p.priority = prio.map(|s| s.to_uppercase()))
+}
+
+/// S-up (DIR 1) raises priority C → B → A → none → C, like org.
+pub fn cycle_priority(text: &str, line: usize, kw: &Kw, dir: i32) -> String {
+    edit_heading(text, line, kw, |p| {
+        let seq = [None, Some("A"), Some("B"), Some("C")];
+        let i = seq.iter().position(|x| p.priority.as_deref() == *x).unwrap_or(0) as i32;
+        p.priority = seq[(i - dir).rem_euclid(4) as usize].map(String::from);
+    })
+}
+
+pub fn set_tags(text: &str, line: usize, kw: &Kw, tags: Vec<String>) -> String {
+    edit_heading(text, line, kw, |p| p.tags = tags.into_iter().filter(|t| !t.is_empty()).collect())
+}
+
+/// Move the KIND (SCHEDULED/DEADLINE) date of the headline at LINE by DAYS.
+pub fn shift_date(text: &str, line: usize, kind: &str, days: i64) -> String {
+    let mut lines = to_lines(text);
+    let Some(hl) = headline_at(&lines, line) else { return text.to_string() };
+    if hl + 1 < lines.len() && is_planning(&lines[hl + 1]) {
+        lines[hl + 1] = shift_planning(&lines[hl + 1], kind, |ts| Some(ts.date + Duration::days(days)));
     }
-    if let Some(p) = prio {
-        s += &format!(" [#{p}]");
+    join(lines, text)
+}
+
+// ---------------------------------------------------------------- subtrees: refile, archive, capture
+
+/// [start, end) line range of the subtree whose headline is at HL.
+fn subtree_range(lines: &[String], hl: usize) -> (usize, usize) {
+    let lvl = heading_level(&lines[hl]).unwrap_or(0);
+    let end = (hl + 1..lines.len()).find(|&i| heading_level(&lines[i]).is_some_and(|l| l <= lvl)).unwrap_or(lines.len());
+    (hl, end)
+}
+
+/// Shift heading levels so the first heading in SUB lands at LEVEL.
+fn relevel(sub: &mut [String], level: usize) {
+    let Some(base) = sub.iter().find_map(|l| heading_level(l)) else { return };
+    for l in sub.iter_mut() {
+        if let Some(n) = heading_level(l) {
+            let new = (n as isize + level as isize - base as isize).max(1) as usize;
+            *l = format!("{}{}", "*".repeat(new), &l[n..]);
+        }
     }
-    if !title.is_empty() {
-        s += &format!(" {title}");
+}
+
+/// Insert SUB as the last child of the heading at DST, or at top level at the end.
+fn insert_subtree(lines: &mut Vec<String>, dst: Option<usize>, mut sub: Vec<String>) {
+    let at = match dst {
+        Some(d) => {
+            relevel(&mut sub, heading_level(&lines[d]).unwrap_or(0) + 1);
+            subtree_range(lines, d).1
+        }
+        None => {
+            relevel(&mut sub, 1);
+            lines.len()
+        }
+    };
+    lines.splice(at..at, sub);
+}
+
+fn take_subtree(lines: &mut Vec<String>, line: usize) -> Result<Vec<String>, String> {
+    let hl = headline_at(lines, line).ok_or("not on a heading")?;
+    let (s, e) = subtree_range(lines, hl);
+    Ok(lines.drain(s..e).collect())
+}
+
+fn check_target(lines: &[String], dst: Option<usize>) -> Result<(), String> {
+    match dst {
+        Some(d) if lines.get(d).and_then(|l| heading_level(l)).is_none() => Err("refile target is not a heading".into()),
+        _ => Ok(()),
     }
-    if !tags.is_empty() {
-        s += &format!(" :{}:", tags.join(":"));
+}
+
+/// Move the subtree at LINE of SRC under heading DST_LINE of DST (None: top level).
+pub fn refile(src: &str, line: usize, dst: &str, dst_line: Option<usize>) -> Result<(String, String), String> {
+    let mut s = to_lines(src);
+    let sub = take_subtree(&mut s, line)?;
+    let mut d = to_lines(dst);
+    check_target(&d, dst_line)?;
+    insert_subtree(&mut d, dst_line, sub);
+    Ok((join(s, src), join_nl(d)))
+}
+
+/// Refile within one file.
+pub fn refile_same(text: &str, line: usize, dst_line: Option<usize>) -> Result<String, String> {
+    let mut l = to_lines(text);
+    check_target(&l, dst_line)?;
+    let hl = headline_at(&l, line).ok_or("not on a heading")?;
+    let (s, e) = subtree_range(&l, hl);
+    let dst = match dst_line {
+        Some(d) if (s..e).contains(&d) => return Err("can't refile a subtree under itself".into()),
+        Some(d) if d >= e => Some(d - (e - s)),
+        d => d,
+    };
+    let sub: Vec<String> = l.drain(s..e).collect();
+    insert_subtree(&mut l, dst, sub);
+    Ok(join(l, text))
+}
+
+/// Add KEY to the property drawer of SUB's heading, creating the drawer.
+fn set_property(sub: &mut Vec<String>, key: &str, val: &str) {
+    let i = if sub.len() > 1 && is_planning(&sub[1]) { 2 } else { 1 };
+    let entry = format!(":{key}: {val}");
+    if sub.get(i).is_some_and(|l| l.trim().eq_ignore_ascii_case(":PROPERTIES:")) {
+        let end = (i + 1..sub.len()).find(|&j| sub[j].trim().eq_ignore_ascii_case(":END:")).unwrap_or(sub.len());
+        sub.insert(end, entry);
+    } else {
+        sub.splice(i..i, [":PROPERTIES:".to_string(), entry, ":END:".to_string()]);
     }
+}
+
+/// Move the subtree at LINE of SRC to the end of the archive file text DST, org style.
+pub fn archive(src: &str, line: usize, dst: &str, src_path: &str, now: chrono::NaiveDateTime) -> Result<(String, String), String> {
+    let mut s = to_lines(src);
+    let mut sub = take_subtree(&mut s, line)?;
+    set_property(&mut sub, "ARCHIVE_TIME", &now.format("%Y-%m-%d %a %H:%M").to_string());
+    set_property(&mut sub, "ARCHIVE_FILE", src_path);
+    let mut d = to_lines(dst);
+    if d.is_empty() {
+        d = vec!["#    -*- mode: org -*-".into(), String::new(), String::new(), format!("Archived entries from file {src_path}"), String::new()];
+    }
+    insert_subtree(&mut d, None, sub);
+    Ok((join(s, src), join_nl(d)))
+}
+
+/// Insert a captured ENTRY into DST: as last child of the first heading titled
+/// HEADING (created at the end if missing), or at the end of the file.
+pub fn capture_insert(dst: &str, heading: Option<&str>, entry: &str, kw: &Kw) -> String {
+    let mut d = to_lines(dst);
+    let target = heading.filter(|h| !h.is_empty()).map(|h| match d.iter().position(|l| split_headline(l, kw).is_some_and(|p| p.3 == h)) {
+        Some(i) => i,
+        None => {
+            d.push(format!("* {h}"));
+            d.len() - 1
+        }
+    });
+    insert_subtree(&mut d, target, to_lines(entry.trim_end()));
+    join_nl(d)
+}
+
+/// A new task heading with optional planning line.
+pub fn task_entry(title: &str, keyword: Option<&str>, priority: Option<&str>, tags: Vec<String>, scheduled: Option<(NaiveDate, Option<String>)>, deadline: Option<(NaiveDate, Option<String>)>) -> String {
+    let p = Parts { level: 1, keyword: keyword.map(String::from), priority: priority.map(String::from), title: title.trim().into(), tags };
+    let planning: Vec<String> = [("SCHEDULED", scheduled), ("DEADLINE", deadline)]
+        .into_iter()
+        .filter_map(|(k, d)| d.map(|(d, t)| format!("{k}: {}", ts_string(d, t.as_deref()))))
+        .collect();
+    if planning.is_empty() { p.line() + "\n" } else { format!("{}\n{}\n", p.line(), planning.join(" ")) }
+}
+
+/// strftime that reports bad format strings instead of panicking.
+pub fn fmt_time(t: chrono::NaiveDateTime, f: &str) -> Option<String> {
+    use std::fmt::Write;
+    let mut s = String::new();
+    write!(s, "{}", t.format(f)).ok()?;
+    Some(s)
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct Target {
+    pub path: PathBuf,
+    pub line: Option<usize>,
+    pub label: String,
+}
+
+/// Refile/capture targets: every file (top level) and every heading, labelled by outline path.
+pub fn targets(files: &[Arc<OrgFile>], root: &Path) -> Vec<Target> {
+    let mut out = vec![];
+    for f in files {
+        let rel = f.path.strip_prefix(root).unwrap_or(&f.path).display().to_string();
+        out.push(Target { path: f.path.clone(), line: None, label: rel.clone() });
+        let mut stack: Vec<(usize, &str)> = vec![];
+        for h in &f.headlines {
+            while stack.last().is_some_and(|(l, _)| *l >= h.level) {
+                stack.pop();
+            }
+            stack.push((h.level, &h.title));
+            let olp: Vec<&str> = stack.iter().map(|(_, t)| *t).collect();
+            out.push(Target { path: f.path.clone(), line: Some(h.line), label: format!("{rel} / {}", olp.join(" / ")) });
+        }
+    }
+    out
+}
+
+pub fn all_tags(files: &[Arc<OrgFile>]) -> Vec<String> {
+    let mut t: Vec<String> = files.iter().flat_map(|f| f.headlines.iter().flat_map(|h| h.tags.clone())).collect();
+    t.sort();
+    t.dedup();
+    t
+}
+
+fn join_nl(lines: Vec<String>) -> String {
+    let mut s = lines.join("\n");
+    s.push('\n');
     s
 }
 
@@ -563,6 +805,44 @@ mod tests {
         assert_eq!(catchup, "* NEXT X\nDEADLINE: <2026-10-06 Tue ++1w>");
         assert_eq!(cycle_todo("* X :t:", 0, &kw(), 1, d("2026-10-02")), "* TODO X :t:");
         assert_eq!(cycle_todo("* DONE X", 0, &kw(), 1, d("2026-10-02")), "* X");
+    }
+
+    #[test]
+    fn headline_edits() {
+        let t = "* TODO [#B] Task :a:\nbody\n";
+        assert_eq!(cycle_priority(t, 1, &kw(), 1), "* TODO [#A] Task :a:\nbody\n");
+        assert_eq!(cycle_priority("* X", 0, &kw(), 1), "* [#C] X");
+        assert_eq!(cycle_priority("* [#A] X", 0, &kw(), 1), "* X");
+        assert_eq!(set_priority(t, 0, &kw(), None), "* TODO Task :a:\nbody\n");
+        assert_eq!(set_tags(t, 0, &kw(), vec!["x".into(), "y".into()]), "* TODO [#B] Task :x:y:\nbody\n");
+        assert_eq!(set_keyword(t, 0, &kw(), None, d("2026-10-02")), "* [#B] Task :a:\nbody\n");
+        assert_eq!(heading(t, 1, &kw()).unwrap().title, "Task");
+        let s = "* TODO A\nSCHEDULED: <2026-10-02 Fri> DEADLINE: <2026-10-09 Fri +1w>\n";
+        assert_eq!(shift_date(s, 0, "SCHEDULED", 1), "* TODO A\nSCHEDULED: <2026-10-03 Sat> DEADLINE: <2026-10-09 Fri +1w>\n");
+        assert_eq!(shift_date(s, 0, "DEADLINE", -7), "* TODO A\nSCHEDULED: <2026-10-02 Fri> DEADLINE: <2026-10-02 Fri +1w>\n");
+    }
+
+    #[test]
+    fn refile_archive_capture() {
+        let src = "* Inbox\n** TODO Buy milk\nnote\n*** sub\n* Other\n";
+        let (s, dst) = refile(src, 2, "#+title: P\n* Projects\n** Home\n* Later\n", Some(2)).unwrap();
+        assert_eq!(s, "* Inbox\n* Other\n");
+        assert_eq!(dst, "#+title: P\n* Projects\n** Home\n*** TODO Buy milk\nnote\n**** sub\n* Later\n");
+        assert_eq!(refile_same(src, 1, Some(4)).unwrap(), "* Inbox\n* Other\n** TODO Buy milk\nnote\n*** sub\n");
+        assert_eq!(refile_same(src, 1, None).unwrap(), "* Inbox\n* Other\n* TODO Buy milk\nnote\n** sub\n");
+        assert!(refile_same(src, 1, Some(3)).is_err());
+        let now = chrono::NaiveDateTime::parse_from_str("2026-10-02 14:30", "%Y-%m-%d %H:%M").unwrap();
+        let (s, a) = archive("* DONE A\nSCHEDULED: <2026-10-01 Thu>\n* B\n", 0, "", "/n/x.org", now).unwrap();
+        assert_eq!(s, "* B\n");
+        assert!(a.ends_with("* DONE A\nSCHEDULED: <2026-10-01 Thu>\n:PROPERTIES:\n:ARCHIVE_TIME: 2026-10-02 Fri 14:30\n:ARCHIVE_FILE: /n/x.org\n:END:\n"), "{a}");
+        assert_eq!(capture_insert("#+title: Inbox\n", Some("Tasks"), "* TODO new\n", &kw()), "#+title: Inbox\n* Tasks\n** TODO new\n");
+        assert_eq!(capture_insert("* Tasks\n** old\n* Z\n", Some("Tasks"), "* TODO new", &kw()), "* Tasks\n** old\n** TODO new\n* Z\n");
+        assert_eq!(capture_insert("", None, "* TODO x\n[2026-10-02 Fri]\n\n", &kw()), "* TODO x\n[2026-10-02 Fri]\n");
+        assert_eq!(fmt_time(now, "daily/%Y-%m-%d.org").unwrap(), "daily/2026-10-02.org");
+        assert_eq!(fmt_time(now, "%Q"), None);
+        assert_eq!(task_entry("Call", Some("TODO"), Some("A"), vec!["home".into()], Some((d("2026-10-02"), None)), Some((d("2026-10-05"), Some("09:00".into())))),
+            "* TODO [#A] Call :home:\nSCHEDULED: <2026-10-02 Fri> DEADLINE: <2026-10-05 Mon 09:00>\n");
+        assert_eq!(task_entry("x", Some("TODO"), None, vec![], None, None), "* TODO x\n");
     }
 
     #[test]

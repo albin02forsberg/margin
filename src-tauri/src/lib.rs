@@ -125,8 +125,105 @@ fn todos(s: State<App>) -> Vec<org::Item> {
 }
 
 #[tauri::command]
-fn org_cycle(s: State<App>, text: String, line: usize, dir: i32) -> String {
-    org::cycle_todo(&text, line, &s.kw(), dir, today())
+fn org_heading(s: State<App>, text: String, line: usize) -> Option<org::Parts> {
+    org::heading(&text, line, &s.kw())
+}
+
+/// Headline edits. OP: cycle (VALUE ±1) | keyword (VALUE or none) | priority (letter or none)
+/// | priority-cycle (±1) | tags ("a:b") | shift ("SCHEDULED 1").
+#[tauri::command]
+fn org_edit(s: State<App>, text: String, line: usize, op: String, value: Option<String>) -> R<String> {
+    let kw = s.kw();
+    let v = value.unwrap_or_default();
+    let n = || v.trim().parse::<i32>().map_err(|_| format!("bad number: {v}"));
+    let opt = || Some(v.trim()).filter(|x| !x.is_empty());
+    Ok(match op.as_str() {
+        "cycle" => org::cycle_todo(&text, line, &kw, n()?, today()),
+        "keyword" => org::set_keyword(&text, line, &kw, opt(), today()),
+        "priority" => org::set_priority(&text, line, &kw, opt()),
+        "priority-cycle" => org::cycle_priority(&text, line, &kw, n()?),
+        "tags" => org::set_tags(&text, line, &kw, v.split(':').map(|t| t.trim().to_string()).collect()),
+        "shift" => {
+            let (kind, days) = v.split_once(' ').ok_or("shift needs \"KIND DAYS\"")?;
+            org::shift_date(&text, line, kind, days.trim().parse().map_err(|_| "bad day count")?)
+        }
+        o => return Err(format!("unknown org op {o}")),
+    })
+}
+
+#[tauri::command]
+fn org_targets(s: State<App>) -> Vec<org::Target> {
+    org::targets(&s.files(), &s.cfg().notes())
+}
+
+#[tauri::command]
+fn org_tags(s: State<App>) -> Vec<String> {
+    org::all_tags(&s.files())
+}
+
+/// Returns [new source text, new destination text].
+#[tauri::command]
+fn org_refile(src: String, line: usize, dst: String, dst_line: Option<usize>) -> R<[String; 2]> {
+    org::refile(&src, line, &dst, dst_line).map(|(a, b)| [a, b])
+}
+
+#[tauri::command]
+fn org_refile_same(text: String, line: usize, dst_line: Option<usize>) -> R<String> {
+    org::refile_same(&text, line, dst_line)
+}
+
+#[tauri::command]
+fn org_archive(src: String, line: usize, dst: String, src_path: String) -> R<[String; 2]> {
+    org::archive(&src, line, &dst, &src_path, timeclock::now()).map(|(a, b)| [a, b])
+}
+
+/// Date input → Some(date), "" → None, unreadable → error.
+fn opt_date(input: &str) -> R<Option<(NaiveDate, Option<String>)>> {
+    if input.trim().is_empty() {
+        return Ok(None);
+    }
+    org::read_date(input, today()).map(Some).ok_or_else(|| format!("can't read date \"{input}\""))
+}
+
+#[tauri::command]
+fn task_entry(s: State<App>, title: String, priority: Option<String>, tags: Vec<String>, scheduled: String, deadline: String) -> R<String> {
+    if title.trim().is_empty() {
+        return Err("the task needs a title".into());
+    }
+    let kw = s.cfg().todo_keywords.first().cloned();
+    Ok(org::task_entry(&title, kw.as_deref(), priority.as_deref().filter(|p| !p.is_empty()), tags, opt_date(&scheduled)?, opt_date(&deadline)?))
+}
+
+/// Human preview of a date input, for live feedback while typing.
+#[tauri::command]
+fn date_preview(input: String) -> String {
+    match opt_date(&input) {
+        Ok(None) => String::new(),
+        Ok(Some((d, t))) => format!("{}{}", d.format("%A %-d %B %Y"), t.map(|t| format!(", {t}")).unwrap_or_default()),
+        Err(_) => "✗ can't read this date".into(),
+    }
+}
+
+#[tauri::command]
+fn capture_insert(s: State<App>, text: String, heading: Option<String>, entry: String) -> String {
+    org::capture_insert(&text, heading.as_deref(), &entry, &s.kw())
+}
+
+/// Resolve a strftime file pattern under the notes dir for DATE_INPUT (default
+/// now), creating it as an org-roam note titled after its name if missing.
+#[tauri::command]
+fn capture_path(s: State<App>, file: String, date_input: Option<String>) -> R<PathBuf> {
+    let t = match date_input {
+        Some(i) => date(&i)?.and_time(timeclock::now().time()),
+        None => timeclock::now(),
+    };
+    let p = s.cfg().notes().join(org::fmt_time(t, &file).ok_or_else(|| format!("bad date format in {file}"))?);
+    s.check(&p)?;
+    if !p.exists() {
+        let title = p.file_stem().map(|x| x.to_string_lossy().to_string()).unwrap_or_default();
+        notes::write_note(&p, &title).map_err(|e| e.to_string())?;
+    }
+    Ok(p)
 }
 
 /// INPUT is org-read-date style; "rm" removes the entry.
@@ -183,6 +280,44 @@ fn tc_status(s: State<App>) -> Value {
         "profile": s.profile(),
         "project": cur.as_ref().map(|c| &c.1), "since": cur.as_ref().map(|c| c.0), "task": cur.as_ref().map(|c| &c.2),
         "on_break": on_break, "today": format_hm(today), "backup_error": backup::last_failure(),
+    })
+}
+
+/// Everything the time dashboard shows, for the current week (Mon–Sun).
+#[tauri::command]
+fn tc_dashboard(s: State<App>) -> Value {
+    use chrono::Datelike;
+    let tc = s.tc();
+    let t = today();
+    let sessions = tc.sessions();
+    let projects = tc.projects();
+    let (cur, on_break, today_h) = tc.status();
+    let monday = t - Duration::days(t.weekday().num_days_from_monday() as i64);
+    let sunday = monday + Duration::days(6);
+    let in_week = |d: NaiveDate| monday <= d && d <= sunday;
+    let week: Vec<Value> = (0..7)
+        .map(|i| {
+            let d = monday + Duration::days(i);
+            let h: f64 = if d == t { today_h } else { sessions.iter().filter(|x| x.date == d).map(|x| x.hours).sum() };
+            json!({ "date": d, "hours": h, "expected": timeclock::expected_hours(d, tc.expected) })
+        })
+        .collect();
+    let merged = timeclock::prepare_report_sessions(&sessions);
+    let rounded = timeclock::apply_carry(&merged, &projects).0;
+    let mut by: std::collections::BTreeMap<String, (f64, f64)> = Default::default();
+    merged.iter().filter(|x| in_week(x.date)).for_each(|x| by.entry(x.project.clone()).or_default().0 += x.hours);
+    rounded.iter().filter(|x| in_week(x.date)).for_each(|x| by.entry(x.project.clone()).or_default().1 += x.hours);
+    let mut per_project: Vec<Value> = by
+        .into_iter()
+        .map(|(p, (w, b))| json!({ "project": if p.is_empty() { "Other".to_string() } else { p.clone() }, "code": timeclock::export_code(&p, &projects), "worked": w, "billable": b }))
+        .collect();
+    per_project.sort_by(|a, b| b["worked"].as_f64().unwrap_or(0.0).total_cmp(&a["worked"].as_f64().unwrap_or(0.0)));
+    let (flex_total, flex_week, _) = timeclock::flex(&sessions, &projects, tc.expected, Some((monday, t)));
+    json!({
+        "profile": s.profile(), "profiles": s.cfg().profiles,
+        "project": cur.as_ref().map(|c| &c.1), "since": cur.as_ref().map(|c| c.0), "task": cur.as_ref().map(|c| &c.2), "on_break": on_break,
+        "today_hours": today_h, "today": sessions.iter().filter(|x| x.date == t).collect::<Vec<_>>(),
+        "week": week, "projects": per_project, "flex_total": flex_total, "flex_week": flex_week, "backup_error": backup::last_failure(),
     })
 }
 
@@ -333,7 +468,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             config, reload_config, list_files, read_file, write_file,
-            agenda, todos, org_cycle, org_planning, read_date, org_context,
+            agenda, todos, org_heading, org_edit, org_planning, read_date, org_context,
+            org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, task_entry, date_preview, tc_dashboard,
             notes_new, notes_nodes, notes_backlinks, notes_search,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now

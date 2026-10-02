@@ -42,13 +42,21 @@ pub fn slug(title: &str) -> String {
     s.split('_').filter(|p| !p.is_empty()).collect::<Vec<_>>().join("_")
 }
 
+/// Write a new org-roam style note at PATH, returning its ID.
+pub fn write_note(path: &Path, title: &str) -> std::io::Result<String> {
+    let id = gen_id();
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(path, format!(":PROPERTIES:\n:ID:       {id}\n:END:\n#+title: {}\n\n", title.trim()))?;
+    Ok(id)
+}
+
 /// Create `<dir>/YYYYMMDDHHMMSS-slug.org`, returning (path, id).
 pub fn new_note(dir: &Path, title: &str) -> std::io::Result<(PathBuf, String)> {
-    let id = gen_id();
     let stamp = chrono::Local::now().format("%Y%m%d%H%M%S");
     let path = dir.join(format!("{stamp}-{}.org", slug(title)));
-    std::fs::create_dir_all(dir)?;
-    std::fs::write(&path, format!(":PROPERTIES:\n:ID:       {id}\n:END:\n#+title: {}\n\n", title.trim()))?;
+    let id = write_note(&path, title)?;
     Ok((path, id))
 }
 
