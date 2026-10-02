@@ -1,4 +1,4 @@
-# tool
+# Margin
 
 Notes, tasks, a journal and time tracking in one fast desktop app (Linux,
 macOS, Windows). Notes are plain org files, so they stay readable anywhere;
@@ -10,6 +10,10 @@ npm run tauri dev      # run
 npm run tauri build    # release bundle for the current OS
 cd src-tauri && cargo test
 ```
+
+CI runs the checks and tests on every push and PR. To release, bump the
+version in `src-tauri/tauri.conf.json`, then push a tag (`git tag v0.2.0 &&
+git push --tags`): installers for all three OSes land in a draft GitHub release.
 
 Everything stays in sync on its own: notes save shortly after you stop typing,
 and any change to the notes or time folders — from the app, Emacs or a sync

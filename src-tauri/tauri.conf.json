@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "tool",
+  "productName": "Margin",
   "version": "0.1.0",
-  "identifier": "dev.albin.tool",
+  "identifier": "dev.albin.margin",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "tool",
+        "title": "Margin",
         "width": 1200,
         "height": 800,
         "minWidth": 480,
