@@ -758,7 +758,7 @@ export function onModeChange(v: EditorView, f: (mode: string) => void) {
 const theme = EditorView.theme({
   "&": { height: "100%", fontSize: "var(--fs-lg)", backgroundColor: "var(--bg)", color: "var(--fg)" },
   ".cm-scroller": { fontFamily: "var(--editor-font)", lineHeight: "1.65" },
-  ".cm-content": { padding: "24px 0 40vh", maxWidth: "88ch", margin: "0 auto", caretColor: "var(--accent)" },
+  ".cm-content": { padding: "24px 0 40vh", maxWidth: "72ch", margin: "0 auto", caretColor: "var(--accent)" },
   ".cm-line": { padding: "0 36px" },
   ".cm-activeLine": { backgroundColor: "var(--active)" },
   ".cm-foldPlaceholder": { background: "var(--active)", border: "none", color: "var(--dim)", padding: "0 6px", borderRadius: "var(--radius-sm)", margin: "0 4px" },
@@ -769,10 +769,11 @@ const theme = EditorView.theme({
   ".cm-vim-panel input": { color: "var(--fg)", fontFamily: "var(--mono)" },
 
   // headings
-  ".cm-org-h": { fontWeight: "650", paddingTop: "0.35em" },
-  ".cm-org-h1": { fontSize: "1.5em", color: "var(--h1)" },
-  ".cm-org-h2": { fontSize: "1.28em", color: "var(--h2)" },
-  ".cm-org-h3": { fontSize: "1.12em", color: "var(--h3)" },
+  ".cm-org-h": { fontWeight: "650", paddingTop: "0.9em", paddingBottom: "0.1em" },
+  ".cm-org-h:first-child": { paddingTop: "0.35em" },
+  ".cm-org-h1": { fontSize: "var(--fs-h1)", color: "var(--h1)" },
+  ".cm-org-h2": { fontSize: "var(--fs-h2)", color: "var(--h2)" },
+  ".cm-org-h3": { fontSize: "var(--fs-h3)", color: "var(--h3)" },
   ".cm-org-h4": { color: "var(--h4)" },
   ".cm-org-h5": { color: "var(--h5)" },
   ".cm-org-h6": { color: "var(--h6)" },
@@ -813,7 +814,7 @@ const theme = EditorView.theme({
   ".cm-org-checked": { color: "var(--dim)" },
 
   // lines
-  ".cm-org-title": { fontSize: "1.9em", fontWeight: "750", color: "var(--fg)", paddingTop: "0.2em", paddingBottom: "0.3em", lineHeight: "1.25" },
+  ".cm-org-title": { fontSize: "var(--fs-title)", fontWeight: "750", color: "var(--fg)", paddingTop: "0.2em", paddingBottom: "0.3em", lineHeight: "1.25" },
   ".cm-org-meta, .cm-org-comment, .cm-org-drawer, .cm-org-planning": { color: "var(--dim)", fontSize: "0.85em" },
   ".cm-org-drawer, .cm-org-planning": { fontFamily: "var(--mono)" },
   ".cm-org-comment": { fontStyle: "italic" },

@@ -10,6 +10,7 @@
   /* scales: spacing, type, radius, popover shadow */
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
   --fs-xs: 11px; --fs-sm: 12px; --fs-md: 13px; --fs-base: 14px; --fs-lg: 15px;
+  --fs-h3: 17px; --fs-h2: 20px; --fs-h1: 24px; --fs-title: 30px; /* editor headings */
   --radius: 6px; --radius-sm: 4px;
   --shadow: 0 16px 48px rgb(0 0 0 / 0.4);
   color-scheme: dark;
