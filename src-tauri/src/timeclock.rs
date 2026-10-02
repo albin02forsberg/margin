@@ -730,6 +730,28 @@ mod tests {
     }
 
     #[test]
+    fn clock_flow_on_disk() {
+        let dir = std::env::temp_dir().join(format!("tc-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("notes/dagbok-work.org"), expected: 8.0 };
+        assert!(!tc.clock_in("Acme", "Review", Some("AC-1")).unwrap());
+        assert_eq!(tc.projects()["Acme"].export_code, "AC-1");
+        assert_eq!(tc.take_break().unwrap().as_deref(), Some("Acme"));
+        assert_eq!(tc.on_break().as_deref(), Some("Acme"));
+        assert_eq!(tc.resume().unwrap().as_deref(), Some("Acme"));
+        assert_eq!(tc.current().unwrap().2, "Review"); // task carried over the break
+        assert!(tc.adjust_start(30).unwrap());
+        assert!(tc.clock_in("Other", "", None).unwrap()); // auto clock-out
+        assert!(tc.clock_out("done").unwrap());
+        assert!(!tc.clock_out("again").unwrap());
+        let diary = fs::read_to_string(&tc.diary).unwrap();
+        assert!(diary.contains("*Acme* (30m): Automatically switched to Other"), "{diary}");
+        assert!(diary.contains("*Other* (0m): done"));
+        assert!(doctor(&tc.read_log(), now()).is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn csv_quotes_and_comma() {
         let s = vec![Session { date: d("2026-10-01"), project: "A".into(), desc: "say \"hi\"".into(), hours: 1.5, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None }];
         let out = csv(&s, &Projects::new(), d("2026-10-01"), d("2026-10-01"));
