@@ -192,7 +192,7 @@ fn agenda(s: State<App>, start: String, days: i64) -> R<Vec<org::Item>> {
 
 #[tauri::command]
 fn todos(s: State<App>) -> Vec<org::Item> {
-    org::todos(&s.files(), &s.kw(), false, |_, _| true)
+    org::todos(&s.files(), &s.kw(), false, |_, _| true, today())
 }
 
 /// Tasks matching QUERY (see org::query).
@@ -200,7 +200,7 @@ fn todos(s: State<App>) -> Vec<org::Item> {
 fn search_todos(s: State<App>, query: String) -> R<Vec<org::Item>> {
     let kw = s.kw();
     let (keep, done) = org::query(&query, today(), &kw)?;
-    Ok(org::todos(&s.files(), &kw, done, keep))
+    Ok(org::todos(&s.files(), &kw, done, keep, today()))
 }
 
 #[tauri::command]
@@ -217,8 +217,8 @@ fn org_edit(s: State<App>, text: String, line: usize, op: String, value: Option<
     let n = || v.trim().parse::<i32>().map_err(|_| format!("bad number: {v}"));
     let opt = || Some(v.trim()).filter(|x| !x.is_empty());
     Ok(match op.as_str() {
-        "cycle" => org::cycle_todo(&text, line, &kw, n()?, today()),
-        "keyword" => org::set_keyword(&text, line, &kw, opt(), today()),
+        "cycle" => org::cycle_todo(&text, line, &kw, n()?, timeclock::now()),
+        "keyword" => org::set_keyword(&text, line, &kw, opt(), timeclock::now()),
         "priority" => org::set_priority(&text, line, &kw, opt()),
         "priority-cycle" => org::cycle_priority(&text, line, &kw, n()?),
         "tags" => org::set_tags(&text, line, &kw, v.split(':').map(|t| t.trim().to_string()).collect()),

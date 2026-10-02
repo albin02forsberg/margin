@@ -2,7 +2,7 @@
   export type AgendaItem = {
     date: string; kind: string; label: string; time: string | null; path: string; line: number;
     keyword: string | null; priority: string | null; title: string; tags: string[]; category: string;
-    /** Habits on today: last 21 days ('x' done, '!' due, '.' not due) and streak. */
+    /** Habits (today's entry, Tasks): last 21 days ('x' done, '-' due within `.+2d/3d` max, '!' overdue, '.' not due) and streak. */
     habit?: { bar: string; streak: number } | null;
   };
   export type AgendaApi = {
@@ -227,8 +227,8 @@
     {#each it.tags as t}<span class="tag">{t}</span>{/each}
     <span class="spacer"></span>
     {#if it.habit}
-      <span class="habit" title="Last {it.habit.bar.length} days: green done, red due, grey not due">
-        {#each it.habit.bar as c}<i class:x={c === "x"} class:due={c === "!"}></i>{/each}
+      <span class="habit" title="Last {it.habit.bar.length} days: green done, amber due (not yet overdue), red overdue, grey not due">
+        {#each it.habit.bar as c}<i class:x={c === "x"} class:ok={c === "-"} class:due={c === "!"}></i>{/each}
       </span>
       <span class="meta" title="Completions in a row">{it.habit.streak} in a row</span>
     {/if}
@@ -337,6 +337,7 @@
   .habit { display: inline-flex; gap: 1px; }
   .habit i { width: 4px; height: 12px; border-radius: 1px; background: var(--active); }
   .habit i.x { background: var(--done); }
+  .habit i.ok { background: var(--accent); }
   .habit i.due { background: var(--todo); }
   .time { font: 12px var(--mono); color: var(--date); }
   .meta { font-size: 12px; color: var(--dim); white-space: nowrap; }
