@@ -969,12 +969,14 @@
     const blur = () => act(saveAll);
     const focus = () => syncFromDisk();
     const unlisten = listen("fs-changed", () => syncFromDisk());
+    const unlistenTray = listen<string>("tray", (e) => act(() => timeActions[e.payload]()));
     window.addEventListener("keydown", onKey, true);
     window.addEventListener("blur", blur);
     window.addEventListener("focus", focus);
     return () => {
       clearInterval(timer);
       unlisten.then((f) => f());
+      unlistenTray.then((f) => f());
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("blur", blur);
       window.removeEventListener("focus", focus);
