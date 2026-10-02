@@ -5,46 +5,88 @@ on:
     branches: [main]
   pull_request:
 
+# Docs/agent-prompt-only PRs skip the heavy steps (`if: steps.gate.outputs.run == 'true'`);
+# the jobs still run and pass, so the required `test` and `e2e` checks stay green.
 jobs:
   test:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - name: Docs-only change?
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=true
+          if [ "${{ github.event_name }}" = pull_request ] && ! gh pr diff ${{ github.event.pull_request.number }} -R ${{ github.repository }} --name-only | grep -qvE '^(\.claude/|docs/|README\.md$|CLAUDE\.md$)'; then run=false; fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@v5
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: swatinem/rust-cache@v2
+      - if: steps.gate.outputs.run == 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: steps.gate.outputs.run == 'true'
+        uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-      - name: System deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf
-      - run: npm ci
-      - run: npm run check
-      - run: npm test
-      - run: cargo test
+      - if: steps.gate.outputs.run == 'true'
+        name: System deps
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf
+          version: 1
+      - if: steps.gate.outputs.run == 'true'
+        run: npm ci
+      - if: steps.gate.outputs.run == 'true'
+        run: npm run check
+      - if: steps.gate.outputs.run == 'true'
+        run: npm test
+      - if: steps.gate.outputs.run == 'true'
+        run: cargo test
         working-directory: src-tauri
 
   e2e:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - name: Docs-only change?
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=true
+          if [ "${{ github.event_name }}" = pull_request ] && ! gh pr diff ${{ github.event.pull_request.number }} -R ${{ github.repository }} --name-only | grep -qvE '^(\.claude/|docs/|README\.md$|CLAUDE\.md$)'; then run=false; fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@v5
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: swatinem/rust-cache@v2 # also caches ~/.cargo/bin, so tauri-driver installs once
+      - if: steps.gate.outputs.run == 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: steps.gate.outputs.run == 'true'
+        uses: swatinem/rust-cache@v2 # also caches ~/.cargo/bin, so tauri-driver installs once
         with:
           workspaces: src-tauri
-      - name: System deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf webkit2gtk-driver xvfb
-      - run: cargo install tauri-driver --locked
-      - run: npm ci
-      - run: xvfb-run -a npm run test:e2e
+      - if: steps.gate.outputs.run == 'true'
+        name: System deps
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf webkit2gtk-driver xvfb
+          version: 1
+      - if: steps.gate.outputs.run == 'true'
+        run: cargo install tauri-driver --locked
+      - if: steps.gate.outputs.run == 'true'
+        run: npm ci
+      # Two steps so the log shows whether the build or the tests dominate.
+      - if: steps.gate.outputs.run == 'true'
+        name: Build debug app
+        run: npm run e2e:build
+      - if: steps.gate.outputs.run == 'true'
+        name: Run e2e tests
+        run: xvfb-run -a npm run e2e:run

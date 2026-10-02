@@ -32,6 +32,10 @@ base64 = "0.22"
 tauri-plugin-process = "2"
 
 
+# Line tables only: smaller debug builds link faster (e2e CI builds a debug binary).
+[profile.dev]
+debug = "line-tables-only"
+
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
 codegen-units = 1
