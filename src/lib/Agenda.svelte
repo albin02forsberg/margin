@@ -2,6 +2,8 @@
   export type AgendaItem = {
     date: string; kind: string; label: string; time: string | null; path: string; line: number;
     keyword: string | null; priority: string | null; title: string; tags: string[]; category: string;
+    /** Habits on today: last 21 days ('x' done, '!' due, '.' not due) and streak. */
+    habit?: { bar: string; streak: number } | null;
   };
   export type AgendaApi = {
     /** Run a task operation on IT (see ACTIONS); resolves when the files are written. */
@@ -224,6 +226,12 @@
     <span class="title">{it.title}</span>
     {#each it.tags as t}<span class="tag">{t}</span>{/each}
     <span class="spacer"></span>
+    {#if it.habit}
+      <span class="habit" title="Last {it.habit.bar.length} days: green done, red due, grey not due">
+        {#each it.habit.bar as c}<i class:x={c === "x"} class:due={c === "!"}></i>{/each}
+      </span>
+      <span class="meta" title="Completions in a row">{it.habit.streak} in a row</span>
+    {/if}
     {#if mode === "todo" && dateChip(it.date)}<span class="meta">{dateChip(it.date)}</span>{/if}
     {#if it.time}<span class="time">{it.time}</span>{/if}
     {#if it.label && mode === "agenda"}<span class="meta" class:warn={/Overdue|ago|Due/.test(it.label)}>{it.label}</span>{/if}
@@ -326,6 +334,10 @@
   .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .tag { font-size: 11px; color: var(--dim); background: var(--active); border-radius: 999px; padding: 0 7px; white-space: nowrap; }
   .spacer { flex: 1; }
+  .habit { display: inline-flex; gap: 1px; }
+  .habit i { width: 4px; height: 12px; border-radius: 1px; background: var(--active); }
+  .habit i.x { background: var(--done); }
+  .habit i.due { background: var(--todo); }
   .time { font: 12px var(--mono); color: var(--date); }
   .meta { font-size: 12px; color: var(--dim); white-space: nowrap; }
   .meta.warn { color: var(--todo); }
