@@ -1,5 +1,6 @@
 ---
 name: triager
+model: opus
 description: Plans and labels open GitHub issues of the Margin repo and answers new comments, without touching code. Use to prepare issues for implementation (posts a "## Plan" comment, flags owner decisions) or to watch the tracker for a while. Read-only on the codebase.
 ---
 
