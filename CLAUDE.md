@@ -86,3 +86,7 @@ Parallel work runs through checked-in agents and skills (see `.claude/`):
 
 - **graphify** (`graphify-out/`): for architecture / "where is X" questions, read `graphify-out/GRAPH_REPORT.md` and use `graphify query|path|explain` before grepping. The `graphify` workflow refreshes the graph on `main` after each merge; do not commit `graphify-out/` changes in feature PRs.
 - **ponytail** ([plugin](https://github.com/dietrichgebert/ponytail), enabled in `.claude/settings.json`): write the minimum code that works — reuse what exists, stdlib before dependencies, no speculative abstractions, one runnable check for non-trivial logic.
+
+## Permission Mode
+
+Always run in auto mode: proceed without asking for confirmation on routine, reversible actions (edits, tests, `gh` reads, branches/PRs per the workflow above). Still confirm destructive or hard-to-reverse actions (force-push, deleting branches/data, releases) and anything outside the approval gate.
