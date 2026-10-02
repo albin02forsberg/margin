@@ -98,6 +98,14 @@ fn reload_config(app: AppHandle, s: State<App>) -> R<()> {
     Ok(())
 }
 
+/// Add a `[[views]]` entry to config.toml, leaving the rest of the file as written.
+#[tauri::command]
+fn save_view(app: AppHandle, s: State<App>, name: String, query: String) -> R<()> {
+    let text = std::fs::read_to_string(&s.cfg_path).map_err(|e| e.to_string())?;
+    std::fs::write(&s.cfg_path, config::add_view(&text, &name, &query)?).map_err(|e| e.to_string())?;
+    reload_config(app, s)
+}
+
 /// Watch the notes and data dirs; the UI gets an "fs-changed" event (with the
 /// changed paths) whenever anything there changes — our own writes, Emacs, sync tools.
 fn watch(app: &AppHandle) {
@@ -184,13 +192,15 @@ fn agenda(s: State<App>, start: String, days: i64) -> R<Vec<org::Item>> {
 
 #[tauri::command]
 fn todos(s: State<App>) -> Vec<org::Item> {
-    org::todos(&s.files(), &s.kw(), |_, _| true)
+    org::todos(&s.files(), &s.kw(), false, |_, _| true)
 }
 
-/// Open tasks matching QUERY (see org::query).
+/// Tasks matching QUERY (see org::query).
 #[tauri::command]
 fn search_todos(s: State<App>, query: String) -> R<Vec<org::Item>> {
-    Ok(org::todos(&s.files(), &s.kw(), org::query(&query, today())?))
+    let kw = s.kw();
+    let (keep, done) = org::query(&query, today(), &kw)?;
+    Ok(org::todos(&s.files(), &kw, done, keep))
 }
 
 #[tauri::command]
@@ -684,7 +694,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            config, reload_config, list_files, read_file, write_file, attach_file, attach_bytes,
+            config, reload_config, save_view, list_files, read_file, write_file, attach_file, attach_bytes,
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,

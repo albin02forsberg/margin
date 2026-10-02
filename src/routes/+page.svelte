@@ -207,9 +207,27 @@
   }
 
   async function searchTasks() {
-    const q = await ask("Search tasks", "", "e.g. todo:NEXT tag:work -tag:home pri:A file:inbox due:<+7d words");
+    const q = await ask("Search tasks", "", "e.g. todo:NEXT tag:work -tag:home pri:A file:inbox due:<=+7d scheduled:none \"some words\"");
     if (q?.trim()) await openSearch(q.trim(), q.trim());
   }
+
+  async function saveView() {
+    const query = tab?.query;
+    if (query == null) return flash("Open a task search first (Space v f).");
+    const name = await ask("Save this search as a view named", tab.title === query ? "" : tab.title, query);
+    if (!name?.trim()) return;
+    await call("save_view", { name: name.trim(), query });
+    cfg = await call("config");
+    flash(`Saved “${name.trim()}” to the sidebar.`);
+  }
+
+  // Search tabs take the name of the view with their query, so saving or renaming a view retitles them.
+  $effect(() => {
+    for (const t of tabs) {
+      const v = t.query != null && cfg?.config.views?.find((v: { query: string }) => v.query === t.query);
+      if (v) t.title = v.name;
+    }
+  });
 
   async function closeTab(i = cur) {
     const t = tabs[i];
@@ -867,6 +885,7 @@
     { label: "Go to Inbox", keys: ["Ctrl+3"], leader: "v i", run: openInbox },
     { label: "Go to Time tracking", keys: ["Ctrl+4"], leader: "v c", run: () => openView("time") },
     { label: "Search tasks…", leader: "v f", run: searchTasks },
+    { label: "Save this search as a view…", leader: "v v", run: saveView },
     { label: "Toggle sidebar", keys: ["Ctrl+\\"], leader: "v s", run: () => { sidebar = !sidebar; store("sidebar", sidebar ? "1" : "0"); } },
     { label: "Settings (config file)", keys: ["Ctrl+,"], leader: "f c", run: () => openFile(cfg.config_path) },
     { label: "Save", keys: ["Ctrl+S"], leader: "f s", run: () => saveTab(tab, true) },

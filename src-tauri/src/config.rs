@@ -115,9 +115,51 @@ impl Config {
     }
 }
 
+/// TEXT (a config.toml) with a `[[views]]` entry appended; errors if the result won't
+/// load or anything but the new view would change.
+pub fn add_view(text: &str, name: &str, query: &str) -> Result<String, String> {
+    let err = |e: toml::de::Error| format!("can't add the view to config.toml: {e}");
+    // The defaults written on first run say `views = []`, which a `[[views]]` table would redefine.
+    let mut out: String = text.split_inclusive('\n').filter(|l| l.trim() != "views = []").collect();
+    let q = |s: &str| toml::Value::String(s.into()).to_string();
+    out += &format!("\n[[views]]\nname = {}\nquery = {}\n", q(name), q(query));
+    toml::from_str::<Config>(&out).map_err(err)?;
+    let (mut old, mut new): (toml::Table, toml::Table) = (text.parse().map_err(err)?, out.parse().map_err(err)?);
+    if let Some(toml::Value::Array(v)) = new.get_mut("views") {
+        v.pop();
+    }
+    for t in [&mut old, &mut new] {
+        if t.get("views").and_then(|v| v.as_array()).is_some_and(|v| v.is_empty()) {
+            t.remove("views");
+        }
+    }
+    if old != new {
+        return Err("can't add the view to config.toml without changing other settings; add it by hand".into());
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn add_views() {
+        let first = toml::to_string(&Config::default()).unwrap();
+        let s = add_view(&first, "Work \"now\"", r"tag:work due:<=+7d \x").unwrap();
+        let c: Config = toml::from_str(&s).unwrap();
+        assert_eq!((c.views[0].name.as_str(), c.views[0].query.as_str()), ("Work \"now\"", r"tag:work due:<=+7d \x"));
+        let s = add_view(&s, "Next", "todo:NEXT").unwrap();
+        assert_eq!(toml::from_str::<Config>(&s).unwrap().views.len(), 2);
+        let mine = "# my notes\nnotes_dir = \"~/org\" # here\n\n[[views]]\nname = \"A\"\nquery = \"a\"\n";
+        assert!(add_view(mine, "B", "b").unwrap().starts_with(mine)); // comments kept
+        assert!(add_view("views = [{ name = \"A\", query = \"a\" }]\n", "B", "b").is_err());
+        let crlf = "notes_dir = \"~/org\"\r\nviews = []\r\n";
+        assert!(add_view(crlf, "B", "b").unwrap().starts_with("notes_dir = \"~/org\"\r\n")); // line endings kept
+        // A `views = []` line that isn't the top-level key is the user's text, not ours to drop.
+        let body = "[[templates]]\nkey = \"v\"\nname = \"V\"\nbody = \"\"\"\nviews = []\n\"\"\"\n";
+        assert!(add_view(body, "B", "b").is_err_and(|e| e.contains("changing")));
+    }
 
     #[test]
     fn defaults_round_trip() {

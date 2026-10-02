@@ -111,7 +111,7 @@
     : `Week ${week(start)}`,
   );
   const subheading = $derived(
-    mode === "todo" ? `${items.length} open${query ? ` · ${query}` : ""}`
+    mode === "todo" ? `${items.length} ${query != null ? "found" : "open"}${query ? ` · ${query}` : ""}`
     : span === 1 ? (iso(start) === today ? fmtDay(start) : "")
     : `${fmtDay(start, { day: "numeric", month: "short" })} – ${fmtDay(days[6], { day: "numeric", month: "short", year: "numeric" })}`,
   );
@@ -275,7 +275,7 @@
     {/each}
     {#if !shown.length}
       <div class="empty">
-        <p>{filter ? `Nothing matches “${filter}”.` : query != null ? "No open tasks match." : mode === "todo" ? "No open tasks. 🎉" : "Nothing planned."}</p>
+        <p>{filter ? `Nothing matches “${filter}”.` : query != null ? "No tasks match." : mode === "todo" ? "No open tasks. 🎉" : "Nothing planned."}</p>
         <p>Press <kbd>n</kbd> to add a task{mode === "agenda" ? ", or h / l to look at other days" : ""}.</p>
       </div>
     {/if}

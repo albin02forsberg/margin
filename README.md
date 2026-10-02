@@ -98,19 +98,24 @@ same keys. Terms are space-separated and must all match; `-` negates one:
 
 | | |
 |---|---|
-| `todo:NEXT` | Status |
+| `todo:NEXT` | Status; a done status (`todo:DONE`) searches done tasks too |
 | `tag:work`, `-tag:home` | Has / hasn't the tag |
 | `pri:A` | Priority |
 | `file:inbox` | File name contains |
-| `due:today`, `due:<+7d`, `scheduled:<=fri` | Date compared with `<` `<=` `>` `>=` (none: on that day); any date input works |
-| other words | Title contains |
+| `due:today`, `due:<=+7d`, `scheduled:<=fri` | Date compared with `<` `<=` `>` `>=` (none: on that day); any date input works |
+| `due:none`, `scheduled:any` | Has no / has a date |
+| other words, `"a phrase"` | Title contains |
 
-Save the ones you use as sidebar views in settings; they update live:
+`<` and `>` are strict: `due:<+7d` leaves out day 7, so `<=` is usually what
+you want.
+
+"Save this search as a view…" (`Space v v`, from a search tab) adds it to the
+sidebar; it's kept in settings, where you can rename or edit it:
 
 ```toml
 [[views]]
 name = "Work this week"
-query = "tag:work due:<+7d"
+query = "tag:work due:<=+7d"
 ```
 
 ### Capture templates
