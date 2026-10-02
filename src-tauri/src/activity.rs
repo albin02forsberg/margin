@@ -134,26 +134,36 @@ pub fn suggest(window: &[Span], afk: &[Span], tracked: &[(NaiveDateTime, NaiveDa
         .collect()
 }
 
-/// GET PATH from the server at BASE (`http://host:port`). Only loopback addresses, so
-/// nothing leaves the machine. HTTP/1.0 keeps the response unchunked.
+/// GET PATH from ActivityWatch at BASE.
 fn get(base: &str, path: &str) -> Result<String, String> {
-    let host = base.trim().trim_end_matches('/').strip_prefix("http://").ok_or("activitywatch_url must look like http://localhost:5600")?;
-    let addrs: Vec<_> = host.to_socket_addrs().map_err(|e| format!("activitywatch_url {base}: {e}"))?.collect();
+    match request("ActivityWatch", "activitywatch_url", base, "GET", path, None, 10)? {
+        (200, body) => Ok(body),
+        (status, _) => Err(format!("ActivityWatch {path}: HTTP {status}")),
+    }
+}
+
+/// METHOD PATH (with a JSON BODY) to WHAT's server at BASE (`http://host:port`, config KEY),
+/// waiting up to WAIT seconds for the answer → (status, body). Only loopback addresses, so
+/// nothing leaves the machine. HTTP/1.0 keeps the response unchunked.
+pub fn request(what: &str, key: &str, base: &str, method: &str, path: &str, body: Option<&str>, wait: u64) -> Result<(u16, String), String> {
+    let host = base.trim().trim_end_matches('/').strip_prefix("http://").ok_or(format!("{key} must look like http://localhost:<port>"))?;
+    let addrs: Vec<_> = host.to_socket_addrs().map_err(|e| format!("{key} {base}: {e}"))?.collect();
     if addrs.is_empty() || !addrs.iter().all(|a| a.ip().is_loopback()) {
-        return Err(format!("activitywatch_url {base} isn't on this machine; only localhost is allowed"));
+        return Err(format!("{key} {base} isn't on this machine; only localhost is allowed"));
     }
-    let unreachable = |e: std::io::Error| format!("ActivityWatch isn't reachable at {base} ({e})");
+    let unreachable = |e: std::io::Error| format!("{what} isn't reachable at {base} ({e})");
     let mut s = TcpStream::connect_timeout(&addrs[0], std::time::Duration::from_secs(2)).map_err(unreachable)?;
-    s.set_read_timeout(Some(std::time::Duration::from_secs(10))).map_err(unreachable)?;
-    s.write_all(format!("GET {path} HTTP/1.0\r\nHost: {host}\r\nAccept: application/json\r\n\r\n").as_bytes()).map_err(unreachable)?;
+    s.set_read_timeout(Some(std::time::Duration::from_secs(wait))).map_err(unreachable)?;
+    let body = body.map_or("\r\n".into(), |b| format!("Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{b}", b.len()));
+    s.write_all(format!("{method} {path} HTTP/1.0\r\nHost: {host}\r\nAccept: application/json\r\n{body}").as_bytes()).map_err(unreachable)?;
     let mut buf = vec![];
-    s.read_to_end(&mut buf).map_err(unreachable)?;
+    s.read_to_end(&mut buf).map_err(|e| match e.kind() {
+        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut => format!("{what} didn't answer within {wait} s"),
+        _ => unreachable(e),
+    })?;
     let text = String::from_utf8_lossy(&buf);
-    let (head, body) = text.split_once("\r\n\r\n").ok_or("ActivityWatch sent a malformed response")?;
-    match head.split_whitespace().nth(1) {
-        Some("200") => Ok(body.to_string()),
-        status => Err(format!("ActivityWatch {path}: HTTP {}", status.unwrap_or("?"))),
-    }
+    let (head, body) = text.split_once("\r\n\r\n").ok_or(format!("{what} sent a malformed response"))?;
+    Ok((head.split_whitespace().nth(1).and_then(|c| c.parse().ok()).unwrap_or(0), body.to_string()))
 }
 
 /// Window and AFK spans around DAY from the server at BASE.

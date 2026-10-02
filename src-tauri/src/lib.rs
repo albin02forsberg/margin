@@ -1,4 +1,5 @@
 mod activity;
+mod ai;
 mod attach;
 mod backup;
 mod config;
@@ -624,6 +625,36 @@ fn activity_suggestions(s: State<App>, date_input: String) -> R<Option<Vec<activ
     Ok(Some(activity::suggest(&window, &afk, &tracked, &exclude, &projects, d)))
 }
 
+/// What the model gets to draft a diary note for an accepted suggestion.
+#[tauri::command]
+fn ai_note_prompt(s: State<App>, project: Option<String>, apps: Vec<String>, titles: Vec<String>) -> R<String> {
+    Ok(ai::note_prompt(project.as_deref(), &apps, &titles, &activity::exclude_rules(&s.cfg().activity_exclude)?))
+}
+
+/// What the model gets to summarize DATE_INPUT: logged sessions, plus ActivityWatch's titles when it's on and up.
+#[tauri::command(async)]
+fn ai_day_prompt(s: State<App>, date_input: String) -> R<String> {
+    let (c, d) = (s.cfg(), date(&date_input)?);
+    let exclude = activity::exclude_rules(&c.activity_exclude)?;
+    let aw = Some(&c.activitywatch_url).filter(|u| !u.trim().is_empty()).and_then(|u| activity::fetch(u, d).ok());
+    let blocks = aw.map(|(w, a)| activity::suggest(&w, &a, &[], &exclude, &[], d)).unwrap_or_default();
+    let sessions: Vec<_> = s.tc().sessions().into_iter().filter(|x| x.date == d).collect();
+    Ok(ai::day_prompt(d, &sessions, &blocks, &exclude))
+}
+
+/// The model's draft for PROMPT (the exact text the user was shown); ONE_LINE for a diary note.
+#[tauri::command(async)]
+fn ai_draft(s: State<App>, prompt: String, one_line: bool) -> R<String> {
+    let c = s.cfg();
+    if c.ai_model.trim().is_empty() {
+        return Err("Set ai_model in settings (Ctrl+,) to draft with a local model.".into());
+    }
+    if prompt.len() > ai::MAX_PROMPT + 200 {
+        return Err("That prompt is too long to send.".into());
+    }
+    ai::generate(&c.ai_url, c.ai_model.trim(), &prompt, one_line)
+}
+
 /// Org-formatted report text. KIND: daily | weekly | holidays | flex | doctor | backup.
 #[tauri::command]
 fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<String> {
@@ -853,7 +884,7 @@ pub fn run() {
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_edit_session, tc_add_session, activity_suggestions, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_edit_session, tc_add_session, activity_suggestions, ai_note_prompt, ai_day_prompt, ai_draft, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_linked, export_report, export_open
         ])
         .build(tauri::generate_context!())
