@@ -12,7 +12,9 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri",
     "test": "node --test src/lib/*.test.ts",
-    "test:e2e": "tauri build --debug --no-bundle --config src-tauri/tauri.e2e.conf.json && node --test --test-concurrency=1 --test-timeout=120000 --test-force-exit e2e/*.test.ts",
+    "e2e:build": "tauri build --debug --no-bundle --config src-tauri/tauri.e2e.conf.json",
+    "e2e:run": "node --test --test-concurrency=1 --test-timeout=120000 --test-force-exit e2e/*.test.ts",
+    "test:e2e": "npm run e2e:build && npm run e2e:run",
     "screenshots": "tauri build --debug --no-bundle --config src-tauri/tauri.e2e.conf.json && node e2e/screenshots.ts"
   },
   "license": "MIT",
