@@ -294,7 +294,6 @@
       reload++;
       return;
     }
-    getVersion().then((v) => (version = v), () => {}); // show nothing if it fails
     if (t === tabs[cur]) ed.applyText(view, next);
     else t.state = t.state!.update({ changes: ed.diffChange(old, next) }).state;
     t.dirty = true;
@@ -1255,6 +1254,7 @@
       message = "This page only works inside the app window — run `npm run tauri dev` instead of opening it in a browser.";
       return;
     }
+    getVersion().then((v) => (version = v), () => {}); // show nothing if it fails
     act(async () => {
       cfg = await call("config");
       view = new EditorView({ parent: editorEl! });
