@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f3b52"/>
+      <stop offset="1" stop-color="#1c2434"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fffdf7"/>
+      <stop offset="1" stop-color="#f3eee2"/>
+    </linearGradient>
+  </defs>
+  <rect x="80" y="80" width="864" height="864" rx="190" fill="url(#bg)"/>
+  <rect x="232" y="196" width="560" height="632" rx="40" fill="url(#paper)"/>
+  <!-- the margin -->
+  <rect x="352" y="196" width="16" height="632" fill="#e0574f"/>
+  <!-- ruled text lines -->
+  <g stroke="#9aa6bb" stroke-width="22" stroke-linecap="round">
+    <line x1="420" y1="330" x2="720" y2="330"/>
+    <line x1="420" y1="430" x2="680" y2="430"/>
+    <line x1="420" y1="630" x2="700" y2="630"/>
+    <line x1="420" y1="730" x2="620" y2="730"/>
+  </g>
+  <!-- a done task, its tick in the margin -->
+  <line x1="420" y1="530" x2="720" y2="530" stroke="#2f3b52" stroke-width="22" stroke-linecap="round"/>
+  <path d="M262 528 l26 28 l46 -58" fill="none" stroke="#3a9a6a" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
