@@ -1,3 +1,4 @@
+mod activity;
 mod attach;
 mod backup;
 mod config;
@@ -594,6 +595,29 @@ fn tc_edit_session(s: State<App>, line: usize, note: String, old_hours: f64, new
     Ok("✅ Session updated.".into())
 }
 
+/// Log a finished session after the fact (an accepted suggestion).
+#[tauri::command]
+fn tc_add_session(s: State<App>, start: NaiveDateTime, end: NaiveDateTime, project: String, export_code: Option<String>, note: String) -> R<String> {
+    s.tc().add_session(start, end, &project, export_code.as_deref(), &note)?;
+    s.backup();
+    Ok(format!("✅ Logged {}–{} on {}", start.format("%H:%M"), end.format("%H:%M"), if project.trim().is_empty() { "Other" } else { project.trim() }))
+}
+
+/// Suggested sessions for DATE_INPUT from ActivityWatch; None when `activitywatch_url` is empty.
+#[tauri::command(async)]
+fn activity_suggestions(s: State<App>, date_input: String) -> R<Option<Vec<activity::Suggestion>>> {
+    let c = s.cfg();
+    if c.activitywatch_url.trim().is_empty() {
+        return Ok(None);
+    }
+    let (d, exclude) = (date(&date_input)?, activity::exclude_rules(&c.activity_exclude)?);
+    let (window, afk) = activity::fetch(&c.activitywatch_url, d)?;
+    let tc = s.tc();
+    let projects: Vec<String> = tc.projects().into_iter().filter(|(_, p)| p.active).map(|(n, _)| n).collect();
+    let tracked = timeclock::spans(&tc.events(), timeclock::now());
+    Ok(Some(activity::suggest(&window, &afk, &tracked, &exclude, &projects, d)))
+}
+
 /// Org-formatted report text. KIND: daily | weekly | holidays | flex | doctor | backup.
 #[tauri::command]
 fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<String> {
@@ -823,7 +847,7 @@ pub fn run() {
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_edit_session, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_edit_session, tc_add_session, activity_suggestions, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_linked, export_report, export_open
         ])
         .build(tauri::generate_context!())

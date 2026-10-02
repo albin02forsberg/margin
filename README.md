@@ -290,6 +290,19 @@ turns it off. On Wayland this uses the compositor's idle notifications
 (KDE Plasma 6, Sway/wlroots, GNOME 46+), and the threshold applies after a restart;
 elsewhere only sleep and suspend are noticed.
 
+### Suggested time from ActivityWatch
+
+If you run [ActivityWatch](https://activitywatch.net/), set
+`activitywatch_url = "http://localhost:5600"` and the Time view lists
+**Suggested** sessions for the day: stretches of computer use (gaps under 5
+minutes joined, AFK and already logged time left out, at least 15 minutes),
+with the top apps and window titles and a project guessed from its name
+appearing in them. **Accept** confirms the project and an optional diary note
+and adds the session to the log at its place in the day; ✕ hides it until
+restart. `h`/`l` step through days. Only local addresses are accepted, and
+`activity_exclude` (regexes over app names and titles; password managers and
+private browsing by default) keeps windows out of suggestions. Off by default.
+
 ## Export
 
 `Space e` exports the open note (including unsaved edits) as HTML (`e h`),
