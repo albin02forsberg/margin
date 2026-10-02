@@ -54,7 +54,8 @@ conflicts are flagged (`:w` keeps yours, `Space f r` reloads).
 - **Ctrl+K** — command palette: every action, with its shortcut.
 - **Space** (vim normal mode, or in any list view) — the same actions as a menu.
 - Sidebar: **Today** (Ctrl+1), **Tasks** (Ctrl+2), **Inbox** (Ctrl+3),
-  **Journal** (Ctrl+J), **Time** (Ctrl+4), recent notes. Toggle with Ctrl+\\.
+  **Journal** (Ctrl+J), **Time** (Ctrl+4), your saved searches, recent notes.
+  Toggle with Ctrl+\\.
 
 | | |
 |---|---|
@@ -76,6 +77,28 @@ key in your desktop's settings instead: it opens the same form in the running ap
 `Enter` open, `<`/`>` reschedule a day, `+`/`-` priority, `n` new task, `u` undo,
 `v` day/week, `h`/`l` previous/next, `.` today, `/` filter, `?` all keys.
 Click the checkbox to complete a task.
+
+### Saved searches
+
+"Search tasks…" (`Space v f`) lists the open tasks matching a query, with the
+same keys. Terms are space-separated and must all match; `-` negates one:
+
+| | |
+|---|---|
+| `todo:NEXT` | Status |
+| `tag:work`, `-tag:home` | Has / hasn't the tag |
+| `pri:A` | Priority |
+| `file:inbox` | File name contains |
+| `due:today`, `due:<+7d`, `scheduled:<=fri` | Date compared with `<` `<=` `>` `>=` (none: on that day); any date input works |
+| other words | Title contains |
+
+Save the ones you use as sidebar views in settings; they update live:
+
+```toml
+[[views]]
+name = "Work this week"
+query = "tag:work due:<+7d"
+```
 
 ## Editing notes
 
