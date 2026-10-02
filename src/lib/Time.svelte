@@ -275,4 +275,5 @@
   .suggested td:nth-child(2) { overflow-wrap: anywhere; }
   .actions { white-space: nowrap; text-align: right; }
   .error { color: var(--todo); font-size: var(--fs-md); }
+  @media (max-width: 759px) { .status { grid-template-columns: 1fr; } .total { text-align: left; } }
 </style>

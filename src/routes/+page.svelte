@@ -1099,9 +1099,14 @@
     return `${e.ctrlKey || e.metaKey ? "ctrl+" : ""}${e.altKey ? "alt+" : ""}${e.shiftKey ? "shift+" : ""}${k}`.toLowerCase();
   }
 
+  /** Under 1000 px the graph / links panels are drawers over the pane (see the CSS); Esc outside the editor or a click on the pane closes them. */
+  const drawerOpen = () => (showGraph || showBacklinks) && matchMedia("(max-width: 999px)").matches;
+  const closeDrawer = () => { showGraph = showBacklinks = false; };
+
   function onKey(e: KeyboardEvent) {
     if (picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen()) return;
     const inEditor = isText(tab) && view.contentDOM.contains(e.target as Node);
+    if (e.key === "Escape" && !inEditor && drawerOpen()) { closeDrawer(); e.preventDefault(); return; }
     const idle = inEditor && ed.vimIdle(view);
     const c = combo(e);
     for (const cmd of cmds) {
@@ -1312,13 +1317,13 @@
 <div class="app" class:mono={monoFont}>
   {#if sidebar && cfg}
     <aside class="side">
-      <button class="cmdk" onclick={() => act(palette)}><span>Search or run a command…</span><kbd>{pretty("Ctrl")} K</kbd></button>
+      <button class="cmdk" title="Search or run a command" onclick={() => act(palette)}><span class="ico">⌕</span><span>Search or run a command…</span><kbd>{pretty("Ctrl")} K</kbd></button>
       <nav>
         {#each NAV as n}
-          <button class:on={n.on(tab)} onclick={() => act(n.run)}><span class="ico">{n.icon}</span>{n.label}<kbd>{pretty("Ctrl")} {n.keys}</kbd></button>
+          <button class:on={n.on(tab)} title={n.label} onclick={() => act(n.run)}><span class="ico">{n.icon}</span><span class="lbl">{n.label}</span><kbd>{pretty("Ctrl")} {n.keys}</kbd></button>
         {/each}
         {#each cfg.config.views ?? [] as v}
-          <button class:on={tab?.key === `search:${v.query}`} onclick={() => act(() => openSearch(v.name, v.query))} title={v.query}><span class="ico">⌕</span>{v.name}</button>
+          <button class:on={tab?.key === `search:${v.query}`} onclick={() => act(() => openSearch(v.name, v.query))} title={v.query}><span class="ico">⌕</span><span class="lbl">{v.name}</span></button>
         {/each}
       </nav>
       <div class="sec">
@@ -1365,7 +1370,7 @@
     </nav>
 
     <main>
-      <div class="pane">
+      <div class="pane" onpointerdowncapture={() => drawerOpen() && closeDrawer()}>
         <div class="editor" bind:this={editorEl} style:display={isText(tab) ? "block" : "none"}></div>
         {#if dropCue}<div class="drop-cue">Drop to attach to {tab.title}</div>{/if}
         {#if cfg}
@@ -1435,6 +1440,7 @@
   nav button:hover, .notes button:hover { background: var(--active); }
   nav button.on, .notes button.on { background: var(--sel); }
   nav button kbd { margin-left: auto; }
+  .cmdk .ico { display: none; }
   .ico { width: 16px; text-align: center; color: var(--dim); }
   kbd { font: 10px var(--mono); color: var(--dim); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--s1); background: var(--bg); }
   .sec { display: flex; align-items: center; gap: 2px; margin: 14px var(--s1) 2px 9px; color: var(--dim); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.05em; }
@@ -1478,4 +1484,20 @@
   .file { color: var(--dim); }
   .msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hint { background: none; border: 0; color: var(--dim); font: var(--fs-xs) var(--sans); cursor: pointer; }
+  /* narrow windows: links drawer < 1000, sidebar icon rail < 760, short status bar < 560 */
+  @media (max-width: 999px) {
+    main { position: relative; }
+    .links { position: absolute; right: 0; top: 0; bottom: 0; width: min(320px, 85vw); z-index: 10; box-shadow: var(--shadow); box-sizing: border-box; }
+  }
+  @media (max-width: 759px) {
+    .side { width: 44px; padding: 10px var(--s1); align-items: stretch; }
+    .side .lbl, .side kbd, .side .sec, .side .notes, .side .tbtns, .side .warn, .timer small, .timer .what span:nth-child(2), .cmdk > span:not(.ico) { display: none; }
+    .cmdk .ico { display: block; }
+    .cmdk, nav button, .timer .what { justify-content: center; padding-left: 0; padding-right: 0; }
+    .cmdk { margin-bottom: var(--s2); }
+    .timer .what { grid-template-columns: auto; }
+  }
+  @media (max-width: 559px) {
+    .status .file, .hint { display: none; }
+  }
 </style>

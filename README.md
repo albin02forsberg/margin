@@ -95,7 +95,8 @@ New here? The first start opens a hands-on tutorial note (`Space ?` reopens it).
 - **Space** (vim normal mode, or in any list view) — the same actions as a menu.
 - Sidebar: **Today** (Ctrl+1), **Tasks** (Ctrl+2), **Inbox** (Ctrl+3),
   **Journal** (Ctrl+J), **Time** (Ctrl+4), your saved searches, recent notes.
-  Toggle with Ctrl+\\.
+  Toggle with Ctrl+\\. In a narrow window it shrinks to an icon rail (under 760 px)
+  and the links/graph panel opens over the note (under 1000 px; Esc or a click on the note closes it).
 
 | | |
 |---|---|
