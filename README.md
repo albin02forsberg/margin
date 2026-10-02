@@ -138,7 +138,27 @@ body = "* %^{Title} :meeting:\n%U\n- %?"
 
 `%t`/`%T` date / date+time (`<2026-10-02 Fri 14:30>`), `%u`/`%U` the inactive
 `[…]` forms, `%^{Prompt}` asks (repeat a name to reuse the answer), `%i` the
-selected text, `%?` cursor, `%%` a literal `%`.
+selected text (extra lines indented like its line), `%?` cursor, `%%` a literal `%`.
+
+Or keep each template as a file in `notes/templates/` (`templates_dir` in
+settings); they're listed after the settings ones and left out of the agenda,
+tasks and search:
+
+```org
+#+title: Meeting notes
+#+key: m
+#+file: meetings.org
+#+heading: Meetings
+* %^{Title} :meeting:
+%U
+- %?
+```
+
+All `#+` lines are optional: the key defaults to the file name's first letter,
+the name to the file name, the target to the inbox. The rest is the body.
+
+Quick capture (Super+Shift+N) asks "Task" or a template when you have any; a
+template captured with the window hidden is filed without opening it.
 
 ## Editing notes
 
