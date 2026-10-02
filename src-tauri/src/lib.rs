@@ -155,7 +155,13 @@ fn agenda(s: State<App>, start: String, days: i64) -> R<Vec<org::Item>> {
 
 #[tauri::command]
 fn todos(s: State<App>) -> Vec<org::Item> {
-    org::todos(&s.files(), &s.kw())
+    org::todos(&s.files(), &s.kw(), |_, _| true)
+}
+
+/// Open tasks matching QUERY (see org::query).
+#[tauri::command]
+fn search_todos(s: State<App>, query: String) -> R<Vec<org::Item>> {
+    Ok(org::todos(&s.files(), &s.kw(), org::query(&query, today())?))
 }
 
 #[tauri::command]
@@ -553,7 +559,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             config, reload_config, list_files, read_file, write_file,
-            agenda, todos, org_heading, org_edit, org_planning, read_date, org_context,
+            agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, task_entry, date_preview, tc_dashboard,
             notes_new, notes_nodes, notes_backlinks, notes_search,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_break, tc_resume, tc_adjust,

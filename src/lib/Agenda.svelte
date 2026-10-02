@@ -47,8 +47,9 @@
   import { invoke } from "@tauri-apps/api/core";
   import { tick } from "svelte";
 
-  let { mode, api, active, reload, todo, done }: {
-    mode: "agenda" | "todo"; api: AgendaApi; active: boolean; reload: number; todo: string[]; done: string[];
+  /** QUERY (todo mode): show only open tasks matching it, under TITLE. */
+  let { mode, api, active, reload, todo, done, query, title }: {
+    mode: "agenda" | "todo"; api: AgendaApi; active: boolean; reload: number; todo: string[]; done: string[]; query?: string; title?: string;
   } = $props();
 
   const stored = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -103,19 +104,20 @@
   }
 
   const heading = $derived(
-    mode === "todo" ? "Tasks"
+    mode === "todo" ? (title ?? "Tasks")
     : span === 1 ? (iso(start) === today ? "Today" : fmtDay(start))
     : `Week ${week(start)}`,
   );
   const subheading = $derived(
-    mode === "todo" ? `${items.length} open`
+    mode === "todo" ? `${items.length} open${query ? ` · ${query}` : ""}`
     : span === 1 ? (iso(start) === today ? fmtDay(start) : "")
     : `${fmtDay(start, { day: "numeric", month: "short" })} – ${fmtDay(days[6], { day: "numeric", month: "short", year: "numeric" })}`,
   );
 
   async function refresh() {
     now = new Date();
-    items = mode === "agenda" ? await invoke("agenda", { start: iso(start), days: span }) : await invoke("todos");
+    items = mode === "agenda" ? await invoke("agenda", { start: iso(start), days: span })
+      : query != null ? await invoke("search_todos", { query }) : await invoke("todos");
     sel = Math.min(sel, Math.max(0, shown.length - 1));
   }
 
@@ -265,7 +267,7 @@
     {/each}
     {#if !shown.length}
       <div class="empty">
-        <p>{filter ? `Nothing matches “${filter}”.` : mode === "todo" ? "No open tasks. 🎉" : "Nothing planned."}</p>
+        <p>{filter ? `Nothing matches “${filter}”.` : query != null ? "No open tasks match." : mode === "todo" ? "No open tasks. 🎉" : "Nothing planned."}</p>
         <p>Press <kbd>n</kbd> to add a task{mode === "agenda" ? ", or h / l to look at other days" : ""}.</p>
       </div>
     {/if}

@@ -20,7 +20,7 @@
    *  REPORT: how to regenerate a report tab when the data changes. */
   type Tab = {
     key: string; title: string; kind: "file" | "report" | View; path?: string; state?: EditorState; dirty: boolean;
-    saved?: string; report?: { kind: string; dateInput?: string | null }; conflict?: boolean;
+    saved?: string; report?: { kind: string; dateInput?: string | null }; conflict?: boolean; query?: string;
   };
   type NoteNode = { id: string; title: string; path: string; line: number };
   type Hit = { path: string; title: string; line: number; text: string };
@@ -179,12 +179,29 @@
   }
 
   async function openView(kind: View) {
-    let i = tabs.findIndex((t) => t.kind === kind);
+    let i = tabs.findIndex((t) => t.key === kind);
     if (i < 0) {
       tabs.push({ key: kind, title: { agenda: "Today", todo: "Tasks", time: "Time" }[kind], kind, dirty: false });
       i = tabs.length - 1;
     }
     await show(i);
+  }
+
+  /** A task list filtered by QUERY (a saved view, or an ad-hoc search). */
+  async function openSearch(title: string, query: string) {
+    await call("search_todos", { query }); // report a bad query here rather than in an empty tab
+    const key = `search:${query}`;
+    let i = tabs.findIndex((t) => t.key === key);
+    if (i < 0) {
+      tabs.push({ key, title, kind: "todo", query, dirty: false });
+      i = tabs.length - 1;
+    }
+    await show(i);
+  }
+
+  async function searchTasks() {
+    const q = await ask("Search tasks", "", "e.g. todo:NEXT tag:work -tag:home pri:A file:inbox due:<+7d words");
+    if (q?.trim()) await openSearch(q.trim(), q.trim());
   }
 
   async function closeTab(i = cur) {
@@ -733,6 +750,7 @@
     { label: "Go to All tasks", keys: ["Ctrl+2"], leader: "v a", run: () => openView("todo") },
     { label: "Go to Inbox", keys: ["Ctrl+3"], leader: "v i", run: openInbox },
     { label: "Go to Time tracking", keys: ["Ctrl+4"], leader: "v c", run: () => openView("time") },
+    { label: "Search tasks…", leader: "v f", run: searchTasks },
     { label: "Toggle sidebar", keys: ["Ctrl+\\"], leader: "v s", run: () => { sidebar = !sidebar; store("sidebar", sidebar ? "1" : "0"); } },
     { label: "Settings (config file)", keys: ["Ctrl+,"], leader: "f c", run: () => openFile(cfg.config_path) },
     { label: "Save", keys: ["Ctrl+S"], leader: "f s", run: () => saveTab(tab, true) },
@@ -992,7 +1010,7 @@
 
   const NAV: { label: string; icon: string; keys: string; on: (t?: Tab) => boolean; run: () => unknown }[] = [
     { label: "Today", icon: "◎", keys: "1", on: (t) => t?.kind === "agenda", run: () => openView("agenda") },
-    { label: "Tasks", icon: "☑", keys: "2", on: (t) => t?.kind === "todo", run: () => openView("todo") },
+    { label: "Tasks", icon: "☑", keys: "2", on: (t) => t?.key === "todo", run: () => openView("todo") },
     { label: "Inbox", icon: "⇣", keys: "3", on: (t) => !!t?.path && cfg && base(t.path) === base(cfg.config.inbox), run: openInbox },
     { label: "Journal", icon: "✎", keys: "J", on: (t) => !!t?.path && cfg && t.path.includes(sep() + cfg.config.daily_dir + sep()), run: () => journal() },
     { label: "Time", icon: "◷", keys: "4", on: (t) => t?.kind === "time", run: () => openView("time") },
@@ -1006,6 +1024,9 @@
       <nav>
         {#each NAV as n}
           <button class:on={n.on(tab)} onclick={() => act(n.run)}><span class="ico">{n.icon}</span>{n.label}<kbd>{pretty("Ctrl")} {n.keys}</kbd></button>
+        {/each}
+        {#each cfg.config.views ?? [] as v}
+          <button class:on={tab?.key === `search:${v.query}`} onclick={() => act(() => openSearch(v.name, v.query))} title={v.query}><span class="ico">⌕</span>{v.name}</button>
         {/each}
       </nav>
       <div class="sec">
@@ -1060,7 +1081,7 @@
               {#if v.kind === "time"}
                 <Time api={timeApi} active={v === tab} {reload} />
               {:else}
-                <Agenda mode={v.kind as "agenda" | "todo"} api={agendaApi} active={v === tab} {reload} {...kw()} />
+                <Agenda mode={v.kind as "agenda" | "todo"} api={agendaApi} active={v === tab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} />
               {/if}
             </div>
           {/each}
