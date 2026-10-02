@@ -3,6 +3,7 @@
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
+  import { getVersion } from "@tauri-apps/api/app";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { check } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
@@ -925,11 +926,13 @@
   // ---------------------------------------------------------------- updates
 
   /** Look for a newer release. QUIET (at startup) only mentions it; otherwise offer to install and restart. */
+  let version = $state("");
+
   async function checkUpdate(quiet = false) {
     const u = await check();
     if (!u) return quiet || flash("Margin is up to date.");
     if (quiet) return flash(`Margin ${u.version} is available — Space f u to install.`);
-    const yes = await pick({ prompt: `Install Margin ${u.version} and restart?`, items: [{ label: "Install and restart", value: true }, { label: "Not now", value: false }] });
+    const yes = await pick({ prompt: `Install Margin ${u.version}${version ? ` (you have ${version})` : ""} and restart?`, items: [{ label: "Install and restart", value: true }, { label: "Not now", value: false }] });
     if (!yes) return;
     flash(`Downloading Margin ${u.version}…`);
     await u.download();
@@ -986,6 +989,7 @@
     { label: "Save", keys: ["Ctrl+S"], leader: "f s", run: () => saveTab(tab, true) },
     { label: "Reload from disk (discard unsaved changes)", leader: "f r", run: reloadFromDisk },
     { label: "Save all", leader: "f S", run: saveAll },
+    { label: "About Margin", run: () => flash(`Margin ${version}`) },
     { label: "Check for updates", leader: "f u", run: () => checkUpdate() },
     { label: "Help: tutorial", leader: "?", run: async () => openFile((await call<[string, boolean]>("tutorial"))[0]) },
     { label: "Switch tab…", leader: "b b", run: switchTab },
@@ -1250,6 +1254,7 @@
       message = "This page only works inside the app window — run `npm run tauri dev` instead of opening it in a browser.";
       return;
     }
+    getVersion().then((v) => (version = v), () => {}); // show nothing if it fails
     act(async () => {
       cfg = await call("config");
       view = new EditorView({ parent: editorEl! });
@@ -1356,6 +1361,7 @@
         </div>
         {#if tc.backup_error}<p class="warn" title={tc.backup_error}>⚠ Backup failed</p>{/if}
       </div>
+      {#if version}<div class="version">v{version}</div>{/if}
     </aside>
   {/if}
 
@@ -1454,6 +1460,7 @@
   .timer .what small { grid-column: 2; color: var(--dim); font-size: var(--fs-xs); }
   .timer .what span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+  .version { color: var(--dim); font-size: var(--fs-xs); padding: 0 9px; }
   .timer.on .dot { background: var(--done); }
   .tbtns { display: flex; gap: 6px; padding: var(--s1) 9px; }
   .tbtns button { border: 1px solid var(--border) !important; padding: 3px 10px; font-size: var(--fs-sm); }
@@ -1491,7 +1498,7 @@
   }
   @media (max-width: 759px) {
     .side { width: 44px; padding: 10px var(--s1); align-items: stretch; }
-    .side .lbl, .side kbd, .side .sec, .side .notes, .side .tbtns, .side .warn, .timer small, .timer .what span:nth-child(2), .cmdk > span:not(.ico) { display: none; }
+    .side .lbl, .side kbd, .side .sec, .side .notes, .side .tbtns, .side .warn, .version, .timer small, .timer .what span:nth-child(2), .cmdk > span:not(.ico) { display: none; }
     .cmdk .ico { display: block; }
     .cmdk, nav button, .timer .what { justify-content: center; padding-left: 0; padding-right: 0; }
     .cmdk { margin-bottom: var(--s2); }

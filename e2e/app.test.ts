@@ -1,6 +1,6 @@
 // End-to-end tests of the basics; setup and helpers are in setup.ts.
 import { after, before, describe, it } from "node:test";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { answer, browser, close, fileMatches, find, Key, launch, today, type, type Dirs } from "./setup.ts";
 
@@ -24,6 +24,11 @@ describe("Margin", () => {
   it("starts on Today", async () => {
     await find(".agenda h1", "Today");
     await find(".agenda .row .title", "Fixture task");
+  });
+
+  it("shows the app version in the sidebar", async () => {
+    const { version } = JSON.parse(readFileSync(join(import.meta.dirname, "../src-tauri/tauri.conf.json"), "utf8"));
+    await find(".side .version", "v" + version);
   });
 
   it("opens a note with Ctrl+P, edits and saves it", async () => {
