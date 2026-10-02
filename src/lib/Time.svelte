@@ -4,7 +4,7 @@
   export type TimeApi = {
     act: (f: () => unknown) => void;
     /** Named actions: start, stop, pause, resume, switch, adjust, editSession, export, exportReport, projects,
-     *  profile, holidays, daily, weekly, doctor, backup, backupLog, rawLog, import, acceptSuggestion. */
+     *  profile, holidays, daily, weekly, doctor, backup, backupLog, rawLog, import, acceptSuggestion, editSuggestion. */
     run: (name: string, arg?: unknown) => Promise<void>;
   };
   export const hm = (h: number) => {
@@ -35,7 +35,6 @@
   let day = $state(new Date().toLocaleDateString("sv-SE"));
   let sugg = $state<Suggestion[] | null>(null);
   let awError = $state("");
-  let dismissed = $state<string[]>([]);
   async function loadSuggestions() {
     try {
       [sugg, awError] = [await invoke("activity_suggestions", { dateInput: day }), ""];
@@ -47,12 +46,13 @@
     void [reload, day];
     if (active) loadSuggestions();
   });
-  const shown = $derived((sugg ?? []).filter((s) => !dismissed.includes(s.start)));
   const shiftDay = (n: number) => {
     const t = new Date(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10) + n);
     day = t.toLocaleDateString("sv-SE");
   };
-  const accept = (s: Suggestion) => api.act(async () => { await api.run("acceptSuggestion", s); await refresh(); await loadSuggestions(); root?.focus(); });
+  const accept = (s: Suggestion, name = "acceptSuggestion") => api.act(async () => { await api.run(name, s); await refresh(); await loadSuggestions(); root?.focus(); });
+  // Hidden at once; the backend keeps it hidden (by overlap) across restarts.
+  const dismiss = (s: Suggestion) => api.act(async () => { sugg = sugg!.filter((x) => x !== s); await invoke("activity_dismiss", { start: s.start, end: s.end }); });
 
   $effect(() => {
     if (active) tick().then(() => root?.focus());
@@ -170,15 +170,15 @@
         <h3>Suggested <span class="dim">from ActivityWatch · {day === todayIso ? "today" : `${dayName(day)} ${day}`} · <kbd>h</kbd><kbd>l</kbd> day</span></h3>
         {#if awError}
           <p class="dim">{awError}. Is <a href="https://activitywatch.net/" target="_blank" rel="noreferrer">ActivityWatch</a> running?</p>
-        {:else if shown.length}
+        {:else if sugg.length}
           <table>
             <tbody>
-              {#each shown as s (s.start)}
+              {#each sugg as s (s.start)}
                 <tr>
                   <td class="mono">{clock(s.start)}–{clock(s.end)}</td>
                   <td>{s.apps.join(", ")} <span class="dim">{s.titles.map((t) => `“${t}”`).join(" ")}</span>{#if s.project} → <strong>{s.project}</strong>?{/if}</td>
                   <td class="num">{hm((Date.parse(s.end) - Date.parse(s.start)) / 3_600_000)}</td>
-                  <td class="actions"><button onclick={() => accept(s)}>Accept</button><button class="icon" title="Dismiss" onclick={() => (dismissed = [...dismissed, s.start])}>✕</button></td>
+                  <td class="actions"><button onclick={() => accept(s)}>Accept</button><button class="icon" title="Change start and end, then accept" onclick={() => accept(s, "editSuggestion")}>✎</button><button class="icon" title="Dismiss" onclick={() => dismiss(s)}>✕</button></td>
                 </tr>
               {/each}
             </tbody>

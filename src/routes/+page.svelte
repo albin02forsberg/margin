@@ -902,6 +902,20 @@
     if (note != null) await tcDo("tc_add_session", { start: s.start, end: s.end, project: p.project, exportCode: p.code, note });
   }
 
+  /** Accept S after changing its start and end (HH:MM on its day). */
+  async function editSuggestion(s: Suggestion) {
+    const time = async (what: string, iso: string) => {
+      const v = await ask(`${what} (HH:MM)`, iso.slice(11, 16));
+      if (v == null) return null;
+      const m = v.trim().match(/^(\d{1,2}):?(\d\d)$/);
+      if (!m) throw new Error(`“${v}” isn't a time like 09:30`);
+      return `${s.start.slice(0, 10)}T${m[1].padStart(2, "0")}:${m[2]}:00`;
+    };
+    const start = await time("Start", s.start);
+    const end = start && (await time("End", s.end));
+    if (end) await acceptSuggestion({ ...s, start, end });
+  }
+
   async function importEmacs() {
     const dir = await ask(`Import Emacs timeclock files into “${tc.profile}” from`, "~/timeclock");
     if (dir) await tcDo("tc_import", { dir });
@@ -928,7 +942,7 @@
     switch: changeProject, adjust: adjustStart, editSession: (s) => editSession(s), export: exportCsv, exportReport, projects: editProject,
     profile: (n) => switchProfile(n), holidays: () => report("holidays", "Holidays"), daily: dailyReport,
     weekly: () => report("weekly", "Week report"), doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
-    backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), import: importEmacs, acceptSuggestion,
+    backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), import: importEmacs, acceptSuggestion, editSuggestion,
     flex: async () => flash(await call("tc_report", { kind: "flex" })), diary: () => openFile(cfg.diary_path),
   };
   const timeApi: TimeApi = { act, run: async (name, arg) => { await timeActions[name](arg); } };

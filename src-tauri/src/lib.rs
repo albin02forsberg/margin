@@ -618,11 +618,26 @@ fn activity_suggestions(s: State<App>, date_input: String) -> R<Option<Vec<activ
         return Ok(None);
     }
     let (d, exclude) = (date(&date_input)?, activity::exclude_rules(&c.activity_exclude)?);
-    let (window, afk) = activity::fetch(&c.activitywatch_url, d)?;
+    let (window, afk) = activity::fetch(&c.activitywatch_url, d, &exclude)?;
     let tc = s.tc();
     let projects: Vec<String> = tc.projects().into_iter().filter(|(_, p)| p.active).map(|(n, _)| n).collect();
     let tracked = timeclock::spans(&tc.events(), timeclock::now());
-    Ok(Some(activity::suggest(&window, &afk, &tracked, &exclude, &projects, d)))
+    let all = activity::suggest(&window, &afk, &tracked, &exclude, &projects, d);
+    Ok(Some(activity::undismissed(all, &dismissed(&tc))))
+}
+
+/// The profile's `activity_dismissed.json`; missing or unreadable is empty.
+fn dismissed(tc: &Tc) -> activity::Dismissed {
+    std::fs::read_to_string(tc.dir.join("activity_dismissed.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+/// Hide the suggestion START–END for good (well, 30 days).
+#[tauri::command]
+fn activity_dismiss(s: State<App>, start: NaiveDateTime, end: NaiveDateTime) -> R<()> {
+    let tc = s.tc();
+    let d = activity::dismiss(dismissed(&tc), start, end, today());
+    std::fs::create_dir_all(&tc.dir).map_err(|e| e.to_string())?;
+    config::write_atomic(&tc.dir.join("activity_dismissed.json"), serde_json::to_string(&d).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 
 /// What the model gets to draft a diary note for an accepted suggestion.
@@ -636,7 +651,7 @@ fn ai_note_prompt(s: State<App>, project: Option<String>, apps: Vec<String>, tit
 fn ai_day_prompt(s: State<App>, date_input: String) -> R<String> {
     let (c, d) = (s.cfg(), date(&date_input)?);
     let exclude = activity::exclude_rules(&c.activity_exclude)?;
-    let aw = Some(&c.activitywatch_url).filter(|u| !u.trim().is_empty()).and_then(|u| activity::fetch(u, d).ok());
+    let aw = Some(&c.activitywatch_url).filter(|u| !u.trim().is_empty()).and_then(|u| activity::fetch(u, d, &exclude).ok());
     let blocks = aw.map(|(w, a)| activity::suggest(&w, &a, &[], &exclude, &[], d)).unwrap_or_default();
     let sessions: Vec<_> = s.tc().sessions().into_iter().filter(|x| x.date == d).collect();
     Ok(ai::day_prompt(d, &sessions, &blocks, &exclude))
@@ -884,7 +899,7 @@ pub fn run() {
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_edit_session, tc_add_session, activity_suggestions, ai_note_prompt, ai_day_prompt, ai_draft, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_edit_session, tc_add_session, activity_suggestions, activity_dismiss, ai_note_prompt, ai_day_prompt, ai_draft, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_linked, export_report, export_open
         ])
         .build(tauri::generate_context!())
