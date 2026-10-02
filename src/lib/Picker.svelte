@@ -122,7 +122,7 @@
   <div class="picker">
     <label>
       <span>{o.prompt}</span>
-      <input bind:this={input} bind:value={query} oninput={() => (sel = 0)} onkeydown={key} onblur={() => done(null)} spellcheck="false" />
+      <input bind:this={input} bind:value={query} oninput={() => (sel = 0)} onkeydown={key} onblur={() => document.hasFocus() && done(null)} spellcheck="false" />
     </label>
     {#if previewText}<div class="preview" class:bad={previewText.startsWith("✗")}>{previewText}</div>{/if}
     {#if hasList}
