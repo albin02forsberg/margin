@@ -19,6 +19,11 @@ pub struct Config {
     pub close_to_tray: bool,
     /// System-wide shortcut for quick capture, e.g. "Super+Shift+N"; empty to disable.
     pub capture_shortcut: String,
+    /// Desktop notifications for timed entries and upcoming deadlines.
+    pub reminders: bool,
+    pub remind_before_minutes: i64,
+    /// Remind about date-only deadlines this many days ahead (0 = on the day).
+    pub deadline_warning_days: i64,
 }
 
 impl Default for Config {
@@ -36,6 +41,9 @@ impl Default for Config {
             inbox: "inbox.org".into(),
             close_to_tray: true,
             capture_shortcut: "Super+Shift+N".into(),
+            reminders: true,
+            remind_before_minutes: 10,
+            deadline_warning_days: 1,
         }
     }
 }

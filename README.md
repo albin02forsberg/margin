@@ -130,6 +130,13 @@ The tray icon shows what you're tracking and for how long, and has start,
 break, resume, switch and stop. Closing the window while a timer runs hides it
 to the tray (`close_to_tray = false` in settings to quit instead).
 
+## Reminders
+
+Timed entries (`SCHEDULED: <… 14:00>`, deadlines with a time, appointments)
+pop up a desktop notification 10 minutes before; date-only deadlines remind you
+once a day from the day before. Settings: `reminders`, `remind_before_minutes`,
+`deadline_warning_days`.
+
 ## Settings
 
 Ctrl+, opens `config.toml` (in the OS config dir): notes folder (`~/notes`),

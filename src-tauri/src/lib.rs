@@ -2,6 +2,7 @@ mod backup;
 mod config;
 mod notes;
 mod org;
+mod remind;
 mod timeclock;
 mod tray;
 
@@ -518,6 +519,8 @@ pub fn run() {
             app.manage(App { cfg_path, cfg: Mutex::new(cfg), profile: Mutex::new(profile), cache: Default::default(), watcher: Mutex::new(None) });
             watch(app.handle());
             tray::setup(app.handle())?;
+            app.handle().plugin(tauri_plugin_notification::init())?;
+            remind::start(app.handle());
             #[cfg(desktop)]
             {
                 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
