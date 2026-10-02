@@ -34,11 +34,15 @@ conflicts are flagged (`:w` keeps yours, `Space f r` reloads).
 | | |
 |---|---|
 | Ctrl+N | New task (title, when, due, priority, tags, file) |
+| Super+Shift+N | Quick capture from anywhere, even with the window hidden (`capture_shortcut` in settings) |
 | Ctrl+P | Open a note — or type a title to create one |
 | Ctrl+Shift+N | New note |
 | Ctrl+Shift+F | Search all notes as you type |
 | Ctrl+L | Insert a link to another note |
 | Ctrl+S / `:w` | Save (also saves automatically) |
+
+If the shortcut doesn't fire (common on Wayland), bind `margin --capture` to a
+key in your desktop's settings instead: it opens the same form in the running app.
 
 ## Tasks (Today / Tasks views)
 

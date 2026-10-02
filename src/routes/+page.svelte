@@ -5,6 +5,7 @@
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { check } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { EditorView } from "@codemirror/view";
   import type { EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
@@ -970,6 +971,11 @@
     const focus = () => syncFromDisk();
     const unlisten = listen("fs-changed", () => syncFromDisk());
     const unlistenTray = listen<string>("tray", (e) => act(() => timeActions[e.payload]()));
+    // Quick capture (global shortcut or `margin --capture`); HIDDEN: the window was hidden before, so hide it again.
+    const unlistenCapture = listen<boolean>("capture", (e) => act(async () => {
+      await newTask();
+      if (e.payload) await getCurrentWindow().hide();
+    }));
     window.addEventListener("keydown", onKey, true);
     window.addEventListener("blur", blur);
     window.addEventListener("focus", focus);
@@ -977,6 +983,7 @@
       clearInterval(timer);
       unlisten.then((f) => f());
       unlistenTray.then((f) => f());
+      unlistenCapture.then((f) => f());
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("blur", blur);
       window.removeEventListener("focus", focus);

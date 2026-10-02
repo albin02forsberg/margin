@@ -17,6 +17,8 @@ pub struct Config {
     pub inbox: String,
     /// Closing the window while a timer runs hides it to the tray instead of quitting.
     pub close_to_tray: bool,
+    /// System-wide shortcut for quick capture, e.g. "Super+Shift+N"; empty to disable.
+    pub capture_shortcut: String,
 }
 
 impl Default for Config {
@@ -33,6 +35,7 @@ impl Default for Config {
             daily_dir: "daily".into(),
             inbox: "inbox.org".into(),
             close_to_tray: true,
+            capture_shortcut: "Super+Shift+N".into(),
         }
     }
 }
