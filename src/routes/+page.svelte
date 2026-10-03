@@ -245,8 +245,8 @@
   }
 
   /** The settings page's changed VALUES; errors go back to the page. */
-  async function saveSettings(values: Record<string, unknown>) {
-    const warn: string = await call("save_config", { values });
+  async function saveSettings(values: Record<string, unknown>, reset: string[] = []) {
+    const warn: string = await call("save_config", { values, reset });
     cfg = await call("config");
     reload++;
     await refreshTc();
@@ -1484,7 +1484,7 @@
               {:else if v.kind === "projects"}
                 <Projects {act} active={v === tab} {reload} />
               {:else if v.kind === "settings"}
-                <Settings config={cfg.config} error={cfg.config_error} save={saveSettings} edit={() => act(() => openFile(cfg.config_path))} />
+                <Settings config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} save={saveSettings} edit={() => act(() => openFile(cfg.config_path))} />
               {:else}
                 <Agenda mode={v.kind as "agenda" | "todo"} api={agendaApi} active={v === tab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} />
               {/if}

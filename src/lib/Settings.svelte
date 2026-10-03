@@ -1,9 +1,9 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
-  import { changes, GROUPS, refresh, type Field, type Form } from "$lib/settings";
+  import { changes, GROUPS, refresh, toForm, type Field, type Form } from "$lib/settings";
 
   /** The config.toml settings as a form, saved per group; unsaved fields survive a reload of CONFIG. */
-  let { config, error, save, edit }: { config: Record<string, unknown>; error: string | null; save: (values: Record<string, unknown>) => Promise<void>; edit: () => void } = $props();
+  let { config, defaults, error, save, edit }: { config: Record<string, unknown>; defaults: Record<string, unknown>; error: string | null; save: (values: Record<string, unknown>, reset?: string[]) => Promise<void>; edit: () => void } = $props();
   let form = $state<Form>({});
   let base = $state<Form>({});
   let errors = $state<Record<string, string>>({});
@@ -26,6 +26,17 @@
       await save(changes(fields, form, config));
       await tick();
       for (const f of fields) form[f.key] = base[f.key];
+      errors[name] = "";
+    } catch (e) {
+      errors[name] = String(e);
+    }
+  }
+  /** Drop F's line from config.toml (and any unsaved edit of it), so the default applies. */
+  async function reset(name: string, f: Field) {
+    try {
+      await save({}, [f.key]);
+      await tick();
+      form[f.key] = base[f.key];
       errors[name] = "";
     } catch (e) {
       errors[name] = String(e);
@@ -61,6 +72,9 @@
               {/if}
             {/if}
             {#if f.hint}<small>{f.hint}</small>{/if}
+            {#if base[f.key] !== toForm(f, defaults[f.key])}
+              <button type="button" class="link reset" title="Default: {String(toForm(f, defaults[f.key])).replaceAll("\n", ", ") || "empty"}" onclick={() => reset(g.name, f)}>Reset to default</button>
+            {/if}
           </label>
         {/each}
         {#if errors[g.name]}<p class="error">⚠ {errors[g.name]}</p>{/if}
@@ -84,6 +98,8 @@
   button { background: var(--accent); border: 1px solid var(--accent); color: var(--bg); border-radius: var(--radius); padding: var(--s1) var(--s3); font: 600 var(--fs-md) var(--sans); cursor: pointer; margin-top: var(--s1); }
   button:disabled { background: var(--bg); border-color: var(--border); color: var(--dim); cursor: default; font-weight: 400; }
   button.link { background: none; border: none; color: var(--accent); padding: 0; margin: 0; font: inherit; text-decoration: underline; }
+  button.reset { justify-self: start; font-size: var(--fs-sm); }
+  label.check button.reset { grid-column: 2; }
   .dim { color: var(--dim); font-size: var(--fs-md); }
   .error { color: var(--todo); }
 </style>

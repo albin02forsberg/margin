@@ -275,16 +275,20 @@ pub fn setup(text: &str, notes_dir: &str, data_dir: &str, profiles: &str) -> Res
     Ok((out, c))
 }
 
-/// TEXT with the settings page's VALUES (top-level keys) set via set_key; errors on a key that
-/// isn't a setting (or is `views`/`templates`, which stay in the file) or a value Config won't load.
-pub fn save(text: &str, values: toml::Table) -> Result<(String, Config), String> {
+/// TEXT with the settings page's VALUES (top-level keys) set via set_key and the RESET keys
+/// removed (back to their defaults); errors on a key that isn't a setting (or is
+/// `views`/`templates`, which stay in the file) or a value Config won't load.
+pub fn save(text: &str, values: toml::Table, reset: &[String]) -> Result<(String, Config), String> {
     let known = toml::Table::try_from(Config::default()).map_err(|e| e.to_string())?;
+    if let Some(key) = values.keys().chain(reset).find(|k| !known.contains_key(*k) || *k == "views" || *k == "templates") {
+        return Err(format!("{key} can't be set here; edit config.toml"));
+    }
     let mut out = text.to_string();
     for (key, value) in values {
-        if !known.contains_key(&key) || key == "views" || key == "templates" {
-            return Err(format!("{key} can't be set here; edit config.toml"));
-        }
         out = set_key(&out, &key, value)?;
+    }
+    for key in reset {
+        out = remove_key(&out, key)?;
     }
     let c = toml::from_str::<Config>(&out).map_err(|e| format!("config.toml: {e}"))?;
     Ok((out, c))
@@ -323,6 +327,29 @@ pub fn set_key(text: &str, key: &str, value: toml::Value) -> Result<String, Stri
     Ok(out)
 }
 
+/// TEXT without top-level KEY's one-line `key = …` (unchanged if it isn't there);
+/// errors if anything else would change, e.g. a multi-line value.
+pub fn remove_key(text: &str, key: &str) -> Result<String, String> {
+    let err = |e: toml::de::Error| format!("can't update config.toml: {e}");
+    let mut want: toml::Table = text.parse().map_err(err)?;
+    if want.remove(key).is_none() {
+        return Ok(text.into());
+    }
+    let mut table = false;
+    let out: String = text
+        .split_inclusive('\n')
+        .filter(|l| {
+            let t = l.trim_start();
+            table |= t.starts_with('[');
+            table || t.split_once('=').is_none_or(|(k, _)| k.trim() != key)
+        })
+        .collect();
+    if out.parse::<toml::Table>().map_err(err)? != want {
+        return Err("can't reset that setting without changing others; edit config.toml by hand (Space f C)".into());
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -346,14 +373,14 @@ mod tests {
     fn save_settings() {
         let t = |s: &str| s.parse::<toml::Table>().unwrap();
         let mine = "# mine\nexpected_daily_hours = 8.0 # here\n\n[[views]]\nname = \"A\"\nquery = \"a\"\n";
-        let (s, c) = save(mine, t("expected_daily_hours = 7.5\nreminders = false\nprofiles = [\"A\", \"B\"]")).unwrap();
+        let (s, c) = save(mine, t("expected_daily_hours = 7.5\nreminders = false\nprofiles = [\"A\", \"B\"]"), &[]).unwrap();
         assert!(s.ends_with(&mine.replace("8.0 # here", "7.5 # here")), "{s}"); // in place, comment and other lines kept
         assert!(s.contains("\nreminders = false\n") || s.starts_with("reminders = false\n"), "{s}");
         assert_eq!((c.expected_daily_hours, c.reminders, c.views.len()), (7.5, false, 1));
-        assert_eq!(save(mine, t("idle_threshold_minutes = 5")).unwrap().1.idle_threshold_minutes, 5);
-        assert!(save(mine, t("idle_threshold_minutes = 1.5")).is_err()); // wrong type
-        assert!(save(mine, t("nope = 1")).is_err() && save(mine, t("views = []")).is_err());
-        assert!(save("profiles = [\n  \"A\",\n]\n", t("profiles = [\"B\"]")).is_err()); // multi-line: by hand
+        assert_eq!(save(mine, t("idle_threshold_minutes = 5"), &[]).unwrap().1.idle_threshold_minutes, 5);
+        assert!(save(mine, t("idle_threshold_minutes = 1.5"), &[]).is_err()); // wrong type
+        assert!(save(mine, t("nope = 1"), &[]).is_err() && save(mine, t("views = []"), &[]).is_err());
+        assert!(save("profiles = [\n  \"A\",\n]\n", t("profiles = [\"B\"]"), &[]).is_err()); // multi-line: by hand
     }
 
     #[test]
@@ -364,6 +391,18 @@ mod tests {
         assert_eq!(set("a = ['#', \"]\"]# arr\n", toml::Value::from(vec!["q"])), "a = [\"q\"]# arr\n");
         assert_eq!(set("a = \"x#y\"\n", "z".into()), "a = \"z\"\n"); // no comment
         assert_eq!(set("a = 1 #\n", 2.into()), "a = 2 #\n");
+    }
+
+    #[test]
+    fn reset_settings() {
+        let t = |s: &str| s.parse::<toml::Table>().unwrap();
+        let mine = "# mine\r\ninbox = \"x.org\" # here\r\nreminders = false\r\n\r\n[[views]]\r\nname = \"A\"\r\nquery = \"a\"\r\n";
+        let (s, c) = save(mine, t("reminders = true"), &["inbox".into()]).unwrap();
+        assert_eq!(s, "# mine\r\nreminders = true\r\n\r\n[[views]]\r\nname = \"A\"\r\nquery = \"a\"\r\n");
+        assert_eq!((c.inbox.as_str(), c.reminders, c.views.len()), ("inbox.org", true, 1));
+        assert_eq!(remove_key(mine, "daily_dir").unwrap(), mine); // not set: nothing to do
+        assert!(remove_key("profiles = [\n  \"A\",\n]\n", "profiles").is_err()); // multi-line: by hand
+        assert!(save(mine, t(""), &["views".into()]).is_err() && save(mine, t(""), &["nope".into()]).is_err());
     }
 
     #[test]

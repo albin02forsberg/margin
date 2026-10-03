@@ -439,7 +439,8 @@ save), task statuses, calendar feed, ActivityWatch and Ollama. Each group saves
 on its own into `config.toml` (in the OS config dir), keeping your comments (also
 the `# …` after a changed value) and everything else in the file. Editing the file
 elsewhere (another editor, a sync tool) applies right away; unsaved edits on the
-page are kept, with a notice if the file changed the same setting. Changing the folders or profiles clocks out a running
+page are kept, with a notice if the file changed the same setting. "Reset to
+default" under a changed setting removes its line from the file. Changing the folders or profiles clocks out a running
 timer, like setup. Saved views and capture templates stay in the file itself:
 `Space f C` (or "Edit config.toml" on the page) opens it. It's created with the defaults on first run;
 an existing file that can't be read or parsed is left alone and the app runs on

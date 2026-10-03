@@ -161,4 +161,13 @@ describe("Margin", () => {
     await find(".settings .error", "Export folder"); // the unsaved edit is kept, with a notice
     assert.match(await (await field("Export folder")).getValue(), /-edited$/);
   });
+
+  it("resets a setting to its default", async () => {
+    const cfg = join(cfgDir, "config.toml");
+    const label = `//div[contains(@class, "settings")]//label[span[contains(., "Expected hours per day")]]`;
+    await (await browser.$(`${label}//button[contains(., "Reset to default")]`)).click();
+    await fileMatches(cfg, (s) => !/expected_daily_hours/.test(s) && /^templates = \[\]$/m.test(s), "setting not reset");
+    await browser.waitUntil(async () => (await browser.$(`${label}/input`).getValue()) === "8", { timeoutMsg: "field doesn't show the default" });
+    assert.ok(!(await browser.$(`${label}//button`).isExisting()), "reset shown for a default value");
+  });
 });
