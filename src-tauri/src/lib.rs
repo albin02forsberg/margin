@@ -113,14 +113,27 @@ fn config(s: State<App>) -> Value {
     })
 }
 
+/// Re-read config.toml and apply it. Before the swap the open session is clocked out of the
+/// log it started in if the folders or profile change (whoever edited the file); afterwards the
+/// profile falls back to the first one if gone. Returns a warning (or "") for a shortcut that
+/// won't register and for files left behind in old folders. A broken file keeps the current settings.
 #[tauri::command]
-fn reload_config(app: AppHandle, s: State<App>) -> R<()> {
+fn reload_config(app: AppHandle, s: State<App>) -> R<String> {
     let new = Config::load(&s.cfg_path)?;
-    let old = std::mem::replace(&mut *s.cfg.lock().unwrap(), new.clone());
+    let (old, profile) = (s.cfg(), s.profile());
+    if clock_out_before_setup(&s.tc(), &old, &new, &profile)? {
+        s.backup();
+    }
+    *s.cfg.lock().unwrap() = new.clone();
     *s.cfg_error.lock().unwrap() = None;
     s.cache.clear();
     watch(&app);
-    rebind_capture(&app, &old.capture_shortcut, &new.capture_shortcut)
+    // A shortcut that won't register is reported, but the rest still applies.
+    let rebind = rebind_capture(&app, &old.capture_shortcut, &new.capture_shortcut).err();
+    if let Some(p) = new.profiles.first().filter(|_| !new.profiles.contains(&profile)) {
+        tc_switch_profile(s, p.clone())?;
+    }
+    Ok(rebind.into_iter().chain([orphan_warning(&old, &new)]).filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" "))
 }
 
 /// Move the quick-capture shortcut from OLD to NEW (either may be empty = none).
@@ -150,7 +163,7 @@ fn save_view(app: AppHandle, s: State<App>, name: String, query: String, rename:
     let text = std::fs::read_to_string(&s.cfg_path).map_err(|e| e.to_string())?;
     let new = if rename { config::rename_view(&text, &query, &name)? } else { config::add_view(&text, &name, &query)? };
     config::write_atomic(&s.cfg_path, new).map_err(|e| e.to_string())?;
-    reload_config(app, s)
+    reload_config(app, s).map(drop)
 }
 
 /// The setup prompts' answers (see config::setup): create the folders, save, reload, and
@@ -171,32 +184,22 @@ fn save_config(app: AppHandle, s: State<App>, values: toml::Table, reset: Option
     apply_config(app, s, text, c)
 }
 
-/// Write config TEXT (parsed: C) and reload; see setup.
+/// Write config TEXT (parsed: C) and reload; see setup and reload_config.
 fn apply_config(app: AppHandle, s: State<App>, text: String, c: Config) -> R<String> {
-    let (old, profile) = (s.cfg(), s.profile());
-    // Before the config changes, so the open session closes in the log and diary it started in.
-    if clock_out_before_setup(&s.tc(), &old, &c, &profile)? {
-        s.backup();
-    }
     for d in [c.notes(), c.data()] {
         std::fs::create_dir_all(&d).map_err(|e| format!("{}: {e}", d.display()))?;
     }
     config::write_atomic(&s.cfg_path, text).map_err(|e| e.to_string())?;
-    // A shortcut that won't register is reported, but the rest still applies.
-    let rebind = reload_config(app, s.clone()).err();
-    if let Some(p) = c.profiles.first().filter(|_| !c.profiles.contains(&profile)) {
-        tc_switch_profile(s, p.clone())?;
-    }
-    Ok(rebind.into_iter().chain([orphan_warning(&old, &c)]).filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" "))
+    reload_config(app, s)
 }
 
-/// Clock out OLD_TC if setup moves the notes or data folder or drops PROFILE (the config
+/// Clock out OLD_TC if the config moves the notes or data folder or drops PROFILE (the config
 /// then points elsewhere, and the clock-out would land in the wrong log).
 fn clock_out_before_setup(old_tc: &Tc, old: &Config, new: &Config, profile: &str) -> R<bool> {
     if old.notes() == new.notes() && old.data() == new.data() && new.profiles.iter().any(|p| p == profile) {
         return Ok(false);
     }
-    old_tc.clock_out("Auto-clockout (Setup changed folders or profiles)")
+    old_tc.clock_out("Auto-clockout (Config changed folders or profiles)")
 }
 
 /// Which of the old notes/data folders and dropped profiles' time logs still hold files
@@ -892,7 +895,7 @@ fn ai_set(app: AppHandle, s: State<App>, backend: ai::Backend, model: String) ->
     let text = config::set_key(&text, "ai_backend", toml::Value::try_from(backend).map_err(|e| e.to_string())?)?;
     let text = config::set_key(&text, "ai_model", model.into())?;
     config::write_atomic(&s.cfg_path, text).map_err(|e| e.to_string())?;
-    reload_config(app, s)
+    reload_config(app, s).map(drop)
 }
 
 /// Org-formatted report text. KIND: daily | weekly | holidays | flex | doctor | backup.
@@ -1193,6 +1196,14 @@ mod tests {
         let w = orphan_warning(&old, &new);
         assert!(w.contains(n1.to_str().unwrap()) && w.contains(d1.to_str().unwrap()), "{w}");
         assert_eq!(orphan_warning(&old, &old), "");
+        // Dropping the open profile closes it too, and empty old folders warn about nothing.
+        tc.clock_in("Acme", "", None).unwrap();
+        assert!(clock_out_before_setup(&tc, &old, &cfg(&n1, &d1, "\"Home\""), "Work").unwrap());
+        assert!(tc.current().is_none());
+        let (n3, d3) = (dir.join("n3"), dir.join("d3")); // fresh defaults: created but empty
+        std::fs::create_dir_all(&n3).unwrap();
+        std::fs::create_dir_all(&d3).unwrap();
+        assert_eq!(orphan_warning(&cfg(&n3, &d3, "\"Work\""), &old), "");
         // Dropped profile keeps its log folder.
         let w = orphan_warning(&old, &cfg(&n1, &d1, "\"Home\""));
         assert!(w.contains(d1.join("work").to_str().unwrap()), "{w}");

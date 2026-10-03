@@ -1361,12 +1361,13 @@
     const unlisten = listen("fs-changed", () => syncFromDisk());
     // config.toml edited outside the app: apply it (a broken file keeps the current settings).
     const unlistenCfg = listen("config-changed", () => act(async () => {
-      const err = await call("reload_config").then(() => "", String);
+      let warn = "";
+      const err = await call<string>("reload_config").then((w) => ((warn = w), ""), String);
       cfg = await call("config");
       reload++;
       syncFromDisk();
       await refreshTc();
-      flash(err ? `⚠ config.toml changed on disk: ${err}` : "config.toml changed on disk — settings reloaded.");
+      flash(err ? `⚠ config.toml changed on disk: ${err}` : `config.toml changed on disk — settings reloaded.${warn ? ` ⚠ ${warn}` : ""}`);
     }));
     const unlistenTray = listen<string>("tray", (e) => act(() => timeActions[e.payload]()));
     const unlistenOpen = listen<{ path: string; line: number }>("open-entry", (e) => act(() => openFile(e.payload.path, e.payload.line)));
