@@ -1,8 +1,9 @@
 // End-to-end tests of the basics; setup and helpers are in setup.ts.
 import { after, before, describe, it } from "node:test";
+import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { answer, browser, close, fileMatches, find, Key, launch, today, type, type Dirs } from "./setup.ts";
+import { answer, browser, close, fileMatches, find, Key, launch, palette, today, type, type Dirs } from "./setup.ts";
 
 let notes: string, data: string;
 
@@ -69,5 +70,21 @@ describe("Margin", () => {
     await answer("What did you do?", "e2e done");
     const log = join(data, "work", "timelog.jsonl");
     await fileMatches(log, (s) => /"ev":"in".*"project":"Acme"/.test(s) && /"ev":"out".*"note":"e2e done"/.test(s), "no in/out entries in the time log");
+  });
+
+  it("edits a project's settings on the Projects page", async () => {
+    await (await find(".time button", "Project settings")).click();
+    await find(".projects td", "Acme");
+    await browser.$(`select[aria-label="Rounding for Acme"]`).selectByVisibleText("Quarter hour");
+    await browser.$(`input[aria-label="Export code for Acme"]`).click();
+    await browser.keys([Key.Ctrl, "a"]);
+    await type("ACME-2");
+    await browser.keys(Key.Enter); // saves the row
+    const toml = join(data, "work", "projects.toml");
+    await fileMatches(toml, (s) => /export_code = "ACME-2"/.test(s) && /rounding = 0\.25/.test(s), "project settings not saved");
+    await (await browser.$(".tabs .tab.cur .x")).click();
+    await palette("Time: project settings");
+    await browser.waitUntil(async () => (await browser.$(`input[aria-label="Export code for Acme"]`).getValue()) === "ACME-2", { timeoutMsg: "reopened page doesn't show the saved code" });
+    assert.equal(await browser.$(`select[aria-label="Rounding for Acme"]`).getValue(), "0.25");
   });
 });

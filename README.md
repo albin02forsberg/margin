@@ -299,10 +299,14 @@ the week's hours against expected, flex balance and per-project totals. Keys:
 `i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV (import template: `Project` = export code, `Duration` in decimal hours, `1,5`),
 `E` export a report as HTML/PDF.
 Space t … has every timeclock command (same letters as the old Emacs menu).
+Time → Project settings (`Space t P`) opens a Projects page listing every project
+with its export code, billable-hour rounding, round-up and whether it's offered
+when you start tracking; change any of them and press Save (or Enter) on that row.
 If `projects.toml`, the time log or the diary can't be read or parsed (say, after
 a bad hand edit), commands that would rewrite it show an error and leave the
 file alone instead of starting over from empty. CSV and HTML/PDF exports fail with the
-parse error rather than writing project names as export codes, and Time → Check log
+parse error rather than writing project names as export codes, the Projects page and
+the project picker show the error instead of an empty list, and Time → Check log
 (also run after saving `projects.toml`) lists the error.
 
 The tray icon shows what you're tracking and for how long, and has start,
