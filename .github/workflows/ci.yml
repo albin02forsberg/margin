@@ -46,8 +46,9 @@ jobs:
         run: npm run check
       - if: steps.gate.outputs.run == 'true'
         run: npm test
+      # With the built-in AI (llama.cpp, #132) so it keeps compiling; e2e covers the build without it.
       - if: steps.gate.outputs.run == 'true'
-        run: cargo test
+        run: cargo test --features embedded-ai
         working-directory: src-tauri
 
   e2e:

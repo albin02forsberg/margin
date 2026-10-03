@@ -1,0 +1,41 @@
+name: embedded-ai
+
+# Builds the built-in AI (llama.cpp, cargo feature `embedded-ai`, #132) on the other release
+# platforms when a change could break it; Linux is covered by CI's `cargo test`.
+on:
+  pull_request:
+    paths:
+      - src-tauri/Cargo.toml
+      - src-tauri/Cargo.lock
+      - src-tauri/src/ai.rs
+      - .github/workflows/embedded-ai.yml
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            targets: aarch64-apple-darwin x86_64-apple-darwin
+          - platform: windows-latest
+            targets: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: llama.cpp CPU features (as in release.yml)
+        if: matrix.platform != 'macos-latest'
+        shell: bash
+        run: printf 'GGML_AVX=ON\nGGML_AVX2=ON\nGGML_FMA=ON\nGGML_F16C=ON\nGGML_BMI2=ON\n' >> "$GITHUB_ENV"
+      - name: Build
+        shell: bash
+        working-directory: src-tauri
+        run: for t in ${{ matrix.targets }}; do cargo build --lib --features embedded-ai --target "$t" || exit 1; done
