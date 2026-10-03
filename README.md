@@ -383,5 +383,7 @@ Timed entries show as one hour; the rest are all-day.
 
 Ctrl+, opens `config.toml` (in the OS config dir): notes folder (`~/notes`),
 time data folder (`~/timeclock`), inbox file, journal folder, task statuses,
-profiles and expected daily hours. Old Emacs timeclock data can be imported from
+profiles and expected daily hours. It's created with the defaults on first run;
+an existing file that can't be read or parsed is left alone and the app runs on
+the defaults until it's fixed. Old Emacs timeclock data can be imported from
 the Time view.
