@@ -38,12 +38,15 @@ describe("ActivityWatch suggestions", () => {
     await new Promise<void>((r) => aw.listen(0, "127.0.0.1", r));
     d = await launch({
       config: [`activitywatch_url = "http://127.0.0.1:${(aw.address() as AddressInfo).port}"`],
-      files: ({ data }) => writeFileSync(join(data, "work", "projects.toml"), `[Margin]\nexport_code = "M"\n`),
+      files: ({ data, notes }) => {
+        writeFileSync(join(data, "work", "projects.toml"), `[Margin]\nexport_code = "M"\n`);
+        writeFileSync(join(notes, "tasks.org"), "* TODO Ship the suggestions #61\n");
+      },
     });
   });
   after(async () => { await close(); aw.close(); }, { timeout: 30_000 });
 
-  it("shows URLs, dismisses for good, and accepts with edited times", async () => {
+  it("shows URLs and tasks, dismisses for good, and accepts with edited times", async () => {
     await find(".agenda h1", "Today");
     await browser.keys([Key.Ctrl, "4"]);
     await find(".time h1", "Time");
@@ -51,6 +54,7 @@ describe("ActivityWatch suggestions", () => {
     await browser.keys("h");
     const row = (text: string) => find(".suggested tr", text);
     await row("github.com/albin02forsberg/margin");
+    await row("Margin / Ship the suggestions #61"); // task guessed from the PR number
 
     await (await (await row("Visual Studio Code")).$("button[title=Dismiss]")).click();
     await fileMatches(join(d.data, "work", "activity_dismissed.json"), (s) => s.includes(`"${day}":[["${day}T11:00:00","${day}T11:30:00"]]`), "dismissal not kept");

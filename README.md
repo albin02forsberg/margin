@@ -333,7 +333,11 @@ of its title, which also helps the project guess; private tabs are left out.
 Likewise, with an editor watcher (aw-watcher-vscode, the JetBrains plugin or any
 other `app.editor.activity` one), editor time shows as `repo · file` (names
 only, never full paths), so a repo named like a project is guessed even when
-the window title doesn't name it.
+the window title doesn't name it. An open task is guessed too, when its title
+(as words, so a branch like `feat/fix-crash-on-save` in a terminal or editor
+title counts) or an id in it (`#123`, `ABC-123`) shows up longest; it becomes
+the default diary note, gives the project when its org category is one, and
+goes into the AI draft.
 **Accept** confirms the project and an optional diary note and adds the session
 to the log at its place in the day; ✎ lets you change its start and end first;
 ✕ hides it, and anything overlapping it, for good (kept in

@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type Suggestion = { start: string; end: string; apps: string[]; titles: string[]; project: string | null };
+  export type Suggestion = { start: string; end: string; apps: string[]; titles: string[]; project: string | null; task: string | null };
   export type Session = { date: string; project: string; desc: string; hours: number; start: string; end: string; line: number | null };
   export type TimeApi = {
     act: (f: () => unknown) => void;
@@ -176,7 +176,7 @@
               {#each sugg as s (s.start)}
                 <tr>
                   <td class="mono">{clock(s.start)}–{clock(s.end)}</td>
-                  <td>{s.apps.join(", ")} <span class="dim">{s.titles.map((t) => `“${t}”`).join(" ")}</span>{#if s.project} → <strong>{s.project}</strong>?{/if}</td>
+                  <td>{s.apps.join(", ")} <span class="dim">{s.titles.map((t) => `“${t}”`).join(" ")}</span>{#if s.project || s.task} → <strong>{[s.project, s.task].filter(Boolean).join(" / ")}</strong>?{/if}</td>
                   <td class="num">{hm((Date.parse(s.end) - Date.parse(s.start)) / 3_600_000)}</td>
                   <td class="actions"><button onclick={() => accept(s)}>Accept</button><button class="icon" title="Change start and end, then accept" onclick={() => accept(s, "editSuggestion")}>✎</button><button class="icon" title="Dismiss" onclick={() => dismiss(s)}>✕</button></td>
                 </tr>

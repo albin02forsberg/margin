@@ -679,7 +679,8 @@ fn activity_suggestions(s: State<App>, date_input: String) -> R<Option<Vec<activ
     let tc = s.tc();
     let projects: Vec<String> = tc.projects().into_iter().filter(|(_, p)| p.active).map(|(n, _)| n).collect();
     let tracked = timeclock::spans(&tc.events(), timeclock::now());
-    let all = activity::suggest(&window, &afk, &tracked, &exclude, &projects, d);
+    let tasks: Vec<activity::Task> = org::todos(&s.files(), &s.kw(), false, |_, _| true, today()).into_iter().map(|t| (t.title, t.category)).collect();
+    let all = activity::suggest(&window, &afk, &tracked, &exclude, &projects, &tasks, d);
     Ok(Some(activity::undismissed(all, &dismissed(&tc).unwrap_or_default())))
 }
 
@@ -703,8 +704,8 @@ fn activity_dismiss(s: State<App>, start: NaiveDateTime, end: NaiveDateTime) -> 
 
 /// What the model gets to draft a diary note for an accepted suggestion.
 #[tauri::command]
-fn ai_note_prompt(s: State<App>, project: Option<String>, apps: Vec<String>, titles: Vec<String>) -> R<String> {
-    Ok(ai::note_prompt(project.as_deref(), &apps, &titles, &activity::exclude_rules(&s.cfg().activity_exclude)?))
+fn ai_note_prompt(s: State<App>, project: Option<String>, task: Option<String>, apps: Vec<String>, titles: Vec<String>) -> R<String> {
+    Ok(ai::note_prompt(project.as_deref(), task.as_deref(), &apps, &titles, &activity::exclude_rules(&s.cfg().activity_exclude)?))
 }
 
 /// What the model gets to summarize DATE_INPUT: logged sessions, plus ActivityWatch's titles when it's on and up.
@@ -713,7 +714,7 @@ fn ai_day_prompt(s: State<App>, date_input: String) -> R<String> {
     let (c, d) = (s.cfg(), date(&date_input)?);
     let exclude = activity::exclude_rules(&c.activity_exclude)?;
     let aw = Some(&c.activitywatch_url).filter(|u| !u.trim().is_empty()).and_then(|u| activity::fetch(u, d, &exclude).ok());
-    let blocks = aw.map(|(w, a)| activity::suggest(&w, &a, &[], &exclude, &[], d)).unwrap_or_default();
+    let blocks = aw.map(|(w, a)| activity::suggest(&w, &a, &[], &exclude, &[], &[], d)).unwrap_or_default();
     let sessions: Vec<_> = s.tc().sessions().into_iter().filter(|x| x.date == d).collect();
     Ok(ai::day_prompt(d, &sessions, &blocks, &exclude))
 }
