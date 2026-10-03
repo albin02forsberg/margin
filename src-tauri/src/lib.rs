@@ -29,6 +29,8 @@ type R<T> = Result<T, String>;
 struct App {
     cfg_path: PathBuf,
     cfg: Mutex<Config>,
+    /// Why config.toml was ignored at startup (running on defaults); cleared by a good reload.
+    cfg_error: Mutex<Option<String>>,
     profile: Mutex<String>,
     cache: org::Cache,
     watcher: Mutex<Option<Debouncer<notify::RecommendedWatcher>>>,
@@ -106,13 +108,14 @@ fn config(s: State<App>) -> Value {
     let tc = s.tc();
     json!({
         "config": c, "config_path": s.cfg_path, "notes": c.notes(), "data": c.data(), "export": config::expand(&c.export_dir),
-        "profile": s.profile(), "log_path": tc.log_path(), "diary_path": tc.diary,
+        "profile": s.profile(), "log_path": tc.log_path(), "diary_path": tc.diary, "config_error": s.cfg_error.lock().unwrap().clone(),
     })
 }
 
 #[tauri::command]
 fn reload_config(app: AppHandle, s: State<App>) -> R<()> {
     *s.cfg.lock().unwrap() = Config::load(&s.cfg_path)?;
+    *s.cfg_error.lock().unwrap() = None;
     s.cache.clear();
     watch(&app);
     Ok(())
@@ -868,13 +871,16 @@ pub fn run() {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             let cfg_path = app.path().app_config_dir()?.join("config.toml");
-            let cfg = Config::load(&cfg_path).unwrap_or_else(|e| {
-                eprintln!("{e}; using defaults");
-                Config::default()
-            });
+            let (cfg, cfg_error) = match Config::load(&cfg_path) {
+                Ok(c) => (c, None),
+                Err(e) => {
+                    eprintln!("{e}; using defaults");
+                    (Config::default(), Some(e))
+                }
+            };
             let saved = std::fs::read_to_string(cfg.data().join("active-profile.txt")).unwrap_or_default();
             let profile = cfg.profiles.iter().find(|p| **p == saved.trim()).or(cfg.profiles.first()).cloned().unwrap_or("Work".into());
-            app.manage(App { cfg_path, cfg: Mutex::new(cfg), profile: Mutex::new(profile), cache: Default::default(), watcher: Mutex::new(None) });
+            app.manage(App { cfg_path, cfg: Mutex::new(cfg), cfg_error: Mutex::new(cfg_error), profile: Mutex::new(profile), cache: Default::default(), watcher: Mutex::new(None) });
             watch(app.handle());
             write_calendar(app.handle());
             tray::setup(app.handle())?;

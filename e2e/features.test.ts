@@ -1,7 +1,7 @@
 // End-to-end tests of features beyond the basics; setup and helpers are in setup.ts.
 import { after, before, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { answer, browser, close, fileMatches, find, isoDay, Key, launch, orgDay, palette, read, texts, type, type Dirs } from "./setup.ts";
 
@@ -21,6 +21,20 @@ describe("First run", () => {
     await find(".menu", "Help: tutorial");
     await browser.keys("?");
     await find(".tabs .tab.cur button", "tutorial");
+  });
+});
+
+describe("Broken config.toml", () => {
+  let d: Dirs;
+  const bad = Buffer.from('notes_dir = "\xff"\n', "latin1"); // not UTF-8
+  before(async () => { d = await launch({ files: ({ cfgDir }) => writeFileSync(join(cfgDir, "config.toml"), bad) }); });
+  after(close, { timeout: 30_000 });
+
+  it("says it runs on defaults and leaves the file alone", async () => {
+    await find(".status .msg", "config.toml was ignored");
+    assert.deepEqual(readFileSync(join(d.cfgDir, "config.toml")), bad);
+    // The default ~/timeclock landed under the temp HOME, not the real one.
+    assert.ok(existsSync(join(d.root, "timeclock")), "default data dir not under the temp HOME");
   });
 });
 
