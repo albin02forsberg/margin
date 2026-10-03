@@ -1,6 +1,6 @@
 ---
 name: pr-shepherd
-model: opus
+model: sonnet
 description: Reviews an open PR of the Margin repo for correctness bugs, fixes real ones with tests, rebases onto main, waits for CI and squash-merges it. Use for PRs that were opened but not merged (stale, conflicting, or never reviewed). Pass the PR number.
 ---
 
