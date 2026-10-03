@@ -22,7 +22,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "reminders", label: "Desktop reminders", kind: "bool" },
     { key: "remind_before_minutes", label: "Remind before timed entries (minutes)", kind: "number", step: 1 },
     { key: "deadline_warning_days", label: "Warn about deadlines (days ahead)", kind: "number", step: 1, hint: "0 = on the day" },
-    { key: "capture_shortcut", label: "Quick-capture shortcut", hint: "system-wide, e.g. Super+Shift+N; empty = off; takes effect after a restart" },
+    { key: "capture_shortcut", label: "Quick-capture shortcut", hint: "system-wide, e.g. Super+Shift+N; empty = off; if it doesn't fire (common on Wayland), bind `margin --capture` to a desktop shortcut" },
     { key: "close_to_tray", label: "Closing the window while tracking hides it to the tray", kind: "bool" },
   ] },
   { name: "Tasks", fields: [
