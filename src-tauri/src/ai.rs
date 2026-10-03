@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::io::{Seek, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 /// Where drafts come from (`ai_backend`).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
@@ -236,6 +236,26 @@ fn embedded(dir: &Path, model: &str, prompt: &str, one_line: bool) -> Result<Str
     }
 }
 
+/// Built-in drafts take a ticket before waiting for the model; `cancel_draft` stops only the one
+/// running then, never a queued or later one (#149).
+#[cfg(any(test, feature = "embedded-ai"))]
+static TICKETS: AtomicU64 = AtomicU64::new(0);
+static RUNNING: AtomicU64 = AtomicU64::new(0);
+static CANCELLED: AtomicU64 = AtomicU64::new(0);
+
+/// Stop the running built-in draft at its next token.
+pub fn cancel_draft() {
+    CANCELLED.store(RUNNING.load(Ordering::SeqCst), Ordering::SeqCst);
+}
+#[cfg(any(test, feature = "embedded-ai"))]
+fn ticket() -> u64 {
+    TICKETS.fetch_add(1, Ordering::SeqCst) + 1
+}
+#[cfg(any(test, feature = "embedded-ai"))]
+fn cancelled(ticket: u64) -> bool {
+    CANCELLED.load(Ordering::SeqCst) == ticket
+}
+
 /// GB of memory the OS can hand out, from /proc/meminfo's MemAvailable.
 #[cfg(any(test, all(feature = "embedded-ai", target_os = "linux")))]
 fn available_gb(meminfo: &str) -> Option<f64> {
@@ -264,6 +284,7 @@ mod llama {
     use llama_cpp_2::sampling::LlamaSampler;
     use std::num::NonZeroU32;
     use std::path::Path;
+    use std::sync::atomic::Ordering;
     use std::sync::{Mutex, OnceLock};
     use std::time::{Duration, Instant};
 
@@ -308,13 +329,15 @@ mod llama {
             return Err("Built-in models need a processor with AVX2 (most from 2013 on). Use Ollama instead.".into());
         }
         let backend = BACKEND.get_or_init(|| LlamaBackend::init().map(|mut b| { b.void_logs(); b }).map_err(|e| e.to_string())).as_ref()?;
+        let ticket = super::ticket();
         let mut slot = LOADED.lock().unwrap_or_else(|e| e.into_inner());
+        super::RUNNING.store(ticket, Ordering::SeqCst);
         if slot.as_ref().is_none_or(|(id, ..)| *id != m.id) {
             *slot = None; // free the old model before loading another
             *slot = Some((m.id, Instant::now(), load(backend, m, path)?));
         }
         let (_, used, model) = slot.as_mut().expect("loaded above");
-        let text = run(backend, model, prompt, max_tokens);
+        let text = run(backend, model, prompt, max_tokens, ticket);
         *used = Instant::now();
         drop(slot);
         std::thread::spawn(|| {
@@ -327,7 +350,7 @@ mod llama {
         text
     }
 
-    fn run(backend: &LlamaBackend, model: &LlamaModel, prompt: &str, max_tokens: i32) -> Result<String, String> {
+    fn run(backend: &LlamaBackend, model: &LlamaModel, prompt: &str, max_tokens: i32, ticket: u64) -> Result<String, String> {
         let e = |e: &dyn std::fmt::Display| format!("The built-in model failed: {e}");
         let chat = [LlamaChatMessage::new("user".into(), prompt.chars().take(MAX_PROMPT + 200).collect()).map_err(|x| e(&x))?];
         let tmpl = model.chat_template(None).map_err(|x| e(&x))?;
@@ -350,6 +373,9 @@ mod llama {
         let mut sampler = LlamaSampler::chain_simple([LlamaSampler::top_k(40), LlamaSampler::top_p(0.9, 1), LlamaSampler::temp(0.7), LlamaSampler::dist(seed)]);
         let (mut out, mut pos) = (Vec::new(), last + 1);
         for _ in 0..max_tokens {
+            if super::cancelled(ticket) {
+                return Err("Draft cancelled.".into());
+            }
             let t = sampler.sample(&ctx, batch.n_tokens() - 1); // also accepts it
             if vocab.is_eog(t) {
                 break;
@@ -432,6 +458,18 @@ mod tests {
         let vm = "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                               65536.\nPages active:                            999999.\nPages inactive:                           131072.\nPages speculative:                         65536.\n";
         assert_eq!(vm_stat_gb(vm), Some(4.0));
         assert_eq!(vm_stat_gb("Pages free: 1.\n"), None);
+    }
+
+    #[test]
+    fn cancel_hits_only_the_running_draft() {
+        let (a, b) = (ticket(), ticket()); // a runs, b waits for the model
+        RUNNING.store(a, Ordering::SeqCst);
+        cancel_draft();
+        assert!(cancelled(a) && !cancelled(b));
+        RUNNING.store(b, Ordering::SeqCst); // the stale cancel doesn't stop b
+        assert!(!cancelled(b) && !cancelled(ticket()));
+        cancel_draft();
+        assert!(cancelled(b));
     }
 
     /// A real draft: `MARGIN_MODELS=<dir holding the 1.5B model> cargo test --features embedded-ai -- --ignored`.

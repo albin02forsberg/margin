@@ -686,6 +686,7 @@
     const go = await pick({ prompt: `${yes} with ${model}? It gets exactly this, on this machine:`, body: prompt, items: [{ label: yes, value: true }, { label: no, value: false }] });
     if (!go) return null;
     flash(`Drafting with ${model}…`);
+    drafting++;
     try {
       const d = await call<string>("ai_draft", { prompt, oneLine });
       message = "";
@@ -693,8 +694,13 @@
     } catch (e) {
       flash(`⚠ ${e}`);
       return null;
+    } finally {
+      drafting--;
     }
   }
+
+  /** Drafts in progress, for the status line's Cancel button (built-in models only; #149). */
+  let drafting = $state(0);
 
   /** The model download in progress, for the status-line bar. */
   let download = $state<{ id: string; have: number; size: number } | null>(null);
@@ -1525,6 +1531,7 @@
       <span class="file">{tab?.path ? rel(tab.path) : ""}{tab?.conflict ? " • changed on disk (:w keeps yours, Space f r reloads)" : tab?.dirty ? " • unsaved" : ""}</span>
       <span class="msg">{message}</span>
       {#if download}<progress class="dl" max={download.size} value={download.have} title="Downloading the AI model ({Math.floor((download.have / download.size) * 100)}%); cancel it in AI drafts: choose model…"></progress>{/if}
+      {#if drafting && cfg.config.ai_backend === "embedded"}<button class="hint cancel" onclick={() => act(() => call("ai_draft_cancel"))}>Drafting… cancel</button>{/if}
       <button class="hint" onclick={() => act(palette)}>Space menu · {pretty("Ctrl")}+K commands</button>
     </footer>
   </div>
@@ -1609,6 +1616,6 @@
     .timer .what { grid-template-columns: auto; }
   }
   @media (max-width: 559px) {
-    .status .file, .hint { display: none; }
+    .status .file, .hint:not(.cancel) { display: none; }
   }
 </style>
