@@ -227,6 +227,21 @@
     flash(`Saved “${name.trim()}” to the sidebar.`);
   }
 
+  /** Setup prompts (first run, or from the palette); Esc at any step changes nothing. */
+  async function setup() {
+    const c = cfg.config;
+    const hint = "Esc keeps the current settings";
+    const notesDir = await ask("Setup: notes folder", c.notes_dir, hint);
+    const dataDir = notesDir == null ? null : await ask("Setup: time-tracking folder", c.data_dir, hint);
+    const profiles = dataDir == null ? null : await ask("Setup: profiles, comma-separated", c.profiles.join(", "), hint);
+    if (profiles == null) return;
+    await call("setup", { notesDir, dataDir, profiles });
+    cfg = await call("config");
+    reload++;
+    await refreshTc();
+    flash("Settings saved — Ctrl+, has the rest.");
+  }
+
   // Search tabs take the name of the view with their query, or the query itself once no view has it.
   $effect(() => {
     for (const t of tabs) {
@@ -996,6 +1011,7 @@
     { label: "Save all", leader: "f S", run: saveAll },
     { label: "About Margin", run: () => flash(`Margin ${version}`) },
     { label: "Check for updates", leader: "f u", run: () => checkUpdate() },
+    { label: "Run setup again…", run: setup },
     { label: "Help: tutorial", leader: "?", run: async () => openFile((await call<[string, boolean]>("tutorial"))[0]) },
     { label: "Switch tab…", leader: "b b", run: switchTab },
     { label: "Next tab (also gt)", keys: ["Ctrl+Tab"], leader: "b n", run: () => cycleTab(1) },
@@ -1269,7 +1285,10 @@
       ed.hooks.tab = (d) => act(() => cycleTab(d));
       await openView("agenda");
       const [tut, first] = await call<[string, boolean]>("tutorial");
-      if (first) await openFile(tut);
+      if (first) {
+        await setup().catch((e) => flash(`⚠ ${e}`));
+        await openFile(tut);
+      }
       await refreshTc();
       if (cfg.config_error) flash(`⚠ config.toml was ignored (${cfg.config_error}); running on defaults. The file is untouched.`);
       if (!import.meta.env.DEV) checkUpdate(true).catch(() => {}); // offline or no release yet: stay quiet

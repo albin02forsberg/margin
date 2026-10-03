@@ -246,9 +246,69 @@ pub fn rename_view(text: &str, query: &str, name: &str) -> Result<String, String
     Ok(out)
 }
 
+/// TEXT (a config.toml) with the setup answers: notes and data folders and comma-separated
+/// profiles (trimmed, case-insensitive duplicates dropped); an empty answer keeps the current value.
+/// Only those top-level lines change, so comments survive; errors if anything else would.
+pub fn setup(text: &str, notes_dir: &str, data_dir: &str, profiles: &str) -> Result<(String, Config), String> {
+    let mut ps: Vec<String> = vec![];
+    for p in profiles.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        if !ps.iter().any(|q| q.to_lowercase() == p.to_lowercase()) {
+            ps.push(p.into());
+        }
+    }
+    let mut out = text.to_string();
+    let sets = [("notes_dir", notes_dir.trim().into()), ("data_dir", data_dir.trim().into()), ("profiles", toml::Value::from(ps.clone()))];
+    for (key, value) in sets.into_iter().filter(|(_, v)| v.as_str().map_or(!ps.is_empty(), |s| !s.is_empty())) {
+        out = set_key(&out, key, value)?;
+    }
+    let c = toml::from_str::<Config>(&out).map_err(|e| format!("config.toml: {e}"))?;
+    Ok((out, c))
+}
+
+/// TEXT with top-level KEY's one-line `key = …` set to VALUE (added at the top if missing);
+/// errors if anything else would change, e.g. a multi-line value.
+fn set_key(text: &str, key: &str, value: toml::Value) -> Result<String, String> {
+    let err = |e: toml::de::Error| format!("can't update config.toml: {e}");
+    let mut want: toml::Table = text.parse().map_err(err)?;
+    want.insert(key.into(), value.clone());
+    let (mut table, mut done) = (false, false);
+    let out: String = text
+        .split_inclusive('\n')
+        .map(|l| {
+            let t = l.trim_start();
+            table |= t.starts_with('[');
+            if !table && !done && t.split_once('=').is_some_and(|(k, _)| k.trim() == key) {
+                done = true;
+                return format!("{key} = {value}{}", &l[l.trim_end_matches(['\r', '\n']).len()..]);
+            }
+            l.to_string()
+        })
+        .collect();
+    let out = if done { out } else { format!("{key} = {value}\n{out}") };
+    if out.parse::<toml::Table>().map_err(err)? != want {
+        return Err("can't update config.toml without changing other settings; edit it by hand (Ctrl+,)".into());
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn setup_answers() {
+        let first = toml::to_string(&Config::default()).unwrap();
+        let (s, c) = setup(&first, " /n ", "", " Job, job ,, Home ").unwrap();
+        assert_eq!((c.notes_dir.as_str(), c.data_dir.as_str(), c.profiles.join("|")), ("/n", "~/timeclock", "Job|Home".into()));
+        assert_eq!(s.lines().count(), first.lines().count()); // replaced in place
+        assert_eq!(setup(&s, "", "", " , ").unwrap().0, s); // empty keeps current
+        let mine = "# mine\r\nprofiles = [\"A\"] # here\r\n\r\n[[views]]\r\nname = \"x\"\r\nquery = \"y\"\r\n";
+        let (s, c) = setup(mine, "~/org", "", "").unwrap();
+        assert_eq!(s, format!("notes_dir = \"~/org\"\n{mine}")); // missing key added, comments and CRLF kept
+        assert_eq!(c.views.len(), 1);
+        assert!(setup("profiles = [\n  \"A\",\n]\n", "", "", "B").is_err()); // multi-line value: refused
+        assert!(setup("bad", "x", "", "").is_err() && setup("profiles = 1", "", "", "").is_err());
+    }
 
     #[test]
     fn add_views() {

@@ -130,6 +130,23 @@ fn save_view(app: AppHandle, s: State<App>, name: String, query: String, rename:
     reload_config(app, s)
 }
 
+/// The setup prompts' answers (see config::setup): create the folders, save, reload, and
+/// move to the first profile if the current one is gone.
+#[tauri::command]
+fn setup(app: AppHandle, s: State<App>, notes_dir: String, data_dir: String, profiles: String) -> R<()> {
+    let text = std::fs::read_to_string(&s.cfg_path).map_err(|e| e.to_string())?;
+    let (text, c) = config::setup(&text, &notes_dir, &data_dir, &profiles)?;
+    for d in [c.notes(), c.data()] {
+        std::fs::create_dir_all(&d).map_err(|e| format!("{}: {e}", d.display()))?;
+    }
+    config::write_atomic(&s.cfg_path, text).map_err(|e| e.to_string())?;
+    reload_config(app, s.clone())?;
+    match c.profiles.first() {
+        Some(p) if !c.profiles.contains(&s.profile()) => tc_switch_profile(s, p.clone()).map(|_| ()),
+        _ => Ok(()),
+    }
+}
+
 /// Watch the notes and data dirs; the UI gets an "fs-changed" event (with the
 /// changed paths) whenever anything there changes — our own writes, Emacs, sync tools.
 fn watch(app: &AppHandle) {
@@ -918,7 +935,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            config, tutorial, reload_config, save_view, list_files, read_file, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
+            config, tutorial, reload_config, save_view, setup, list_files, read_file, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
