@@ -13,7 +13,7 @@
   "11": "Calendar",
   "12": "remind.rs",
   "13": "GitHub Releases",
-  "14": "scripts",
+  "14": "@codemirror/state",
   "15": "attach.rs",
   "16": "Notes",
   "17": "AppImage",
@@ -33,7 +33,6 @@
   "31": "ai.rs",
   "32": "$lib/graph",
   "33": "lib/TaskDialog.svelte",
-  "34": "graph",
   "35": "config.rs",
   "36": "CLAUDE.md",
   "37": "ship/SKILL.md",
@@ -63,7 +62,5 @@
   "61": "backup.rs",
   "62": "curLine",
   "63": "level",
-  "64": "settings.test.ts",
-  "65": "$lib/projects",
-  "66": "@tauri-apps/api/event"
+  "64": "settings.test.ts"
 }
