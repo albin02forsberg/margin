@@ -115,10 +115,32 @@ fn config(s: State<App>) -> Value {
 
 #[tauri::command]
 fn reload_config(app: AppHandle, s: State<App>) -> R<()> {
-    *s.cfg.lock().unwrap() = Config::load(&s.cfg_path)?;
+    let new = Config::load(&s.cfg_path)?;
+    let old = std::mem::replace(&mut *s.cfg.lock().unwrap(), new.clone());
     *s.cfg_error.lock().unwrap() = None;
     s.cache.clear();
     watch(&app);
+    rebind_capture(&app, &old.capture_shortcut, &new.capture_shortcut)
+}
+
+/// Move the quick-capture shortcut from OLD to NEW (either may be empty = none).
+#[cfg(desktop)]
+fn rebind_capture(app: &AppHandle, old: &str, new: &str) -> R<()> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    if old == new {
+        return Ok(());
+    }
+    let gs = app.global_shortcut();
+    if !old.is_empty() {
+        let _ = gs.unregister(old); // may never have registered (e.g. Wayland)
+    }
+    if new.is_empty() {
+        return Ok(());
+    }
+    gs.register(new).map_err(|e| format!("quick capture shortcut {new}: {e}"))
+}
+#[cfg(not(desktop))]
+fn rebind_capture(_: &AppHandle, _: &str, _: &str) -> R<()> {
     Ok(())
 }
 
@@ -160,11 +182,12 @@ fn apply_config(app: AppHandle, s: State<App>, text: String, c: Config) -> R<Str
         std::fs::create_dir_all(&d).map_err(|e| format!("{}: {e}", d.display()))?;
     }
     config::write_atomic(&s.cfg_path, text).map_err(|e| e.to_string())?;
-    reload_config(app, s.clone())?;
+    // A shortcut that won't register is reported, but the rest still applies.
+    let rebind = reload_config(app, s.clone()).err();
     if let Some(p) = c.profiles.first().filter(|_| !c.profiles.contains(&profile)) {
         tc_switch_profile(s, p.clone())?;
     }
-    Ok(orphan_warning(&old, &c))
+    Ok(rebind.into_iter().chain([orphan_warning(&old, &c)]).filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" "))
 }
 
 /// Clock out OLD_TC if setup moves the notes or data folder or drops PROFILE (the config
@@ -1049,7 +1072,7 @@ pub fn run() {
             #[cfg(desktop)]
             {
                 idle::start(app.handle());
-                use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+                use tauri_plugin_global_shortcut::ShortcutState;
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
                         .with_handler(|app, _, ev| {
@@ -1059,11 +1082,8 @@ pub fn run() {
                         })
                         .build(),
                 )?;
-                let key = app.state::<App>().cfg().capture_shortcut;
-                if !key.is_empty() {
-                    if let Err(e) = app.global_shortcut().register(key.as_str()) {
-                        eprintln!("quick capture shortcut {key}: {e}");
-                    }
+                if let Err(e) = rebind_capture(app.handle(), "", &app.state::<App>().cfg().capture_shortcut) {
+                    eprintln!("{e}");
                 }
             }
             Ok(())

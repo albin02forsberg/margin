@@ -427,8 +427,8 @@ Timed entries show as one hour; the rest are all-day.
 
 Ctrl+, (`Space f c`) opens the settings page: folders (notes `~/notes`, time data
 `~/timeclock`, export, journal, inbox, attachments, templates), expected daily
-hours, idle prompt, profiles, reminders, quick-capture shortcut (applies after a
-restart), task statuses, calendar feed, ActivityWatch and Ollama. Each group saves
+hours, idle prompt, profiles, reminders, quick-capture shortcut (re-registered on
+save), task statuses, calendar feed, ActivityWatch and Ollama. Each group saves
 on its own into `config.toml` (in the OS config dir), keeping your comments and
 everything else in the file; changing the folders or profiles clocks out a running
 timer, like setup. Saved views and capture templates stay in the file itself:

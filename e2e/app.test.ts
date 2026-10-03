@@ -136,4 +136,14 @@ describe("Margin", () => {
     await find(".status .msg", "Settings saved");
     assert.match(readFileSync(cfg, "utf8"), /^reminders = false$/m, "other settings lost");
   });
+
+  it("registers a new quick-capture shortcut on save", async () => {
+    const cfg = join(cfgDir, "config.toml");
+    await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Quick-capture shortcut")]]/input`)).click();
+    await type("Ctrl+Alt+F12");
+    await (await find(".settings button", "Save reminders")).click();
+    await fileMatches(cfg, (s) => /^capture_shortcut = "Ctrl\+Alt\+F12"$/m.test(s), "shortcut not saved");
+    const msg = await find(".status .msg", "Settings saved");
+    assert.doesNotMatch(await msg.getText(), /shortcut/, "shortcut didn't register");
+  });
 });
