@@ -11,7 +11,7 @@
   "9": "compilerOptions",
   "10": "scripts",
   "11": "Calendar",
-  "12": "$lib/graph",
+  "12": "graph",
   "13": "GitHub Releases",
   "14": "remind.rs",
   "15": "attach.rs",
@@ -56,12 +56,15 @@
   "54": "Tauri Notification Plugin",
   "55": "Tauri Single Instance Plugin",
   "56": "Tauri Action",
-  "57": "idle.rs",
+  "57": "super",
   "58": "Time Tracking",
   "59": "TypeScript",
   "60": "ics.rs",
-  "61": "@codemirror/state",
+  "61": "devDependencies",
   "62": "curLine",
   "63": "level",
-  "64": "settings.test.ts"
+  "64": "settings.test.ts",
+  "65": "$lib/graph",
+  "66": "$lib/projects",
+  "67": "@tauri-apps/api/event"
 }
