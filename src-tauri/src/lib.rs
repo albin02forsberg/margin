@@ -680,7 +680,8 @@ fn activity_suggestions(s: State<App>, date_input: String) -> R<Option<Vec<activ
     let projects: Vec<String> = tc.projects().into_iter().filter(|(_, p)| p.active).map(|(n, _)| n).collect();
     let tracked = timeclock::spans(&tc.events(), timeclock::now());
     let tasks: Vec<activity::Task> = org::todos(&s.files(), &s.kw(), false, |_, _| true, today()).into_iter().map(|t| (t.title, t.category)).collect();
-    let all = activity::suggest(&window, &afk, &tracked, &exclude, &projects, &tasks, d);
+    let meetings = activity::rules("activity_meetings", &c.activity_meetings)?;
+    let all = activity::suggest(&window, &afk, &tracked, &exclude, activity::Known { projects: &projects, tasks: &tasks, meetings: &meetings }, d);
     Ok(Some(activity::undismissed(all, &dismissed(&tc).unwrap_or_default())))
 }
 
@@ -714,7 +715,7 @@ fn ai_day_prompt(s: State<App>, date_input: String) -> R<String> {
     let (c, d) = (s.cfg(), date(&date_input)?);
     let exclude = activity::exclude_rules(&c.activity_exclude)?;
     let aw = Some(&c.activitywatch_url).filter(|u| !u.trim().is_empty()).and_then(|u| activity::fetch(u, d, &exclude).ok());
-    let blocks = aw.map(|(w, a)| activity::suggest(&w, &a, &[], &exclude, &[], &[], d)).unwrap_or_default();
+    let blocks = aw.map(|(w, a)| activity::suggest(&w, &a, &[], &exclude, Default::default(), d)).unwrap_or_default();
     let sessions: Vec<_> = s.tc().sessions().into_iter().filter(|x| x.date == d).collect();
     Ok(ai::day_prompt(d, &sessions, &blocks, &exclude))
 }

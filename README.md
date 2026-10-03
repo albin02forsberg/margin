@@ -337,7 +337,11 @@ the window title doesn't name it. An open task is guessed too, when its title
 (as words, so a branch like `feat/fix-crash-on-save` in a terminal or editor
 title counts) or an id in it (`#123`, `ABC-123`) shows up longest; it becomes
 the default diary note, gives the project when its org category is one, and
-goes into the AI draft.
+goes into the AI draft. A block at least half spent in a call is marked
+**Meeting** and its note starts as `Meeting: <window title>` (no AI draft);
+`activity_meetings` holds the regexes over app names, titles and URLs (Zoom,
+Teams, Google Meet, Slack huddles and Webex by default; `[]` turns it off).
+A call in the background while you type elsewhere isn't noticed.
 **Accept** confirms the project and an optional diary note and adds the session
 to the log at its place in the day; ✎ lets you change its start and end first;
 ✕ hides it, and anything overlapping it, for good (kept in
