@@ -1,5 +1,5 @@
 // Suggested sessions from ActivityWatch (https://activitywatch.net): its local REST API
-// has window, AFK and browser tab events, which we turn into blocks of work worth logging.
+// has window, AFK, browser tab and editor events, which we turn into blocks of work worth logging.
 
 use chrono::{DateTime, Duration, DurationRound, FixedOffset, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
 use regex::Regex;
@@ -14,7 +14,8 @@ const GAP_SECS: i64 = 5 * 60;
 const MIN_BLOCK_SECS: i64 = 15 * 60;
 
 /// An event as local time. AFK events carry their status ("afk"/"not-afk") as `app`;
-/// browser tab events have a `url`.
+/// browser tab events have a `url`; editor events have the file name as `title` and
+/// `repo · file` as `url`.
 #[derive(Clone, Debug)]
 pub struct Span {
     pub start: NaiveDateTime,
@@ -50,12 +51,13 @@ struct Bucket {
 }
 
 /// Bucket ids to read: the most recently updated window and AFK ones, and all browser
-/// tab (aw-watcher-web) ones, one per browser.
+/// tab (aw-watcher-web) ones, one per browser, and editor (aw-watcher-vscode, JetBrains) ones.
 #[derive(Debug, PartialEq)]
 pub struct Buckets {
     window: Option<String>,
     afk: Option<String>,
     web: Vec<String>,
+    editor: Vec<String>,
 }
 
 /// `/api/0/buckets/` → the buckets to read.
@@ -63,12 +65,16 @@ pub fn pick_buckets(json: &str) -> Result<Buckets, String> {
     let b: HashMap<String, Bucket> = serde_json::from_str(json).map_err(|e| format!("ActivityWatch buckets: {e}"))?;
     // ponytail: ISO strings from one server compare chronologically; parse them if a server mixes offsets.
     let newest = |kind: &str| b.iter().filter(|(_, v)| v.kind == kind).max_by(|x, y| x.1.last_updated.cmp(&y.1.last_updated)).map(|(id, _)| id.clone());
-    let mut web: Vec<String> = b.iter().filter(|(_, v)| v.kind == "web.tab.current").map(|(id, _)| id.clone()).collect();
-    web.sort();
-    Ok(Buckets { window: newest("currentwindow"), afk: newest("afkstatus"), web })
+    let all = |kind: &str| {
+        let mut v: Vec<String> = b.iter().filter(|(_, v)| v.kind == kind).map(|(id, _)| id.clone()).collect();
+        v.sort();
+        v
+    };
+    Ok(Buckets { window: newest("currentwindow"), afk: newest("afkstatus"), web: all("web.tab.current"), editor: all("app.editor.activity") })
 }
 
-/// `/api/0/buckets/<id>/events` → spans in TZ. Private (incognito) tabs are left out.
+/// `/api/0/buckets/<id>/events` → spans in TZ. Private (incognito) tabs are left out. Editor
+/// events keep only the base names of `file` and `project` (a path or a name), so home paths never show.
 pub fn parse_events<Tz: TimeZone>(json: &str, tz: &Tz) -> Result<Vec<Span>, String> {
     let evs: Vec<AwEvent> = serde_json::from_str(json).map_err(|e| format!("ActivityWatch events: {e}"))?;
     Ok(evs
@@ -78,7 +84,12 @@ pub fn parse_events<Tz: TimeZone>(json: &str, tz: &Tz) -> Result<Vec<Span>, Stri
             let s = |k: &str| e.data.get(k).and_then(|v| v.as_str()).map(String::from);
             let end = e.timestamp + Duration::milliseconds((e.duration * 1000.0) as i64);
             let local = |t: DateTime<FixedOffset>| t.with_timezone(tz).naive_local();
-            Span { start: local(e.timestamp), end: local(end), app: s("app").or_else(|| s("status")).unwrap_or_default(), title: s("title").unwrap_or_default(), url: s("url").unwrap_or_default() }
+            let base = |k: &str| s(k).and_then(|p| p.trim_end_matches(['/', '\\']).rsplit(['/', '\\']).next().map(String::from)).filter(|p| !p.is_empty() && p != "unknown");
+            let (title, url) = match base("file") {
+                Some(f) => (f.clone(), base("project").map_or(f.clone(), |p| format!("{p} · {f}"))),
+                None => (s("title").unwrap_or_default(), s("url").unwrap_or_default()),
+            };
+            Span { start: local(e.timestamp), end: local(end), app: s("app").or_else(|| s("status")).unwrap_or_default(), title, url }
         })
         .collect())
 }
@@ -94,17 +105,18 @@ fn cut(parts: Vec<(NaiveDateTime, NaiveDateTime)>, cs: NaiveDateTime, ce: NaiveD
 }
 
 /// `https://www.github.com/a/b/pull/1?x` → `github.com/a/b`: host and two path segments,
-/// so one repo's or site section's pages add up.
+/// so one repo's or site section's pages add up. Anything without a scheme (an editor's
+/// `repo · file`) is already a label.
 fn url_label(url: &str) -> String {
-    let u = url.split_once("://").map_or(url, |x| x.1);
+    let Some((_, u)) = url.split_once("://") else { return url.to_string() };
     let u = u.split(['?', '#']).next().unwrap_or(u);
     u.strip_prefix("www.").unwrap_or(u).split('/').filter(|p| !p.is_empty()).take(3).collect::<Vec<_>>().join("/")
 }
 
-/// WINDOW with browser windows split by the WEB tab events shown in them (the window
-/// title contains the tab title, which also tells several browsers apart): those parts
-/// get the tab's `host/path` as title. Parts showing a tab that EXCLUDE matches (URL or
-/// title) are dropped.
+/// WINDOW with browser and editor windows split by the WEB tab (or editor) events shown
+/// in them (the window title contains the tab title or file name, which also tells several
+/// browsers apart): those parts get the tab's `host/path` (the editor's `repo · file`) as
+/// title. Parts showing a tab or file that EXCLUDE matches (URL or title) are dropped.
 pub fn with_urls(window: &[Span], web: &[Span], exclude: &[Regex]) -> Vec<Span> {
     let mut out = vec![];
     for w in window {
@@ -232,7 +244,7 @@ pub fn request(what: &str, key: &str, base: &str, method: &str, path: &str, body
 
 /// Window spans (`with_urls`) and AFK spans around DAY from the server at BASE.
 pub fn fetch(base: &str, day: NaiveDate, exclude: &[Regex]) -> Result<(Vec<Span>, Vec<Span>), String> {
-    let Buckets { window, afk, web } = pick_buckets(&get(base, "/api/0/buckets/")?)?;
+    let Buckets { window, afk, web, editor } = pick_buckets(&get(base, "/api/0/buckets/")?)?;
     let window = window.ok_or("ActivityWatch has no window watcher (aw-watcher-window) data")?;
     let utc = |d: NaiveDate| {
         let t = d.and_time(NaiveTime::MIN);
@@ -241,7 +253,7 @@ pub fn fetch(base: &str, day: NaiveDate, exclude: &[Regex]) -> Result<(Vec<Span>
     let q = format!("start={}&end={}", utc(day), utc(day + Duration::days(1)));
     let events = |id: &str| parse_events(&get(base, &format!("/api/0/buckets/{id}/events?{q}"))?, &Local);
     let mut tabs = vec![];
-    for id in &web {
+    for id in web.iter().chain(&editor) {
         tabs.extend(events(id)?);
     }
     Ok((with_urls(&events(&window)?, &tabs, exclude), afk.as_deref().map(events).transpose()?.unwrap_or_default()))
@@ -270,11 +282,13 @@ mod tests {
           "aw-watcher-window_pc": {"id":"aw-watcher-window_pc","type":"currentwindow","client":"aw-watcher-window","hostname":"pc","created":"2025-01-01T00:00:00+00:00","last_updated":"2026-10-02T08:00:00+00:00"},
           "aw-watcher-afk_pc": {"id":"aw-watcher-afk_pc","type":"afkstatus","client":"aw-watcher-afk","hostname":"pc","created":"2025-01-01T00:00:00+00:00","last_updated":"2026-10-02T08:00:00+00:00"},
           "aw-watcher-web-firefox": {"id":"aw-watcher-web-firefox","type":"web.tab.current","client":"aw-client-web","hostname":"pc","created":"2025-01-01T00:00:00+00:00"},
-          "aw-watcher-web-chrome": {"id":"aw-watcher-web-chrome","type":"web.tab.current","client":"aw-client-web","hostname":"pc","created":"2025-01-01T00:00:00+00:00"}
+          "aw-watcher-web-chrome": {"id":"aw-watcher-web-chrome","type":"web.tab.current","client":"aw-client-web","hostname":"pc","created":"2025-01-01T00:00:00+00:00"},
+          "aw-watcher-vscode_pc": {"id":"aw-watcher-vscode_pc","type":"app.editor.activity","client":"aw-watcher-vscode","hostname":"pc","created":"2025-01-01T00:00:00+00:00"}
         }"#;
         let web = vec!["aw-watcher-web-chrome".into(), "aw-watcher-web-firefox".into()];
-        assert_eq!(pick_buckets(json).unwrap(), Buckets { window: Some("aw-watcher-window_pc".into()), afk: Some("aw-watcher-afk_pc".into()), web });
-        assert_eq!(pick_buckets("{}").unwrap(), Buckets { window: None, afk: None, web: vec![] });
+        let editor = vec!["aw-watcher-vscode_pc".into()];
+        assert_eq!(pick_buckets(json).unwrap(), Buckets { window: Some("aw-watcher-window_pc".into()), afk: Some("aw-watcher-afk_pc".into()), web, editor });
+        assert_eq!(pick_buckets("{}").unwrap(), Buckets { window: None, afk: None, web: vec![], editor: vec![] });
     }
 
     #[test]
@@ -346,6 +360,34 @@ mod tests {
         let s = suggest(&with_urls(&window, &web, &[]), &[], &[], &[], &["margin".into()], "2026-10-01".parse().unwrap());
         assert!(s[0].titles.contains(&"github.com/albin02forsberg/margin".to_string()));
         assert_eq!(s[0].project.as_deref(), Some("margin"));
+    }
+
+    #[test]
+    fn editor_watchers() {
+        let tz = FixedOffset::east_opt(CEST).unwrap();
+        // Event data as aw-watcher-vscode and the JetBrains plugin send it.
+        let vscode = |file: &str, project: &str| format!(r#"{{"language":"rust","project":"{project}","file":"{file}","branch":"main"}}"#);
+        let editor = parse_events(&format!("[{}]", [
+            ev("2026-10-01T07:00:00+00:00", 20.0, &vscode("/home/me/code/tool/src-tauri/src/lib.rs", "/home/me/code/tool")),
+            ev("2026-10-01T07:20:00+00:00", 10.0, &vscode("unknown", "unknown")),
+            ev("2026-10-01T07:30:00+00:00", 20.0, r#"{"file":"Main.kt","fileFullPath":"/home/me/acme/src/Main.kt","project":"acme","projectPath":"/home/me/acme","language":"Kotlin","editor":"IDEA","branch":"feat/x"}"#),
+            ev("2026-10-01T07:50:00+00:00", 10.0, &vscode("/home/me/secret/notes.md", "/home/me/secret")),
+        ].join(",")), &tz).unwrap();
+        assert_eq!(editor.iter().map(|e| (e.title.as_str(), e.url.as_str())).collect::<Vec<_>>(), [("lib.rs", "tool · lib.rs"), ("", ""), ("Main.kt", "acme · Main.kt"), ("notes.md", "secret · notes.md")]);
+        // The window titles don't name the repo; the editor does.
+        let window = parse_events(&format!("[{}]", [
+            ev("2026-10-01T07:00:00+00:00", 30.0, &win("Code", "lib.rs - Visual Studio Code")),
+            ev("2026-10-01T07:30:00+00:00", 20.0, &win("jetbrains-idea", "Main.kt")),
+            ev("2026-10-01T07:50:00+00:00", 10.0, &win("Code", "notes.md - Visual Studio Code")),
+        ].join(",")), &tz).unwrap();
+        let ex = exclude_rules(&["secret".into()]).unwrap();
+        let w = with_urls(&window, &editor, &ex);
+        let got: Vec<_> = w.iter().map(|s| (s.start.format("%H:%M").to_string(), s.title.as_str())).collect();
+        let t = |a: &str, b: &'static str| (a.to_string(), b);
+        assert_eq!(got, [t("09:00", "tool · lib.rs"), t("09:20", "lib.rs - Visual Studio Code"), t("09:30", "acme · Main.kt")], "an excluded repo drops its part");
+        let s = suggest(&w, &[], &[], &ex, &["Tool".into()], "2026-10-01".parse().unwrap());
+        assert_eq!(s[0].project.as_deref(), Some("Tool"));
+        assert!(s[0].titles.contains(&"tool · lib.rs".to_string()));
     }
 
     #[test]
