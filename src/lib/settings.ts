@@ -61,12 +61,15 @@ export function changes(fields: Field[], form: Form, config: Record<string, unkn
   return out;
 }
 
-/** FORM refreshed from CONFIG, keeping fields edited since BASE (what the form last loaded); returns [form, base]. */
-export function refresh(form: Form, base: Form, config: Record<string, unknown>): [Form, Form] {
-  const next: Form = {}, kept: Form = {};
+/** FORM refreshed from CONFIG, keeping fields edited since BASE (what the form last loaded);
+ *  returns [form, base, keys of kept edits whose saved value changed meanwhile]. */
+export function refresh(form: Form, base: Form, config: Record<string, unknown>): [Form, Form, string[]] {
+  const next: Form = {}, kept: Form = {}, clash: string[] = [];
   for (const f of GROUPS.flatMap((g) => g.fields)) {
     next[f.key] = toForm(f, config[f.key]);
-    kept[f.key] = f.key in form && form[f.key] !== base[f.key] ? form[f.key] : next[f.key];
+    const edited = f.key in form && form[f.key] !== base[f.key];
+    kept[f.key] = edited ? form[f.key] : next[f.key];
+    if (edited && next[f.key] !== base[f.key]) clash.push(f.key);
   }
-  return [kept, next];
+  return [kept, next, clash];
 }

@@ -15,7 +15,10 @@ test("only changed fields are sent, parsed", () => {
 
 test("a reload keeps unsaved edits and refreshes the rest", () => {
   const [form, base] = refresh({}, {}, config);
-  const [next] = refresh({ ...form, notes_dir: "typing" }, base, { ...config, notes_dir: "disk", expected_daily_hours: 6 });
+  const edited = { ...form, notes_dir: "typing", reminders: false };
+  const [next, , clash] = refresh(edited, base, { ...config, notes_dir: "disk", expected_daily_hours: 6 });
   assert.equal(next.notes_dir, "typing");
   assert.equal(next.expected_daily_hours, "6");
+  assert.deepEqual(clash, ["notes_dir"]); // reminders was edited too, but not changed on disk
+  assert.deepEqual(refresh(edited, base, config)[2], []);
 });

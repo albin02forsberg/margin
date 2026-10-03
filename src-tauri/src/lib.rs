@@ -221,17 +221,34 @@ fn orphan_warning(old: &Config, new: &Config) -> String {
     format!("Files stay in {} (nothing was moved); copy them over if you need them.", list.join(", "))
 }
 
+/// Whether CFG is among PATHS, and the PATHS under ROOTS (minus .git), sorted and deduplicated.
+fn split_changes(paths: Vec<PathBuf>, cfg: &Path, roots: &[PathBuf]) -> (bool, Vec<PathBuf>) {
+    let cfg_changed = paths.iter().any(|p| p == cfg);
+    let mut rest: Vec<PathBuf> = paths.into_iter().filter(|p| roots.iter().any(|r| p.starts_with(r)) && !p.components().any(|c| c.as_os_str() == ".git")).collect();
+    rest.sort();
+    rest.dedup();
+    (cfg_changed, rest)
+}
+
 /// Watch the notes and data dirs; the UI gets an "fs-changed" event (with the
 /// changed paths) whenever anything there changes — our own writes, Emacs, sync tools.
+/// config.toml edited elsewhere (so it no longer matches the loaded config) gets "config-changed".
 fn watch(app: &AppHandle) {
     let s = app.state::<App>();
     let c = s.cfg();
     let handle = app.clone();
+    let (cfg_path, roots) = (s.cfg_path.clone(), [c.notes(), c.data()]);
     let debouncer = new_debouncer(std::time::Duration::from_millis(150), move |res: DebounceEventResult| {
         let Ok(events) = res else { return };
-        let mut paths: Vec<PathBuf> = events.into_iter().map(|e| e.path).filter(|p| !p.components().any(|c| c.as_os_str() == ".git")).collect();
-        paths.sort();
-        paths.dedup();
+        let (cfg_changed, paths) = split_changes(events.into_iter().map(|e| e.path).collect(), &cfg_path, &roots);
+        if cfg_changed {
+            let disk = std::fs::read_to_string(&cfg_path).ok().and_then(|t| toml::from_str::<Config>(&t).ok());
+            let s = handle.state::<App>();
+            // Running on defaults (cfg_error) means the file was broken: a fix always reloads.
+            if disk.and_then(|d| toml::Table::try_from(d).ok()) != toml::Table::try_from(s.cfg()).ok() || s.cfg_error.lock().unwrap().is_some() {
+                let _ = handle.emit("config-changed", ());
+            }
+        }
         if !paths.is_empty() {
             tray::refresh(&handle);
             write_calendar(&handle);
@@ -247,6 +264,9 @@ fn watch(app: &AppHandle) {
         if let Err(e) = d.watcher().watch(&dir, notify::RecursiveMode::Recursive) {
             eprintln!("can't watch {}: {e}", dir.display());
         }
+    }
+    if let Err(e) = d.watcher().watch(s.cfg_path.parent().unwrap(), notify::RecursiveMode::NonRecursive) {
+        eprintln!("can't watch {}: {e}", s.cfg_path.display());
     }
     *s.watcher.lock().unwrap() = Some(d);
 }
@@ -1138,6 +1158,15 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn config_changes_split_out() {
+        let (cfg, roots) = (PathBuf::from("/c/config.toml"), [PathBuf::from("/n"), PathBuf::from("/d")]);
+        let p = |v: &[&str]| v.iter().map(PathBuf::from).collect::<Vec<_>>();
+        let changes = p(&["/n/b.org", "/c/.config.toml.margin-tmp", "/c/config.toml", "/n/a.org", "/n/.git/x", "/d/w/log", "/n/a.org"]);
+        assert_eq!(split_changes(changes, &cfg, &roots), (true, p(&["/d/w/log", "/n/a.org", "/n/b.org"])));
+        assert_eq!(split_changes(p(&["/c/tutorial.org", "/n/a.org"]), &cfg, &roots), (false, p(&["/n/a.org"])));
+    }
 
     fn cfg(notes: &Path, data: &Path, profiles: &str) -> Config {
         toml::from_str(&format!("notes_dir = {:?}\ndata_dir = {:?}\nprofiles = [{profiles}]", notes, data)).unwrap()

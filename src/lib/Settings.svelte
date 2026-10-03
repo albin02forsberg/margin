@@ -7,10 +7,18 @@
   let form = $state<Form>({});
   let base = $state<Form>({});
   let errors = $state<Record<string, string>>({});
+  /** Fields with unsaved edits here that config.toml also changed underneath. */
+  let clash = $state<string[]>([]);
   $effect(() => {
     const c = config;
-    [form, base] = untrack(() => refresh(form, base, c));
+    untrack(() => {
+      let more: string[];
+      [form, base, more] = refresh(form, base, c);
+      clash = [...new Set([...more, ...clash.filter((k) => form[k] !== base[k])])];
+    });
   });
+  const FIELDS = GROUPS.flatMap((g) => g.fields);
+  const clashing = $derived(FIELDS.filter((f) => clash.includes(f.key) && form[f.key] !== base[f.key]));
 
   const dirty = (fields: Field[]) => fields.some((f) => form[f.key] !== base[f.key]);
   async function submit(name: string, fields: Field[]) {
@@ -31,6 +39,9 @@
   <p class="dim">Saved to config.toml; comments and everything not shown here stay as written. <button class="link" onclick={edit}>Edit config.toml</button> for saved views and templates.</p>
   {#if error}
     <p class="error">⚠ config.toml was ignored ({error}), so these are the defaults. Fix the file first.</p>
+  {/if}
+  {#if clashing.length}
+    <p class="error">⚠ config.toml changed on disk; your unsaved {clashing.map((f) => f.label).join(", ")} would overwrite it.</p>
   {/if}
   {#each GROUPS as g (g.name)}
     <form onsubmit={(e) => { e.preventDefault(); submit(g.name, g.fields); }}>

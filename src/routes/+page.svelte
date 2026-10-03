@@ -1359,6 +1359,15 @@
     const blur = () => act(saveAll);
     const focus = () => syncFromDisk();
     const unlisten = listen("fs-changed", () => syncFromDisk());
+    // config.toml edited outside the app: apply it (a broken file keeps the current settings).
+    const unlistenCfg = listen("config-changed", () => act(async () => {
+      const err = await call("reload_config").then(() => "", String);
+      cfg = await call("config");
+      reload++;
+      syncFromDisk();
+      await refreshTc();
+      flash(err ? `⚠ config.toml changed on disk: ${err}` : "config.toml changed on disk — settings reloaded.");
+    }));
     const unlistenTray = listen<string>("tray", (e) => act(() => timeActions[e.payload]()));
     const unlistenOpen = listen<{ path: string; line: number }>("open-entry", (e) => act(() => openFile(e.payload.path, e.payload.line)));
     const unlistenIdle = listen<{ since: string; back: string }>("idle", (e) => act(() => idleReturn(e.payload)));
@@ -1386,6 +1395,7 @@
     return () => {
       clearInterval(timer);
       unlisten.then((f) => f());
+      unlistenCfg.then((f) => f());
       unlistenTray.then((f) => f());
       unlistenOpen.then((f) => f());
       unlistenIdle.then((f) => f());

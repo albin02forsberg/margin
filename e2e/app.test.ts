@@ -147,4 +147,18 @@ describe("Margin", () => {
     const msg = await find(".status .msg", "Settings saved");
     assert.doesNotMatch(await msg.getText(), /shortcut/, "shortcut didn't register");
   });
+
+  it("reloads the settings page when config.toml changes on disk", async () => {
+    const cfg = join(cfgDir, "config.toml");
+    const field = (label: string) => browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "${label}")]]/input`);
+    await browser.pause(500);
+    assert.doesNotMatch(await browser.$(".status").getText(), /changed on disk/, "our own save echoed back");
+    await (await field("Export folder")).click();
+    await type("-edited");
+    writeFileSync(cfg, readFileSync(cfg, "utf8").replace(/^expected_daily_hours = .*$/m, "expected_daily_hours = 6.25 # by hand").replace(/^export_dir = .*$/m, `export_dir = "/elsewhere"`));
+    await browser.waitUntil(async () => (await (await field("Expected hours per day")).getValue()) === "6.25", { timeoutMsg: "settings page didn't reload" });
+    await find(".status .msg", "config.toml changed on disk");
+    await find(".settings .error", "Export folder"); // the unsaved edit is kept, with a notice
+    assert.match(await (await field("Export folder")).getValue(), /-edited$/);
+  });
 });
