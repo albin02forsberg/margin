@@ -4,32 +4,6 @@
   "graph": {},
   "nodes": [
     {
-      "id": "src_lib_editor_glyph",
-      "label": "Glyph",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "decorate",
-      "file_type": "code",
-      "norm_label": "glyph",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L125"
-    },
-    {
-      "id": "src_lib_editor_img",
-      "label": "Img",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "decorate",
-      "file_type": "code",
-      "norm_label": "img",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L137"
-    },
-    {
       "id": "e2e_setup_dirs",
       "label": "Dirs",
       "_callable": true,
@@ -95,6 +69,32 @@
       "source_location": "L47"
     },
     {
+      "id": "src_lib_editor_glyph",
+      "label": "Glyph",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "glyph",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L125"
+    },
+    {
+      "id": "src_lib_editor_img",
+      "label": "Img",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "img",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L137"
+    },
+    {
       "id": "src_lib_editor_orgconf",
       "label": "OrgConf",
       "_callable": true,
@@ -108,6 +108,19 @@
       "source_location": "L34"
     },
     {
+      "id": "src_lib_editor_tableop",
+      "label": "tableOp",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "tableop",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L676"
+    },
+    {
       "id": "src_lib_editor_tbl",
       "label": "Tbl",
       "_callable": true,
@@ -119,19 +132,6 @@
       "norm_label": "tbl",
       "source_file": "src/lib/editor.ts",
       "source_location": "L48"
-    },
-    {
-      "id": "src_lib_editor_tableop",
-      "label": "tableOp",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "curLine",
-      "file_type": "code",
-      "norm_label": "tableop",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L676"
     },
     {
       "id": "src_lib_orgtable_grid",
@@ -171,174 +171,6 @@
       "norm_label": "val",
       "source_file": "src/lib/orgtable.ts",
       "source_location": "L174"
-    },
-    {
-      "id": "src_lib_editor_codetokens",
-      "label": "codeTokens()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "decorate",
-      "file_type": "code",
-      "norm_label": "codetokens()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L197"
-    },
-    {
-      "id": "src_lib_editor_decorate",
-      "label": "decorate()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "decorate",
-      "file_type": "code",
-      "norm_label": "decorate()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L256"
-    },
-    {
-      "id": "src_lib_editor_glyph_constructor",
-      "label": ".constructor()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "decorate",
-      "file_type": "code",
-      "norm_label": ".constructor()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L126"
-    },
-    {
-      "id": "src_lib_editor_glyph_eq",
-      "label": ".eq()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "decorate",
-      "file_type": "code",
-      "norm_label": ".eq()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L127"
-    },
-    {
-      "id": "src_lib_editor_glyph_ignoreevent",
-      "label": ".ignoreEvent()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "decorate",
-      "file_type": "code",
-      "norm_label": ".ignoreevent()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L134"
-    },
-    {
-      "id": "src_lib_editor_glyph_todom",
-      "label": ".toDOM()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "decorate",
-      "file_type": "code",
-      "norm_label": ".todom()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L128"
-    },
-    {
-      "id": "src_lib_editor_imagesrc",
-      "label": "imageSrc()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "decorate",
-      "file_type": "code",
-      "norm_label": "imagesrc()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L157"
-    },
-    {
-      "id": "src_lib_editor_img_constructor",
-      "label": ".constructor()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "decorate",
-      "file_type": "code",
-      "norm_label": ".constructor()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L138"
-    },
-    {
-      "id": "src_lib_editor_img_eq",
-      "label": ".eq()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "decorate",
-      "file_type": "code",
-      "norm_label": ".eq()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L139"
-    },
-    {
-      "id": "src_lib_editor_img_todom",
-      "label": ".toDOM()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "decorate",
-      "file_type": "code",
-      "norm_label": ".todom()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L140"
-    },
-    {
-      "id": "src_lib_editor_inline",
-      "label": "inline()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "decorate",
-      "file_type": "code",
-      "norm_label": "inline()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L214"
-    },
-    {
-      "id": "src_lib_editor_langfor",
-      "label": "langFor()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "decorate",
-      "file_type": "code",
-      "norm_label": "langfor()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L173"
-    },
-    {
-      "id": "src_lib_editor_mark",
-      "label": "mark()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "decorate",
-      "file_type": "code",
-      "norm_label": "mark()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L153"
-    },
-    {
-      "id": "src_lib_editor_tokmark",
-      "label": "tokMark()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "decorate",
-      "file_type": "code",
-      "norm_label": "tokmark()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L211"
     },
     {
       "id": "src_lib_menu_isopen",
@@ -761,6 +593,54 @@
       "source_location": "L446"
     },
     {
+      "id": "src_lib_editor_codetokens",
+      "label": "codeTokens()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "codetokens()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L197"
+    },
+    {
+      "id": "src_lib_editor_createstate",
+      "label": "createState()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "createstate()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L848"
+    },
+    {
+      "id": "src_lib_editor_curline",
+      "label": "curLine()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "curline()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L433"
+    },
+    {
+      "id": "src_lib_editor_decorate",
+      "label": "decorate()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "decorate()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L256"
+    },
+    {
       "id": "src_lib_editor_diffchange",
       "label": "diffChange()",
       "_callable": true,
@@ -773,6 +653,198 @@
       "source_location": "L437"
     },
     {
+      "id": "src_lib_editor_drawerrange",
+      "label": "drawerRange()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "drawerrange()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L98"
+    },
+    {
+      "id": "src_lib_editor_expandtemplate",
+      "label": "expandTemplate()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "expandtemplate()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L452"
+    },
+    {
+      "id": "src_lib_editor_glyph_constructor",
+      "label": ".constructor()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": ".constructor()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L126"
+    },
+    {
+      "id": "src_lib_editor_glyph_eq",
+      "label": ".eq()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": ".eq()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L127"
+    },
+    {
+      "id": "src_lib_editor_glyph_ignoreevent",
+      "label": ".ignoreEvent()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": ".ignoreevent()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L134"
+    },
+    {
+      "id": "src_lib_editor_glyph_todom",
+      "label": ".toDOM()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": ".todom()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L128"
+    },
+    {
+      "id": "src_lib_editor_headingat",
+      "label": "headingAt()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "headingat()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L93"
+    },
+    {
+      "id": "src_lib_editor_headings",
+      "label": "headings()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "headings()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L727"
+    },
+    {
+      "id": "src_lib_editor_imagesrc",
+      "label": "imageSrc()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "imagesrc()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L157"
+    },
+    {
+      "id": "src_lib_editor_img_constructor",
+      "label": ".constructor()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": ".constructor()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L138"
+    },
+    {
+      "id": "src_lib_editor_img_eq",
+      "label": ".eq()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": ".eq()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L139"
+    },
+    {
+      "id": "src_lib_editor_img_todom",
+      "label": ".toDOM()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": ".todom()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L140"
+    },
+    {
+      "id": "src_lib_editor_inline",
+      "label": "inline()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "inline()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L214"
+    },
+    {
+      "id": "src_lib_editor_insertblock",
+      "label": "insertBlock()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "insertblock()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L461"
+    },
+    {
+      "id": "src_lib_editor_insertmode",
+      "label": "insertMode()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "insertmode()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L741"
+    },
+    {
+      "id": "src_lib_editor_inserttable",
+      "label": "insertTable()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "inserttable()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L717"
+    },
+    {
       "id": "src_lib_editor_inserttext",
       "label": "insertText()",
       "_callable": true,
@@ -783,6 +855,54 @@
       "norm_label": "inserttext()",
       "source_file": "src/lib/editor.ts",
       "source_location": "L737"
+    },
+    {
+      "id": "src_lib_editor_intable",
+      "label": "inTable()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "intable()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L666"
+    },
+    {
+      "id": "src_lib_editor_langfor",
+      "label": "langFor()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "langfor()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L173"
+    },
+    {
+      "id": "src_lib_editor_level",
+      "label": "level()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "level()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L39"
+    },
+    {
+      "id": "src_lib_editor_line",
+      "label": "line()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "line()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L154"
     },
     {
       "id": "src_lib_editor_linkat",
@@ -809,6 +929,66 @@
       "source_location": "L405"
     },
     {
+      "id": "src_lib_editor_mark",
+      "label": "mark()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "mark()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L153"
+    },
+    {
+      "id": "src_lib_editor_movesubtree",
+      "label": "moveSubtree()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "movesubtree()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L505"
+    },
+    {
+      "id": "src_lib_editor_newheading",
+      "label": "newHeading()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "newheading()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L533"
+    },
+    {
+      "id": "src_lib_editor_newitem",
+      "label": "newItem()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "newitem()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L545"
+    },
+    {
+      "id": "src_lib_editor_onheading",
+      "label": "onHeading()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "onheading()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L434"
+    },
+    {
       "id": "src_lib_editor_onmodechange",
       "label": "onModeChange()",
       "_callable": true,
@@ -819,6 +999,30 @@
       "norm_label": "onmodechange()",
       "source_file": "src/lib/editor.ts",
       "source_location": "L752"
+    },
+    {
+      "id": "src_lib_editor_orgshifttab",
+      "label": "orgShiftTab()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "orgshifttab()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L481"
+    },
+    {
+      "id": "src_lib_editor_orgtab",
+      "label": "orgTab()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "orgtab()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L473"
     },
     {
       "id": "src_lib_editor_pad",
@@ -845,6 +1049,18 @@
       "source_location": "L51"
     },
     {
+      "id": "src_lib_editor_shiftheading",
+      "label": "shiftHeading()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "shiftheading()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L489"
+    },
+    {
       "id": "src_lib_editor_shifttimestamp",
       "label": "shiftTimestamp()",
       "_callable": true,
@@ -857,6 +1073,90 @@
       "source_location": "L639"
     },
     {
+      "id": "src_lib_editor_smartenter",
+      "label": "smartEnter()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "smartenter()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L557"
+    },
+    {
+      "id": "src_lib_editor_subtreeend",
+      "label": "subtreeEnd()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "subtreeend()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L81"
+    },
+    {
+      "id": "src_lib_editor_togglecheckbox",
+      "label": "toggleCheckbox()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "togglecheckbox()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L576"
+    },
+    {
+      "id": "src_lib_editor_toggleheading",
+      "label": "toggleHeading()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "toggleheading()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L569"
+    },
+    {
+      "id": "src_lib_editor_tokmark",
+      "label": "tokMark()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "tokmark()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L211"
+    },
+    {
+      "id": "src_lib_editor_updatecookie",
+      "label": "updateCookie()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "updatecookie()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L594"
+    },
+    {
+      "id": "src_lib_editor_updatecookies",
+      "label": "updateCookies()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "updatecookies()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L624"
+    },
+    {
       "id": "src_lib_editor_vimidle",
       "label": "vimIdle()",
       "_callable": true,
@@ -867,162 +1167,6 @@
       "norm_label": "vimidle()",
       "source_file": "src/lib/editor.ts",
       "source_location": "L747"
-    },
-    {
-      "id": "src_lib_editor_createstate",
-      "label": "createState()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "curLine",
-      "file_type": "code",
-      "norm_label": "createstate()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L848"
-    },
-    {
-      "id": "src_lib_editor_curline",
-      "label": "curLine()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "curLine",
-      "file_type": "code",
-      "norm_label": "curline()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L433"
-    },
-    {
-      "id": "src_lib_editor_expandtemplate",
-      "label": "expandTemplate()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "curLine",
-      "file_type": "code",
-      "norm_label": "expandtemplate()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L452"
-    },
-    {
-      "id": "src_lib_editor_insertblock",
-      "label": "insertBlock()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "curLine",
-      "file_type": "code",
-      "norm_label": "insertblock()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L461"
-    },
-    {
-      "id": "src_lib_editor_insertmode",
-      "label": "insertMode()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "curLine",
-      "file_type": "code",
-      "norm_label": "insertmode()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L741"
-    },
-    {
-      "id": "src_lib_editor_inserttable",
-      "label": "insertTable()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "curLine",
-      "file_type": "code",
-      "norm_label": "inserttable()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L717"
-    },
-    {
-      "id": "src_lib_editor_intable",
-      "label": "inTable()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "curLine",
-      "file_type": "code",
-      "norm_label": "intable()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L666"
-    },
-    {
-      "id": "src_lib_editor_newitem",
-      "label": "newItem()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "curLine",
-      "file_type": "code",
-      "norm_label": "newitem()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L545"
-    },
-    {
-      "id": "src_lib_editor_onheading",
-      "label": "onHeading()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "curLine",
-      "file_type": "code",
-      "norm_label": "onheading()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L434"
-    },
-    {
-      "id": "src_lib_editor_orgshifttab",
-      "label": "orgShiftTab()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "curLine",
-      "file_type": "code",
-      "norm_label": "orgshifttab()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L481"
-    },
-    {
-      "id": "src_lib_editor_orgtab",
-      "label": "orgTab()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "curLine",
-      "file_type": "code",
-      "norm_label": "orgtab()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L473"
-    },
-    {
-      "id": "src_lib_editor_smartenter",
-      "label": "smartEnter()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "curLine",
-      "file_type": "code",
-      "norm_label": "smartenter()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L557"
-    },
-    {
-      "id": "src_lib_editor_toggleheading",
-      "label": "toggleHeading()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "curLine",
-      "file_type": "code",
-      "norm_label": "toggleheading()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L569"
     },
     {
       "id": "src_lib_taskdialog_close",
@@ -1119,150 +1263,6 @@
       "norm_label": "save()",
       "source_file": "src/lib/TaskDialog.svelte",
       "source_location": "L44"
-    },
-    {
-      "id": "src_lib_editor_drawerrange",
-      "label": "drawerRange()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "level",
-      "file_type": "code",
-      "norm_label": "drawerrange()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L98"
-    },
-    {
-      "id": "src_lib_editor_headingat",
-      "label": "headingAt()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "level",
-      "file_type": "code",
-      "norm_label": "headingat()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L93"
-    },
-    {
-      "id": "src_lib_editor_headings",
-      "label": "headings()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "level",
-      "file_type": "code",
-      "norm_label": "headings()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L727"
-    },
-    {
-      "id": "src_lib_editor_level",
-      "label": "level()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "level",
-      "file_type": "code",
-      "norm_label": "level()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L39"
-    },
-    {
-      "id": "src_lib_editor_line",
-      "label": "line()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "level",
-      "file_type": "code",
-      "norm_label": "line()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L154"
-    },
-    {
-      "id": "src_lib_editor_movesubtree",
-      "label": "moveSubtree()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "level",
-      "file_type": "code",
-      "norm_label": "movesubtree()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L505"
-    },
-    {
-      "id": "src_lib_editor_newheading",
-      "label": "newHeading()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "level",
-      "file_type": "code",
-      "norm_label": "newheading()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L533"
-    },
-    {
-      "id": "src_lib_editor_shiftheading",
-      "label": "shiftHeading()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "level",
-      "file_type": "code",
-      "norm_label": "shiftheading()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L489"
-    },
-    {
-      "id": "src_lib_editor_subtreeend",
-      "label": "subtreeEnd()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "level",
-      "file_type": "code",
-      "norm_label": "subtreeend()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L81"
-    },
-    {
-      "id": "src_lib_editor_togglecheckbox",
-      "label": "toggleCheckbox()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "level",
-      "file_type": "code",
-      "norm_label": "togglecheckbox()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L576"
-    },
-    {
-      "id": "src_lib_editor_updatecookie",
-      "label": "updateCookie()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "level",
-      "file_type": "code",
-      "norm_label": "updatecookie()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L594"
-    },
-    {
-      "id": "src_lib_editor_updatecookies",
-      "label": "updateCookies()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "level",
-      "file_type": "code",
-      "norm_label": "updatecookies()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L624"
     },
     {
       "id": "src_lib_agenda_adddays",
@@ -1949,6 +1949,18 @@
       "source_location": "L14"
     },
     {
+      "id": "src_tauri_src_remind_due",
+      "label": "Due",
+      "_origin": "ast",
+      "_rust_declaration_count": 1,
+      "community": 0,
+      "community_name": "org.rs",
+      "file_type": "code",
+      "norm_label": "due",
+      "source_file": "src-tauri/src/remind.rs",
+      "source_location": "L11"
+    },
+    {
       "id": "src_tauri_src_timeclock_event",
       "label": "Event",
       "_origin": "ast",
@@ -1997,18 +2009,6 @@
       "source_location": "L79"
     },
     {
-      "id": "src_tauri_src_remind_due",
-      "label": "Due",
-      "_origin": "ast",
-      "_rust_declaration_count": 1,
-      "community": 12,
-      "community_name": "remind.rs",
-      "file_type": "code",
-      "norm_label": "due",
-      "source_file": "src-tauri/src/remind.rs",
-      "source_location": "L11"
-    },
-    {
       "id": "src_tauri_src_lib_app",
       "label": "App",
       "_origin": "ast",
@@ -2042,7 +2042,7 @@
       "file_type": "code",
       "norm_label": "awevent",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L38"
+      "source_location": "L39"
     },
     {
       "id": "src_tauri_src_activity_bucket",
@@ -2054,7 +2054,7 @@
       "file_type": "code",
       "norm_label": "bucket",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L45"
+      "source_location": "L46"
     },
     {
       "id": "src_tauri_src_activity_buckets",
@@ -2066,7 +2066,7 @@
       "file_type": "code",
       "norm_label": "buckets",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L55"
+      "source_location": "L56"
     },
     {
       "id": "src_tauri_src_activity_span",
@@ -2078,7 +2078,7 @@
       "file_type": "code",
       "norm_label": "span",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L19"
+      "source_location": "L20"
     },
     {
       "id": "src_tauri_src_activity_suggestion",
@@ -2090,7 +2090,7 @@
       "file_type": "code",
       "norm_label": "suggestion",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L28"
+      "source_location": "L29"
     },
     {
       "id": "src_tauri_src_export_block",
@@ -2747,6 +2747,17 @@
       "source_location": "L1018"
     },
     {
+      "id": "src_tauri_src_org_parts_line",
+      "label": ".line()",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "org.rs",
+      "file_type": "code",
+      "norm_label": ".line()",
+      "source_file": "src-tauri/src/org.rs",
+      "source_location": "L554"
+    },
+    {
       "id": "src_tauri_src_org_parts_parse",
       "label": ".parse()",
       "_origin": "ast",
@@ -3077,6 +3088,17 @@
       "source_location": "L886"
     },
     {
+      "id": "src_tauri_src_org_task_entry",
+      "label": "task_entry()",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "org.rs",
+      "file_type": "code",
+      "norm_label": "task_entry()",
+      "source_file": "src-tauri/src/org.rs",
+      "source_location": "L861"
+    },
+    {
       "id": "src_tauri_src_org_template_prompts",
       "label": "template_prompts()",
       "_origin": "ast",
@@ -3141,6 +3163,17 @@
       "norm_label": "ts_string()",
       "source_file": "src-tauri/src/org.rs",
       "source_location": "L521"
+    },
+    {
+      "id": "src_tauri_src_remind_rs_naivedatetime",
+      "label": "NaiveDateTime",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "org.rs",
+      "file_type": "code",
+      "norm_label": "naivedatetime",
+      "source_file": "",
+      "source_location": ""
     },
     {
       "id": "src_tauri_src_timeclock",
@@ -3548,6 +3581,17 @@
       "norm_label": "or_other()",
       "source_file": "src-tauri/src/timeclock.rs",
       "source_location": "L561"
+    },
+    {
+      "id": "src_tauri_src_timeclock_org_table",
+      "label": "org_table()",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "timeclock.rs",
+      "file_type": "code",
+      "norm_label": "org_table()",
+      "source_file": "src-tauri/src/timeclock.rs",
+      "source_location": "L565"
     },
     {
       "id": "src_tauri_src_timeclock_parse_events",
@@ -4243,17 +4287,6 @@
       "source_location": ""
     },
     {
-      "id": "src_tauri_src_remind_rs_naivedatetime",
-      "label": "NaiveDateTime",
-      "_origin": "ast",
-      "community": 12,
-      "community_name": "remind.rs",
-      "file_type": "code",
-      "norm_label": "naivedatetime",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
       "id": "src_tauri_src_remind_start",
       "label": "start()",
       "_origin": "ast",
@@ -4274,6 +4307,61 @@
       "norm_label": "tick()",
       "source_file": "src-tauri/src/remind.rs",
       "source_location": "L67"
+    },
+    {
+      "id": "kit",
+      "label": "@sveltejs/kit",
+      "_origin": "ast",
+      "community": 14,
+      "community_name": "svelte.config.js",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "@sveltejs/kit",
+      "source_file": "@sveltejs/kit"
+    },
+    {
+      "id": "svelte_config",
+      "label": "svelte.config.js",
+      "_origin": "ast",
+      "community": 14,
+      "community_name": "svelte.config.js",
+      "file_type": "code",
+      "norm_label": "svelte.config.js",
+      "source_file": "svelte.config.js",
+      "source_location": "L1"
+    },
+    {
+      "id": "svelte_config_config",
+      "label": "config",
+      "_origin": "ast",
+      "community": 14,
+      "community_name": "svelte.config.js",
+      "file_type": "code",
+      "norm_label": "config",
+      "source_file": "svelte.config.js",
+      "source_location": "L9"
+    },
+    {
+      "id": "ref_sveltejs_adapter_static",
+      "label": "@sveltejs/adapter-static",
+      "_origin": "ast",
+      "community": 14,
+      "community_name": "svelte.config.js",
+      "file_type": "concept",
+      "norm_label": "@sveltejs/adapter-static",
+      "source_file": "package.json",
+      "source_location": "L36"
+    },
+    {
+      "id": "ref_sveltejs_vite_plugin_svelte",
+      "label": "@sveltejs/vite-plugin-svelte",
+      "_origin": "ast",
+      "community": 14,
+      "community_name": "svelte.config.js",
+      "file_type": "concept",
+      "norm_label": "@sveltejs/vite-plugin-svelte",
+      "source_file": "package.json",
+      "source_location": "L38"
     },
     {
       "id": "src_tauri_src_attach",
@@ -4395,17 +4483,6 @@
       "file_type": "code",
       "norm_label": "@tauri-apps/api/core",
       "source_file": "@tauri-apps/api/core"
-    },
-    {
-      "id": "lib_projects_projects",
-      "label": "$lib/projects",
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "svelte",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "$lib/projects",
-      "source_file": "$lib/projects"
     },
     {
       "id": "svelte",
@@ -6198,7 +6275,7 @@
       "file_type": "code",
       "norm_label": "browser_urls()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L321"
+      "source_location": "L335"
     },
     {
       "id": "src_tauri_src_activity_cest",
@@ -6209,7 +6286,7 @@
       "file_type": "code",
       "norm_label": "cest",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L264"
+      "source_location": "L276"
     },
     {
       "id": "src_tauri_src_activity_cut",
@@ -6220,7 +6297,7 @@
       "file_type": "code",
       "norm_label": "cut()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L92"
+      "source_location": "L103"
     },
     {
       "id": "src_tauri_src_activity_dismiss",
@@ -6231,7 +6308,7 @@
       "file_type": "code",
       "norm_label": "dismiss()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L188"
+      "source_location": "L200"
     },
     {
       "id": "src_tauri_src_activity_dismissals",
@@ -6242,7 +6319,7 @@
       "file_type": "code",
       "norm_label": "dismissals()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L352"
+      "source_location": "L394"
     },
     {
       "id": "src_tauri_src_activity_dt",
@@ -6253,7 +6330,18 @@
       "file_type": "code",
       "norm_label": "dt()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L254"
+      "source_location": "L266"
+    },
+    {
+      "id": "src_tauri_src_activity_editor_watchers",
+      "label": "editor_watchers()",
+      "_origin": "ast",
+      "community": 22,
+      "community_name": "activity.rs",
+      "file_type": "code",
+      "norm_label": "editor_watchers()",
+      "source_file": "src-tauri/src/activity.rs",
+      "source_location": "L366"
     },
     {
       "id": "src_tauri_src_activity_ev",
@@ -6264,7 +6352,7 @@
       "file_type": "code",
       "norm_label": "ev()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L258"
+      "source_location": "L270"
     },
     {
       "id": "src_tauri_src_activity_exclude_rules",
@@ -6275,7 +6363,7 @@
       "file_type": "code",
       "norm_label": "exclude_rules()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L87"
+      "source_location": "L98"
     },
     {
       "id": "src_tauri_src_activity_fetch",
@@ -6286,7 +6374,7 @@
       "file_type": "code",
       "norm_label": "fetch()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L234"
+      "source_location": "L246"
     },
     {
       "id": "src_tauri_src_activity_gap_secs",
@@ -6308,7 +6396,7 @@
       "file_type": "code",
       "norm_label": "get()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L202"
+      "source_location": "L214"
     },
     {
       "id": "src_tauri_src_activity_min_block_secs",
@@ -6330,7 +6418,7 @@
       "file_type": "code",
       "norm_label": "only_loopback()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L367"
+      "source_location": "L409"
     },
     {
       "id": "src_tauri_src_activity_parse_events",
@@ -6341,7 +6429,7 @@
       "file_type": "code",
       "norm_label": "parse_events()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L72"
+      "source_location": "L78"
     },
     {
       "id": "src_tauri_src_activity_pick_buckets",
@@ -6352,7 +6440,7 @@
       "file_type": "code",
       "norm_label": "pick_buckets()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L62"
+      "source_location": "L64"
     },
     {
       "id": "src_tauri_src_activity_request",
@@ -6363,7 +6451,7 @@
       "file_type": "code",
       "norm_label": "request()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L212"
+      "source_location": "L224"
     },
     {
       "id": "src_tauri_src_activity_rs_naivedate",
@@ -6418,7 +6506,7 @@
       "file_type": "code",
       "norm_label": "suggest()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L127"
+      "source_location": "L139"
     },
     {
       "id": "src_tauri_src_activity_suggestions_from_a_day",
@@ -6429,7 +6517,7 @@
       "file_type": "code",
       "norm_label": "suggestions_from_a_day()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L281"
+      "source_location": "L295"
     },
     {
       "id": "src_tauri_src_activity_undismissed",
@@ -6440,7 +6528,7 @@
       "file_type": "code",
       "norm_label": "undismissed()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L195"
+      "source_location": "L207"
     },
     {
       "id": "src_tauri_src_activity_url_label",
@@ -6451,7 +6539,7 @@
       "file_type": "code",
       "norm_label": "url_label()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L98"
+      "source_location": "L110"
     },
     {
       "id": "src_tauri_src_activity_win",
@@ -6462,7 +6550,7 @@
       "file_type": "code",
       "norm_label": "win()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L261"
+      "source_location": "L273"
     },
     {
       "id": "src_tauri_src_activity_with_urls",
@@ -6473,7 +6561,7 @@
       "file_type": "code",
       "norm_label": "with_urls()",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L108"
+      "source_location": "L120"
     },
     {
       "id": "tz",
@@ -7048,39 +7136,6 @@
       "source_location": "L632"
     },
     {
-      "id": "src_tauri_src_org_parts_line",
-      "label": ".line()",
-      "_origin": "ast",
-      "community": 23,
-      "community_name": "export.rs",
-      "file_type": "code",
-      "norm_label": ".line()",
-      "source_file": "src-tauri/src/org.rs",
-      "source_location": "L554"
-    },
-    {
-      "id": "src_tauri_src_org_task_entry",
-      "label": "task_entry()",
-      "_origin": "ast",
-      "community": 23,
-      "community_name": "export.rs",
-      "file_type": "code",
-      "norm_label": "task_entry()",
-      "source_file": "src-tauri/src/org.rs",
-      "source_location": "L861"
-    },
-    {
-      "id": "src_tauri_src_timeclock_org_table",
-      "label": "org_table()",
-      "_origin": "ast",
-      "community": 23,
-      "community_name": "export.rs",
-      "file_type": "code",
-      "norm_label": "org_table()",
-      "source_file": "src-tauri/src/timeclock.rs",
-      "source_location": "L565"
-    },
-    {
       "id": "src_tauri_src_notes",
       "label": "notes.rs",
       "_origin": "ast",
@@ -7389,6 +7444,17 @@
       "source_file": "$lib/Agenda.svelte"
     },
     {
+      "id": "codemirror_state_state",
+      "label": "@codemirror/state",
+      "_origin": "ast",
+      "community": 29,
+      "community_name": "+page.svelte",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "@codemirror/state",
+      "source_file": "@codemirror/state"
+    },
+    {
       "id": "editor",
       "label": "$lib/editor",
       "_origin": "ast",
@@ -7497,17 +7563,6 @@
       "file_type": "code",
       "norm_label": "$lib/taskdialog.svelte",
       "source_file": "$lib/TaskDialog.svelte"
-    },
-    {
-      "id": "tauri_apps_api_event_event",
-      "label": "@tauri-apps/api/event",
-      "_origin": "ast",
-      "community": 29,
-      "community_name": "+page.svelte",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "@tauri-apps/api/event",
-      "source_file": "@tauri-apps/api/event"
     },
     {
       "id": "theme_css",
@@ -7673,6 +7728,17 @@
       "norm_label": "markcache",
       "source_file": "src/lib/editor.ts",
       "source_location": "L210"
+    },
+    {
+      "id": "src_lib_editor_orgfold",
+      "label": "orgFold",
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "orgfold",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L107"
     },
     {
       "id": "src_lib_editor_orgstyle",
@@ -8294,6 +8360,39 @@
       "source_location": "L40"
     },
     {
+      "id": "vite_config",
+      "label": "vite.config.js",
+      "_origin": "ast",
+      "community": 32,
+      "community_name": "vite.config.js",
+      "file_type": "code",
+      "norm_label": "vite.config.js",
+      "source_file": "vite.config.js",
+      "source_location": "L1"
+    },
+    {
+      "id": "ref_sveltejs_kit",
+      "label": "@sveltejs/kit",
+      "_origin": "ast",
+      "community": 32,
+      "community_name": "vite.config.js",
+      "file_type": "concept",
+      "norm_label": "@sveltejs/kit",
+      "source_file": "package.json",
+      "source_location": "L37"
+    },
+    {
+      "id": "ref_vite",
+      "label": "vite",
+      "_origin": "ast",
+      "community": 32,
+      "community_name": "vite.config.js",
+      "file_type": "concept",
+      "norm_label": "vite",
+      "source_file": "package.json",
+      "source_location": "L44"
+    },
+    {
       "id": "src_lib_taskdialog",
       "label": "lib/TaskDialog.svelte",
       "_origin": "ast",
@@ -8371,21 +8470,10 @@
       "source_location": "L41"
     },
     {
-      "id": "src_lib_editor_orgfold",
-      "label": "orgFold",
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "level",
-      "file_type": "code",
-      "norm_label": "orgfold",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L107"
-    },
-    {
       "id": "lib_graph_graph",
       "label": "$lib/graph",
       "_origin": "ast",
-      "community": 35,
+      "community": 34,
       "community_name": "$lib/graph",
       "confidence": "EXTRACTED",
       "file_type": "code",
@@ -8397,7 +8485,7 @@
       "label": "lib/Graph.svelte",
       "_origin": "ast",
       "community": 35,
-      "community_name": "$lib/graph",
+      "community_name": "graph",
       "file_type": "code",
       "norm_label": "lib/graph.svelte",
       "source_file": "src/lib/Graph.svelte",
@@ -9132,7 +9220,7 @@
       "label": "idle.rs",
       "_origin": "ast",
       "community": 5,
-      "community_name": "super",
+      "community_name": "idle.rs",
       "file_type": "code",
       "norm_label": "idle.rs",
       "source_file": "src-tauri/src/idle.rs",
@@ -9143,7 +9231,7 @@
       "label": "idle_steps()",
       "_origin": "ast",
       "community": 5,
-      "community_name": "super",
+      "community_name": "idle.rs",
       "file_type": "code",
       "norm_label": "idle_steps()",
       "source_file": "src-tauri/src/idle.rs",
@@ -9154,7 +9242,7 @@
       "label": "AppHandle",
       "_origin": "ast",
       "community": 5,
-      "community_name": "super",
+      "community_name": "idle.rs",
       "file_type": "code",
       "norm_label": "apphandle",
       "source_file": "",
@@ -9165,7 +9253,7 @@
       "label": "NaiveDateTime",
       "_origin": "ast",
       "community": 5,
-      "community_name": "super",
+      "community_name": "idle.rs",
       "file_type": "code",
       "norm_label": "naivedatetime",
       "source_file": "",
@@ -9176,7 +9264,7 @@
       "label": "source()",
       "_origin": "ast",
       "community": 5,
-      "community_name": "super",
+      "community_name": "idle.rs",
       "file_type": "code",
       "norm_label": "source()",
       "source_file": "src-tauri/src/idle.rs",
@@ -9187,7 +9275,7 @@
       "label": "start()",
       "_origin": "ast",
       "community": 5,
-      "community_name": "super",
+      "community_name": "idle.rs",
       "file_type": "code",
       "norm_label": "start()",
       "source_file": "src-tauri/src/idle.rs",
@@ -9198,7 +9286,7 @@
       "label": "step()",
       "_origin": "ast",
       "community": 5,
-      "community_name": "super",
+      "community_name": "idle.rs",
       "file_type": "code",
       "norm_label": "step()",
       "source_file": "src-tauri/src/idle.rs",
@@ -9469,7 +9557,7 @@
       "label": "ics.rs",
       "_origin": "ast",
       "community": 60,
-      "community_name": "ics.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "ics.rs",
       "source_file": "src-tauri/src/ics.rs",
@@ -9480,7 +9568,7 @@
       "label": "builds_feed()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "ics.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "builds_feed()",
       "source_file": "src-tauri/src/ics.rs",
@@ -9491,7 +9579,7 @@
       "label": "escape()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "ics.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "escape()",
       "source_file": "src-tauri/src/ics.rs",
@@ -9502,7 +9590,7 @@
       "label": "event()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "ics.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "event()",
       "source_file": "src-tauri/src/ics.rs",
@@ -9513,7 +9601,7 @@
       "label": "feed()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "ics.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "feed()",
       "source_file": "src-tauri/src/ics.rs",
@@ -9524,7 +9612,7 @@
       "label": "fnv()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "ics.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "fnv()",
       "source_file": "src-tauri/src/ics.rs",
@@ -9535,7 +9623,7 @@
       "label": "fold()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "ics.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "fold()",
       "source_file": "src-tauri/src/ics.rs",
@@ -9546,7 +9634,7 @@
       "label": "Ts",
       "_origin": "ast",
       "community": 60,
-      "community_name": "ics.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "ts",
       "source_file": "",
@@ -9773,15 +9861,26 @@
       "source_location": "L45"
     },
     {
-      "id": "codemirror_state_state",
-      "label": "@codemirror/state",
+      "id": "lib_projects_projects",
+      "label": "$lib/projects",
       "_origin": "ast",
       "community": 63,
-      "community_name": "@codemirror/state",
+      "community_name": "$lib/projects",
       "confidence": "EXTRACTED",
       "file_type": "code",
-      "norm_label": "@codemirror/state",
-      "source_file": "@codemirror/state"
+      "norm_label": "$lib/projects",
+      "source_file": "$lib/projects"
+    },
+    {
+      "id": "tauri_apps_api_event_event",
+      "label": "@tauri-apps/api/event",
+      "_origin": "ast",
+      "community": 64,
+      "community_name": "@tauri-apps/api/event",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "@tauri-apps/api/event",
+      "source_file": "@tauri-apps/api/event"
     },
     {
       "id": "src_tauri_tauri_conf",
@@ -10158,17 +10257,6 @@
       "source_location": "L4"
     },
     {
-      "id": "kit",
-      "label": "@sveltejs/kit",
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "package.json",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "@sveltejs/kit",
-      "source_file": "@sveltejs/kit"
-    },
-    {
       "id": "package",
       "label": "package.json",
       "_origin": "ast",
@@ -10233,39 +10321,6 @@
       "norm_label": "version",
       "source_file": "package.json",
       "source_location": "L3"
-    },
-    {
-      "id": "svelte_config",
-      "label": "svelte.config.js",
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "package.json",
-      "file_type": "code",
-      "norm_label": "svelte.config.js",
-      "source_file": "svelte.config.js",
-      "source_location": "L1"
-    },
-    {
-      "id": "svelte_config_config",
-      "label": "config",
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "package.json",
-      "file_type": "code",
-      "norm_label": "config",
-      "source_file": "svelte.config.js",
-      "source_location": "L9"
-    },
-    {
-      "id": "vite_config",
-      "label": "vite.config.js",
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "package.json",
-      "file_type": "code",
-      "norm_label": "vite.config.js",
-      "source_file": "vite.config.js",
-      "source_location": "L1"
     },
     {
       "id": "ref_codemirror_commands",
@@ -10367,39 +10422,6 @@
       "source_location": "L42"
     },
     {
-      "id": "ref_sveltejs_adapter_static",
-      "label": "@sveltejs/adapter-static",
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "package.json",
-      "file_type": "concept",
-      "norm_label": "@sveltejs/adapter-static",
-      "source_file": "package.json",
-      "source_location": "L36"
-    },
-    {
-      "id": "ref_sveltejs_kit",
-      "label": "@sveltejs/kit",
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "package.json",
-      "file_type": "concept",
-      "norm_label": "@sveltejs/kit",
-      "source_file": "package.json",
-      "source_location": "L37"
-    },
-    {
-      "id": "ref_sveltejs_vite_plugin_svelte",
-      "label": "@sveltejs/vite-plugin-svelte",
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "package.json",
-      "file_type": "concept",
-      "norm_label": "@sveltejs/vite-plugin-svelte",
-      "source_file": "package.json",
-      "source_location": "L38"
-    },
-    {
       "id": "ref_tauri_apps_api",
       "label": "@tauri-apps/api",
       "_origin": "ast",
@@ -10475,17 +10497,6 @@
       "norm_label": "typescript",
       "source_file": "package.json",
       "source_location": "L43"
-    },
-    {
-      "id": "ref_vite",
-      "label": "vite",
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "package.json",
-      "file_type": "concept",
-      "norm_label": "vite",
-      "source_file": "package.json",
-      "source_location": "L44"
     },
     {
       "id": "tsconfig",
@@ -10762,18 +10773,6 @@
       "type": "external"
     },
     {
-      "id": "tauri",
-      "label": "tauri",
-      "_origin": "semantic",
-      "community": 12,
-      "community_name": "remind.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "tauri",
-      "source_file": "",
-      "type": "external"
-    },
-    {
       "id": "github_releases",
       "label": "GitHub Releases",
       "_origin": "semantic",
@@ -10794,18 +10793,6 @@
       "external": true,
       "file_type": "concept",
       "norm_label": "hashset",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "path",
-      "label": "path",
-      "_origin": "semantic",
-      "community": 15,
-      "community_name": "attach.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "path",
       "source_file": "",
       "type": "external"
     },
@@ -11062,18 +11049,6 @@
       "type": "external"
     },
     {
-      "id": "io",
-      "label": "io",
-      "_origin": "semantic",
-      "community": 22,
-      "community_name": "activity.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "io",
-      "source_file": "",
-      "type": "external"
-    },
-    {
       "id": "net",
       "label": "net",
       "_origin": "semantic",
@@ -11170,6 +11145,18 @@
       "type": "feature"
     },
     {
+      "id": "io",
+      "label": "io",
+      "_origin": "semantic",
+      "community": 31,
+      "community_name": "ai.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "io",
+      "source_file": "",
+      "type": "external"
+    },
+    {
       "id": "serde",
       "label": "serde",
       "_origin": "semantic",
@@ -11178,6 +11165,18 @@
       "external": true,
       "file_type": "concept",
       "norm_label": "serde",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "ref_node_process",
+      "label": "ref_node_process",
+      "_origin": "semantic",
+      "community": 32,
+      "community_name": "vite.config.js",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "ref_node_process",
       "source_file": "",
       "type": "external"
     },
@@ -11234,7 +11233,7 @@
       "label": "crate",
       "_origin": "semantic",
       "community": 5,
-      "community_name": "super",
+      "community_name": "idle.rs",
       "external": true,
       "file_type": "concept",
       "norm_label": "crate",
@@ -11246,7 +11245,7 @@
       "label": "json",
       "_origin": "semantic",
       "community": 5,
-      "community_name": "super",
+      "community_name": "idle.rs",
       "external": true,
       "file_type": "concept",
       "norm_label": "json",
@@ -11254,26 +11253,14 @@
       "type": "external"
     },
     {
-      "id": "now",
-      "label": "now",
+      "id": "tauri",
+      "label": "tauri",
       "_origin": "semantic",
       "community": 5,
-      "community_name": "super",
+      "community_name": "idle.rs",
       "external": true,
       "file_type": "concept",
-      "norm_label": "now",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "super",
-      "label": "super",
-      "_origin": "semantic",
-      "community": 5,
-      "community_name": "super",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "super",
+      "norm_label": "tauri",
       "source_file": "",
       "type": "external"
     },
@@ -11282,7 +11269,7 @@
       "label": "useridle",
       "_origin": "semantic",
       "community": 5,
-      "community_name": "super",
+      "community_name": "idle.rs",
       "external": true,
       "file_type": "concept",
       "norm_label": "useridle",
@@ -11410,6 +11397,18 @@
       "type": "external"
     },
     {
+      "id": "now",
+      "label": "now",
+      "_origin": "semantic",
+      "community": 57,
+      "community_name": "wayland_idle.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "now",
+      "source_file": "",
+      "type": "external"
+    },
+    {
       "id": "protocol",
       "label": "protocol",
       "_origin": "semantic",
@@ -11470,6 +11469,30 @@
       "type": "language"
     },
     {
+      "id": "path",
+      "label": "path",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "super",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "path",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "super",
+      "label": "super",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "super",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "super",
+      "source_file": "",
+      "type": "external"
+    },
+    {
       "id": "command",
       "label": "command",
       "_origin": "semantic",
@@ -11482,25 +11505,35 @@
       "type": "external"
     },
     {
-      "id": "ref_node_process",
-      "label": "ref_node_process",
-      "_origin": "semantic",
-      "community": 8,
-      "community_name": "package.json",
+      "id": "projects",
+      "label": "projects",
+      "community": 18,
+      "community_name": "svelte",
       "external": true,
       "file_type": "concept",
-      "norm_label": "ref_node_process",
+      "norm_label": "projects",
       "source_file": "",
       "type": "external"
     },
     {
-      "id": "state",
-      "label": "state",
+      "id": "event",
+      "label": "event",
       "community": 29,
       "community_name": "+page.svelte",
       "external": true,
       "file_type": "concept",
-      "norm_label": "state",
+      "norm_label": "event",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "graph",
+      "label": "graph",
+      "community": 35,
+      "community_name": "graph",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "graph",
       "source_file": "",
       "type": "external"
     }
@@ -13303,7 +13336,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L324",
+      "source_location": "L338",
       "weight": 1.0
     },
     {
@@ -13315,7 +13348,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L335",
+      "source_location": "L349",
       "weight": 1.0
     },
     {
@@ -13327,7 +13360,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L343",
+      "source_location": "L357",
       "weight": 1.0
     },
     {
@@ -13339,7 +13372,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L346",
+      "source_location": "L360",
       "weight": 1.0
     },
     {
@@ -13351,7 +13384,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L354",
+      "source_location": "L396",
       "weight": 1.0
     },
     {
@@ -13363,7 +13396,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L354",
+      "source_location": "L396",
       "weight": 1.0
     },
     {
@@ -13375,7 +13408,55 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L362",
+      "source_location": "L404",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_activity_editor_watchers",
+      "target": "src_tauri_src_activity_parse_events",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "src-tauri/src/activity.rs",
+      "source_location": "L370",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_activity_editor_watchers",
+      "target": "src_tauri_src_activity_exclude_rules",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "src-tauri/src/activity.rs",
+      "source_location": "L383",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_activity_editor_watchers",
+      "target": "src_tauri_src_activity_with_urls",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "src-tauri/src/activity.rs",
+      "source_location": "L384",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_activity_editor_watchers",
+      "target": "src_tauri_src_activity_suggest",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "src-tauri/src/activity.rs",
+      "source_location": "L388",
       "weight": 1.0
     },
     {
@@ -13387,7 +13468,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L235",
+      "source_location": "L247",
       "weight": 1.0
     },
     {
@@ -13399,7 +13480,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L235",
+      "source_location": "L247",
       "weight": 1.0
     },
     {
@@ -13411,7 +13492,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L242",
+      "source_location": "L254",
       "weight": 1.0
     },
     {
@@ -13423,7 +13504,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L247",
+      "source_location": "L259",
       "weight": 1.0
     },
     {
@@ -13435,7 +13516,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L203",
+      "source_location": "L215",
       "weight": 1.0
     },
     {
@@ -13447,7 +13528,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L76",
+      "source_location": "L82",
       "weight": 1.0
     },
     {
@@ -13459,7 +13540,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L135",
+      "source_location": "L147",
       "weight": 1.0
     },
     {
@@ -13471,7 +13552,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L298",
+      "source_location": "L312",
       "weight": 1.0
     },
     {
@@ -13483,7 +13564,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L301",
+      "source_location": "L315",
       "weight": 1.0
     },
     {
@@ -13495,7 +13576,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L303",
+      "source_location": "L317",
       "weight": 1.0
     },
     {
@@ -13507,7 +13588,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L314",
+      "source_location": "L328",
       "weight": 1.0
     },
     {
@@ -13519,7 +13600,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L115",
+      "source_location": "L127",
       "weight": 1.0
     },
     {
@@ -13531,7 +13612,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L117",
+      "source_location": "L129",
       "weight": 1.0
     },
     {
@@ -19675,7 +19756,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L39",
+      "source_location": "L40",
       "weight": 1.0
     },
     {
@@ -19687,7 +19768,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L21",
+      "source_location": "L22",
       "weight": 1.0
     },
     {
@@ -19699,7 +19780,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L30",
+      "source_location": "L31",
       "weight": 1.0
     },
     {
@@ -20047,7 +20128,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L39",
+      "source_location": "L40",
       "weight": 1.0
     },
     {
@@ -20059,7 +20140,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L41",
+      "source_location": "L42",
       "weight": 1.0
     },
     {
@@ -20071,7 +20152,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L92",
+      "source_location": "L103",
       "weight": 1.0
     },
     {
@@ -20083,7 +20164,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L87",
+      "source_location": "L98",
       "weight": 1.0
     },
     {
@@ -20095,7 +20176,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L234",
+      "source_location": "L246",
       "weight": 1.0
     },
     {
@@ -20107,7 +20188,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L72",
+      "source_location": "L78",
       "weight": 1.0
     },
     {
@@ -20119,7 +20200,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L62",
+      "source_location": "L64",
       "weight": 1.0
     },
     {
@@ -20131,7 +20212,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L127",
+      "source_location": "L139",
       "weight": 1.0
     },
     {
@@ -20143,7 +20224,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L195",
+      "source_location": "L207",
       "weight": 1.0
     },
     {
@@ -20155,7 +20236,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L108",
+      "source_location": "L120",
       "weight": 1.0
     },
     {
@@ -23552,7 +23633,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L252",
+      "source_location": "L264",
       "weight": 1.0
     },
     {
@@ -24776,7 +24857,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L188",
+      "source_location": "L200",
       "weight": 1.0
     },
     {
@@ -24788,7 +24869,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L188",
+      "source_location": "L200",
       "weight": 1.0
     },
     {
@@ -24800,7 +24881,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L234",
+      "source_location": "L246",
       "weight": 1.0
     },
     {
@@ -24812,7 +24893,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L234",
+      "source_location": "L246",
       "weight": 1.0
     },
     {
@@ -24824,7 +24905,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L72",
+      "source_location": "L78",
       "weight": 1.0
     },
     {
@@ -24836,7 +24917,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L127",
+      "source_location": "L139",
       "weight": 1.0
     },
     {
@@ -24848,7 +24929,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L127",
+      "source_location": "L139",
       "weight": 1.0
     },
     {
@@ -24860,7 +24941,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L127",
+      "source_location": "L139",
       "weight": 1.0
     },
     {
@@ -24872,7 +24953,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L127",
+      "source_location": "L139",
       "weight": 1.0
     },
     {
@@ -24884,7 +24965,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L195",
+      "source_location": "L207",
       "weight": 1.0
     },
     {
@@ -24896,7 +24977,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L108",
+      "source_location": "L120",
       "weight": 1.0
     },
     {
@@ -27296,7 +27377,7 @@
       "confidence_score": 1.0,
       "context": "return_type",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L188",
+      "source_location": "L200",
       "weight": 1.0
     },
     {
@@ -27308,7 +27389,7 @@
       "confidence_score": 1.0,
       "context": "return_type",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L254",
+      "source_location": "L266",
       "weight": 1.0
     },
     {
@@ -31319,13 +31400,24 @@
     },
     {
       "source": "src_tauri_src_activity",
-      "target": "src_tauri_src_activity_with_urls",
+      "target": "src_tauri_src_activity_cut",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L108",
+      "source_location": "L103",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_activity",
+      "target": "src_tauri_src_activity_url_label",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src-tauri/src/activity.rs",
+      "source_location": "L110",
       "weight": 1.0
     },
     {
@@ -31341,13 +31433,24 @@
     },
     {
       "source": "src_tauri_src_activity",
+      "target": "src_tauri_src_activity_with_urls",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src-tauri/src/activity.rs",
+      "source_location": "L120",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_activity",
       "target": "src_tauri_src_activity_suggest",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L127",
+      "source_location": "L139",
       "weight": 1.0
     },
     {
@@ -31363,24 +31466,24 @@
     },
     {
       "source": "src_tauri_src_activity",
-      "target": "src_tauri_src_activity_dismiss",
-      "relation": "contains",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L188",
-      "weight": 1.0
-    },
-    {
-      "source": "src_tauri_src_activity",
       "target": "src_tauri_src_activity_span",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L19",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_activity",
+      "target": "src_tauri_src_activity_dismiss",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src-tauri/src/activity.rs",
+      "source_location": "L200",
       "weight": 1.0
     },
     {
@@ -31391,7 +31494,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L195",
+      "source_location": "L207",
       "weight": 1.0
     },
     {
@@ -31402,7 +31505,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L202",
+      "source_location": "L214",
       "weight": 1.0
     },
     {
@@ -31413,7 +31516,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L212",
+      "source_location": "L224",
       "weight": 1.0
     },
     {
@@ -31424,7 +31527,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L234",
+      "source_location": "L246",
       "weight": 1.0
     },
     {
@@ -31435,7 +31538,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L254",
+      "source_location": "L266",
       "weight": 1.0
     },
     {
@@ -31446,7 +31549,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L258",
+      "source_location": "L270",
       "weight": 1.0
     },
     {
@@ -31457,7 +31560,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L261",
+      "source_location": "L273",
       "weight": 1.0
     },
     {
@@ -31468,7 +31571,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L264",
+      "source_location": "L276",
       "weight": 1.0
     },
     {
@@ -31479,7 +31582,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L267",
+      "source_location": "L279",
       "weight": 1.0
     },
     {
@@ -31490,7 +31593,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L28",
+      "source_location": "L29",
       "weight": 1.0
     },
     {
@@ -31501,7 +31604,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L281",
+      "source_location": "L295",
       "weight": 1.0
     },
     {
@@ -31512,29 +31615,18 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L321",
+      "source_location": "L335",
       "weight": 1.0
     },
     {
       "source": "src_tauri_src_activity",
-      "target": "src_tauri_src_activity_dismissals",
+      "target": "src_tauri_src_activity_editor_watchers",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L352",
-      "weight": 1.0
-    },
-    {
-      "source": "src_tauri_src_activity",
-      "target": "src_tauri_src_activity_only_loopback",
-      "relation": "contains",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L367",
+      "source_location": "L366",
       "weight": 1.0
     },
     {
@@ -31545,7 +31637,29 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L38",
+      "source_location": "L39",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_activity",
+      "target": "src_tauri_src_activity_dismissals",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src-tauri/src/activity.rs",
+      "source_location": "L394",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_activity",
+      "target": "src_tauri_src_activity_only_loopback",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src-tauri/src/activity.rs",
+      "source_location": "L409",
       "weight": 1.0
     },
     {
@@ -31556,7 +31670,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L45",
+      "source_location": "L46",
       "weight": 1.0
     },
     {
@@ -31567,7 +31681,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L62",
+      "source_location": "L64",
       "weight": 1.0
     },
     {
@@ -31578,34 +31692,12 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L72",
+      "source_location": "L78",
       "weight": 1.0
     },
     {
       "source": "src_tauri_src_activity",
       "target": "src_tauri_src_activity_exclude_rules",
-      "relation": "contains",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L87",
-      "weight": 1.0
-    },
-    {
-      "source": "src_tauri_src_activity",
-      "target": "src_tauri_src_activity_cut",
-      "relation": "contains",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L92",
-      "weight": 1.0
-    },
-    {
-      "source": "src_tauri_src_activity",
-      "target": "src_tauri_src_activity_url_label",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -36065,7 +36157,7 @@
     },
     {
       "source": "src_lib_graph_svelte_src_lib_graph",
-      "target": "lib_graph_graph",
+      "target": "graph",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -36092,7 +36184,7 @@
     },
     {
       "source": "src_lib_projects_svelte_src_lib_projects",
-      "target": "lib_projects_projects",
+      "target": "projects",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -36155,6 +36247,15 @@
     },
     {
       "source": "src_routes_page",
+      "target": "codemirror_state_state",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/routes/+page.svelte"
+    },
+    {
+      "source": "src_routes_page",
       "target": "core",
       "relation": "imports_from",
       "_origin": "ast",
@@ -36165,6 +36266,15 @@
     {
       "source": "src_routes_page",
       "target": "editor",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/routes/+page.svelte"
+    },
+    {
+      "source": "src_routes_page",
+      "target": "event",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -36245,15 +36355,6 @@
     },
     {
       "source": "src_routes_page",
-      "target": "state",
-      "relation": "imports_from",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/routes/+page.svelte"
-    },
-    {
-      "source": "src_routes_page",
       "target": "svelte",
       "relation": "imports_from",
       "_origin": "ast",
@@ -36264,15 +36365,6 @@
     {
       "source": "src_routes_page",
       "target": "taskdialog_svelte",
-      "relation": "imports_from",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/routes/+page.svelte"
-    },
-    {
-      "source": "src_routes_page",
-      "target": "tauri_apps_api_event_event",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -37057,7 +37149,7 @@
       "confidence_score": 0.85,
       "context": "call",
       "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L245",
+      "source_location": "L257",
       "weight": 1.0
     },
     {
@@ -37350,5 +37442,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "fb3d562d2107e9c153f81214ff6b202aba062937"
+  "built_at_commit": "b76c0ef41f4d6ad2e14a8b1fce753b913e3b9acb"
 }
