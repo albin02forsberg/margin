@@ -153,7 +153,7 @@ describe("Features", () => {
     assert.match(read(join(dir, "hub.html")), /<a href="leaf\.html"[^>]*>the leaf<\/a>/);
     assert.match(read(join(dir, "leaf.html")), /A leaf\./);
 
-    // Overwriting drops pages no longer in the export, but leaves other files alone.
+    // Overwriting moves pages no longer in the export into old/, and leaves other files alone.
     writeFileSync(join(dir, "gone.html"), "old");
     writeFileSync(join(dir, "pic.png"), "png");
     await browser.keys(" ");
@@ -173,6 +173,7 @@ describe("Features", () => {
     await find(".picker label span", "Exported to");
     await browser.keys(Key.Escape);
     assert.ok(!existsSync(join(dir, "gone.html")), "stale page kept");
+    assert.equal(read(join(dir, "old", "gone.html")), "old", "stale page not moved to old/");
     assert.ok(existsSync(join(dir, "leaf.html")) && existsSync(join(dir, "pic.png")) && existsSync(join(dir, "hub.md")));
   });
 });

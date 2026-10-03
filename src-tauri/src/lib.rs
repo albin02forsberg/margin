@@ -742,7 +742,7 @@ fn export_note(s: State<App>, path: PathBuf, text: String, format: String, overw
 
 /// Export note TEXT (the buffer of PATH) and the notes it reaches by id: links within DEPTH hops
 /// as FORMAT (html | md) pages in `<export_dir>/<stem>/`, id: links between them made relative,
-/// pages of an earlier export no longer included removed; pdf: one `<stem>.html` print page. Returns PATH's page.
+/// pages of an earlier export no longer included moved into `old/`; pdf: one `<stem> (linked).html` print page. Returns PATH's page.
 #[tauri::command]
 fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, format: String, overwrite: Option<bool>) -> R<PathBuf> {
     let kw = s.kw();
@@ -752,14 +752,17 @@ fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, forma
     let ext = if format == "md" { "md" } else { "html" };
     let (pages, ids) = export::bundle(&files, &root, depth, ext);
     if format == "pdf" {
-        return write_export(&s, &format!("{}.html", stem(&path)), export::combined(&pages, &ids, &kw), overwrite);
+        return write_export(&s, &format!("{} (linked).html", stem(&path)), export::combined(&pages, &ids, &kw), overwrite);
     }
     let dir = export_path(&s, &stem(&path), overwrite)?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let names: Vec<String> = pages.iter().map(|(_, n)| n.clone()).collect();
     let existing: Vec<String> = std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten().filter(|e| e.path().is_file()).map(|e| e.file_name().to_string_lossy().to_string()).collect();
-    for old in export::stale(&existing, &names, ext) {
-        std::fs::remove_file(dir.join(old)).map_err(|e| e.to_string())?;
+    for n in export::stale(&existing, &names, ext) {
+        let old = dir.join("old");
+        std::fs::create_dir_all(&old).map_err(|e| e.to_string())?;
+        let _ = std::fs::remove_file(old.join(&n)); // Windows' rename won't replace
+        std::fs::rename(dir.join(&n), old.join(&n)).map_err(|e| e.to_string())?;
     }
     for (f, name) in &pages {
         let (d, title, base) = (export::parse(&f.text, &kw), stem(&f.path), f.path.parent().unwrap_or(Path::new("")));
