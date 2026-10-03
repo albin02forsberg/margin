@@ -224,9 +224,9 @@ fn orphan_warning(old: &Config, new: &Config) -> String {
     format!("Files stay in {} (nothing was moved); copy them over if you need them.", list.join(", "))
 }
 
-/// Whether CFG is among PATHS, and the PATHS under ROOTS (minus .git), sorted and deduplicated.
-fn split_changes(paths: Vec<PathBuf>, cfg: &Path, roots: &[PathBuf]) -> (bool, Vec<PathBuf>) {
-    let cfg_changed = paths.iter().any(|p| p == cfg);
+/// Whether CFG (the file or, for a symlink, its target CFG_REAL) is among PATHS, and the PATHS under ROOTS (minus .git), sorted and deduplicated.
+fn split_changes(paths: Vec<PathBuf>, cfg: &Path, cfg_real: &Path, roots: &[PathBuf]) -> (bool, Vec<PathBuf>) {
+    let cfg_changed = paths.iter().any(|p| p == cfg || p == cfg_real);
     let mut rest: Vec<PathBuf> = paths.into_iter().filter(|p| roots.iter().any(|r| p.starts_with(r)) && !p.components().any(|c| c.as_os_str() == ".git")).collect();
     rest.sort();
     rest.dedup();
@@ -241,9 +241,11 @@ fn watch(app: &AppHandle) {
     let c = s.cfg();
     let handle = app.clone();
     let (cfg_path, roots) = (s.cfg_path.clone(), [c.notes(), c.data()]);
+    let cfg_real = std::fs::canonicalize(&cfg_path).unwrap_or_else(|_| cfg_path.clone());
+    let real = cfg_real.clone();
     let debouncer = new_debouncer(std::time::Duration::from_millis(150), move |res: DebounceEventResult| {
         let Ok(events) = res else { return };
-        let (cfg_changed, paths) = split_changes(events.into_iter().map(|e| e.path).collect(), &cfg_path, &roots);
+        let (cfg_changed, paths) = split_changes(events.into_iter().map(|e| e.path).collect(), &cfg_path, &real, &roots);
         if cfg_changed {
             let disk = std::fs::read_to_string(&cfg_path).ok().and_then(|t| toml::from_str::<Config>(&t).ok());
             let s = handle.state::<App>();
@@ -268,8 +270,13 @@ fn watch(app: &AppHandle) {
             eprintln!("can't watch {}: {e}", dir.display());
         }
     }
-    if let Err(e) = d.watcher().watch(s.cfg_path.parent().unwrap(), notify::RecursiveMode::NonRecursive) {
-        eprintln!("can't watch {}: {e}", s.cfg_path.display());
+    // A symlinked config.toml: edits to its target land in the target's directory.
+    let mut dirs = vec![s.cfg_path.parent().unwrap(), cfg_real.parent().unwrap()];
+    dirs.dedup();
+    for dir in dirs {
+        if let Err(e) = d.watcher().watch(dir, notify::RecursiveMode::NonRecursive) {
+            eprintln!("can't watch {}: {e}", dir.display());
+        }
     }
     *s.watcher.lock().unwrap() = Some(d);
 }
@@ -1167,8 +1174,11 @@ mod tests {
         let (cfg, roots) = (PathBuf::from("/c/config.toml"), [PathBuf::from("/n"), PathBuf::from("/d")]);
         let p = |v: &[&str]| v.iter().map(PathBuf::from).collect::<Vec<_>>();
         let changes = p(&["/n/b.org", "/c/.config.toml.margin-tmp", "/c/config.toml", "/n/a.org", "/n/.git/x", "/d/w/log", "/n/a.org"]);
-        assert_eq!(split_changes(changes, &cfg, &roots), (true, p(&["/d/w/log", "/n/a.org", "/n/b.org"])));
-        assert_eq!(split_changes(p(&["/c/tutorial.org", "/n/a.org"]), &cfg, &roots), (false, p(&["/n/a.org"])));
+        assert_eq!(split_changes(changes, &cfg, &cfg, &roots), (true, p(&["/d/w/log", "/n/a.org", "/n/b.org"])));
+        assert_eq!(split_changes(p(&["/c/tutorial.org", "/n/a.org"]), &cfg, &cfg, &roots), (false, p(&["/n/a.org"])));
+        // A symlinked config.toml: the target's events count too.
+        let real = PathBuf::from("/dots/config.toml");
+        assert_eq!(split_changes(p(&["/dots/config.toml"]), &cfg, &real, &roots), (true, vec![]));
     }
 
     fn cfg(notes: &Path, data: &Path, profiles: &str) -> Config {
