@@ -108,7 +108,7 @@ fn config(s: State<App>) -> Value {
     let tc = s.tc();
     json!({
         "config": c, "config_path": s.cfg_path, "notes": c.notes(), "data": c.data(), "export": config::expand(&c.export_dir),
-        "profile": s.profile(), "log_path": tc.log_path(), "diary_path": tc.diary, "config_error": s.cfg_error.lock().unwrap().clone(),
+        "profile": s.profile(), "log_path": tc.log_path(), "projects_path": tc.projects_path(), "diary_path": tc.diary, "config_error": s.cfg_error.lock().unwrap().clone(),
     })
 }
 
@@ -747,7 +747,8 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
             format!("Flex ({profile}): total {total:+.2} h, last 7 days {period:+.2} h over {days} worked days")
         }
         "doctor" => {
-            let issues = timeclock::doctor(&tc.read_log(), timeclock::now());
+            let mut issues = timeclock::doctor(&tc.read_log(), timeclock::now());
+            issues.extend(tc.file_issues());
             let body = if issues.is_empty() { "- ✅ No issues found.".to_string() } else { issues.iter().map(|i| format!("- ⚠ {i}")).collect::<Vec<_>>().join("\n") };
             format!("#+TITLE: Timeclock Doctor — {profile}\n\n{body}\n")
         }
@@ -759,7 +760,7 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
 #[tauri::command]
 fn tc_csv(s: State<App>, start: String, end: String, path: PathBuf) -> R<String> {
     let tc = s.tc();
-    std::fs::write(&path, timeclock::csv(&tc.sessions(), &tc.projects(), date(&start)?, date(&end)?)).map_err(|e| e.to_string())?;
+    std::fs::write(&path, timeclock::csv(&tc.sessions(), &tc.load_projects()?, date(&start)?, date(&end)?)).map_err(|e| e.to_string())?;
     Ok(format!("✅ CSV exported to {}", path.display()))
 }
 
@@ -838,7 +839,7 @@ fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, forma
 fn export_report(s: State<App>, start: String, end: String, print: bool, overwrite: Option<bool>) -> R<PathBuf> {
     let tc = s.tc();
     let (start, end) = (date(&start)?, date(&end)?);
-    let org = timeclock::weekly_report(&tc.sessions(), &tc.projects(), start, end, &s.profile());
+    let org = timeclock::weekly_report(&tc.sessions(), &tc.load_projects()?, start, end, &s.profile());
     let html = export::html(&export::parse(&org, &s.kw()), "Time report", Path::new(""), &export::Ids::new(), print);
     write_export(&s, &format!("time_report_{}_{start}_{end}.html", s.profile().to_lowercase()), html, overwrite)
 }

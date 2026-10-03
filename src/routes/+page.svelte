@@ -140,9 +140,9 @@
     t.saved = text;
     // Keystrokes typed while the write was in flight keep the tab dirty.
     if (stateOf(t).doc.toString() === text) t.dirty = false;
-    if (t.path === cfg.log_path) {
+    if (t.path === cfg.log_path || t.path === cfg.projects_path) {
       const r: string = await call("tc_report", { kind: "doctor" });
-      if (!r.includes("No issues")) flash("Saved — the time log has problems, see Time → Check log");
+      if (!r.includes("No issues")) flash("Saved — the time log or projects have problems, see Time → Check log");
     } else if (t.path === cfg.config_path) {
       cfg = await call("config");
       flash("Settings reloaded.");
