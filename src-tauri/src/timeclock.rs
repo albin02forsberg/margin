@@ -91,8 +91,14 @@ impl Tc {
         self.dir.join("projects.toml")
     }
 
+    /// The log for display; unreadable is empty.
     pub fn read_log(&self) -> String {
         fs::read_to_string(self.log_path()).unwrap_or_default()
+    }
+
+    /// The log before rewriting it: missing is empty, unreadable is an error.
+    fn try_read_log(&self) -> Result<String, String> {
+        read_or_empty(&self.log_path())
     }
 
     /// Events with their line index. Malformed lines are skipped (`doctor` reports them).
@@ -107,15 +113,22 @@ impl Tc {
     }
 
     fn rewrite_line(&self, idx: usize, ev: &Event) -> Result<(), String> {
-        let text = self.read_log();
+        let text = self.try_read_log()?;
         let mut lines: Vec<String> = text.lines().map(String::from).collect();
         let l = lines.get_mut(idx).ok_or("line not found")?;
         *l = serde_json::to_string(ev).unwrap();
         crate::config::write_atomic(&self.log_path(), lines.join("\n") + "\n").map_err(|e| e.to_string())
     }
 
+    /// Projects for display; unreadable or malformed is empty.
     pub fn projects(&self) -> Projects {
-        fs::read_to_string(self.projects_path()).ok().and_then(|s| toml::from_str(&s).ok()).unwrap_or_default()
+        self.load_projects().unwrap_or_default()
+    }
+
+    /// Projects before saving them: missing is empty, unreadable or malformed is an error.
+    pub fn load_projects(&self) -> Result<Projects, String> {
+        let path = self.projects_path();
+        toml::from_str(&read_or_empty(&path)?).map_err(|e| format!("{}: {e}", path.display()))
     }
 
     pub fn save_projects(&self, p: &Projects) -> Result<(), String> {
@@ -174,7 +187,7 @@ impl Tc {
 
     /// Add PROJECT if new, with EXPORT_CODE (or its own name).
     fn ensure_project(&self, project: &str, export_code: Option<&str>) -> Result<(), String> {
-        let mut projects = self.projects();
+        let mut projects = self.load_projects()?;
         if !project.is_empty() && !projects.contains_key(project) {
             let code = export_code.map(str::trim).filter(|c| !c.is_empty()).unwrap_or(project);
             projects.insert(project.into(), Project::new(code));
@@ -191,7 +204,7 @@ impl Tc {
         if start >= end || end > now {
             return Err("A session must end after it starts, and not in the future.".into());
         }
-        let text = self.read_log();
+        let text = self.try_read_log()?;
         let events = parse_events(&text);
         if spans(&events, now).iter().any(|&(s, e)| s < end && start < e) {
             return Err("That overlaps time already logged.".into());
@@ -202,6 +215,7 @@ impl Tc {
         }
         let (project, note) = (project.trim(), note.trim());
         self.ensure_project(project, export_code)?;
+        self.check_diary(note)?;
         let pos = before.map_or(0, |(i, _)| i + 1);
         let mut lines: Vec<String> = text.lines().map(String::from).collect();
         let pair = [Event::In { t: start, project: project.into(), task: String::new() }, Event::Out { t: end, note: note.into() }];
@@ -219,9 +233,18 @@ impl Tc {
     fn clock_out_at(&self, note: &str, t: NaiveDateTime) -> Result<bool, String> {
         let Some((start, project, _)) = self.current() else { return Ok(false) };
         let note = note.trim();
+        self.check_diary(note)?;
         self.append(&Event::Out { t, note: note.into() })?;
         append_diary(&self.diary, &project, note, hours(t - start), t).map_err(|e| e.to_string())?;
         Ok(true)
+    }
+
+    /// Fail before logging if the diary NOTE goes to can't be read, so a retry doesn't double-log.
+    fn check_diary(&self, note: &str) -> Result<(), String> {
+        if !note.is_empty() {
+            read_or_empty(&self.diary)?;
+        }
+        Ok(())
     }
 
     /// Drop time spent away: clock out at SINCE (not before the session start), then
@@ -269,7 +292,7 @@ impl Tc {
 
     /// One-time import of the Emacs timelog-<profile> + timeclock-projects-<profile>.eld.
     pub fn import_emacs(&self, old_dir: &Path, profile: &str) -> Result<usize, String> {
-        if !self.read_log().trim().is_empty() {
+        if !self.try_read_log()?.trim().is_empty() {
             return Err("timelog already has data; import only works on an empty profile".into());
         }
         let p = profile.to_lowercase();
@@ -279,7 +302,7 @@ impl Tc {
             self.append(ev)?;
         }
         if let Ok(eld) = fs::read_to_string(old_dir.join(format!("timeclock-projects-{p}.eld"))) {
-            let mut projects = self.projects();
+            let mut projects = self.load_projects()?;
             projects.extend(import_projects(&eld));
             self.save_projects(&projects)?;
         }
@@ -663,13 +686,24 @@ pub fn doctor(text: &str, now: NaiveDateTime) -> Vec<String> {
     issues
 }
 
+/// PATH's text; missing is empty, any other read error is an error naming PATH.
+pub fn read_or_empty(path: &Path) -> Result<String, String> {
+    match fs::read_to_string(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        r => r.map_err(|e| format!("{}: {e}", path.display())),
+    }
+}
+
 /// Port of `albin/append-to-diary`.
 pub fn append_diary(path: &Path, project: &str, reason: &str, h: f64, now: NaiveDateTime) -> std::io::Result<()> {
     if reason.trim().is_empty() {
         return Ok(());
     }
     let heading = now.format("* %Y-%m-%d %A").to_string();
-    let mut text = fs::read_to_string(path).unwrap_or_default();
+    let mut text = match fs::read_to_string(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        r => r?,
+    };
     // End of that day's section (before the next heading and its blank lines), for past sessions.
     let (mut off, mut found, mut at) = (0, false, None);
     for l in text.split_inclusive('\n') {
@@ -897,6 +931,35 @@ mod tests {
         // Back to back is fine, and the running session stays last.
         tc.add_session(dt("2024-10-02 07:00"), dt("2024-10-02 08:00"), "A", None, "").unwrap();
         assert_eq!(tc.current().unwrap().1, "B");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unreadable_files_are_not_overwritten() {
+        let dir = std::env::temp_dir().join(format!("tc-bad-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), expected: 8.0 };
+        fs::create_dir_all(&tc.dir).unwrap();
+        // Malformed projects.toml: clock_in on a new project errors and leaves it alone.
+        fs::write(tc.projects_path(), "[Acme\nexport_code = 1").unwrap();
+        assert!(tc.clock_in("New", "", None).unwrap_err().contains("projects.toml"));
+        assert_eq!(fs::read_to_string(tc.projects_path()).unwrap(), "[Acme\nexport_code = 1");
+        assert!(tc.events().is_empty());
+        fs::remove_file(tc.projects_path()).unwrap();
+        // Invalid UTF-8 in the log: add_session errors and leaves it alone.
+        let bad = b"{\"ev\":\"in\",\"t\":\"2024-10-01T08:00:00\",\"project\":\"A\"}\n\xff\n".to_vec();
+        fs::write(tc.log_path(), &bad).unwrap();
+        assert!(tc.add_session(dt("2024-10-02 08:00"), dt("2024-10-02 09:00"), "A", None, "x").is_err());
+        assert_eq!(fs::read(tc.log_path()).unwrap(), bad);
+        fs::remove_file(tc.log_path()).unwrap();
+        // Unreadable diary: nothing gets logged, so a retry doesn't overlap.
+        fs::write(&tc.diary, b"\xff").unwrap();
+        assert!(tc.add_session(dt("2024-10-02 08:00"), dt("2024-10-02 09:00"), "A", None, "x").is_err());
+        assert!(!tc.log_path().exists());
+        tc.clock_in("A", "", None).unwrap();
+        assert!(tc.clock_out("note").is_err());
+        assert!(tc.current().is_some());
+        assert_eq!(fs::read(&tc.diary).unwrap(), b"\xff");
         let _ = fs::remove_dir_all(&dir);
     }
 

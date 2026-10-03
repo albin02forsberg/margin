@@ -531,7 +531,7 @@ fn tc_projects(s: State<App>) -> timeclock::Projects {
 #[tauri::command]
 fn tc_save_project(s: State<App>, name: String, project: Project) -> R<()> {
     let tc = s.tc();
-    let mut p = tc.projects();
+    let mut p = tc.load_projects()?;
     p.insert(name, project);
     tc.save_projects(&p)
 }
@@ -623,19 +623,23 @@ fn activity_suggestions(s: State<App>, date_input: String) -> R<Option<Vec<activ
     let projects: Vec<String> = tc.projects().into_iter().filter(|(_, p)| p.active).map(|(n, _)| n).collect();
     let tracked = timeclock::spans(&tc.events(), timeclock::now());
     let all = activity::suggest(&window, &afk, &tracked, &exclude, &projects, d);
-    Ok(Some(activity::undismissed(all, &dismissed(&tc))))
+    Ok(Some(activity::undismissed(all, &dismissed(&tc).unwrap_or_default())))
 }
 
-/// The profile's `activity_dismissed.json`; missing or unreadable is empty.
-fn dismissed(tc: &Tc) -> activity::Dismissed {
-    std::fs::read_to_string(tc.dir.join("activity_dismissed.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+/// The profile's `activity_dismissed.json`; missing is empty, unreadable or malformed is an error.
+fn dismissed(tc: &Tc) -> R<activity::Dismissed> {
+    let path = tc.dir.join("activity_dismissed.json");
+    match timeclock::read_or_empty(&path)? {
+        t if t.is_empty() => Ok(Default::default()),
+        t => serde_json::from_str(&t).map_err(|e| format!("{}: {e}", path.display())),
+    }
 }
 
 /// Hide the suggestion START–END for good (well, 30 days).
 #[tauri::command]
 fn activity_dismiss(s: State<App>, start: NaiveDateTime, end: NaiveDateTime) -> R<()> {
     let tc = s.tc();
-    let d = activity::dismiss(dismissed(&tc), start, end, today());
+    let d = activity::dismiss(dismissed(&tc)?, start, end, today());
     std::fs::create_dir_all(&tc.dir).map_err(|e| e.to_string())?;
     config::write_atomic(&tc.dir.join("activity_dismissed.json"), serde_json::to_string(&d).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
