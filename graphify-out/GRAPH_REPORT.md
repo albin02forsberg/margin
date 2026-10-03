@@ -1,17 +1,17 @@
 # Graph Report - margin  (2026-10-03)
 
 ## Corpus Check
-- 62 files · ~75,546 words
+- 62 files · ~75,629 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 6 file(s) not represented in the graph (top: (none) 2, .icns 1, .ico 1)
 
 ## Summary
-- 975 nodes · 2122 edges · 65 communities (37 shown, 28 thin omitted)
+- 976 nodes · 2122 edges · 62 communities (34 shown, 28 thin omitted)
 - Extraction: 98% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 21 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `f43f3ca0`
+- Built from commit: `3ae617ce`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -21,14 +21,14 @@
 - lib.rs
 - editor.ts
 - []
-- idle.rs
+- remind.rs
 - orgtable.ts
 - tauri.conf.json
 - package.json
 - compilerOptions
 - dependencies
 - Calendar
-- attach.rs
+- devDependencies
 - GitHub Releases
 - decorate
 - scripts
@@ -62,17 +62,13 @@
 - Tauri Global Shortcut Plugin
 - Windows Installer
 - Journal
-- tray.rs
 - Node.js
 - Tauri Notification Plugin
 - Tauri Single Instance Plugin
 - Tauri Action
-- remind.rs
 - Time Tracking
 - TypeScript
-- wayland_idle.rs
 - backup.rs
-- super
 - reviewer.md
 
 ## God Nodes (most connected - your core abstractions)
@@ -102,7 +98,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (65 total, 28 thin omitted)
+## Communities (62 total, 28 thin omitted)
 
 ### Community 0 - "org.rs"
 Cohesion: 0.07
@@ -124,9 +120,9 @@ Nodes (22): applyText(), Block, BULLETS, clicks, diffChange(), hide, hooks, LANG
 Cohesion: 0.18
 Nodes (11): [], dateChip(), dayInput(), fmtDay(), goToday(), key(), monday(), op() (+3 more)
 
-### Community 5 - "idle.rs"
-Cohesion: 0.22
-Nodes (3): source(), start(), step()
+### Community 5 - "remind.rs"
+Cohesion: 0.06
+Nodes (15): source(), start(), step(), Due, notify(), picks_due_reminders(), start(), tick() (+7 more)
 
 ### Community 6 - "orgtable.ts"
 Cohesion: 0.12
@@ -152,17 +148,17 @@ Nodes (13): dependencies, @codemirror/commands, @codemirror/language, @codemirro
 Cohesion: 0.67
 Nodes (3): Calendar, iCalendar, Tasks
 
-### Community 12 - "attach.rs"
-Cohesion: 0.24
-Nodes (6): clean(), LINK, names_and_links(), normalize(), target(), unused()
+### Community 12 - "devDependencies"
+Cohesion: 0.18
+Nodes (11): devDependencies, svelte, svelte-check, @sveltejs/adapter-static, @sveltejs/kit, @sveltejs/vite-plugin-svelte, @tauri-apps/cli, @types/node (+3 more)
 
 ### Community 14 - "decorate"
 Cohesion: 0.13
 Nodes (9): codeTokens(), decorate(), Glyph, imageSrc(), Img, inline(), langFor(), mark() (+1 more)
 
 ### Community 15 - "scripts"
-Cohesion: 0.08
-Nodes (24): devDependencies, svelte, svelte-check, @sveltejs/adapter-static, @sveltejs/kit, @sveltejs/vite-plugin-svelte, @tauri-apps/cli, @types/node (+16 more)
+Cohesion: 0.15
+Nodes (13): scripts, build, check, check:watch, dev, e2e:build, e2e:run, prepare (+5 more)
 
 ### Community 16 - "Notes"
 Cohesion: 0.29
@@ -185,7 +181,7 @@ Cohesion: 0.08
 Nodes (46): BLOCK, Heading, List, Para, Pre, Quote, Rule, Table (+38 more)
 
 ### Community 24 - "notes.rs"
-Cohesion: 0.11
+Cohesion: 0.12
 Nodes (22): ANY_LINK, backlinks(), ensure_id(), ensures_ids(), files(), gen_id(), Graph, graph_neighbourhood() (+14 more)
 
 ### Community 25 - "Sync"
@@ -193,8 +189,8 @@ Cohesion: 0.67
 Nodes (3): Emacs, Git, Sync
 
 ### Community 31 - "config.rs"
-Cohesion: 0.16
-Nodes (13): add_view(), add_views(), atomic_writes(), Config, defaults_round_trip(), expand(), rename_view(), rename_views() (+5 more)
+Cohesion: 0.07
+Nodes (24): clean(), LINK, names_and_links(), normalize(), target(), unused(), add_view(), add_views() (+16 more)
 
 ### Community 32 - "curLine"
 Cohesion: 0.21
@@ -236,25 +232,13 @@ Nodes (4): Idle (`--overnight`), Loop, Rules, Stop
 Cohesion: 0.50
 Nodes (3): Usage, What it does, When to use
 
-### Community 52 - "tray.rs"
-Cohesion: 0.27
-Nodes (5): refresh(), setup(), show(), tracking(), Tray
-
-### Community 57 - "remind.rs"
-Cohesion: 0.27
-Nodes (5): Due, notify(), picks_due_reminders(), start(), tick()
-
 ### Community 61 - "backup.rs"
 Cohesion: 0.31
 Nodes (6): backup(), fail(), git(), LAST_FAILURE, LOG, ok()
 
-### Community 62 - "super"
-Cohesion: 0.31
-Nodes (5): builds_feed(), event(), feed(), fnv(), fold()
-
 ## Knowledge Gaps
 - **212 isolated node(s):** `y`, `day`, `events`, `app`, `out` (+207 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 348 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 349 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **28 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
