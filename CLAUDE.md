@@ -80,7 +80,7 @@ Parallel work runs through checked-in agents and skills (see `.claude/`):
 - Implementers assign the issue to the owner (`albin02forsberg`) when they start, unless it is already assigned to someone else, and unassign it if they give up.
 - Approval gate: `/ship` builds issues labelled `approved` (owner adds it), ones named explicitly, or ones the `triager` and `reviewer` agents agree are small and clear (a comment naming both agents and why it is small; no label needed). `needs-decision` = waiting on the owner and always blocks. Releases, secrets and repo settings are never covered.
 - `/autopilot [issues…] [--max N] [--hours H] [--all-ready] [--overnight]` — one command for continuous runs: triager in watch mode plus `/ship` rounds, until the queue is empty or time is up (`--overnight`: 12 h, idles on cheap `gh` polling instead of stopping). Same approval gate.
-- Repeat with `/loop /ship`, or `/schedule` a cloud routine for unattended runs. Releases stay manual (`/release`).
+- Repeat with `/loop /ship`, or `/schedule` a cloud routine for unattended runs. The `scout` agent scans changed code every ~3 h for bugs, performance and missing features and files `scout` + `needs-decision` issues (no per-run cap). Releases stay manual (`/release`).
 
 ## Tools
 
