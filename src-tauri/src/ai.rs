@@ -243,6 +243,14 @@ fn available_gb(meminfo: &str) -> Option<f64> {
     Some(kb / 1024.0 / 1024.0)
 }
 
+/// GB macOS can hand out, from `vm_stat`: free, inactive and speculative pages.
+#[cfg(any(test, all(feature = "embedded-ai", target_os = "macos")))]
+fn vm_stat_gb(out: &str) -> Option<f64> {
+    let page: f64 = out.split("page size of ").nth(1)?.split(' ').next()?.parse().ok()?;
+    let pages = |k: &str| out.lines().find_map(|l| l.strip_prefix(k)).and_then(|v| v.trim().trim_end_matches('.').parse::<f64>().ok());
+    Some((pages("Pages free:")? + pages("Pages inactive:")? + pages("Pages speculative:").unwrap_or(0.0)) * page / 1024.0 / 1024.0 / 1024.0)
+}
+
 /// Built-in models run by llama.cpp on the CPU (GPU through Metal on Apple Silicon). The model
 /// loads on the first draft and stays loaded until IDLE passes without one.
 #[cfg(feature = "embedded-ai")]
@@ -266,9 +274,25 @@ mod llama {
     /// The loaded model (by id) and when it was last used. Drafts take turns on this lock.
     static LOADED: Mutex<Option<(&str, Instant, LlamaModel)>> = Mutex::new(None);
 
-    fn load(backend: &LlamaBackend, m: &Model, path: &Path) -> Result<LlamaModel, String> {
+    /// GB of memory the OS can hand out, or None when it can't tell (then the check is skipped).
+    #[allow(unreachable_code)]
+    fn free_gb() -> Option<f64> {
         #[cfg(target_os = "linux")]
-        if let Some(free) = std::fs::read_to_string("/proc/meminfo").ok().as_deref().and_then(super::available_gb) {
+        return std::fs::read_to_string("/proc/meminfo").ok().as_deref().and_then(super::available_gb);
+        #[cfg(target_os = "macos")]
+        return std::process::Command::new("vm_stat").output().ok().and_then(|o| super::vm_stat_gb(&String::from_utf8_lossy(&o.stdout)));
+        #[cfg(windows)]
+        {
+            use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+            let mut s = MEMORYSTATUSEX { dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32, ..Default::default() };
+            // SAFETY: s is a MEMORYSTATUSEX with dwLength set, as the API requires.
+            return (unsafe { GlobalMemoryStatusEx(&mut s) } != 0).then(|| s.ullAvailPhys as f64 / 1024.0 / 1024.0 / 1024.0);
+        }
+        None
+    }
+
+    fn load(backend: &LlamaBackend, m: &Model, path: &Path) -> Result<LlamaModel, String> {
+        if let Some(free) = free_gb() {
             if free < f64::from(m.ram_gb) {
                 return Err(format!("{} needs ~{} GB of free memory and only {free:.1} GB is free. Close some apps, or pick a smaller model.", m.name, m.ram_gb));
             }
@@ -405,6 +429,9 @@ mod tests {
         assert!(generate(Backend::Embedded, "http://example.com", dir, "nope", "p", true).unwrap_err().contains("Unknown built-in model nope"));
         assert_eq!(available_gb("MemTotal:       16000000 kB\nMemAvailable:    3145728 kB\n"), Some(3.0));
         assert_eq!(available_gb("MemTotal: 1 kB\n"), None);
+        let vm = "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                               65536.\nPages active:                            999999.\nPages inactive:                           131072.\nPages speculative:                         65536.\n";
+        assert_eq!(vm_stat_gb(vm), Some(4.0));
+        assert_eq!(vm_stat_gb("Pages free: 1.\n"), None);
     }
 
     /// A real draft: `MARGIN_MODELS=<dir holding the 1.5B model> cargo test --features embedded-ai -- --ignored`.
