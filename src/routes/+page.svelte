@@ -18,9 +18,10 @@
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
   import Time, { hm, type Session, type Suggestion, type TimeApi } from "$lib/Time.svelte";
   import TaskDialog from "$lib/TaskDialog.svelte";
+  import Projects from "$lib/Projects.svelte";
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
 
-  type View = "agenda" | "todo" | "time";
+  type View = "agenda" | "todo" | "time" | "projects";
   /** SAVED: the text last read from / written to disk, to tell our own writes from outside changes.
    *  REPORT: how to regenerate a report tab when the data changes. */
   type Tab = {
@@ -191,7 +192,7 @@
   async function openView(kind: View) {
     let i = tabs.findIndex((t) => t.key === kind);
     if (i < 0) {
-      tabs.push({ key: kind, title: { agenda: "Today", todo: "Tasks", time: "Time" }[kind], kind, dirty: false });
+      tabs.push({ key: kind, title: { agenda: "Today", todo: "Tasks", time: "Time", projects: "Projects" }[kind], kind, dirty: false });
       i = tabs.length - 1;
     }
     await show(i);
@@ -877,24 +878,6 @@
     cfg = await call("config");
   }
 
-  async function editProject() {
-    const projects: Record<string, any> = await call("tc_projects");
-    const name = await pick({ prompt: "Project settings", items: Object.keys(projects) });
-    if (!name) return;
-    const p = projects[name];
-    const code = await ask(`Export code for “${name}”`, p.export_code);
-    if (code == null) return;
-    const curR = p.rounding == null ? "none" : String(p.rounding);
-    const r = await pick({ prompt: "Round billable hours to", items: [["0.5", "Half hour"], ["0.25", "Quarter hour"], ["1.0", "Whole hour"], ["none", "Don't round"]].map(([v, l]) => ({ label: l, detail: v === curR ? "current" : "", value: v })) });
-    if (r == null) return;
-    const rounding = r === "none" ? null : parseFloat(r);
-    const up = rounding != null && (await pick({ prompt: "Always round up?", items: p.round_up ? ["Yes", "No"] : ["No", "Yes"] })) === "Yes";
-    const active = await pick({ prompt: "Show in the project list?", items: p.active ? ["Yes", "No"] : ["No", "Yes"] });
-    if (active == null) return;
-    await call("tc_save_project", { name, project: { export_code: code, rounding, round_up: up, active: active === "Yes" } });
-    flash(`✓ Saved “${name}”`);
-  }
-
   async function editSession(s?: Session) {
     if (!s) {
       const d = await datePick("Edit a session on");
@@ -963,7 +946,7 @@
 
   const timeActions: Record<string, (arg?: any) => unknown> = {
     start: () => clockIn(), stop: clockOut, pause: () => tcDo("tc_break"), resume: () => tcDo("tc_resume"),
-    switch: changeProject, adjust: adjustStart, editSession: (s) => editSession(s), export: exportCsv, exportReport, projects: editProject,
+    switch: changeProject, adjust: adjustStart, editSession: (s) => editSession(s), export: exportCsv, exportReport, projects: () => openView("projects"),
     profile: (n) => switchProfile(n), holidays: () => report("holidays", "Holidays"), daily: dailyReport,
     weekly: () => report("weekly", "Week report"), doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
     backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), import: importEmacs, acceptSuggestion, editSuggestion,
@@ -1076,7 +1059,7 @@
     { label: "Time: public holidays", leader: "t h", run: t("holidays") },
     { label: "Time: export CSV…", leader: "t e", run: t("export") },
     { label: "Time: switch profile…", leader: "t p", run: () => switchProfile() },
-    { label: "Time: project settings…", leader: "t P", run: t("projects") },
+    { label: "Time: project settings", leader: "t P", run: t("projects") },
     { label: "Time: open work diary", leader: "t d", run: t("diary") },
     { label: "Time: edit raw log", leader: "t E", run: t("rawLog") },
     { label: "Time: edit a session…", leader: "t S", run: () => editSession() },
@@ -1405,10 +1388,12 @@
         <div class="editor" bind:this={editorEl} style:display={isText(tab) ? "block" : "none"}></div>
         {#if dropCue}<div class="drop-cue">Drop to attach to {tab.title}</div>{/if}
         {#if cfg}
-          {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo" || t.kind === "time") as v (v.key)}
+          {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo" || t.kind === "time" || t.kind === "projects") as v (v.key)}
             <div class="view" style:display={v === tab ? "block" : "none"}>
               {#if v.kind === "time"}
                 <Time api={timeApi} active={v === tab} {reload} />
+              {:else if v.kind === "projects"}
+                <Projects {act} active={v === tab} {reload} />
               {:else}
                 <Agenda mode={v.kind as "agenda" | "todo"} api={agendaApi} active={v === tab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} />
               {/if}

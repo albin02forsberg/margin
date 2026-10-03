@@ -212,7 +212,7 @@
         <button onclick={() => run("weekly")}><kbd>w</kbd>Week report</button>
         <button onclick={() => run("export")}><kbd>e</kbd>Export CSV…</button>
         <button onclick={() => run("exportReport")}><kbd>E</kbd>Export report (HTML/PDF)…</button>
-        <button onclick={() => run("projects")}>Project settings…</button>
+        <button onclick={() => run("projects")}>Project settings</button>
         <button onclick={() => run("holidays")}>Public holidays</button>
         <button onclick={() => run("doctor")}>Check log for problems</button>
         <button onclick={() => run("rawLog")}>Edit raw log</button>

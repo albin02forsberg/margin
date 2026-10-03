@@ -581,8 +581,8 @@ fn tc_dashboard(s: State<App>) -> Value {
 }
 
 #[tauri::command]
-fn tc_projects(s: State<App>) -> timeclock::Projects {
-    s.tc().projects()
+fn tc_projects(s: State<App>) -> R<timeclock::Projects> {
+    s.tc().load_projects()
 }
 
 #[tauri::command]
