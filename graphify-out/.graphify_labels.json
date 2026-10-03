@@ -31,9 +31,9 @@
   "29": "+page.svelte",
   "30": "margin",
   "31": "ai.rs",
-  "32": "devDependencies",
+  "32": "$lib/graph",
   "33": "lib/TaskDialog.svelte",
-  "34": "$lib/graph",
+  "34": "graph",
   "35": "config.rs",
   "36": "CLAUDE.md",
   "37": "ship/SKILL.md",
@@ -64,5 +64,6 @@
   "62": "curLine",
   "63": "level",
   "64": "settings.test.ts",
-  "65": "@codemirror/state"
+  "65": "$lib/projects",
+  "66": "@tauri-apps/api/event"
 }

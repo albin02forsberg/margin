@@ -1,17 +1,17 @@
 # Graph Report - margin  (2026-10-03)
 
 ## Corpus Check
-- 68 files · ~85,429 words
+- 68 files · ~85,605 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 6 file(s) not represented in the graph (top: (none) 2, .icns 1, .ico 1)
 
 ## Summary
-- 1067 nodes · 2367 edges · 66 communities (39 shown, 27 thin omitted)
+- 1070 nodes · 2372 edges · 67 communities (38 shown, 29 thin omitted)
 - Extraction: 98% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 28 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `aaf9171c`
+- Built from commit: `d57e4010`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -45,7 +45,6 @@
 - +layout.ts
 - margin
 - ai.rs
-- devDependencies
 - lib/TaskDialog.svelte
 - config.rs
 - CLAUDE.md
@@ -103,11 +102,11 @@
 ## Import Cycles
 - None detected.
 
-## Communities (66 total, 27 thin omitted)
+## Communities (67 total, 29 thin omitted)
 
 ### Community 0 - "org.rs"
 Cohesion: 0.07
-Nodes (73): add_interval(), agenda(), agenda_week(), ALIAS, archive(), at(), Cache, capture_insert() (+65 more)
+Nodes (76): add_interval(), agenda(), agenda_week(), ALIAS, all_tags(), archive(), at(), Cache (+68 more)
 
 ### Community 1 - "timeclock.rs"
 Cohesion: 0.07
@@ -115,7 +114,7 @@ Nodes (49): add_past_sessions(), append_diary(), apply_carry(), breaks_accumulat
 
 ### Community 2 - "lib.rs"
 Cohesion: 0.06
-Nodes (93): activity_dismiss(), activity_suggestions(), agenda(), ai_day_prompt(), ai_download(), ai_draft(), ai_model_delete(), ai_models() (+85 more)
+Nodes (95): activity_dismiss(), activity_suggestions(), agenda(), ai_day_prompt(), ai_download(), ai_draft(), ai_model_delete(), ai_models() (+87 more)
 
 ### Community 3 - "editor.ts"
 Cohesion: 0.09
@@ -146,16 +145,16 @@ Cohesion: 0.14
 Nodes (13): ./.svelte-kit/tsconfig.json, compilerOptions, allowImportingTsExtensions, allowJs, checkJs, esModuleInterop, forceConsistentCasingInFileNames, moduleResolution (+5 more)
 
 ### Community 10 - "dependencies"
-Cohesion: 0.15
-Nodes (13): dependencies, @codemirror/commands, @codemirror/language, @codemirror/language-data, @codemirror/search, @codemirror/state, @codemirror/view, @lezer/highlight (+5 more)
+Cohesion: 0.08
+Nodes (24): dependencies, @codemirror/commands, @codemirror/language, @codemirror/language-data, @codemirror/search, @codemirror/state, @codemirror/view, @lezer/highlight (+16 more)
 
 ### Community 11 - "Calendar"
 Cohesion: 0.67
 Nodes (3): Calendar, iCalendar, Tasks
 
 ### Community 12 - "remind.rs"
-Cohesion: 0.24
-Nodes (5): Due, notify(), picks_due_reminders(), start(), tick()
+Cohesion: 0.29
+Nodes (4): notify(), picks_due_reminders(), start(), tick()
 
 ### Community 14 - "scripts"
 Cohesion: 0.15
@@ -178,7 +177,7 @@ Cohesion: 0.06
 Nodes (49): ADR-0007, ADR-0008, at(), buckets, day, ev(), events, y (+41 more)
 
 ### Community 22 - "activity.rs"
-Cohesion: 0.09
+Cohesion: 0.10
 Nodes (33): AwEvent, browser_urls(), Bucket, Buckets, CEST, COMMON, cut(), dismiss() (+25 more)
 
 ### Community 23 - "export.rs"
@@ -187,7 +186,7 @@ Nodes (46): BLOCK, Heading, List, Para, Pre, Quote, Rule, Table (+38 more)
 
 ### Community 24 - "notes.rs"
 Cohesion: 0.12
-Nodes (24): ANY_LINK, backlinks(), ensure_id(), ensures_ids(), files(), gen_id(), Graph, graph_neighbourhood() (+16 more)
+Nodes (22): ANY_LINK, backlinks(), ensure_id(), ensures_ids(), files(), gen_id(), Graph, graph_neighbourhood() (+14 more)
 
 ### Community 25 - "Sync"
 Cohesion: 0.67
@@ -195,11 +194,7 @@ Nodes (3): Emacs, Git, Sync
 
 ### Community 31 - "ai.rs"
 Cohesion: 0.08
-Nodes (28): Backend, Embedded, Ollama, body(), capped(), clean(), day_prompt(), download() (+20 more)
-
-### Community 32 - "devDependencies"
-Cohesion: 0.18
-Nodes (11): devDependencies, svelte, svelte-check, @sveltejs/adapter-static, @sveltejs/kit, @sveltejs/vite-plugin-svelte, @tauri-apps/cli, @types/node (+3 more)
+Nodes (27): Backend, Embedded, Ollama, body(), capped(), clean(), day_prompt(), download() (+19 more)
 
 ### Community 33 - "lib/TaskDialog.svelte"
 Cohesion: 0.17
@@ -263,23 +258,23 @@ Nodes (9): changes(), Field, Form, fromForm(), GROUPS, refresh(), config, fields
 
 ## Knowledge Gaps
 - **219 isolated node(s):** `y`, `day`, `events`, `app`, `out` (+214 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 368 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **27 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 370 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **29 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `insertTable()` connect `curLine` to `editor.ts`, `+page.svelte`?**
-  _High betweenness centrality (0.155) - this node is a cross-community bridge._
+  _High betweenness centrality (0.152) - this node is a cross-community bridge._
 - **Why does `format()` connect `orgtable.ts` to `+page.svelte`?**
-  _High betweenness centrality (0.053) - this node is a cross-community bridge._
+  _High betweenness centrality (0.051) - this node is a cross-community bridge._
 - **Why does `palette()` connect `setup.ts` to `+page.svelte`?**
   _High betweenness centrality (0.049) - this node is a cross-community bridge._
 - **What connects `y`, `day`, `events` to the rest of the system?**
   _219 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `org.rs` be split into smaller, more focused modules?**
-  _Cohesion score 0.06767109295199183 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06545114539504442 - nodes in this community are weakly interconnected._
 - **Should `timeclock.rs` be split into smaller, more focused modules?**
   _Cohesion score 0.0686641697877653 - nodes in this community are weakly interconnected._
 - **Should `lib.rs` be split into smaller, more focused modules?**
-  _Cohesion score 0.06044089147286822 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05942454492072813 - nodes in this community are weakly interconnected._
