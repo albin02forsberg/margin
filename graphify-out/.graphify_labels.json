@@ -31,9 +31,9 @@
   "29": "+page.svelte",
   "30": "margin",
   "31": "config.rs",
-  "32": "svelte.config.js",
+  "32": "decorate",
   "33": "lib/TaskDialog.svelte",
-  "34": "vite.config.js",
+  "34": "curLine",
   "35": "$lib/graph",
   "36": "CLAUDE.md",
   "37": "ship/SKILL.md",
@@ -42,7 +42,7 @@
   "40": "release/SKILL.md",
   "41": "autopilot/SKILL.md",
   "42": "verify-all/SKILL.md",
-  "43": "graph",
+  "43": "level",
   "44": "App Icon",
   "45": "pr-shepherd.md",
   "46": "triage/SKILL.md",
@@ -61,6 +61,7 @@
   "59": "TypeScript",
   "60": "wayland_idle.rs",
   "61": "backup.rs",
-  "62": "ics.rs",
-  "63": "@tauri-apps/api/event"
+  "62": "super",
+  "63": "reviewer.md",
+  "64": "@codemirror/state"
 }
