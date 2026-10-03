@@ -171,18 +171,20 @@ impl Config {
         (t.starts_with(&n) && t != n && !t.components().any(|c| c == Component::ParentDir)).then_some(t)
     }
 
-    /// Load PATH, writing the defaults there on first run.
+    /// Load PATH, writing the defaults there on first run (only when it doesn't exist:
+    /// an unreadable file is an error, never overwritten).
     pub fn load(path: &Path) -> Result<Config, String> {
         match std::fs::read_to_string(path) {
             Ok(s) => toml::from_str(&s).map_err(|e| format!("{}: {e}", path.display())),
-            Err(_) => {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 let c = Config::default();
                 if let Some(d) = path.parent() {
                     let _ = std::fs::create_dir_all(d);
                 }
-                let _ = std::fs::write(path, toml::to_string(&c).unwrap());
+                let _ = write_atomic(path, toml::to_string(&c).unwrap());
                 Ok(c)
             }
+            Err(e) => Err(format!("{}: {e}", path.display())),
         }
     }
 }
@@ -326,5 +328,17 @@ mod tests {
         for d in ["", ".", "./", "..", "t/..", "/", "/other"] {
             assert_eq!(c(d), None, "{d:?}");
         }
+    }
+
+    #[test]
+    fn load_keeps_unreadable_config() {
+        let dir = std::env::temp_dir().join(format!("margin-load-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let p = dir.join("config.toml");
+        assert!(Config::load(&p).is_ok() && toml::from_str::<Config>(&std::fs::read_to_string(&p).unwrap()).is_ok()); // first run
+        std::fs::write(&p, b"notes_dir = \"\xff\"\n").unwrap();
+        assert!(Config::load(&p).is_err());
+        assert_eq!(std::fs::read(&p).unwrap(), b"notes_dir = \"\xff\"\n");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
