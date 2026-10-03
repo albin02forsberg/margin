@@ -4,7 +4,7 @@
   "2": "lib.rs",
   "3": "editor.ts",
   "4": "[]",
-  "5": "super",
+  "5": "idle.rs",
   "6": "orgtable.ts",
   "7": "tauri.conf.json",
   "8": "package.json",
@@ -33,7 +33,7 @@
   "31": "ai.rs",
   "32": "devDependencies",
   "33": "lib/TaskDialog.svelte",
-  "34": "graph",
+  "34": "$lib/graph",
   "35": "config.rs",
   "36": "CLAUDE.md",
   "37": "ship/SKILL.md",
@@ -63,7 +63,6 @@
   "61": "backup.rs",
   "62": "curLine",
   "63": "level",
-  "64": "$lib/graph",
-  "65": "$lib/projects",
-  "66": "@tauri-apps/api/event"
+  "64": "settings.test.ts",
+  "65": "@codemirror/state"
 }
