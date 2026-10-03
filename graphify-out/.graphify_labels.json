@@ -4,7 +4,7 @@
   "2": "lib.rs",
   "3": "editor.ts",
   "4": "[]",
-  "5": "super",
+  "5": "idle.rs",
   "6": "orgtable.ts",
   "7": "tauri.conf.json",
   "8": "package.json",
@@ -33,7 +33,7 @@
   "31": "ai.rs",
   "32": "devDependencies",
   "33": "lib/TaskDialog.svelte",
-  "34": "graph",
+  "34": "$lib/graph",
   "35": "svelte.config.js",
   "36": "CLAUDE.md",
   "37": "ship/SKILL.md",
@@ -59,9 +59,7 @@
   "57": "wayland_idle.rs",
   "58": "Time Tracking",
   "59": "TypeScript",
-  "60": "ics.rs",
+  "60": "super",
   "61": "backup.rs",
-  "62": "$lib/graph",
-  "63": "$lib/projects",
-  "64": "@tauri-apps/api/event"
+  "62": "@codemirror/state"
 }
