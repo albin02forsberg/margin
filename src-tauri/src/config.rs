@@ -290,8 +290,15 @@ pub fn save(text: &str, values: toml::Table) -> Result<(String, Config), String>
     Ok((out, c))
 }
 
-/// TEXT with top-level KEY's one-line `key = …` set to VALUE (added at the top if missing);
-/// errors if anything else would change, e.g. a multi-line value.
+/// LINE's trailing ` # comment` (with the spaces before it, without the line ending), or "":
+/// it starts at the first `#` whose prefix parses on its own, so a `#` inside a string isn't one.
+fn trailing_comment(line: &str) -> &str {
+    let l = line.trim_end_matches(['\r', '\n']);
+    l.match_indices('#').map(|(i, _)| &l[..i]).find(|s| s.parse::<toml::Table>().is_ok_and(|t| t.len() == 1)).map_or("", |s| &l[s.trim_end().len()..])
+}
+
+/// TEXT with top-level KEY's one-line `key = …` set to VALUE (added at the top if missing),
+/// keeping its trailing comment; errors if anything else would change, e.g. a multi-line value.
 pub fn set_key(text: &str, key: &str, value: toml::Value) -> Result<String, String> {
     let err = |e: toml::de::Error| format!("can't update config.toml: {e}");
     let mut want: toml::Table = text.parse().map_err(err)?;
@@ -304,7 +311,7 @@ pub fn set_key(text: &str, key: &str, value: toml::Value) -> Result<String, Stri
             table |= t.starts_with('[');
             if !table && !done && t.split_once('=').is_some_and(|(k, _)| k.trim() == key) {
                 done = true;
-                return format!("{key} = {value}{}", &l[l.trim_end_matches(['\r', '\n']).len()..]);
+                return format!("{key} = {value}{}{}", trailing_comment(l), &l[l.trim_end_matches(['\r', '\n']).len()..]);
             }
             l.to_string()
         })
@@ -340,13 +347,23 @@ mod tests {
         let t = |s: &str| s.parse::<toml::Table>().unwrap();
         let mine = "# mine\nexpected_daily_hours = 8.0 # here\n\n[[views]]\nname = \"A\"\nquery = \"a\"\n";
         let (s, c) = save(mine, t("expected_daily_hours = 7.5\nreminders = false\nprofiles = [\"A\", \"B\"]")).unwrap();
-        assert!(s.ends_with(&mine.replace("8.0 # here", "7.5")), "{s}"); // in place, other lines kept
+        assert!(s.ends_with(&mine.replace("8.0 # here", "7.5 # here")), "{s}"); // in place, comment and other lines kept
         assert!(s.contains("\nreminders = false\n") || s.starts_with("reminders = false\n"), "{s}");
         assert_eq!((c.expected_daily_hours, c.reminders, c.views.len()), (7.5, false, 1));
         assert_eq!(save(mine, t("idle_threshold_minutes = 5")).unwrap().1.idle_threshold_minutes, 5);
         assert!(save(mine, t("idle_threshold_minutes = 1.5")).is_err()); // wrong type
         assert!(save(mine, t("nope = 1")).is_err() && save(mine, t("views = []")).is_err());
         assert!(save("profiles = [\n  \"A\",\n]\n", t("profiles = [\"B\"]")).is_err()); // multi-line: by hand
+    }
+
+    #[test]
+    fn set_key_keeps_comments() {
+        let set = |text: &str, v: toml::Value| set_key(text, "a", v).unwrap();
+        assert_eq!(set("a = 1 # note\n", 2.into()), "a = 2 # note\n");
+        assert_eq!(set("a = \"x#y\"   # c # d\r\nb = 1\r\n", "z".into()), "a = \"z\"   # c # d\r\nb = 1\r\n");
+        assert_eq!(set("a = ['#', \"]\"]# arr\n", toml::Value::from(vec!["q"])), "a = [\"q\"]# arr\n");
+        assert_eq!(set("a = \"x#y\"\n", "z".into()), "a = \"z\"\n"); // no comment
+        assert_eq!(set("a = 1 #\n", 2.into()), "a = 2 #\n");
     }
 
     #[test]
