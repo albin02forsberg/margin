@@ -244,7 +244,7 @@ pub fn rename_view(text: &str, query: &str, name: &str) -> Result<String, String
             } else if !done && seen == i + 1 && t.split_once('=').is_some_and(|(k, _)| k.trim() == "name") {
                 done = true;
                 let eol = &l[l.trim_end_matches(['\r', '\n']).len()..];
-                return format!("{}name = {}{eol}", &l[..l.len() - t.len()], toml::Value::String(name.into()));
+                return format!("{}name = {}{}{eol}", &l[..l.len() - t.len()], toml::Value::String(name.into()), trailing_comment(l));
             }
             l.to_string()
         })
@@ -427,7 +427,7 @@ mod tests {
     fn rename_views() {
         let text = "# mine\r\nnotes_dir = \"~/org\"\r\n\r\n[[views]]\r\nname = \"A\"\r\nquery = \"a\"\r\n\r\n[[views]] # second\r\n  name = \"B\" # old\r\nquery = 'tag:\"x y\"'\r\n";
         let s = rename_view(text, "tag:\"x y\"", "New \"b\"").unwrap();
-        assert_eq!(s, text.replace("  name = \"B\" # old", "  name = 'New \"b\"'")); // only that line; CRLF, comments kept
+        assert_eq!(s, text.replace("  name = \"B\" # old", "  name = 'New \"b\"' # old")); // only that line; CRLF, comments kept
         let c: Config = toml::from_str(&rename_view(&s, "a", "Z").unwrap()).unwrap();
         assert_eq!((c.views[0].name.as_str(), c.views[1].name.as_str()), ("Z", "New \"b\""));
         assert!(rename_view(text, "nope", "X").is_err());
