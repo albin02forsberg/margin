@@ -103,6 +103,16 @@ pub struct Event {
     pub attendees: Vec<String>,
 }
 
+/// Splits S at its first SEP outside double quotes (ics params may quote `:` and `;`).
+fn split_unquoted(s: &str, sep: char) -> Option<(&str, &str)> {
+    let mut q = false;
+    let i = s.char_indices().find(|&(_, c)| {
+        q ^= c == '"';
+        c == sep && !q
+    })?.0;
+    Some((&s[..i], &s[i + 1..]))
+}
+
 /// A DTSTART/DTEND value → local time: UTC (`…Z`) is converted, TZID and floating times
 /// are taken as local; dates (all-day) give None.
 // ponytail: TZID is assumed to be this machine's zone (no tz database); add chrono-tz if other zones matter.
@@ -155,7 +165,7 @@ pub fn events_on(text: &str, day: NaiveDate) -> Vec<Event> {
             l if l.starts_with("BEGIN:") => depth += 1,
             l if l.starts_with("END:") => depth -= 1,
             l => {
-                if let (Some(c), 0, Some((k, v))) = (cur.as_mut(), depth, l.split_once(':')) {
+                if let (Some(c), 0, Some((k, v))) = (cur.as_mut(), depth, split_unquoted(l, ':')) {
                     let (name, params) = k.split_once(';').unwrap_or((k, ""));
                     c.push((name.to_uppercase(), params.to_string(), v.to_string()));
                 }
@@ -183,7 +193,7 @@ pub fn events_on(text: &str, day: NaiveDate) -> Vec<Event> {
             _ => (start, end),
         };
         if start < d1 && d0 < end {
-            let attendees = e.iter().filter(|p| p.0 == "ATTENDEE").map(|p| p.1.split(';').find_map(|x| x.strip_prefix("CN=")).map_or(p.2.trim_start_matches("mailto:").to_string(), |c| c.trim_matches('"').to_string())).collect();
+            let attendees = e.iter().filter(|p| p.0 == "ATTENDEE").map(|p| std::iter::successors(Some(("", p.1.as_str())), |r| split_unquoted(r.1, ';')).find_map(|r| r.1.strip_prefix("CN=").map(|c| split_unquoted(c, ';').map_or(c, |x| x.0))).map_or(p.2.trim_start_matches("mailto:").to_string(), |c| c.trim_matches('"').to_string())).collect();
             out.push(Event { start, end, summary: get(e, "SUMMARY").map(|s| unescape(&s)).filter(|s| !s.trim().is_empty()).unwrap_or("Busy".into()), attendees });
         }
     }
@@ -238,6 +248,8 @@ mod tests {
             "BEGIN:VEVENT", "UID:c", "DTSTART;VALUE=DATE:20261005", "DTEND;VALUE=DATE:20261006", "SUMMARY:Holiday", "END:VEVENT",
             "BEGIN:VEVENT", "UID:d", "DTSTART:20261005T120000", "DTEND:20261005T130000", "STATUS:CANCELLED", "SUMMARY:Lunch", "END:VEVENT",
             "BEGIN:VEVENT", "UID:e", "DTSTART:20260928T140000", "DTEND:20260928T150000", "RRULE:FREQ=DAILY;COUNT=3", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:q", "DTSTART;TZID=\"(UTC+01:00) Amsterdam\":20261008T100000", "DTEND;TZID=\"(UTC+01:00) Amsterdam\":20261008T110000",
+            "ATTENDEE;CN=\"Lee: Sales\":mailto:l@x.org", "ATTENDEE;CN=\"A; B\";ROLE=OPT:mailto:a@x.org", "END:VEVENT",
             "END:VCALENDAR",
         ]
         .join("\r\n");
@@ -250,6 +262,7 @@ mod tests {
         assert_eq!(short("2026-10-05")[1..], [(at("2026-10-05 09:15"), at("2026-10-05 09:30"), "Standup".into())], "all-day and cancelled are left out");
         assert_eq!(short("2026-09-30"), [(at("2026-09-30 14:00"), at("2026-09-30 15:00"), "Busy".into())], "EXDATE; COUNT's third day");
         assert_eq!(short("2026-10-07"), [(at("2026-10-07 11:00"), at("2026-10-07 11:15"), "Standup (moved)".into())]);
+        assert_eq!(on("2026-10-08")[0].attendees, ["Lee: Sales", "A; B"], "quoted TZID keeps the event; quoted CN stays whole");
         assert!(short("2026-10-01").is_empty() && short("2026-10-06").is_empty() && short("2026-09-14").is_empty());
     }
 }
