@@ -7,6 +7,10 @@ use crate::timeclock::Session;
 use chrono::NaiveDate;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::io::{Seek, Write};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Where drafts come from (`ai_backend`).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
@@ -52,6 +56,82 @@ pub const MODELS: &[Model] = &[
         licence: "Apache-2.0",
     },
 ];
+
+impl Model {
+    /// Where the model lives in DIR once downloaded and checked.
+    pub fn path(&self, dir: &Path) -> PathBuf {
+        dir.join(self.url.rsplit('/').next().unwrap_or(self.id))
+    }
+}
+
+/// FILE with ".part" added: a download in progress.
+pub fn part(file: &Path) -> PathBuf {
+    let mut p = file.as_os_str().to_owned();
+    p.push(".part");
+    p.into()
+}
+
+fn sha256_file(p: &Path) -> std::io::Result<String> {
+    let mut h = Sha256::new();
+    std::io::copy(&mut std::fs::File::open(p)?, &mut h)?;
+    Ok(format!("{:x}", h.finalize()))
+}
+
+/// Download URL (SIZE bytes, checksum SHA256) to DEST through DEST.part, resuming what's there
+/// with a Range request. PROGRESS gets the bytes so far; CANCEL stops it, keeping the .part.
+/// DEST only appears once length and checksum match; a bad file is deleted.
+pub async fn download(url: &str, dest: &Path, size: u64, sha256: &str, cancel: &AtomicBool, mut progress: impl FnMut(u64)) -> Result<(), String> {
+    let tmp = part(dest);
+    let io = |e: std::io::Error| format!("{}: {e}", tmp.display());
+    let mut have = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
+    if have > size {
+        have = 0;
+    }
+    if have < size {
+        if rustls::crypto::CryptoProvider::get_default().is_none() {
+            let _ = rustls::crypto::ring::default_provider().install_default();
+        }
+        let client = reqwest::Client::builder().user_agent("Margin").build().map_err(|e| e.to_string())?;
+        let mut req = client.get(url);
+        if have > 0 {
+            req = req.header(reqwest::header::RANGE, format!("bytes={have}-"));
+        }
+        let mut resp = req.send().await.map_err(|e| format!("Download failed: {e}"))?;
+        let resumed = resp.headers().get(reqwest::header::CONTENT_RANGE).and_then(|v| v.to_str().ok()).is_some_and(|v| v.starts_with(&format!("bytes {have}-")));
+        match resp.status().as_u16() {
+            206 if resumed => {}
+            200 => have = 0, // the server ignored Range: start over
+            s => return Err(format!("Download failed: HTTP {s}")),
+        }
+        std::fs::create_dir_all(dest.parent().unwrap_or(dest)).map_err(io)?;
+        let mut f = std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(&tmp).map_err(io)?;
+        f.set_len(have).map_err(io)?;
+        f.seek(std::io::SeekFrom::End(0)).map_err(io)?;
+        progress(have);
+        while let Some(chunk) = resp.chunk().await.map_err(|e| format!("Download interrupted ({e}); try again to resume."))? {
+            if cancel.load(Ordering::Relaxed) {
+                return Err("Download cancelled.".into());
+            }
+            f.write_all(&chunk).map_err(io)?;
+            have += chunk.len() as u64;
+            progress(have);
+            if have > size {
+                break;
+            }
+        }
+        f.sync_all().map_err(io)?;
+    }
+    if have < size {
+        return Err("Download interrupted; try again to resume.".into());
+    }
+    let t = tmp.clone();
+    let sum = tauri::async_runtime::spawn_blocking(move || sha256_file(&t)).await.map_err(|e| e.to_string())?.map_err(io)?;
+    if have > size || sum != sha256 {
+        let _ = std::fs::remove_file(&tmp);
+        return Err("The download didn't match its checksum and was deleted. Try again.".into());
+    }
+    std::fs::rename(&tmp, dest).map_err(io)
+}
 
 /// Prompts stay under this many bytes; later lines are dropped.
 pub const MAX_PROMPT: usize = 4000;
@@ -131,7 +211,7 @@ pub fn generate(backend: Backend, url: &str, model: &str, prompt: &str, one_line
     }
 }
 
-/// ponytail: download and inference land in later PRs of #132; until then this only names the model.
+/// ponytail: inference lands in a later PR of #132; until then this only names the model.
 fn embedded(model: &str) -> Result<String, String> {
     match MODELS.iter().find(|m| m.id == model) {
         Some(m) => Err(format!("{} can't run inside Margin yet; that comes in a later update. Use Ollama for now (AI drafts: choose model…).", m.name)),
@@ -199,6 +279,67 @@ mod tests {
         assert!(generate(Backend::Embedded, "", MODELS[0].id, "p", true).unwrap_err().contains("can't run inside Margin yet"));
         // Embedded never talks to ai_url (which would be refused as not local).
         assert!(generate(Backend::Embedded, "http://example.com", "nope", "p", true).unwrap_err().contains("Unknown built-in model nope"));
+    }
+
+    /// Answers one connection per reply in turn; returns the base URL and the request heads.
+    fn serve(replies: Vec<Vec<u8>>) -> (String, std::thread::JoinHandle<Vec<String>>) {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}/m.gguf", l.local_addr().unwrap());
+        let srv = std::thread::spawn(move || {
+            replies.into_iter().map(|r| {
+                let (mut c, _) = l.accept().unwrap();
+                let (mut req, mut buf) = (vec![], [0; 512]);
+                while !req.ends_with(b"\r\n\r\n") {
+                    let n = c.read(&mut buf).unwrap();
+                    req.extend_from_slice(&buf[..n]);
+                }
+                c.write_all(&r).unwrap();
+                String::from_utf8_lossy(&req).to_lowercase()
+            }).collect()
+        });
+        (base, srv)
+    }
+
+    #[test]
+    fn download_resumes_and_checks() {
+        let dir = std::env::temp_dir().join(format!("margin-dl-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let dest = dir.join("m.gguf");
+        let body = b"hello world";
+        let sum = format!("{:x}", Sha256::digest(body));
+        let no = AtomicBool::new(false);
+        let get = |url: &str, sum: &str, cancel: &AtomicBool| tauri::async_runtime::block_on(download(url, &dest, 11, sum, cancel, |_| {}));
+        let ok = |b: &str| format!("HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\n{b}").into_bytes();
+        let (url, srv) = serve(vec![
+            b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\nhello".to_vec(), // cut short
+            b"HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 5-10/11\r\nContent-Length: 6\r\n\r\n world".to_vec(),
+            ok("hello wurld"),
+            ok("hello world"),
+            ok("hello world"),
+        ]);
+        assert!(get(&url, &sum, &no).unwrap_err().contains("interrupted"));
+        assert_eq!(std::fs::read(part(&dest)).unwrap(), b"hello");
+        get(&url, &sum, &no).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), body);
+        assert!(!part(&dest).exists());
+        std::fs::remove_file(&dest).unwrap();
+        // A corrupt file is deleted, not kept.
+        assert!(get(&url, &sum, &no).unwrap_err().contains("checksum"));
+        assert!(!dest.exists() && !part(&dest).exists());
+        // A server that ignores Range sends it all again.
+        std::fs::write(part(&dest), "hel").unwrap();
+        get(&url, &sum, &no).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), body);
+        std::fs::remove_file(&dest).unwrap();
+        assert!(get(&url, &sum, &AtomicBool::new(true)).unwrap_err().contains("cancelled"));
+        assert!(!dest.exists());
+        let reqs = srv.join().unwrap();
+        assert!(!reqs[0].contains("range:") && reqs[1].contains("range: bytes=5-") && reqs[3].contains("range: bytes=3-"), "{reqs:?}");
+        // A finished .part (say the app quit while checking it) needs no request.
+        std::fs::write(part(&dest), body).unwrap();
+        get("http://127.0.0.1:1/never", &sum, &no).unwrap();
+        assert_eq!(MODELS[0].path(&dir), dir.join("qwen2.5-3b-instruct-q4_k_m.gguf"));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

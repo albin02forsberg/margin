@@ -686,30 +686,67 @@
     }
   }
 
-  /** Settings for AI drafts: off, a model in Ollama, or one Margin downloads (download and running it come later, #132). */
+  /** The model download in progress, for the status-line bar. */
+  let download = $state<{ id: string; have: number; size: number } | null>(null);
+
+  /** Settings for AI drafts: off, a model in Ollama, or one Margin downloads (running it comes later, #132). */
   async function aiChoose() {
     const c = cfg.config;
-    type Model = { id: string; name: string; size: number; ram_gb: number; licence: string };
+    type Model = { id: string; name: string; size: number; ram_gb: number; licence: string; path: string; have: number; ready: boolean };
     const models = await call<Model[]>("ai_models");
+    const gb = (n: number) => `${(n / 1e9).toFixed(1)} GB`;
+    const pct = (have: number, size: number) => `${Math.floor((have / size) * 100)}%`;
     const on = (b: string, m = "") => c.ai_model && c.ai_backend === b && (!m || c.ai_model === m) ? "✓ " : "";
-    const choice = await pick({
+    const set = async (backend: string, model: string) => {
+      await call("ai_set", { backend, model });
+      cfg = await call("config");
+    };
+    const ollama = async () => {
+      const model = (await ask("Ollama model", c.ai_backend === "ollama" && c.ai_model ? c.ai_model : "llama3.2:3b", "as in `ollama pull <model>`"))?.trim();
+      if (!model) return;
+      await set("ollama", model);
+      flash(`Drafts come from ${model} in Ollama.`);
+    };
+    const later = "Running it inside Margin comes in a later update; use Ollama until then.";
+    const embedded = async (m: Model) => {
+      if (m.ready) return set("embedded", m.id).then(() => flash(`Saved. ${later}`));
+      if (download) return flash(download.id === m.id ? `${m.name} is downloading.` : "Another model is downloading; cancel it first (AI drafts: choose model…).");
+      const go = await pick({
+        prompt: `Download ${m.name}?`,
+        body: `${gb(m.size - m.have)} to download${m.have ? ` (${pct(m.have, m.size)} is already here)` : ""}, saved in\n${m.path}\n\nIt needs ~${m.ram_gb} GB of free RAM to run.\nLicence: ${m.licence}.`,
+        items: [{ label: "Download", value: true }, { label: "Not now", value: false }],
+      });
+      if (!go) return;
+      download = { id: m.id, have: m.have, size: m.size };
+      const un = await listen<{ id: string; have: number; size: number }>("ai-download", (e) => (download = e.payload));
+      try {
+        await call("ai_download", { id: m.id });
+        await set("embedded", m.id);
+        flash(`${m.name} is downloaded and chosen. ${later}`);
+      } finally {
+        un();
+        download = null;
+      }
+    };
+    const run = await pick({
       prompt: "AI drafts",
       items: [
-        { label: `${c.ai_model ? "" : "✓ "}Off`, value: { backend: c.ai_backend, model: "" } },
-        { label: `${on("ollama")}Ollama`, detail: c.ai_backend === "ollama" && c.ai_model ? c.ai_model : "a model you run in ollama.com", value: { backend: "ollama", model: null } },
+        { label: `${c.ai_model ? "" : "✓ "}Off`, value: () => set(c.ai_backend, "").then(() => flash("AI drafts are off.")) },
+        { label: `${on("ollama")}Ollama`, detail: c.ai_backend === "ollama" && c.ai_model ? c.ai_model : "a model you run in ollama.com", value: ollama },
         ...models.map((m) => ({
           label: `${on("embedded", m.id)}${m.name}`,
-          detail: `${(m.size / 1e9).toFixed(1)} GB download · needs ~${m.ram_gb} GB RAM · ${m.licence} · download coming soon`,
-          value: { backend: "embedded", model: m.id },
+          detail: `${m.ready ? "downloaded" : download?.id === m.id ? `downloading, ${pct(download.have, m.size)}` : m.have ? `${pct(m.have, m.size)} downloaded` : `${gb(m.size)} download`} · needs ~${m.ram_gb} GB RAM · ${m.licence}`,
+          value: () => embedded(m),
+        })),
+        ...(download ? [{ label: "Cancel download", detail: "what's here is kept, so it resumes next time", value: () => call("ai_download_cancel") }] : []),
+        ...models.filter((m) => m.have && download?.id !== m.id).map((m) => ({
+          label: `Delete ${m.name}`,
+          detail: `frees ${gb(m.have)}`,
+          value: () => call("ai_model_delete", { id: m.id }).then(() => flash(`Deleted ${m.name}.`)),
         })),
       ],
     });
-    if (!choice) return;
-    const model = choice.model ?? (await ask("Ollama model", c.ai_backend === "ollama" && c.ai_model ? c.ai_model : "llama3.2:3b", "as in `ollama pull <model>`"))?.trim();
-    if (model == null || (choice.model == null && !model)) return;
-    await call("ai_set", { backend: choice.backend, model });
-    cfg = await call("config");
-    flash(!model ? "AI drafts are off." : choice.backend === "embedded" ? "Saved. Downloading and running it inside Margin comes in a later update; use Ollama until then." : `Drafts come from ${model} in Ollama.`);
+    await run?.();
   }
 
   async function draftSummary() {
@@ -1459,6 +1496,7 @@
       {#if isText(tab)}<span class="mode">{mode.toUpperCase()}</span>{/if}
       <span class="file">{tab?.path ? rel(tab.path) : ""}{tab?.conflict ? " • changed on disk (:w keeps yours, Space f r reloads)" : tab?.dirty ? " • unsaved" : ""}</span>
       <span class="msg">{message}</span>
+      {#if download}<progress class="dl" max={download.size} value={download.have} title="Downloading the AI model ({Math.floor((download.have / download.size) * 100)}%); cancel it in AI drafts: choose model…"></progress>{/if}
       <button class="hint" onclick={() => act(palette)}>Space menu · {pretty("Ctrl")}+K commands</button>
     </footer>
   </div>
@@ -1527,6 +1565,7 @@
   .mode { color: var(--bg); background: var(--accent); padding: 0 6px; border-radius: var(--radius-sm); font-weight: 700; }
   .file { color: var(--dim); }
   .msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dl { width: 120px; height: 8px; accent-color: var(--accent); }
   .hint { background: none; border: 0; color: var(--dim); font: var(--fs-xs) var(--sans); cursor: pointer; }
   /* narrow windows: links drawer < 1000, sidebar icon rail < 760, short status bar < 560 */
   @media (max-width: 999px) {

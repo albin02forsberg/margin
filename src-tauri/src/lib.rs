@@ -19,6 +19,7 @@ use chrono::{Duration, NaiveDate, NaiveDateTime};
 use config::Config;
 use serde_json::{json, Value};
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use notify_debouncer_mini::{new_debouncer, notify, DebounceEventResult, Debouncer};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WindowEvent};
@@ -731,10 +732,75 @@ fn ai_draft(s: State<App>, prompt: String, one_line: bool) -> R<String> {
     ai::generate(c.ai_backend, &c.ai_url, c.ai_model.trim(), &prompt, one_line)
 }
 
-/// The models Margin can download and run itself.
+/// Where downloaded models live: the app's local data dir, never data_dir (backups commit that).
+fn model_file(app: &AppHandle, id: &str) -> R<(&'static ai::Model, PathBuf)> {
+    let m = ai::MODELS.iter().find(|m| m.id == id).ok_or_else(|| format!("unknown built-in model {id}"))?;
+    Ok((m, m.path(&app.path().app_local_data_dir().map_err(|e| e.to_string())?.join("models"))))
+}
+
+#[derive(serde::Serialize)]
+struct LocalModel {
+    #[serde(flatten)]
+    model: &'static ai::Model,
+    path: PathBuf,
+    /// Bytes on disk: SIZE once downloaded and checked, else what a paused download has.
+    have: u64,
+    ready: bool,
+}
+
+/// The models Margin can download and run itself, and how much of each is here.
 #[tauri::command]
-fn ai_models() -> &'static [ai::Model] {
-    ai::MODELS
+fn ai_models(app: AppHandle) -> R<Vec<LocalModel>> {
+    ai::MODELS.iter().map(|m| {
+        let (_, path) = model_file(&app, m.id)?;
+        let ready = path.is_file();
+        let have = if ready { m.size } else { std::fs::metadata(ai::part(&path)).map(|x| x.len()).unwrap_or(0) };
+        Ok(LocalModel { model: m, path, have, ready })
+    }).collect()
+}
+
+static DOWNLOADING: AtomicBool = AtomicBool::new(false);
+static CANCEL: AtomicBool = AtomicBool::new(false);
+
+/// Download model ID (resuming a paused one), emitting `ai-download` {id, have, size} as it goes.
+#[tauri::command]
+async fn ai_download(app: AppHandle, id: String) -> R<()> {
+    let (m, path) = model_file(&app, &id)?;
+    if DOWNLOADING.swap(true, Ordering::SeqCst) {
+        return Err("A model is already downloading.".into());
+    }
+    CANCEL.store(false, Ordering::SeqCst);
+    let mut next = 0;
+    let r = ai::download(m.url, &path, m.size, m.sha256, &CANCEL, |have| {
+        if have >= next || have == m.size {
+            next = have + m.size / 200;
+            let _ = app.emit("ai-download", json!({ "id": m.id, "have": have, "size": m.size }));
+        }
+    }).await;
+    DOWNLOADING.store(false, Ordering::SeqCst);
+    r
+}
+
+/// Stop the running download; its partial file stays, so the next one resumes.
+#[tauri::command]
+fn ai_download_cancel() {
+    CANCEL.store(true, Ordering::SeqCst);
+}
+
+/// Delete model ID from disk, partial download included.
+#[tauri::command]
+fn ai_model_delete(app: AppHandle, id: String) -> R<()> {
+    let (_, path) = model_file(&app, &id)?;
+    if DOWNLOADING.load(Ordering::SeqCst) {
+        return Err("Cancel the download first.".into());
+    }
+    for p in [ai::part(&path), path] {
+        match std::fs::remove_file(&p) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(format!("{}: {e}", p.display())),
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 /// Save the draft BACKEND and MODEL ("" = off) to config.toml, leaving the rest as written.
@@ -998,7 +1064,7 @@ pub fn run() {
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_edit_session, tc_add_session, activity_suggestions, activity_dismiss, ai_note_prompt, ai_day_prompt, ai_draft, ai_models, ai_set, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_edit_session, tc_add_session, activity_suggestions, activity_dismiss, ai_note_prompt, ai_day_prompt, ai_draft, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_linked, export_report, export_open
         ])
         .build(tauri::generate_context!())
