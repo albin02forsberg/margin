@@ -155,6 +155,42 @@ pub struct Known<'a> {
     pub meetings: &'a [Regex],
     /// The day's calendar events.
     pub calendar: &'a [Event],
+    /// Learned `activity_rules.toml` rules: pattern → project.
+    pub rules: &'a [(Regex, String)],
+}
+
+#[derive(Deserialize)]
+struct Rules {
+    #[serde(default)]
+    rule: Vec<Rule>,
+}
+
+#[derive(Deserialize)]
+struct Rule {
+    pattern: String,
+    project: String,
+}
+
+/// `activity_rules.toml` → (pattern, project) rules; a later rule with the same pattern replaces an earlier one.
+pub fn parse_rules(text: &str) -> Result<Vec<(Regex, String)>, String> {
+    let mut rs = toml::from_str::<Rules>(text).map_err(|e| format!("activity_rules.toml: {e}"))?.rule;
+    let mut seen = std::collections::HashSet::new();
+    rs.reverse();
+    rs.retain(|r| seen.insert(r.pattern.clone()));
+    rs.reverse();
+    let pats = rules("activity_rules.toml", &rs.iter().map(|r| r.pattern.clone()).collect::<Vec<_>>())?;
+    Ok(pats.into_iter().zip(rs.into_iter().map(|r| r.project)).collect())
+}
+
+/// TEXT plus a rule sending blocks titled TITLE to PROJECT; an editor's `repo · file` is learned as its repo.
+pub fn learn(text: &str, title: &str, project: &str) -> String {
+    let pat = match title.split_once(" · ") {
+        Some((repo, _)) => format!("^{} · ", regex::escape(repo)),
+        None => format!("^{}$", regex::escape(title)),
+    };
+    let q = |s: &str| toml::Value::String(s.into()).to_string();
+    let sep = if text.is_empty() || text.ends_with('\n') { "" } else { "\n" };
+    format!("{text}{sep}\n[[rule]]\npattern = {}\nproject = {}\n", q(&pat), q(project))
 }
 
 /// Lowercase words, separated and surrounded by single spaces: ` feat fix crash ` (a branch
@@ -176,14 +212,15 @@ fn task_matcher(title: &str) -> (Option<String>, Vec<Regex>) {
 }
 
 /// Blocks of work on DAY: WINDOW events minus EXCLUDEd ones, AFK time and TRACKED spans,
-/// joined across gaps under 5 min, at least 15 min long; PROJECTS named in a block's titles
-/// or apps are guessed (the one seen longest). The TASK whose title words or id show up
+/// joined across gaps under 5 min, at least 15 min long; the project of the learned RULES
+/// matching longest (only active PROJECTS), else of PROJECTS named in a block's titles or
+/// apps, is guessed (the one seen longest). The TASK whose title words or id show up
 /// longest (at least a minute, no tie) is guessed too, and gives the project when its
 /// category is one and no name was seen. A block at least half spent in windows MEETINGS
 /// match (app, title or URL), or at least half covered by a CALENDAR event (which names it,
 /// and gives the project when its title or attendees name one), is labelled a meeting.
 pub fn suggest(window: &[Span], afk: &[Span], tracked: &[(NaiveDateTime, NaiveDateTime)], exclude: &[Regex], known: Known, day: NaiveDate) -> Vec<Suggestion> {
-    let Known { projects, tasks, meetings, calendar } = known;
+    let Known { projects, tasks, meetings, calendar, rules } = known;
     let calendar: Vec<_> = calendar.iter().filter(|e| !exclude.iter().any(|r| r.is_match(&e.summary))).collect();
     let matchers: Vec<_> = tasks.iter().map(|(t, _)| task_matcher(t)).collect();
     let (d0, d1) = (day.and_time(NaiveTime::MIN), (day + Duration::days(1)).and_time(NaiveTime::MIN));
@@ -224,7 +261,12 @@ pub fn suggest(window: &[Span], afk: &[Span], tracked: &[(NaiveDateTime, NaiveDa
                 v.sort_by(|x, y| y.1.cmp(&x.1).then(x.0.cmp(y.0)));
                 v.into_iter().take(3).map(|(k, _)| k.to_string()).collect::<Vec<_>>()
             };
-            let project = projects
+            let mut by_rule: HashMap<&str, i64> = HashMap::new();
+            for (r, n) in rules.iter().filter(|(_, n)| projects.contains(n)) {
+                *by_rule.entry(n).or_default() += b.iter().filter(|p| r.is_match(&p.app) || r.is_match(&p.title) || r.is_match(&p.url)).map(secs).sum::<i64>();
+            }
+            let by_rule = by_rule.into_iter().filter(|x| x.1 > 0).max_by(|x, y| x.1.cmp(&y.1).then(y.0.cmp(x.0))).map(|x| x.0.to_string());
+            let project = by_rule.or_else(|| projects
                 .iter()
                 .filter(|n| !n.trim().is_empty())
                 .map(|n| {
@@ -233,7 +275,7 @@ pub fn suggest(window: &[Span], afk: &[Span], tracked: &[(NaiveDateTime, NaiveDa
                 })
                 .filter(|(s, _)| *s > 0)
                 .max_by_key(|(s, n)| (*s, n.len()))
-                .map(|(_, n)| n.clone());
+                .map(|(_, n)| n.clone()));
             // ponytail: O(tasks × pieces) per block, fine for hundreds of tasks.
             let full: Vec<String> = b.iter().map(|p| format!("{} {}", p.title, p.url)).collect();
             let lw: Vec<String> = full.iter().map(|t| words(t)).collect();
@@ -501,6 +543,24 @@ mod tests {
         assert_eq!(cal(&planning, &[]), [(Some("Planning".into()), Some("Acme".into()))]);
         assert_eq!(cal(&planning, &exclude_rules(&["planning".into()]).unwrap()), [(None, None)], "excluded events are dropped");
         assert_eq!(cal(&planning[1..], &[]), [(None, None)], "under half isn't");
+    }
+
+    #[test]
+    fn learned_rules() {
+        let sp = |a: &str, b: &str, title: &str| Span { start: dt(&format!("2026-10-01 {a}")), end: dt(&format!("2026-10-01 {b}")), app: "x".into(), title: title.into(), url: String::new() };
+        let projects = ["Margin".to_string(), "Acme".to_string()];
+        let text = learn(&learn("# mine\n", "github.com/x/web", "Margin"), "tool · lib.rs", "Gone");
+        let text = learn(&text, "github.com/x/web", "Acme"); // a later choice replaces the earlier one
+        assert!(text.starts_with("# mine\n\n[[rule]]\npattern = "), "hand-written lines survive: {text}");
+        let rules = parse_rules(&text).unwrap();
+        assert_eq!(rules.iter().map(|(r, p)| (r.as_str(), p.as_str())).collect::<Vec<_>>(), [("(?i)^tool · ", "Gone"), ("(?i)^github\\.com/x/web$", "Acme")]);
+        let got = |w: &[Span]| suggest(w, &[], &[], &[], Known { projects: &projects, rules: &rules, ..Default::default() }, "2026-10-01".parse().unwrap()).into_iter().map(|s| s.project).collect::<Vec<_>>();
+        // The rule beats a project name in the titles; a rule for a deleted project is skipped.
+        assert_eq!(got(&[sp("09:00", "09:20", "github.com/x/web"), sp("09:20", "09:30", "margin notes")]), [Some("Acme".into())]);
+        assert_eq!(got(&[sp("09:00", "09:30", "tool · lib.rs"), sp("09:30", "09:35", "margin")]), [Some("Margin".into())]);
+        assert_eq!(got(&[sp("09:00", "09:30", "github.com/x/web/issues")]), [None], "anchored: a longer title isn't the same page");
+        assert!(parse_rules("").unwrap().is_empty());
+        assert!(parse_rules("[[rule]]\npattern = \"(\"\nproject = \"A\"").unwrap_err().starts_with("activity_rules.toml: "));
     }
 
     #[test]

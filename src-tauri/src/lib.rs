@@ -722,7 +722,8 @@ fn activity_suggestions(s: State<App>, date_input: String) -> R<Option<Vec<activ
         "" => vec![],
         p => ics::events_on(&std::fs::read_to_string(config::expand(p)).map_err(|e| format!("activity_calendar {p}: {e}"))?, d),
     };
-    let all = activity::suggest(&window, &afk, &tracked, &exclude, activity::Known { projects: &projects, tasks: &tasks, meetings: &meetings, calendar: &calendar }, d);
+    let rules = activity::parse_rules(&timeclock::read_or_empty(&tc.dir.join("activity_rules.toml"))?)?;
+    let all = activity::suggest(&window, &afk, &tracked, &exclude, activity::Known { projects: &projects, tasks: &tasks, meetings: &meetings, calendar: &calendar, rules: &rules }, d);
     Ok(Some(activity::undismissed(all, &dismissed(&tc).unwrap_or_default())))
 }
 
@@ -742,6 +743,15 @@ fn activity_dismiss(s: State<App>, start: NaiveDateTime, end: NaiveDateTime) -> 
     let d = activity::dismiss(dismissed(&tc)?, start, end, today());
     std::fs::create_dir_all(&tc.dir).map_err(|e| e.to_string())?;
     config::write_atomic(&tc.dir.join("activity_dismissed.json"), serde_json::to_string(&d).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+}
+
+/// Remember that blocks titled TITLE go to PROJECT (the user picked another project than the guess).
+#[tauri::command]
+fn activity_learn(s: State<App>, title: String, project: String) -> R<()> {
+    let path = s.tc().dir.join("activity_rules.toml");
+    let text = activity::learn(&timeclock::read_or_empty(&path)?, &title, &project);
+    std::fs::create_dir_all(path.parent().unwrap_or(&path)).map_err(|e| e.to_string())?;
+    config::write_atomic(&path, text).map_err(|e| e.to_string())
 }
 
 /// What the model gets to draft a diary note for an accepted suggestion.
@@ -1109,7 +1119,7 @@ pub fn run() {
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_edit_session, tc_add_session, activity_suggestions, activity_dismiss, ai_note_prompt, ai_day_prompt, ai_draft, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_edit_session, tc_add_session, activity_suggestions, activity_dismiss, activity_learn, ai_note_prompt, ai_day_prompt, ai_draft, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_linked, export_report, export_open
         ])
         .build(tauri::generate_context!())

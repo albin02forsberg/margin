@@ -978,7 +978,10 @@
     const prompt = cfg.config.ai_model && !s.meeting && (await call<string>("ai_note_prompt", { project: p.project || null, task: s.task, apps: s.apps, titles: s.titles }));
     const draft = prompt ? await aiDraft(prompt, "Draft the note", "Write it myself", true) : null;
     const note = await ask("What did you do? (optional)", draft ?? (s.meeting ? `Meeting: ${s.meeting}` : s.task) ?? "", "goes into the work diary");
-    if (note != null) await tcDo("tc_add_session", { start: s.start, end: s.end, project: p.project, exportCode: p.code, note });
+    if (note == null) return;
+    await tcDo("tc_add_session", { start: s.start, end: s.end, project: p.project, exportCode: p.code, note });
+    // Another project than guessed: remember it for blocks with this title.
+    if (p.project && p.project !== s.project && s.titles[0]) await call("activity_learn", { title: s.titles[0], project: p.project });
   }
 
   /** Accept S after changing its start and end (HH:MM on its day). */
