@@ -107,7 +107,8 @@ describe("Margin", () => {
     mkdirSync(models, { recursive: true });
     writeFileSync(file, "fake model");
     await palette("AI drafts: choose model");
-    await answer("AI drafts", "1.5B");
+    await find(".picker li small", "downloaded · needs ~2 GB");
+    await answer("AI drafts", "1.5B downloaded"); // not "Delete Qwen2.5 1.5B…"
     await fileMatches(cfg, (s) => /^ai_backend = "embedded"$/m.test(s) && /^ai_model = "qwen2.5-1.5b-instruct-q4"$/m.test(s), "built-in model choice not saved");
     await find(".status .msg", "comes in a later update");
     await palette("AI drafts: choose model");
