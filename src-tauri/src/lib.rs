@@ -723,12 +723,32 @@ fn ai_day_prompt(s: State<App>, date_input: String) -> R<String> {
 fn ai_draft(s: State<App>, prompt: String, one_line: bool) -> R<String> {
     let c = s.cfg();
     if c.ai_model.trim().is_empty() {
-        return Err("Set ai_model in settings (Ctrl+,) to draft with a local model.".into());
+        return Err("Pick a model with AI drafts: choose model… to draft with a local model.".into());
     }
     if prompt.len() > ai::MAX_PROMPT + 200 {
         return Err("That prompt is too long to send.".into());
     }
-    ai::generate(&c.ai_url, c.ai_model.trim(), &prompt, one_line)
+    ai::generate(c.ai_backend, &c.ai_url, c.ai_model.trim(), &prompt, one_line)
+}
+
+/// The models Margin can download and run itself.
+#[tauri::command]
+fn ai_models() -> &'static [ai::Model] {
+    ai::MODELS
+}
+
+/// Save the draft BACKEND and MODEL ("" = off) to config.toml, leaving the rest as written.
+#[tauri::command]
+fn ai_set(app: AppHandle, s: State<App>, backend: ai::Backend, model: String) -> R<()> {
+    let model = model.trim();
+    if backend == ai::Backend::Embedded && !model.is_empty() && !ai::MODELS.iter().any(|m| m.id == model) {
+        return Err(format!("unknown built-in model {model}"));
+    }
+    let text = std::fs::read_to_string(&s.cfg_path).map_err(|e| e.to_string())?;
+    let text = config::set_key(&text, "ai_backend", toml::Value::try_from(backend).map_err(|e| e.to_string())?)?;
+    let text = config::set_key(&text, "ai_model", model.into())?;
+    config::write_atomic(&s.cfg_path, text).map_err(|e| e.to_string())?;
+    reload_config(app, s)
 }
 
 /// Org-formatted report text. KIND: daily | weekly | holidays | flex | doctor | backup.
@@ -978,7 +998,7 @@ pub fn run() {
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_edit_session, tc_add_session, activity_suggestions, activity_dismiss, ai_note_prompt, ai_day_prompt, ai_draft, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_edit_session, tc_add_session, activity_suggestions, activity_dismiss, ai_note_prompt, ai_day_prompt, ai_draft, ai_models, ai_set, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_linked, export_report, export_open
         ])
         .build(tauri::generate_context!())

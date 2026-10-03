@@ -1,10 +1,57 @@
-// Drafts of diary and journal notes from a small local model, through Ollama's HTTP API
-// (https://ollama.com). Nothing is sent unless `ai_model` is set, and only to localhost.
+// Drafts of diary and journal notes from a small local model: through Ollama's HTTP API
+// (https://ollama.com), or (coming) a pinned model run inside Margin. Nothing is sent unless
+// `ai_model` is set, and only to localhost.
 
 use crate::activity::{request, Suggestion};
 use crate::timeclock::Session;
 use chrono::NaiveDate;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
+
+/// Where drafts come from (`ai_backend`).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Backend {
+    #[default]
+    Ollama,
+    /// A model from MODELS, downloaded and run by Margin itself.
+    Embedded,
+}
+
+/// A model Margin can download: a GGUF file pinned to one Hugging Face commit and checksum.
+#[derive(Serialize, Debug)]
+pub struct Model {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub url: &'static str,
+    pub size: u64,
+    pub sha256: &'static str,
+    /// Roughly how much free memory it needs to run, in GB.
+    pub ram_gb: u8,
+    pub licence: &'static str,
+}
+
+/// The models on offer; the first is the default.
+pub const MODELS: &[Model] = &[
+    Model {
+        id: "qwen2.5-3b-instruct-q4",
+        name: "Qwen2.5 3B Instruct (Q4)",
+        url: "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/7dabda4d13d513e3e842b20f0d435c732f172cbe/qwen2.5-3b-instruct-q4_k_m.gguf",
+        size: 2_104_932_768,
+        sha256: "626b4a6678b86442240e33df819e00132d3ba7dddfe1cdc4fbb18e0a9615c62d",
+        ram_gb: 4,
+        licence: "Qwen Research licence: non-commercial use only",
+    },
+    Model {
+        id: "qwen2.5-1.5b-instruct-q4",
+        name: "Qwen2.5 1.5B Instruct (Q4)",
+        url: "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        size: 1_117_320_736,
+        sha256: "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+        ram_gb: 2,
+        licence: "Apache-2.0",
+    },
+];
 
 /// Prompts stay under this many bytes; later lines are dropped.
 pub const MAX_PROMPT: usize = 4000;
@@ -76,8 +123,24 @@ pub fn clean(text: &str, one_line: bool) -> String {
     bullet.replace_all(text.trim(), "- ").into_owned()
 }
 
-/// A draft for PROMPT from MODEL at URL.
-pub fn generate(url: &str, model: &str, prompt: &str, one_line: bool) -> Result<String, String> {
+/// A draft for PROMPT from MODEL, through BACKEND (Ollama at URL).
+pub fn generate(backend: Backend, url: &str, model: &str, prompt: &str, one_line: bool) -> Result<String, String> {
+    match backend {
+        Backend::Ollama => ollama(url, model, prompt, one_line),
+        Backend::Embedded => embedded(model),
+    }
+}
+
+/// ponytail: download and inference land in later PRs of #132; until then this only names the model.
+fn embedded(model: &str) -> Result<String, String> {
+    match MODELS.iter().find(|m| m.id == model) {
+        Some(m) => Err(format!("{} can't run inside Margin yet; that comes in a later update. Use Ollama for now (AI drafts: choose model…).", m.name)),
+        None => Err(format!("Unknown built-in model {model}. Pick one with AI drafts: choose model…")),
+    }
+}
+
+/// A draft for PROMPT from MODEL in Ollama at URL.
+fn ollama(url: &str, model: &str, prompt: &str, one_line: bool) -> Result<String, String> {
     let (status, resp) = request("Ollama", "ai_url", url, "POST", "/api/generate", Some(&body(model, prompt)), WAIT).map_err(|e| {
         if e.contains("isn't reachable") { format!("Ollama isn't running at {url}. Start it, or see ollama.com.") } else { e }
     })?;
@@ -127,7 +190,20 @@ mod tests {
     }
 
     #[test]
+    fn models_and_dispatch() {
+        assert_eq!(serde_json::to_string(&Backend::default()).unwrap(), "\"ollama\"");
+        for m in MODELS {
+            assert!(m.url.starts_with("https://") && m.url.ends_with(".gguf") && m.sha256.len() == 64 && m.size > 0, "{}", m.id);
+        }
+        assert!(MODELS[0].id.starts_with("qwen2.5-3b"), "default model");
+        assert!(generate(Backend::Embedded, "", MODELS[0].id, "p", true).unwrap_err().contains("can't run inside Margin yet"));
+        // Embedded never talks to ai_url (which would be refused as not local).
+        assert!(generate(Backend::Embedded, "http://example.com", "nope", "p", true).unwrap_err().contains("Unknown built-in model nope"));
+    }
+
+    #[test]
     fn http() {
+        let generate = |url: &str, m: &str, p: &str, one: bool| generate(Backend::Ollama, url, m, p, one);
         assert!(generate("http://example.com:11434", "m", "p", true).unwrap_err().contains("only localhost"));
         // Nothing listens on a port we just freed.
         let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap();

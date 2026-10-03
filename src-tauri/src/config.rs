@@ -40,7 +40,10 @@ pub struct Config {
     pub activitywatch_url: String,
     /// Regexes (case-insensitive) over app names and window titles that suggestions ignore.
     pub activity_exclude: Vec<String>,
-    /// Ollama model that drafts diary and journal notes, e.g. "llama3.2:3b"; empty = off.
+    /// Where drafts come from: "ollama", or "embedded" (a model Margin downloads and runs).
+    pub ai_backend: crate::ai::Backend,
+    /// Model that drafts diary and journal notes: an Ollama model, e.g. "llama3.2:3b", or a
+    /// built-in model id (ai::MODELS); empty = off.
     pub ai_model: String,
     /// The Ollama server; only local addresses are allowed.
     pub ai_url: String,
@@ -125,6 +128,7 @@ impl Default for Config {
             attachments_dir: "attachments".into(),
             activitywatch_url: String::new(),
             activity_exclude: v(&["KeePass", "1Password", "Bitwarden", "Private Browsing", "Incognito", "InPrivate"]),
+            ai_backend: Default::default(),
             ai_model: String::new(),
             ai_url: "http://localhost:11434".into(),
         }
@@ -267,7 +271,7 @@ pub fn setup(text: &str, notes_dir: &str, data_dir: &str, profiles: &str) -> Res
 
 /// TEXT with top-level KEY's one-line `key = …` set to VALUE (added at the top if missing);
 /// errors if anything else would change, e.g. a multi-line value.
-fn set_key(text: &str, key: &str, value: toml::Value) -> Result<String, String> {
+pub fn set_key(text: &str, key: &str, value: toml::Value) -> Result<String, String> {
     let err = |e: toml::de::Error| format!("can't update config.toml: {e}");
     let mut want: toml::Table = text.parse().map_err(err)?;
     want.insert(key.into(), value.clone());
@@ -347,6 +351,12 @@ mod tests {
         let c: Config = toml::from_str(&toml::to_string(&Config::default()).unwrap()).unwrap();
         assert_eq!(c.templates.len(), 2);
         assert!(toml::from_str::<Config>("templates = []").unwrap().templates.is_empty());
+        // Configs from before ai_backend keep using Ollama; ai_set's edit round-trips.
+        assert_eq!(toml::from_str::<Config>("ai_model = \"m\"").unwrap().ai_backend, crate::ai::Backend::Ollama);
+        let s = set_key("ai_model = \"m\"\n", "ai_backend", toml::Value::try_from(crate::ai::Backend::Embedded).unwrap()).unwrap();
+        assert_eq!(s, "ai_backend = \"embedded\"\nai_model = \"m\"\n");
+        assert_eq!(toml::from_str::<Config>(&s).unwrap().ai_backend, crate::ai::Backend::Embedded);
+        assert!(toml::from_str::<Config>("ai_backend = \"cloud\"").is_err());
     }
 
     #[test]

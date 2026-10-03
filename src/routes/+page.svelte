@@ -686,8 +686,34 @@
     }
   }
 
+  /** Settings for AI drafts: off, a model in Ollama, or one Margin downloads (download and running it come later, #132). */
+  async function aiChoose() {
+    const c = cfg.config;
+    type Model = { id: string; name: string; size: number; ram_gb: number; licence: string };
+    const models = await call<Model[]>("ai_models");
+    const on = (b: string, m = "") => c.ai_model && c.ai_backend === b && (!m || c.ai_model === m) ? "✓ " : "";
+    const choice = await pick({
+      prompt: "AI drafts",
+      items: [
+        { label: `${c.ai_model ? "" : "✓ "}Off`, value: { backend: c.ai_backend, model: "" } },
+        { label: `${on("ollama")}Ollama`, detail: c.ai_backend === "ollama" && c.ai_model ? c.ai_model : "a model you run in ollama.com", value: { backend: "ollama", model: null } },
+        ...models.map((m) => ({
+          label: `${on("embedded", m.id)}${m.name}`,
+          detail: `${(m.size / 1e9).toFixed(1)} GB download · needs ~${m.ram_gb} GB RAM · ${m.licence} · download coming soon`,
+          value: { backend: "embedded", model: m.id },
+        })),
+      ],
+    });
+    if (!choice) return;
+    const model = choice.model ?? (await ask("Ollama model", c.ai_backend === "ollama" && c.ai_model ? c.ai_model : "llama3.2:3b", "as in `ollama pull <model>`"))?.trim();
+    if (model == null || (choice.model == null && !model)) return;
+    await call("ai_set", { backend: choice.backend, model });
+    cfg = await call("config");
+    flash(!model ? "AI drafts are off." : choice.backend === "embedded" ? "Saved. Downloading and running it inside Margin comes in a later update; use Ollama until then." : `Drafts come from ${model} in Ollama.`);
+  }
+
   async function draftSummary() {
-    if (!cfg.config.ai_model) return flash(`Set ai_model in settings (Ctrl+,), e.g. "llama3.2:3b", to draft with a local model.`);
+    if (!cfg.config.ai_model) return flash("Pick a model with AI drafts: choose model… (Space f a) to draft with a local model.");
     const draft = await aiDraft(await call("ai_day_prompt", { dateInput: "today" }), "Send", "Cancel", false);
     if (!draft) return draft === "" && flash("The model sent an empty draft.");
     const path: string = await call("capture_path", { file: journalFile() });
@@ -989,6 +1015,7 @@
     { label: "Save this search as a view…", leader: "v v", run: saveView },
     { label: "Toggle sidebar", keys: ["Ctrl+\\"], leader: "v s", run: () => { sidebar = !sidebar; store("sidebar", sidebar ? "1" : "0"); } },
     { label: "Settings (config file)", keys: ["Ctrl+,"], leader: "f c", run: () => openFile(cfg.config_path) },
+    { label: "AI drafts: choose model…", leader: "f a", run: aiChoose },
     { label: "Save", keys: ["Ctrl+S"], leader: "f s", run: () => saveTab(tab, true) },
     { label: "Reload from disk (discard unsaved changes)", leader: "f r", run: reloadFromDisk },
     { label: "Save all", leader: "f S", run: saveAll },

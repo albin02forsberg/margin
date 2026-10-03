@@ -343,9 +343,18 @@ browsing by default) keeps windows and pages out of suggestions. Off by default.
 Margin can draft diary and journal notes with a small model running on your own
 machine through [Ollama](https://ollama.com), so it stays free and nothing
 leaves your computer. Install Ollama, run `ollama pull llama3.2:3b` (any 1–3B
-model works; `qwen2.5:3b` is another good one), and set `ai_model =
-"llama3.2:3b"` in settings. `ai_url` defaults to `http://localhost:11434`; only
-local addresses are accepted. Off while `ai_model` is empty (the default).
+model works; `qwen2.5:3b` is another good one), then pick **Ollama** with
+**AI drafts: choose model…** (`Space f a`) and enter the model name (or set
+`ai_backend = "ollama"` and `ai_model = "llama3.2:3b"` in settings). `ai_url`
+defaults to `http://localhost:11434`; only local addresses are accepted. Off
+while `ai_model` is empty (the default).
+
+The same picker lists models Margin will download and run itself, without
+Ollama (`ai_backend = "embedded"`): Qwen2.5 3B Instruct (the default, ~2.1 GB,
+Qwen Research licence: non-commercial use only) and Qwen2.5 1.5B Instruct
+(~1.1 GB, Apache-2.0). Nothing is bundled or downloaded yet: the download and
+running them inside Margin arrive in later updates
+([#132](https://github.com/albin02forsberg/margin/issues/132)).
 
 - **Accept** on a suggestion offers to draft the diary note from that block's
   project, apps and titles; it lands in the note prompt for you to edit.

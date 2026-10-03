@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { answer, browser, close, fileMatches, find, Key, launch, palette, today, type, type Dirs } from "./setup.ts";
 
-let notes: string, data: string;
+let notes: string, data: string, cfgDir: string;
 
 before(async () => {
   const d: Dirs = await launch({
@@ -16,7 +16,7 @@ before(async () => {
       writeFileSync(join(data, "work", "projects.toml"), `[Acme]\nexport_code = "ACME"\n`);
     },
   });
-  ({ notes, data } = d);
+  ({ notes, data, cfgDir } = d);
 });
 
 after(close, { timeout: 30_000 });
@@ -86,5 +86,20 @@ describe("Margin", () => {
     await palette("Time: project settings");
     await browser.waitUntil(async () => (await browser.$(`input[aria-label="Export code for Acme"]`).getValue()) === "ACME-2", { timeoutMsg: "reopened page doesn't show the saved code" });
     assert.equal(await browser.$(`select[aria-label="Rounding for Acme"]`).getValue(), "0.25");
+  });
+
+  it("chooses the AI draft model in settings, keeping the rest of config.toml", async () => {
+    const cfg = join(cfgDir, "config.toml");
+    await palette("AI drafts: choose model");
+    await answer("AI drafts", "Ollama");
+    await answer("Ollama model", "qwen2.5:3b");
+    await fileMatches(cfg, (s) => /^ai_backend = "ollama"$/m.test(s) && /^ai_model = "qwen2.5:3b"$/m.test(s) && /^templates = \[\]$/m.test(s), "Ollama choice not saved");
+    await palette("AI drafts: choose model");
+    await answer("AI drafts", "1.5B"); // a pinned model: only saved, nothing is downloaded yet
+    await fileMatches(cfg, (s) => /^ai_backend = "embedded"$/m.test(s) && /^ai_model = "qwen2.5-1.5b-instruct-q4"$/m.test(s), "built-in model choice not saved");
+    await find(".status .msg", "comes in a later update");
+    await palette("AI drafts: choose model");
+    await answer("AI drafts", "Off");
+    await fileMatches(cfg, (s) => /^ai_model = ""$/m.test(s), "drafts not turned off");
   });
 });
