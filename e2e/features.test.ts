@@ -10,7 +10,11 @@ describe("First run", () => {
   before(async () => { d = await launch({ tutorial: false }); });
   after(close, { timeout: 30_000 });
 
-  it("opens the tutorial, and Space ? reopens it", async () => {
+  it("asks for setup (Esc keeps the defaults), opens the tutorial, and Space ? reopens it", async () => {
+    const cfg = read(join(d.cfgDir, "config.toml"));
+    await find(".picker label span", "Setup: notes folder");
+    await browser.keys(Key.Escape);
+    assert.equal(read(join(d.cfgDir, "config.toml")), cfg);
     await find(".tabs .tab.cur button", "tutorial");
     await find(".status .file", "tutorial.org");
     assert.match(read(join(d.cfgDir, "tutorial.org")), /\S/, "tutorial.org not written");
@@ -21,6 +25,24 @@ describe("First run", () => {
     await find(".menu", "Help: tutorial");
     await browser.keys("?");
     await find(".tabs .tab.cur button", "tutorial");
+  });
+});
+
+describe("First-run setup", () => {
+  let d: Dirs;
+  before(async () => { d = await launch({ tutorial: false }); });
+  after(close, { timeout: 30_000 });
+
+  it("saves the answers to config.toml and creates the folders", async () => {
+    const notes = join(d.root, "my notes");
+    await answer("Setup: notes folder", notes);
+    await answer("Setup: time-tracking folder", join(d.root, "time"));
+    await answer("Setup: profiles", "Job, Home");
+    await find(".tabs .tab.cur button", "tutorial");
+    const cfg = read(join(d.cfgDir, "config.toml"));
+    assert.ok(cfg.includes(`notes_dir = ${JSON.stringify(notes)}\n`) && cfg.includes(`profiles = ["Job", "Home"]\n`), cfg);
+    assert.ok(cfg.includes(`capture_shortcut = ""\n`), "other settings lost");
+    assert.ok(existsSync(notes) && existsSync(join(d.root, "time")), "folders not created");
   });
 });
 
