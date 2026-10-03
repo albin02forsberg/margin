@@ -118,4 +118,22 @@ describe("Margin", () => {
     await answer("AI drafts", "Off");
     await fileMatches(cfg, (s) => /^ai_model = ""$/m.test(s), "drafts not turned off");
   });
+
+  it("saves a group of the settings page, keeping the rest of config.toml", async () => {
+    const cfg = join(cfgDir, "config.toml");
+    const field = (label: string) => browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "${label}")]]/*[self::input or self::textarea]`);
+    await browser.keys([Key.Ctrl, ","]);
+    await find(".settings h1", "Settings");
+    await (await field("Expected hours per day")).click();
+    await browser.keys([Key.Ctrl, "a"]);
+    await type("7.5");
+    await (await field("Profiles")).click();
+    await browser.keys([Key.Ctrl, "End"]);
+    await browser.keys(Key.Enter);
+    await type("Home");
+    await (await find(".settings button", "Save time")).click();
+    await fileMatches(cfg, (s) => /^expected_daily_hours = 7\.5$/m.test(s) && /^profiles = \["Work", "Home"\]$/m.test(s) && /^templates = \[\]$/m.test(s), "settings not saved");
+    await find(".status .msg", "Settings saved");
+    assert.match(readFileSync(cfg, "utf8"), /^reminders = false$/m, "other settings lost");
+  });
 });

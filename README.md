@@ -425,9 +425,14 @@ Timed entries show as one hour; the rest are all-day.
 
 ## Settings
 
-Ctrl+, opens `config.toml` (in the OS config dir): notes folder (`~/notes`),
-time data folder (`~/timeclock`), inbox file, journal folder, task statuses,
-profiles and expected daily hours. It's created with the defaults on first run;
+Ctrl+, (`Space f c`) opens the settings page: folders (notes `~/notes`, time data
+`~/timeclock`, export, journal, inbox, attachments, templates), expected daily
+hours, idle prompt, profiles, reminders, quick-capture shortcut (applies after a
+restart), task statuses, calendar feed, ActivityWatch and Ollama. Each group saves
+on its own into `config.toml` (in the OS config dir), keeping your comments and
+everything else in the file; changing the folders or profiles clocks out a running
+timer, like setup. Saved views and capture templates stay in the file itself:
+`Space f C` (or "Edit config.toml" on the page) opens it. It's created with the defaults on first run;
 an existing file that can't be read or parsed is left alone and the app runs on
 the defaults until it's fixed, saying so (with the error) at startup. Old Emacs timeclock data can be imported from
 the Time view.

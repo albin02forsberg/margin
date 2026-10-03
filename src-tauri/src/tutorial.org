@@ -47,5 +47,5 @@ saves on its own).
 * And also
 - Reminders pop up before timed tasks and deadlines.
 - =Space e= exports a note as HTML, Markdown or PDF.
-- =Ctrl+,= opens the settings file: notes folder, templates, views, …
+- =Ctrl+,= opens the settings: folders, profiles, reminders, …; =Space f C= opens config.toml itself (templates, views)
 - Margin updates itself; =Space f u= checks now.

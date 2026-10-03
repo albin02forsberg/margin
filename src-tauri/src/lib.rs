@@ -138,6 +138,19 @@ fn save_view(app: AppHandle, s: State<App>, name: String, query: String, rename:
 fn setup(app: AppHandle, s: State<App>, notes_dir: String, data_dir: String, profiles: String) -> R<String> {
     let text = std::fs::read_to_string(&s.cfg_path).map_err(|e| e.to_string())?;
     let (text, c) = config::setup(&text, &notes_dir, &data_dir, &profiles)?;
+    apply_config(app, s, text, c)
+}
+
+/// The settings page's changed VALUES (see config::save), saved like setup's answers.
+#[tauri::command]
+fn save_config(app: AppHandle, s: State<App>, values: toml::Table) -> R<String> {
+    let text = std::fs::read_to_string(&s.cfg_path).map_err(|e| e.to_string())?;
+    let (text, c) = config::save(&text, values)?;
+    apply_config(app, s, text, c)
+}
+
+/// Write config TEXT (parsed: C) and reload; see setup.
+fn apply_config(app: AppHandle, s: State<App>, text: String, c: Config) -> R<String> {
     let (old, profile) = (s.cfg(), s.profile());
     // Before the config changes, so the open session closes in the log and diary it started in.
     if clock_out_before_setup(&s.tc(), &old, &c, &profile)? {
@@ -1065,7 +1078,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            config, tutorial, reload_config, save_view, setup, list_files, read_file, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
+            config, tutorial, reload_config, save_view, setup, save_config, list_files, read_file, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,

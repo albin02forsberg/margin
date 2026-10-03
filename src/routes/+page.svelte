@@ -19,9 +19,10 @@
   import Time, { hm, type Session, type Suggestion, type TimeApi } from "$lib/Time.svelte";
   import TaskDialog from "$lib/TaskDialog.svelte";
   import Projects from "$lib/Projects.svelte";
+  import Settings from "$lib/Settings.svelte";
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
 
-  type View = "agenda" | "todo" | "time" | "projects";
+  type View = "agenda" | "todo" | "time" | "projects" | "settings";
   /** SAVED: the text last read from / written to disk, to tell our own writes from outside changes.
    *  REPORT: how to regenerate a report tab when the data changes. */
   type Tab = {
@@ -192,7 +193,7 @@
   async function openView(kind: View) {
     let i = tabs.findIndex((t) => t.key === kind);
     if (i < 0) {
-      tabs.push({ key: kind, title: { agenda: "Today", todo: "Tasks", time: "Time", projects: "Projects" }[kind], kind, dirty: false });
+      tabs.push({ key: kind, title: { agenda: "Today", todo: "Tasks", time: "Time", projects: "Projects", settings: "Settings" }[kind], kind, dirty: false });
       i = tabs.length - 1;
     }
     await show(i);
@@ -241,6 +242,15 @@
     reload++;
     await refreshTc();
     flash(warn ? `⚠ Settings saved. ${warn}` : "Settings saved — Ctrl+, has the rest.");
+  }
+
+  /** The settings page's changed VALUES; errors go back to the page. */
+  async function saveSettings(values: Record<string, unknown>) {
+    const warn: string = await call("save_config", { values });
+    cfg = await call("config");
+    reload++;
+    await refreshTc();
+    flash(warn ? `⚠ Settings saved. ${warn}` : "Settings saved.");
   }
 
   // Search tabs take the name of the view with their query, or the query itself once no view has it.
@@ -491,7 +501,7 @@
   /** Capture with a template (settings or templates folder): ask its prompts, file it, open at %?. */
   async function captureTemplate() {
     const tpls = await call<Tpl[]>("capture_templates");
-    if (!tpls.length) return flash("No capture templates: add [[templates]] in settings (Ctrl+,) or .org files in notes/templates/.");
+    if (!tpls.length) return flash("No capture templates: add [[templates]] to config.toml (Space f C) or .org files in notes/templates/.");
     const t: Tpl | null = await pick({ prompt: "Capture with template", items: tplItems(tpls) });
     if (t) await fileTemplate(t);
   }
@@ -1052,7 +1062,8 @@
     { label: "Search tasks…", leader: "v f", run: searchTasks },
     { label: "Save this search as a view…", leader: "v v", run: saveView },
     { label: "Toggle sidebar", keys: ["Ctrl+\\"], leader: "v s", run: () => { sidebar = !sidebar; store("sidebar", sidebar ? "1" : "0"); } },
-    { label: "Settings (config file)", keys: ["Ctrl+,"], leader: "f c", run: () => openFile(cfg.config_path) },
+    { label: "Settings", keys: ["Ctrl+,"], leader: "f c", run: () => openView("settings") },
+    { label: "Settings: edit config.toml", leader: "f C", run: () => openFile(cfg.config_path) },
     { label: "AI drafts: choose model…", leader: "f a", run: aiChoose },
     { label: "Save", keys: ["Ctrl+S"], leader: "f s", run: () => saveTab(tab, true) },
     { label: "Reload from disk (discard unsaved changes)", leader: "f r", run: reloadFromDisk },
@@ -1453,12 +1464,14 @@
         <div class="editor" bind:this={editorEl} style:display={isText(tab) ? "block" : "none"}></div>
         {#if dropCue}<div class="drop-cue">Drop to attach to {tab.title}</div>{/if}
         {#if cfg}
-          {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo" || t.kind === "time" || t.kind === "projects") as v (v.key)}
+          {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo" || t.kind === "time" || t.kind === "projects" || t.kind === "settings") as v (v.key)}
             <div class="view" style:display={v === tab ? "block" : "none"}>
               {#if v.kind === "time"}
                 <Time api={timeApi} active={v === tab} {reload} />
               {:else if v.kind === "projects"}
                 <Projects {act} active={v === tab} {reload} />
+              {:else if v.kind === "settings"}
+                <Settings config={cfg.config} error={cfg.config_error} save={saveSettings} edit={() => act(() => openFile(cfg.config_path))} />
               {:else}
                 <Agenda mode={v.kind as "agenda" | "todo"} api={agendaApi} active={v === tab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} />
               {/if}
