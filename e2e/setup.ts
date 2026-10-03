@@ -46,7 +46,8 @@ export async function launch({ config = [], files = () => {}, tutorial = true }:
   ].join("\n") + "\n");
   if (tutorial) writeFileSync(join(d.cfgDir, "tutorial.org"), ""); // not a first run, so the tutorial doesn't take focus
   files(d);
-  const env = { ...process.env, XDG_CONFIG_HOME: join(root, "config"), XDG_DATA_HOME: join(root, "share"), XDG_CACHE_HOME: join(root, "cache") };
+  // HOME too, so `~` paths (the defaults, when config.toml is ignored) stay in the temp dir.
+  const env = { ...process.env, HOME: root, XDG_CONFIG_HOME: join(root, "config"), XDG_DATA_HOME: join(root, "share"), XDG_CACHE_HOME: join(root, "cache") };
   // Own process group, so close() takes WebKitWebDriver and the app down with it.
   driver = spawn("tauri-driver", [], { stdio: "inherit", env, detached: true });
   // Wait for tauri-driver to listen.

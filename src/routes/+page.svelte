@@ -1271,6 +1271,7 @@
       const [tut, first] = await call<[string, boolean]>("tutorial");
       if (first) await openFile(tut);
       await refreshTc();
+      if (cfg.config_error) flash(`⚠ config.toml was ignored (${cfg.config_error}); running on defaults. The file is untouched.`);
       if (!import.meta.env.DEV) checkUpdate(true).catch(() => {}); // offline or no release yet: stay quiet
     });
     const timer = setInterval(() => act(refreshTc), 60_000);
