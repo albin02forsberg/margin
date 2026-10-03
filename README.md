@@ -301,7 +301,9 @@ the week's hours against expected, flex balance and per-project totals. Keys:
 Space t … has every timeclock command (same letters as the old Emacs menu).
 If `projects.toml`, the time log or the diary can't be read or parsed (say, after
 a bad hand edit), commands that would rewrite it show an error and leave the
-file alone instead of starting over from empty.
+file alone instead of starting over from empty. CSV and HTML/PDF exports fail with the
+parse error rather than writing project names as export codes, and Time → Check log
+(also run after saving `projects.toml`) lists the error.
 
 The tray icon shows what you're tracking and for how long, and has start,
 break, resume, switch and stop. Closing the window while a timer runs hides it

@@ -87,7 +87,7 @@ impl Tc {
         self.dir.join("timelog.jsonl")
     }
 
-    fn projects_path(&self) -> PathBuf {
+    pub fn projects_path(&self) -> PathBuf {
         self.dir.join("projects.toml")
     }
 
@@ -129,6 +129,11 @@ impl Tc {
     pub fn load_projects(&self) -> Result<Projects, String> {
         let path = self.projects_path();
         toml::from_str(&read_or_empty(&path)?).map_err(|e| format!("{}: {e}", path.display()))
+    }
+
+    /// Unreadable or malformed projects.toml / diary, which the lenient readers hide.
+    pub fn file_issues(&self) -> Vec<String> {
+        [self.load_projects().err(), read_or_empty(&self.diary).err()].into_iter().flatten().collect()
     }
 
     pub fn save_projects(&self, p: &Projects) -> Result<(), String> {
@@ -864,6 +869,21 @@ mod tests {
         assert!(diary.contains("*Acme* (30m): Automatically switched to Other"), "{diary}");
         assert!(diary.contains("*Other* (0m): done"));
         assert!(doctor(&tc.read_log(), now()).is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn malformed_projects_are_reported() {
+        let dir = std::env::temp_dir().join(format!("tc-proj-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), expected: 8.0 };
+        assert!(tc.file_issues().is_empty()); // missing files are fine
+        fs::create_dir_all(&tc.dir).unwrap();
+        fs::write(tc.projects_path(), "[Acme\nexport_code = ").unwrap();
+        assert!(tc.load_projects().is_err());
+        assert!(tc.projects().is_empty()); // display stays lenient
+        let i = tc.file_issues();
+        assert!(i.len() == 1 && i[0].contains("projects.toml"), "{i:?}");
         let _ = fs::remove_dir_all(&dir);
     }
 
