@@ -275,6 +275,21 @@ pub fn setup(text: &str, notes_dir: &str, data_dir: &str, profiles: &str) -> Res
     Ok((out, c))
 }
 
+/// TEXT with the settings page's VALUES (top-level keys) set via set_key; errors on a key that
+/// isn't a setting (or is `views`/`templates`, which stay in the file) or a value Config won't load.
+pub fn save(text: &str, values: toml::Table) -> Result<(String, Config), String> {
+    let known = toml::Table::try_from(Config::default()).map_err(|e| e.to_string())?;
+    let mut out = text.to_string();
+    for (key, value) in values {
+        if !known.contains_key(&key) || key == "views" || key == "templates" {
+            return Err(format!("{key} can't be set here; edit config.toml"));
+        }
+        out = set_key(&out, &key, value)?;
+    }
+    let c = toml::from_str::<Config>(&out).map_err(|e| format!("config.toml: {e}"))?;
+    Ok((out, c))
+}
+
 /// TEXT with top-level KEY's one-line `key = …` set to VALUE (added at the top if missing);
 /// errors if anything else would change, e.g. a multi-line value.
 pub fn set_key(text: &str, key: &str, value: toml::Value) -> Result<String, String> {
@@ -296,7 +311,7 @@ pub fn set_key(text: &str, key: &str, value: toml::Value) -> Result<String, Stri
         .collect();
     let out = if done { out } else { format!("{key} = {value}\n{out}") };
     if out.parse::<toml::Table>().map_err(err)? != want {
-        return Err("can't update config.toml without changing other settings; edit it by hand (Ctrl+,)".into());
+        return Err("can't update config.toml without changing other settings; edit it by hand (Space f C)".into());
     }
     Ok(out)
 }
@@ -318,6 +333,20 @@ mod tests {
         assert_eq!(c.views.len(), 1);
         assert!(setup("profiles = [\n  \"A\",\n]\n", "", "", "B").is_err()); // multi-line value: refused
         assert!(setup("bad", "x", "", "").is_err() && setup("profiles = 1", "", "", "").is_err());
+    }
+
+    #[test]
+    fn save_settings() {
+        let t = |s: &str| s.parse::<toml::Table>().unwrap();
+        let mine = "# mine\nexpected_daily_hours = 8.0 # here\n\n[[views]]\nname = \"A\"\nquery = \"a\"\n";
+        let (s, c) = save(mine, t("expected_daily_hours = 7.5\nreminders = false\nprofiles = [\"A\", \"B\"]")).unwrap();
+        assert!(s.ends_with(&mine.replace("8.0 # here", "7.5")), "{s}"); // in place, other lines kept
+        assert!(s.contains("\nreminders = false\n") || s.starts_with("reminders = false\n"), "{s}");
+        assert_eq!((c.expected_daily_hours, c.reminders, c.views.len()), (7.5, false, 1));
+        assert_eq!(save(mine, t("idle_threshold_minutes = 5")).unwrap().1.idle_threshold_minutes, 5);
+        assert!(save(mine, t("idle_threshold_minutes = 1.5")).is_err()); // wrong type
+        assert!(save(mine, t("nope = 1")).is_err() && save(mine, t("views = []")).is_err());
+        assert!(save("profiles = [\n  \"A\",\n]\n", t("profiles = [\"B\"]")).is_err()); // multi-line: by hand
     }
 
     #[test]
