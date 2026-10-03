@@ -12,5 +12,5 @@ Run the `triager` agent (`.claude/agents/triager.md`) in the background, without
   - issues it closed as duplicates, already done or on the owner's instruction, and ones it flagged but left open for the owner to close;
   - the ready-to-build issues, with their sizes;
   - the decisions only the owner can make.
-- Ready issues still need the owner's `approved` label before `/ship` builds them, unless the owner names them directly (`/ship 63 65`).
+- Ready issues need the owner's `approved` label before `/ship` builds them, unless the owner names them directly (`/ship 63 65`) or the triager and reviewer agreed in a comment that they are small and clear (then they count as approved). Mention those in your relay.
 - In watch mode, resume the triager with SendMessage after each report until the owner says stop. Stop it with TaskStop when wrapping up.
