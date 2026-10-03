@@ -75,11 +75,12 @@ fn kept<'a>(xs: &'a [String], exclude: &'a [Regex]) -> impl Iterator<Item = &'a 
     xs.iter().filter(|x| !x.trim().is_empty() && !exclude.iter().any(|r| r.is_match(x)))
 }
 
-/// Prompt for a one-line diary note about a block of work: its PROJECT, APPS and TITLES (minus EXCLUDEd ones).
-pub fn note_prompt(project: Option<&str>, apps: &[String], titles: &[String], exclude: &[Regex]) -> String {
+/// Prompt for a one-line diary note about a block of work: its PROJECT, TASK, APPS and TITLES (minus EXCLUDEd ones).
+pub fn note_prompt(project: Option<&str>, task: Option<&str>, apps: &[String], titles: &[String], exclude: &[Regex]) -> String {
     let head = "Write one short line (under 15 words, past tense, no quotes) for a work diary saying what I worked on. Use only these facts.";
     let apps: Vec<_> = kept(apps, exclude).map(String::as_str).collect();
-    let facts = project.filter(|p| !p.trim().is_empty()).map(|p| format!("Project: {p}")).into_iter().chain([format!("Apps: {}", apps.join(", ")), "Window titles:".into()]);
+    let some = |label: &str, x: Option<&str>| x.filter(|x| !x.trim().is_empty()).map(|x| format!("{label}: {x}"));
+    let facts = some("Project", project).into_iter().chain(some("Task", task)).chain([format!("Apps: {}", apps.join(", ")), "Window titles:".into()]);
     capped(head, facts.chain(kept(titles, exclude).map(|t| format!("- {t}"))))
 }
 
@@ -166,11 +167,12 @@ mod tests {
     #[test]
     fn prompts() {
         let ex = vec![Regex::new("(?i)keepass").unwrap()];
-        let p = note_prompt(Some("Margin"), &v(&["Code", "KeePassXC"]), &v(&["lib.rs - margin", "bank.kdbx - KeePassXC", ""]), &ex);
-        assert!(p.ends_with("\nProject: Margin\nApps: Code\nWindow titles:\n- lib.rs - margin"), "{p}");
+        let p = note_prompt(Some("Margin"), Some("Task matching"), &v(&["Code", "KeePassXC"]), &v(&["lib.rs - margin", "bank.kdbx - KeePassXC", ""]), &ex);
+        assert!(p.ends_with("\nProject: Margin\nTask: Task matching\nApps: Code\nWindow titles:\n- lib.rs - margin"), "{p}");
+        assert!(note_prompt(None, None, &[], &[], &ex).ends_with("facts.\nApps: \nWindow titles:"));
         let day = NaiveDate::from_ymd_opt(2026, 10, 3).unwrap();
         let s = Session { date: day, project: "Margin".into(), desc: "AI drafts".into(), hours: 2.5, start: t("09:00"), end: t("11:30"), line: Some(3) };
-        let b = Suggestion { start: dt("13:00"), end: dt("14:00"), apps: v(&["Firefox"]), titles: v(&["Ollama docs", "KeePassXC"]), project: None };
+        let b = Suggestion { start: dt("13:00"), end: dt("14:00"), apps: v(&["Firefox"]), titles: v(&["Ollama docs", "KeePassXC"]), project: None, task: None };
         let p = day_prompt(day, std::slice::from_ref(&s), &[b], &ex);
         assert!(p.contains("workday 2026-10-03") && p.ends_with("Logged time:\n- 09:00–11:30 Margin: AI drafts (2.5 h)\nWindow titles on screen:\n- 13:00–14:00: Ollama docs"), "{p}");
         assert!(day_prompt(day, &[], &[], &ex).ends_with("Logged time:\n- nothing"));

@@ -15,7 +15,8 @@ const MIN_BLOCK_SECS: i64 = 15 * 60;
 
 /// An event as local time. AFK events carry their status ("afk"/"not-afk") as `app`;
 /// browser tab events have a `url`; editor events have the file name as `title` and
-/// `repo · file` as `url`.
+/// `repo · file` as `url`. A window part `with_urls` labels keeps the full window title
+/// (which has the tab title, e.g. an issue number) as `url`, for task matching.
 #[derive(Clone, Debug)]
 pub struct Span {
     pub start: NaiveDateTime,
@@ -33,6 +34,8 @@ pub struct Suggestion {
     pub apps: Vec<String>,
     pub titles: Vec<String>,
     pub project: Option<String>,
+    /// The open task worked on, by title.
+    pub task: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -124,7 +127,7 @@ pub fn with_urls(window: &[Span], web: &[Span], exclude: &[Regex]) -> Vec<Span> 
         for t in web.iter().filter(|t| t.start < w.end && w.start < t.end && !t.title.is_empty() && w.title.contains(&t.title)) {
             let (s, e) = (t.start.max(w.start), t.end.min(w.end));
             if !exclude.iter().any(|r| r.is_match(&t.url) || r.is_match(&t.title)) {
-                out.push(Span { start: s, end: e, title: url_label(&t.url), ..w.clone() });
+                out.push(Span { start: s, end: e, title: url_label(&t.url), url: w.title.clone(), ..w.clone() });
             }
             rest = cut(rest, s, e);
         }
@@ -133,15 +136,39 @@ pub fn with_urls(window: &[Span], web: &[Span], exclude: &[Regex]) -> Vec<Span> 
     out
 }
 
+/// An open task: its title and org category.
+pub type Task = (String, String);
+
+/// Lowercase words, separated and surrounded by single spaces: ` feat fix crash ` (a branch
+/// `feat/fix-crash`) contains ` fix crash `.
+fn words(s: &str) -> String {
+    format!(" {} ", s.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" "))
+}
+
+/// Words too common to name a task on their own.
+const COMMON: &[&str] = &["test", "tests", "todo", "review", "update", "docs", "email", "mail", "call", "meeting", "notes", "cleanup", "refactor", "release", "deploy", "write", "read", "plan", "misc"];
+
+/// What finds a task titled TITLE in a window title: its words (at least 4 chars and not
+/// one common word), and the `#123` / `ABC-123` ids in it.
+fn task_matcher(title: &str) -> (Option<String>, Vec<Regex>) {
+    let w = words(title);
+    let by_title = (w.trim().len() >= 4 && !COMMON.contains(&w.trim())).then_some(w);
+    let ids = Regex::new(r"#\d+|\b[A-Z][A-Z0-9]+-\d+\b").unwrap();
+    (by_title, ids.find_iter(title).filter_map(|m| Regex::new(&format!(r"(^|\W){}($|\W)", regex::escape(m.as_str()))).ok()).collect())
+}
+
 /// Blocks of work on DAY: WINDOW events minus EXCLUDEd ones, AFK time and TRACKED spans,
 /// joined across gaps under 5 min, at least 15 min long; PROJECTS named in a block's titles
-/// or apps are guessed (the one seen longest).
-pub fn suggest(window: &[Span], afk: &[Span], tracked: &[(NaiveDateTime, NaiveDateTime)], exclude: &[Regex], projects: &[String], day: NaiveDate) -> Vec<Suggestion> {
+/// or apps are guessed (the one seen longest). The TASK whose title words or id show up
+/// longest (at least a minute, no tie) is guessed too, and gives the project when its
+/// category is one and no name was seen.
+pub fn suggest(window: &[Span], afk: &[Span], tracked: &[(NaiveDateTime, NaiveDateTime)], exclude: &[Regex], projects: &[String], tasks: &[Task], day: NaiveDate) -> Vec<Suggestion> {
+    let matchers: Vec<_> = tasks.iter().map(|(t, _)| task_matcher(t)).collect();
     let (d0, d1) = (day.and_time(NaiveTime::MIN), (day + Duration::days(1)).and_time(NaiveTime::MIN));
     let cuts: Vec<_> = afk.iter().filter(|a| a.app == "afk").map(|a| (a.start, a.end)).chain(tracked.iter().copied()).collect();
     let mut pieces: Vec<Span> = vec![];
     // ponytail: O(events × cuts), fine for a day; sweep sorted lists if it ever shows up.
-    for w in window.iter().filter(|w| !exclude.iter().any(|r| r.is_match(&w.app) || r.is_match(&w.title))) {
+    for w in window.iter().filter(|w| !exclude.iter().any(|r| r.is_match(&w.app) || r.is_match(&w.title) || r.is_match(&w.url))) {
         let mut parts = vec![(w.start.max(d0), w.end.min(d1))];
         for &(cs, ce) in &cuts {
             parts = cut(parts, cs, ce);
@@ -185,10 +212,25 @@ pub fn suggest(window: &[Span], afk: &[Span], tracked: &[(NaiveDateTime, NaiveDa
                 .filter(|(s, _)| *s > 0)
                 .max_by_key(|(s, n)| (*s, n.len()))
                 .map(|(_, n)| n.clone());
+            // ponytail: O(tasks × pieces) per block, fine for hundreds of tasks.
+            let full: Vec<String> = b.iter().map(|p| format!("{} {}", p.title, p.url)).collect();
+            let lw: Vec<String> = full.iter().map(|t| words(t)).collect();
+            let seen: Vec<(i64, &Task)> = matchers
+                .iter()
+                .zip(tasks)
+                .map(|((w, ids), t)| {
+                    let hit = |i: &usize| w.as_ref().is_some_and(|w| lw[*i].contains(w.as_str())) || ids.iter().any(|r| r.is_match(&full[*i]));
+                    ((0..b.len()).filter(hit).map(|i| secs(&b[i])).sum(), t)
+                })
+                .filter(|x| x.0 >= 60)
+                .collect();
+            // The same title twice (in two files) is no tie.
+            let task = seen.iter().max_by_key(|x| x.0).filter(|f| !seen.iter().any(|s| s.0 == f.0 && s.1 .0 != f.1 .0)).map(|f| f.1);
+            let project = project.or_else(|| task.and_then(|(_, cat)| projects.iter().find(|n| !cat.is_empty() && n.eq_ignore_ascii_case(cat))).cloned());
             // Whole minutes, inside the block so they can't touch logged time.
             let m = Duration::minutes(1);
             let (start, end) = (b[0].start.duration_round_up(m).unwrap_or(b[0].start), b[b.len() - 1].end.duration_trunc(m).unwrap_or(b[b.len() - 1].end));
-            Suggestion { start, end, apps: top(|p| &p.app), titles: top(|p| &p.title), project }
+            Suggestion { start, end, apps: top(|p| &p.app), titles: top(|p| &p.title), project, task: task.map(|t| t.0.clone()) }
         })
         .collect()
 }
@@ -314,7 +356,7 @@ mod tests {
         let projects = vec!["Margin".to_string(), "Acme".to_string(), "".to_string()];
         let rules = exclude_rules(&["keepass".into()]).unwrap();
         let day = |d: &str| d.parse::<NaiveDate>().unwrap();
-        let s = suggest(&w, &a, &[], &rules, &projects, day("2026-10-01"));
+        let s = suggest(&w, &a, &[], &rules, &projects, &[], day("2026-10-01"));
         // 08:00 alone is under 15 min; 09:10–11:20 joins across the excluded 2 min; 11:20–12:50 is AFK;
         // lunch is rounded inward to whole minutes.
         assert_eq!(s.iter().map(|s| (s.start, s.end)).collect::<Vec<_>>(), vec![(dt("2026-10-01 09:10"), dt("2026-10-01 11:20")), (dt("2026-10-01 13:00"), dt("2026-10-01 13:30"))]);
@@ -323,10 +365,10 @@ mod tests {
         assert_eq!(s[0].project.as_deref(), Some("Margin"));
         assert_eq!(s[1].project, None);
         // The 23:50–00:10 event is clipped to the day it falls in.
-        assert!(suggest(&w, &a, &[], &rules, &projects, day("2026-09-30")).is_empty());
+        assert!(suggest(&w, &a, &[], &rules, &projects, &[], day("2026-09-30")).is_empty());
         // Already logged time is subtracted, and a block doesn't bridge a logged gap.
         let tracked = [(dt("2026-10-01 09:50"), dt("2026-10-01 09:52")), (dt("2026-10-01 13:00"), dt("2026-10-01 14:00"))];
-        let s = suggest(&w, &a, &tracked, &rules, &projects, day("2026-10-01"));
+        let s = suggest(&w, &a, &tracked, &rules, &projects, &[], day("2026-10-01"));
         assert_eq!(s.iter().map(|s| (s.start, s.end)).collect::<Vec<_>>(), vec![(dt("2026-10-01 09:10"), dt("2026-10-01 09:50")), (dt("2026-10-01 09:52"), dt("2026-10-01 11:20"))]);
         assert_eq!(s[0].project.as_deref(), Some("Margin"));
     }
@@ -356,10 +398,10 @@ mod tests {
         ]);
         let ex = exclude_rules(&["mail\\.google".into()]).unwrap();
         assert_eq!(got(&ex)[2..], [t("09:40", "09:50", "Inbox - Gmail - Google Chrome")], "an excluded URL drops its part");
-        // The URL feeds the project guess.
-        let s = suggest(&with_urls(&window, &web, &[]), &[], &[], &[], &["margin".into()], "2026-10-01".parse().unwrap());
+        // The URL feeds the project guess, the tab title (kept from the window's) the task guess.
+        let s = suggest(&with_urls(&window, &web, &[]), &[], &[], &[], &["margin".into()], &[("Review #61".into(), "".into())], "2026-10-01".parse().unwrap());
         assert!(s[0].titles.contains(&"github.com/albin02forsberg/margin".to_string()));
-        assert_eq!(s[0].project.as_deref(), Some("margin"));
+        assert_eq!((s[0].project.as_deref(), s[0].task.as_deref()), (Some("margin"), Some("Review #61")));
     }
 
     #[test]
@@ -385,9 +427,27 @@ mod tests {
         let got: Vec<_> = w.iter().map(|s| (s.start.format("%H:%M").to_string(), s.title.as_str())).collect();
         let t = |a: &str, b: &'static str| (a.to_string(), b);
         assert_eq!(got, [t("09:00", "tool · lib.rs"), t("09:20", "lib.rs - Visual Studio Code"), t("09:30", "acme · Main.kt")], "an excluded repo drops its part");
-        let s = suggest(&w, &[], &[], &ex, &["Tool".into()], "2026-10-01".parse().unwrap());
+        let s = suggest(&w, &[], &[], &ex, &["Tool".into()], &[], "2026-10-01".parse().unwrap());
         assert_eq!(s[0].project.as_deref(), Some("Tool"));
         assert!(s[0].titles.contains(&"tool · lib.rs".to_string()));
+    }
+
+    #[test]
+    fn task_matching() {
+        let sp = |a: &str, b: &str, title: &str| Span { start: dt(&format!("2026-10-01 {a}")), end: dt(&format!("2026-10-01 {b}")), app: "x".into(), title: title.into(), url: String::new() };
+        let task = |t: &str, cat: &str| (t.to_string(), cat.to_string());
+        let tasks = [task("Fix crash on save", "acme"), task("Review", "work"), task("CI", "work"), task("Speed up search #42", "margin"), task("Ship PROJ-7 export", "work"), task("Fix crash on save", "acme")];
+        let projects = ["Acme".to_string(), "Margin".to_string()];
+        let got = |w: &[Span]| suggest(w, &[], &[], &[], &projects, &tasks, "2026-10-01".parse().unwrap()).into_iter().map(|s| (s.task, s.project)).collect::<Vec<_>>();
+        let some = |t: &str, p: &str| (Some(t.to_string()), Some(p.to_string()));
+        // A branch in a terminal title; same title twice in the list is no tie. The category gives the project.
+        assert_eq!(got(&[sp("09:00", "09:20", "~/acme (feat/fix-crash-on-save) - zsh"), sp("09:20", "09:40", "Review - CI - Inbox")]), [some("Fix crash on save", "Acme")]);
+        // Ids, not inside longer ones; the one seen longest wins.
+        assert_eq!(got(&[sp("09:00", "09:10", "Issue #42 · GitHub"), sp("09:10", "09:30", "PROJ-7 · Jira"), sp("09:30", "09:35", "PR #421")]), [(Some("Ship PROJ-7 export".into()), None)]);
+        // A tie, or under a minute, gives none.
+        assert_eq!(got(&[sp("09:00", "09:10", "#42"), sp("09:10", "09:20", "PROJ-7"), sp("09:20", "09:30", "other")]), [(None, None)]);
+        let short = Span { end: dt("2026-10-01 09:00") + Duration::seconds(30), ..sp("09:00", "09:00", "#42") };
+        assert_eq!(got(&[short, sp("09:00", "09:30", "other")]), [(None, None)]);
     }
 
     #[test]
@@ -399,7 +459,7 @@ mod tests {
         d = dismiss(d, dt("2026-10-03 09:10"), dt("2026-10-03 11:20"), today);
         let d: Dismissed = serde_json::from_str(&serde_json::to_string(&d).unwrap()).unwrap();
         assert_eq!(d.keys().map(|k| k.to_string()).collect::<Vec<_>>(), ["2026-09-03", "2026-10-03"]);
-        let sg = |a: &str, b: &str| Suggestion { start: dt(a), end: dt(b), apps: vec![], titles: vec![], project: None };
+        let sg = |a: &str, b: &str| Suggestion { start: dt(a), end: dt(b), apps: vec![], titles: vec![], project: None, task: None };
         // The dismissed block has grown a little since; a later one is untouched.
         let left = undismissed(vec![sg("2026-10-03 09:05", "2026-10-03 11:25"), sg("2026-10-03 11:30", "2026-10-03 12:00")], &d);
         assert_eq!(left, vec![sg("2026-10-03 11:30", "2026-10-03 12:00")]);
