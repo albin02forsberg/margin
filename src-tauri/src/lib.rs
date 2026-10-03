@@ -131,20 +131,57 @@ fn save_view(app: AppHandle, s: State<App>, name: String, query: String, rename:
 }
 
 /// The setup prompts' answers (see config::setup): create the folders, save, reload, and
-/// move to the first profile if the current one is gone.
+/// move to the first profile if the current one is gone. Returns a warning (or "") when
+/// the old folders' files are left behind; nothing is moved.
 #[tauri::command]
-fn setup(app: AppHandle, s: State<App>, notes_dir: String, data_dir: String, profiles: String) -> R<()> {
+fn setup(app: AppHandle, s: State<App>, notes_dir: String, data_dir: String, profiles: String) -> R<String> {
     let text = std::fs::read_to_string(&s.cfg_path).map_err(|e| e.to_string())?;
     let (text, c) = config::setup(&text, &notes_dir, &data_dir, &profiles)?;
+    let (old, profile) = (s.cfg(), s.profile());
+    // Before the config changes, so the open session closes in the log and diary it started in.
+    if clock_out_before_setup(&s.tc(), &old, &c, &profile)? {
+        s.backup();
+    }
     for d in [c.notes(), c.data()] {
         std::fs::create_dir_all(&d).map_err(|e| format!("{}: {e}", d.display()))?;
     }
     config::write_atomic(&s.cfg_path, text).map_err(|e| e.to_string())?;
     reload_config(app, s.clone())?;
-    match c.profiles.first() {
-        Some(p) if !c.profiles.contains(&s.profile()) => tc_switch_profile(s, p.clone()).map(|_| ()),
-        _ => Ok(()),
+    if let Some(p) = c.profiles.first().filter(|_| !c.profiles.contains(&profile)) {
+        tc_switch_profile(s, p.clone())?;
     }
+    Ok(orphan_warning(&old, &c))
+}
+
+/// Clock out OLD_TC if setup moves the notes or data folder or drops PROFILE (the config
+/// then points elsewhere, and the clock-out would land in the wrong log).
+fn clock_out_before_setup(old_tc: &Tc, old: &Config, new: &Config, profile: &str) -> R<bool> {
+    if old.notes() == new.notes() && old.data() == new.data() && new.profiles.iter().any(|p| p == profile) {
+        return Ok(false);
+    }
+    old_tc.clock_out("Auto-clockout (Setup changed folders or profiles)")
+}
+
+/// Which of the old notes/data folders and dropped profiles' time logs still hold files
+/// that the new settings no longer point at (empty string if none).
+fn orphan_warning(old: &Config, new: &Config) -> String {
+    let has_files = |p: &Path| std::fs::read_dir(p).is_ok_and(|mut d| d.next().is_some());
+    let mut left: Vec<PathBuf> = vec![];
+    for (o, n) in [(old.notes(), new.notes()), (old.data(), new.data())] {
+        if o != n && has_files(&o) && !has_files(&n) {
+            left.push(o);
+        }
+    }
+    if old.data() == new.data() {
+        let dropped = old.profiles.iter().filter(|p| !new.profiles.contains(p));
+        left.extend(dropped.map(|p| old.data().join(p.to_lowercase())).filter(|d| has_files(d)));
+    }
+    left.dedup();
+    if left.is_empty() {
+        return String::new();
+    }
+    let list: Vec<_> = left.iter().map(|p| p.display().to_string()).collect();
+    format!("Files stay in {} (nothing was moved); copy them over if you need them.", list.join(", "))
 }
 
 /// Watch the notes and data dirs; the UI gets an "fs-changed" event (with the
@@ -954,4 +991,40 @@ pub fn run() {
                 _ => {}
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg(notes: &Path, data: &Path, profiles: &str) -> Config {
+        toml::from_str(&format!("notes_dir = {:?}\ndata_dir = {:?}\nprofiles = [{profiles}]", notes, data)).unwrap()
+    }
+
+    #[test]
+    fn setup_clocks_out_in_old_folder_and_warns_about_orphans() {
+        let dir = std::env::temp_dir().join(format!("margin-setup-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (n1, d1, n2, d2) = (dir.join("n1"), dir.join("d1"), dir.join("n2"), dir.join("d2"));
+        let old = cfg(&n1, &d1, "\"Work\", \"Home\"");
+        let tc = Tc { dir: d1.join("work"), diary: n1.join("dagbok-work.org"), expected: 8.0 };
+        tc.clock_in("Acme", "", None).unwrap();
+        // Same folders, profile kept: nothing happens.
+        assert!(!clock_out_before_setup(&tc, &old, &cfg(&n1, &d1, "\"Work\""), "Work").unwrap());
+        assert!(tc.current().is_some());
+        // Data dir changes: the old log is closed.
+        let new = cfg(&n2, &d2, "\"Work\"");
+        assert!(clock_out_before_setup(&tc, &old, &new, "Work").unwrap());
+        assert!(tc.current().is_none());
+        // Old folders hold files, new ones are empty: warned; unchanged folders: not.
+        std::fs::create_dir_all(&n2).unwrap();
+        std::fs::create_dir_all(&d2).unwrap();
+        let w = orphan_warning(&old, &new);
+        assert!(w.contains(n1.to_str().unwrap()) && w.contains(d1.to_str().unwrap()), "{w}");
+        assert_eq!(orphan_warning(&old, &old), "");
+        // Dropped profile keeps its log folder.
+        let w = orphan_warning(&old, &cfg(&n1, &d1, "\"Home\""));
+        assert!(w.contains(d1.join("work").to_str().unwrap()), "{w}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

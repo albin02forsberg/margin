@@ -235,11 +235,11 @@
     const dataDir = notesDir == null ? null : await ask("Setup: time-tracking folder", c.data_dir, hint);
     const profiles = dataDir == null ? null : await ask("Setup: profiles, comma-separated", c.profiles.join(", "), hint);
     if (profiles == null) return;
-    await call("setup", { notesDir, dataDir, profiles });
+    const warn: string = await call("setup", { notesDir, dataDir, profiles });
     cfg = await call("config");
     reload++;
     await refreshTc();
-    flash("Settings saved — Ctrl+, has the rest.");
+    flash(warn ? `⚠ Settings saved. ${warn}` : "Settings saved — Ctrl+, has the rest.");
   }
 
   // Search tabs take the name of the view with their query, or the query itself once no view has it.
