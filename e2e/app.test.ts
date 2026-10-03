@@ -143,6 +143,7 @@ describe("Margin", () => {
     await type("Ctrl+Alt+F12");
     await (await find(".settings button", "Save reminders")).click();
     await fileMatches(cfg, (s) => /^capture_shortcut = "Ctrl\+Alt\+F12"$/m.test(s), "shortcut not saved");
+    await browser.pause(500); // the save message comes after the reload (the last test's may still show)
     const msg = await find(".status .msg", "Settings saved");
     assert.doesNotMatch(await msg.getText(), /shortcut/, "shortcut didn't register");
   });
