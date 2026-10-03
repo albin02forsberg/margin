@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type Suggestion = { start: string; end: string; apps: string[]; titles: string[]; project: string | null; task: string | null };
+  export type Suggestion = { start: string; end: string; apps: string[]; titles: string[]; project: string | null; task: string | null; meeting: string | null };
   export type Session = { date: string; project: string; desc: string; hours: number; start: string; end: string; line: number | null };
   export type TimeApi = {
     act: (f: () => unknown) => void;
@@ -176,7 +176,7 @@
               {#each sugg as s (s.start)}
                 <tr>
                   <td class="mono">{clock(s.start)}–{clock(s.end)}</td>
-                  <td>{s.apps.join(", ")} <span class="dim">{s.titles.map((t) => `“${t}”`).join(" ")}</span>{#if s.project || s.task} → <strong>{[s.project, s.task].filter(Boolean).join(" / ")}</strong>?{/if}</td>
+                  <td>{#if s.meeting}<span class="badge">Meeting</span> {/if}{s.apps.join(", ")} <span class="dim">{s.titles.map((t) => `“${t}”`).join(" ")}</span>{#if s.project || s.task} → <strong>{[s.project, s.task].filter(Boolean).join(" / ")}</strong>?{/if}</td>
                   <td class="num">{hm((Date.parse(s.end) - Date.parse(s.start)) / 3_600_000)}</td>
                   <td class="actions"><button onclick={() => accept(s)}>Accept</button><button class="icon" title="Change start and end, then accept" onclick={() => accept(s, "editSuggestion")}>✎</button><button class="icon" title="Dismiss" onclick={() => dismiss(s)}>✕</button></td>
                 </tr>
@@ -273,6 +273,7 @@
   .flex strong.neg { color: var(--todo); }
   .tools div { display: flex; flex-wrap: wrap; gap: var(--s2); }
   .suggested td:nth-child(2) { overflow-wrap: anywhere; }
+  .badge { font-size: var(--fs-xs); background: var(--active); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--s1); }
   .actions { white-space: nowrap; text-align: right; }
   .error { color: var(--todo); font-size: var(--fs-md); }
   @media (max-width: 759px) { .status { grid-template-columns: 1fr; } .total { text-align: left; } }

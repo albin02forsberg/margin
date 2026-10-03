@@ -172,7 +172,7 @@ mod tests {
         assert!(note_prompt(None, None, &[], &[], &ex).ends_with("facts.\nApps: \nWindow titles:"));
         let day = NaiveDate::from_ymd_opt(2026, 10, 3).unwrap();
         let s = Session { date: day, project: "Margin".into(), desc: "AI drafts".into(), hours: 2.5, start: t("09:00"), end: t("11:30"), line: Some(3) };
-        let b = Suggestion { start: dt("13:00"), end: dt("14:00"), apps: v(&["Firefox"]), titles: v(&["Ollama docs", "KeePassXC"]), project: None, task: None };
+        let b = Suggestion { start: dt("13:00"), end: dt("14:00"), apps: v(&["Firefox"]), titles: v(&["Ollama docs", "KeePassXC"]), project: None, task: None, meeting: None };
         let p = day_prompt(day, std::slice::from_ref(&s), &[b], &ex);
         assert!(p.contains("workday 2026-10-03") && p.ends_with("Logged time:\n- 09:00–11:30 Margin: AI drafts (2.5 h)\nWindow titles on screen:\n- 13:00–14:00: Ollama docs"), "{p}");
         assert!(day_prompt(day, &[], &[], &ex).ends_with("Logged time:\n- nothing"));
