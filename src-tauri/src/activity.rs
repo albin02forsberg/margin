@@ -1,6 +1,7 @@
 // Suggested sessions from ActivityWatch (https://activitywatch.net): its local REST API
 // has window, AFK, browser tab and editor events, which we turn into blocks of work worth logging.
 
+use crate::ics::Event;
 use chrono::{DateTime, Duration, DurationRound, FixedOffset, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -152,6 +153,8 @@ pub struct Known<'a> {
     pub projects: &'a [String],
     pub tasks: &'a [Task],
     pub meetings: &'a [Regex],
+    /// The day's calendar events.
+    pub calendar: &'a [Event],
 }
 
 /// Lowercase words, separated and surrounded by single spaces: ` feat fix crash ` (a branch
@@ -177,9 +180,11 @@ fn task_matcher(title: &str) -> (Option<String>, Vec<Regex>) {
 /// or apps are guessed (the one seen longest). The TASK whose title words or id show up
 /// longest (at least a minute, no tie) is guessed too, and gives the project when its
 /// category is one and no name was seen. A block at least half spent in windows MEETINGS
-/// match (app, title or URL) is labelled a meeting.
+/// match (app, title or URL), or at least half covered by a CALENDAR event (which names it,
+/// and gives the project when its title or attendees name one), is labelled a meeting.
 pub fn suggest(window: &[Span], afk: &[Span], tracked: &[(NaiveDateTime, NaiveDateTime)], exclude: &[Regex], known: Known, day: NaiveDate) -> Vec<Suggestion> {
-    let Known { projects, tasks, meetings } = known;
+    let Known { projects, tasks, meetings, calendar } = known;
+    let calendar: Vec<_> = calendar.iter().filter(|e| !exclude.iter().any(|r| r.is_match(&e.summary))).collect();
     let matchers: Vec<_> = tasks.iter().map(|(t, _)| task_matcher(t)).collect();
     let (d0, d1) = (day.and_time(NaiveTime::MIN), (day + Duration::days(1)).and_time(NaiveTime::MIN));
     let cuts: Vec<_> = afk.iter().filter(|a| a.app == "afk").map(|a| (a.start, a.end)).chain(tracked.iter().copied()).collect();
@@ -243,15 +248,20 @@ pub fn suggest(window: &[Span], afk: &[Span], tracked: &[(NaiveDateTime, NaiveDa
                 .collect();
             // The same title twice (in two files) is no tie.
             let task = seen.iter().max_by_key(|x| x.0).filter(|f| !seen.iter().any(|s| s.0 == f.0 && s.1 .0 != f.1 .0)).map(|f| f.1);
-            let project = project.or_else(|| task.and_then(|(_, cat)| projects.iter().find(|n| !cat.is_empty() && n.eq_ignore_ascii_case(cat))).cloned());
             // Whole minutes, inside the block so they can't touch logged time.
             let m = Duration::minutes(1);
             let (start, end) = (b[0].start.duration_round_up(m).unwrap_or(b[0].start), b[b.len() - 1].end.duration_trunc(m).unwrap_or(b[b.len() - 1].end));
+            let overlap = |e: &Event| (e.end.min(end) - e.start.max(start)).num_seconds();
+            let event = calendar.iter().filter(|e| 2 * overlap(e) >= (end - start).num_seconds()).max_by_key(|e| overlap(e));
+            let named = |e: &&Event| projects.iter().filter(|n| !n.trim().is_empty()).find(|n| [&e.summary].into_iter().chain(&e.attendees).any(|t| t.to_lowercase().contains(&n.to_lowercase()))).cloned();
+            let project = project.or_else(|| event.and_then(named));
+            let project = project.or_else(|| task.and_then(|(_, cat)| projects.iter().find(|n| !cat.is_empty() && n.eq_ignore_ascii_case(cat))).cloned());
             let call = |p: &Span| meetings.iter().any(|r| r.is_match(&p.app) || r.is_match(&p.title) || r.is_match(&p.url));
             let all = |_: &Span| true;
             let meeting = (2 * b.iter().filter(|p| call(p)).map(secs).sum::<i64>() >= b.iter().map(secs).sum::<i64>())
                 .then(|| top(|p| &p.title, &call).into_iter().chain(top(|p| &p.app, &call)).next())
                 .flatten();
+            let meeting = event.map(|e| e.summary.clone()).or(meeting);
             Suggestion { start, end, apps: top(|p| &p.app, &all), titles: top(|p| &p.title, &all), project, task: task.map(|t| t.0.clone()), meeting }
         })
         .collect()
@@ -483,6 +493,14 @@ mod tests {
         assert_eq!(got(&[sp("09:00", "09:30", "chrome", "Standup | Microsoft Teams")]), [Some("Standup | Microsoft Teams".into())]);
         assert_eq!(got(&[sp("09:00", "09:30", "zoom", "")]), [Some("zoom".into())], "no title: the app");
         assert!(super::rules("activity_meetings", &["(".into()]).unwrap_err().starts_with("activity_meetings: "));
+        // A calendar event over half the block names it, and an attendee the project.
+        let ev = |a: &str, b: &str, s: &str| Event { start: dt(&format!("2026-10-01 {a}")), end: dt(&format!("2026-10-01 {b}")), summary: s.into(), attendees: vec!["ann@acme.com".into()] };
+        let code = [sp("09:00", "09:45", "Code", "lib.rs")];
+        let cal = |c: &[Event], ex: &[Regex]| suggest(&code, &[], &[], ex, Known { projects: &["Acme".into()], meetings: &rules, calendar: c, ..Default::default() }, "2026-10-01".parse().unwrap()).into_iter().map(|s| (s.meeting, s.project)).collect::<Vec<_>>();
+        let planning = [ev("08:50", "09:30", "Planning"), ev("09:30", "09:45", "Coffee")];
+        assert_eq!(cal(&planning, &[]), [(Some("Planning".into()), Some("Acme".into()))]);
+        assert_eq!(cal(&planning, &exclude_rules(&["planning".into()]).unwrap()), [(None, None)], "excluded events are dropped");
+        assert_eq!(cal(&planning[1..], &[]), [(None, None)], "under half isn't");
     }
 
     #[test]
