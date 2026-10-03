@@ -77,6 +77,9 @@ fn sha256_file(p: &Path) -> std::io::Result<String> {
     Ok(format!("{:x}", h.finalize()))
 }
 
+/// How long a download may go without receiving a byte before it fails (resumable).
+const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(if cfg!(test) { 1 } else { 60 });
+
 /// Download URL (SIZE bytes, checksum SHA256) to DEST through DEST.part, resuming what's there
 /// with a Range request. PROGRESS gets the bytes so far; CANCEL stops it, keeping the .part.
 /// DEST only appears once length and checksum match; a bad file is deleted.
@@ -91,7 +94,7 @@ pub async fn download(url: &str, dest: &Path, size: u64, sha256: &str, cancel: &
         if rustls::crypto::CryptoProvider::get_default().is_none() {
             let _ = rustls::crypto::ring::default_provider().install_default();
         }
-        let client = reqwest::Client::builder().user_agent("Margin").build().map_err(|e| e.to_string())?;
+        let client = reqwest::Client::builder().user_agent("Margin").connect_timeout(std::time::Duration::from_secs(30)).read_timeout(READ_TIMEOUT).build().map_err(|e| e.to_string())?;
         let mut req = client.get(url);
         if have > 0 {
             req = req.header(reqwest::header::RANGE, format!("bytes={have}-"));
@@ -435,6 +438,25 @@ mod tests {
             }).collect()
         });
         (base, srv)
+    }
+
+    #[test]
+    fn download_stall_times_out() {
+        let dest = std::env::temp_dir().join(format!("margin-stall-{}", std::process::id())).join("m.gguf");
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/m.gguf", l.local_addr().unwrap());
+        let srv = std::thread::spawn(move || {
+            let (mut c, _) = l.accept().unwrap();
+            let _ = c.read(&mut [0; 512]);
+            c.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\nhello").unwrap();
+            std::thread::sleep(std::time::Duration::from_secs(3)); // hold the socket open: a stall
+        });
+        let t = std::time::Instant::now();
+        let err = tauri::async_runtime::block_on(download(&url, &dest, 11, "", &AtomicBool::new(false), |_| {})).unwrap_err();
+        assert!(err.contains("interrupted") && t.elapsed().as_secs() < 3, "{err} after {:?}", t.elapsed()); // the timeout, not the socket closing
+        assert_eq!(std::fs::read(part(&dest)).unwrap(), b"hello");
+        srv.join().unwrap();
+        std::fs::remove_dir_all(dest.parent().unwrap()).unwrap();
     }
 
     #[test]
