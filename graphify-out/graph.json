@@ -1923,6 +1923,18 @@
       "source_location": "L14"
     },
     {
+      "id": "src_tauri_src_remind_due",
+      "label": "Due",
+      "_origin": "ast",
+      "_rust_declaration_count": 1,
+      "community": 0,
+      "community_name": "org.rs",
+      "file_type": "code",
+      "norm_label": "due",
+      "source_file": "src-tauri/src/remind.rs",
+      "source_location": "L11"
+    },
+    {
       "id": "src_tauri_src_timeclock_event",
       "label": "Event",
       "_origin": "ast",
@@ -1969,18 +1981,6 @@
       "norm_label": "tc",
       "source_file": "src-tauri/src/timeclock.rs",
       "source_location": "L79"
-    },
-    {
-      "id": "src_tauri_src_remind_due",
-      "label": "Due",
-      "_origin": "ast",
-      "_rust_declaration_count": 1,
-      "community": 12,
-      "community_name": "remind.rs",
-      "file_type": "code",
-      "norm_label": "due",
-      "source_file": "src-tauri/src/remind.rs",
-      "source_location": "L11"
     },
     {
       "id": "src_tauri_src_lib_app",
@@ -3115,6 +3115,17 @@
       "source_location": "L521"
     },
     {
+      "id": "src_tauri_src_remind_rs_naivedatetime",
+      "label": "NaiveDateTime",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "org.rs",
+      "file_type": "code",
+      "norm_label": "naivedatetime",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "src_tauri_src_timeclock",
       "label": "timeclock.rs",
       "_origin": "ast",
@@ -4149,6 +4160,270 @@
       "source_location": "L33"
     },
     {
+      "id": "package_devdependencies",
+      "label": "devDependencies",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "devdependencies",
+      "source_file": "package.json",
+      "source_location": "L35"
+    },
+    {
+      "id": "package_devdependencies_svelte",
+      "label": "svelte",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "svelte",
+      "source_file": "package.json",
+      "source_location": "L41"
+    },
+    {
+      "id": "package_devdependencies_svelte_check",
+      "label": "svelte-check",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "svelte-check",
+      "source_file": "package.json",
+      "source_location": "L42"
+    },
+    {
+      "id": "package_devdependencies_sveltejs_adapter_static",
+      "label": "@sveltejs/adapter-static",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "@sveltejs/adapter-static",
+      "source_file": "package.json",
+      "source_location": "L36"
+    },
+    {
+      "id": "package_devdependencies_sveltejs_kit",
+      "label": "@sveltejs/kit",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "@sveltejs/kit",
+      "source_file": "package.json",
+      "source_location": "L37"
+    },
+    {
+      "id": "package_devdependencies_sveltejs_vite_plugin_svelte",
+      "label": "@sveltejs/vite-plugin-svelte",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "@sveltejs/vite-plugin-svelte",
+      "source_file": "package.json",
+      "source_location": "L38"
+    },
+    {
+      "id": "package_devdependencies_tauri_apps_cli",
+      "label": "@tauri-apps/cli",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "@tauri-apps/cli",
+      "source_file": "package.json",
+      "source_location": "L39"
+    },
+    {
+      "id": "package_devdependencies_types_node",
+      "label": "@types/node",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "@types/node",
+      "source_file": "package.json",
+      "source_location": "L40"
+    },
+    {
+      "id": "package_devdependencies_typescript",
+      "label": "typescript",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "typescript",
+      "source_file": "package.json",
+      "source_location": "L43"
+    },
+    {
+      "id": "package_devdependencies_vite",
+      "label": "vite",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "vite",
+      "source_file": "package.json",
+      "source_location": "L44"
+    },
+    {
+      "id": "package_devdependencies_webdriverio",
+      "label": "webdriverio",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "webdriverio",
+      "source_file": "package.json",
+      "source_location": "L45"
+    },
+    {
+      "id": "package_scripts",
+      "label": "scripts",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "scripts",
+      "source_file": "package.json",
+      "source_location": "L6"
+    },
+    {
+      "id": "package_scripts_build",
+      "label": "build",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "build",
+      "source_file": "package.json",
+      "source_location": "L8"
+    },
+    {
+      "id": "package_scripts_check",
+      "label": "check",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "check",
+      "source_file": "package.json",
+      "source_location": "L11"
+    },
+    {
+      "id": "package_scripts_check_watch",
+      "label": "check:watch",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "check:watch",
+      "source_file": "package.json",
+      "source_location": "L12"
+    },
+    {
+      "id": "package_scripts_dev",
+      "label": "dev",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "dev",
+      "source_file": "package.json",
+      "source_location": "L7"
+    },
+    {
+      "id": "package_scripts_e2e_build",
+      "label": "e2e:build",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "e2e:build",
+      "source_file": "package.json",
+      "source_location": "L15"
+    },
+    {
+      "id": "package_scripts_e2e_run",
+      "label": "e2e:run",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "e2e:run",
+      "source_file": "package.json",
+      "source_location": "L16"
+    },
+    {
+      "id": "package_scripts_prepare",
+      "label": "prepare",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "prepare",
+      "source_file": "package.json",
+      "source_location": "L10"
+    },
+    {
+      "id": "package_scripts_preview",
+      "label": "preview",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "preview",
+      "source_file": "package.json",
+      "source_location": "L9"
+    },
+    {
+      "id": "package_scripts_screenshots",
+      "label": "screenshots",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "screenshots",
+      "source_file": "package.json",
+      "source_location": "L18"
+    },
+    {
+      "id": "package_scripts_tauri",
+      "label": "tauri",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "tauri",
+      "source_file": "package.json",
+      "source_location": "L13"
+    },
+    {
+      "id": "package_scripts_test",
+      "label": "test",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "test",
+      "source_file": "package.json",
+      "source_location": "L14"
+    },
+    {
+      "id": "package_scripts_test_e2e",
+      "label": "test:e2e",
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "test:e2e",
+      "source_file": "package.json",
+      "source_location": "L17"
+    },
+    {
       "id": "app",
       "label": "@tauri-apps/api/app",
       "_origin": "ast",
@@ -4200,17 +4475,6 @@
       "community_name": "remind.rs",
       "file_type": "code",
       "norm_label": "apphandle",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "src_tauri_src_remind_rs_naivedatetime",
-      "label": "NaiveDateTime",
-      "_origin": "ast",
-      "community": 12,
-      "community_name": "remind.rs",
-      "file_type": "code",
-      "norm_label": "naivedatetime",
       "source_file": "",
       "source_location": ""
     },
@@ -7427,17 +7691,6 @@
       "source_file": "$lib/Agenda.svelte"
     },
     {
-      "id": "codemirror_state_state",
-      "label": "@codemirror/state",
-      "_origin": "ast",
-      "community": 29,
-      "community_name": "+page.svelte",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "@codemirror/state",
-      "source_file": "@codemirror/state"
-    },
-    {
       "id": "editor",
       "label": "$lib/editor",
       "_origin": "ast",
@@ -7535,6 +7788,17 @@
       "file_type": "code",
       "norm_label": "$lib/taskdialog.svelte",
       "source_file": "$lib/TaskDialog.svelte"
+    },
+    {
+      "id": "tauri_apps_api_event_event",
+      "label": "@tauri-apps/api/event",
+      "_origin": "ast",
+      "community": 29,
+      "community_name": "+page.svelte",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "@tauri-apps/api/event",
+      "source_file": "@tauri-apps/api/event"
     },
     {
       "id": "theme_css",
@@ -8046,11 +8310,22 @@
       "source_location": "L107"
     },
     {
+      "id": "lib_graph_graph",
+      "label": "$lib/graph",
+      "_origin": "ast",
+      "community": 35,
+      "community_name": "$lib/graph",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "$lib/graph",
+      "source_file": "$lib/graph"
+    },
+    {
       "id": "src_lib_graph_svelte_src_lib_graph",
       "label": "lib/Graph.svelte",
       "_origin": "ast",
       "community": 35,
-      "community_name": "graph",
+      "community_name": "$lib/graph",
       "file_type": "code",
       "norm_label": "lib/graph.svelte",
       "source_file": "src/lib/Graph.svelte",
@@ -8126,7 +8401,7 @@
       "node_kind": "heading",
       "norm_label": "permission mode",
       "source_file": "CLAUDE.md",
-      "source_location": "L91"
+      "source_location": "L92"
     },
     {
       "id": "claude_project",
@@ -8198,7 +8473,7 @@
       "node_kind": "heading",
       "norm_label": "tools",
       "source_file": "CLAUDE.md",
-      "source_location": "L86"
+      "source_location": "L87"
     },
     {
       "id": "claude_skills_ship_skill",
@@ -8240,7 +8515,7 @@
       "node_kind": "heading",
       "norm_label": "2. dispatch",
       "source_file": ".claude/skills/ship/SKILL.md",
-      "source_location": "L25"
+      "source_location": "L26"
     },
     {
       "id": "claude_skills_ship_skill_3_review_each_report",
@@ -8252,7 +8527,7 @@
       "node_kind": "heading",
       "norm_label": "3. review each report",
       "source_file": ".claude/skills/ship/SKILL.md",
-      "source_location": "L31"
+      "source_location": "L32"
     },
     {
       "id": "claude_skills_ship_skill_4_clean_up",
@@ -8264,7 +8539,7 @@
       "node_kind": "heading",
       "norm_label": "4. clean up",
       "source_file": ".claude/skills/ship/SKILL.md",
-      "source_location": "L38"
+      "source_location": "L39"
     },
     {
       "id": "claude_skills_ship_skill_5_report_to_the_owner",
@@ -8276,7 +8551,7 @@
       "node_kind": "heading",
       "norm_label": "5. report to the owner",
       "source_file": ".claude/skills/ship/SKILL.md",
-      "source_location": "L45"
+      "source_location": "L46"
     },
     {
       "id": "claude_skills_ship_skill_rules",
@@ -8288,7 +8563,7 @@
       "node_kind": "heading",
       "norm_label": "rules",
       "source_file": ".claude/skills/ship/SKILL.md",
-      "source_location": "L48"
+      "source_location": "L49"
     },
     {
       "id": "claude_skills_ship_skill_running_it_repeatedly",
@@ -8300,7 +8575,7 @@
       "node_kind": "heading",
       "norm_label": "running it repeatedly",
       "source_file": ".claude/skills/ship/SKILL.md",
-      "source_location": "L58"
+      "source_location": "L59"
     },
     {
       "id": "claude_agents_implementer",
@@ -8311,7 +8586,8 @@
       "file_type": "document",
       "frontmatter": {
         "name": "implementer",
-        "description": "Implements one planned GitHub issue of the Margin repo end to end in its own worktree \u2014 code, tests, PR, CI, rebase, squash-merge. Use for issues labelled `approved` (or explicitly assigned by the owner). Pass the issue number and any extra scope notes in the prompt."
+        "model": "opus",
+        "description": "Implements one planned GitHub issue of the Margin repo end to end in its own worktree \u2014 code, tests, PR, CI, rebase, squash-merge. Use for issues labelled `approved`, ones the triager and reviewer agreed are small and clear, or ones explicitly assigned by the owner. Pass the issue number and any extra scope notes in the prompt."
       },
       "node_kind": "page",
       "norm_label": "implementer.md",
@@ -8328,7 +8604,7 @@
       "node_kind": "heading",
       "norm_label": "finish",
       "source_file": ".claude/agents/implementer.md",
-      "source_location": "L23"
+      "source_location": "L24"
     },
     {
       "id": "claude_agents_implementer_house_rules",
@@ -8340,7 +8616,7 @@
       "node_kind": "heading",
       "norm_label": "house rules",
       "source_file": ".claude/agents/implementer.md",
-      "source_location": "L15"
+      "source_location": "L16"
     },
     {
       "id": "claude_agents_implementer_report_your_final_message",
@@ -8352,7 +8628,7 @@
       "node_kind": "heading",
       "norm_label": "report (your final message)",
       "source_file": ".claude/agents/implementer.md",
-      "source_location": "L34"
+      "source_location": "L37"
     },
     {
       "id": "claude_agents_implementer_start",
@@ -8364,7 +8640,7 @@
       "node_kind": "heading",
       "norm_label": "start",
       "source_file": ".claude/agents/implementer.md",
-      "source_location": "L8"
+      "source_location": "L9"
     },
     {
       "id": "claude_agents_triager",
@@ -8375,7 +8651,7 @@
       "file_type": "document",
       "frontmatter": {
         "name": "triager",
-        "model": "opus",
+        "model": "sonnet",
         "description": "Plans and labels open GitHub issues of the Margin repo and answers new comments, without touching code. Use to prepare issues for implementation (posts a &quot;## Plan&quot; comment, flags owner decisions) or to watch the tracker for a while. Read-only on the codebase."
       },
       "node_kind": "page",
@@ -8675,6 +8951,7 @@
       "file_type": "document",
       "frontmatter": {
         "name": "pr-shepherd",
+        "model": "sonnet",
         "description": "Reviews an open PR of the Margin repo for correctness bugs, fixes real ones with tests, rebases onto main, waits for CI and squash-merges it. Use for PRs that were opened but not merged (stale, conflicting, or never reviewed). Pass the PR number."
       },
       "node_kind": "page",
@@ -8936,7 +9213,7 @@
       "label": "ics.rs",
       "_origin": "ast",
       "community": 60,
-      "community_name": "super",
+      "community_name": "ics.rs",
       "file_type": "code",
       "norm_label": "ics.rs",
       "source_file": "src-tauri/src/ics.rs",
@@ -8947,7 +9224,7 @@
       "label": "builds_feed()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "super",
+      "community_name": "ics.rs",
       "file_type": "code",
       "norm_label": "builds_feed()",
       "source_file": "src-tauri/src/ics.rs",
@@ -8958,7 +9235,7 @@
       "label": "escape()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "super",
+      "community_name": "ics.rs",
       "file_type": "code",
       "norm_label": "escape()",
       "source_file": "src-tauri/src/ics.rs",
@@ -8969,7 +9246,7 @@
       "label": "event()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "super",
+      "community_name": "ics.rs",
       "file_type": "code",
       "norm_label": "event()",
       "source_file": "src-tauri/src/ics.rs",
@@ -8980,7 +9257,7 @@
       "label": "feed()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "super",
+      "community_name": "ics.rs",
       "file_type": "code",
       "norm_label": "feed()",
       "source_file": "src-tauri/src/ics.rs",
@@ -8991,7 +9268,7 @@
       "label": "fnv()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "super",
+      "community_name": "ics.rs",
       "file_type": "code",
       "norm_label": "fnv()",
       "source_file": "src-tauri/src/ics.rs",
@@ -9002,7 +9279,7 @@
       "label": "fold()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "super",
+      "community_name": "ics.rs",
       "file_type": "code",
       "norm_label": "fold()",
       "source_file": "src-tauri/src/ics.rs",
@@ -9013,7 +9290,7 @@
       "label": "Ts",
       "_origin": "ast",
       "community": 60,
-      "community_name": "super",
+      "community_name": "ics.rs",
       "file_type": "code",
       "norm_label": "ts",
       "source_file": "",
@@ -9119,147 +9396,15 @@
       "source_location": ""
     },
     {
-      "id": "package_scripts",
-      "label": "scripts",
+      "id": "codemirror_state_state",
+      "label": "@codemirror/state",
       "_origin": "ast",
       "community": 62,
-      "community_name": "scripts",
+      "community_name": "@codemirror/state",
+      "confidence": "EXTRACTED",
       "file_type": "code",
-      "norm_label": "scripts",
-      "source_file": "package.json",
-      "source_location": "L6"
-    },
-    {
-      "id": "package_scripts_build",
-      "label": "build",
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "build",
-      "source_file": "package.json",
-      "source_location": "L8"
-    },
-    {
-      "id": "package_scripts_check",
-      "label": "check",
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "check",
-      "source_file": "package.json",
-      "source_location": "L11"
-    },
-    {
-      "id": "package_scripts_check_watch",
-      "label": "check:watch",
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "check:watch",
-      "source_file": "package.json",
-      "source_location": "L12"
-    },
-    {
-      "id": "package_scripts_dev",
-      "label": "dev",
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "dev",
-      "source_file": "package.json",
-      "source_location": "L7"
-    },
-    {
-      "id": "package_scripts_e2e_build",
-      "label": "e2e:build",
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "e2e:build",
-      "source_file": "package.json",
-      "source_location": "L15"
-    },
-    {
-      "id": "package_scripts_e2e_run",
-      "label": "e2e:run",
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "e2e:run",
-      "source_file": "package.json",
-      "source_location": "L16"
-    },
-    {
-      "id": "package_scripts_prepare",
-      "label": "prepare",
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "prepare",
-      "source_file": "package.json",
-      "source_location": "L10"
-    },
-    {
-      "id": "package_scripts_preview",
-      "label": "preview",
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "preview",
-      "source_file": "package.json",
-      "source_location": "L9"
-    },
-    {
-      "id": "package_scripts_screenshots",
-      "label": "screenshots",
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "screenshots",
-      "source_file": "package.json",
-      "source_location": "L18"
-    },
-    {
-      "id": "package_scripts_tauri",
-      "label": "tauri",
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "tauri",
-      "source_file": "package.json",
-      "source_location": "L13"
-    },
-    {
-      "id": "package_scripts_test",
-      "label": "test",
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "test",
-      "source_file": "package.json",
-      "source_location": "L14"
-    },
-    {
-      "id": "package_scripts_test_e2e",
-      "label": "test:e2e",
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "test:e2e",
-      "source_file": "package.json",
-      "source_location": "L17"
+      "norm_label": "@codemirror/state",
+      "source_file": "@codemirror/state"
     },
     {
       "id": "claude_agents_reviewer",
@@ -9271,7 +9416,7 @@
       "frontmatter": {
         "name": "reviewer",
         "model": "opus",
-        "description": "Read-only second opinion on a newly planned issue of the Margin repo. Reads the triager&#x27;s plan against the real code and posts one comment per issue (duplicate, already done, too vague, risky, or small and clear). Use from the triager&#x27;s pass; never builds or closes anything."
+        "description": "Read-only second opinion on newly planned issues of the Margin repo (pass a list of issue numbers; one run per triage pass). Reads the triager&#x27;s plan against the real code and posts one comment per issue (duplicate, already done, too vague, risky, or small and clear). Use from the triager&#x27;s pass; never builds or closes anything."
       },
       "node_kind": "page",
       "norm_label": "reviewer.md",
@@ -9301,149 +9446,6 @@
       "norm_label": "rules",
       "source_file": ".claude/agents/reviewer.md",
       "source_location": "L9"
-    },
-    {
-      "id": "package_devdependencies",
-      "label": "devDependencies",
-      "_origin": "ast",
-      "community": 64,
-      "community_name": "devDependencies",
-      "file_type": "code",
-      "norm_label": "devdependencies",
-      "source_file": "package.json",
-      "source_location": "L35"
-    },
-    {
-      "id": "package_devdependencies_svelte",
-      "label": "svelte",
-      "_origin": "ast",
-      "community": 64,
-      "community_name": "devDependencies",
-      "file_type": "code",
-      "norm_label": "svelte",
-      "source_file": "package.json",
-      "source_location": "L41"
-    },
-    {
-      "id": "package_devdependencies_svelte_check",
-      "label": "svelte-check",
-      "_origin": "ast",
-      "community": 64,
-      "community_name": "devDependencies",
-      "file_type": "code",
-      "norm_label": "svelte-check",
-      "source_file": "package.json",
-      "source_location": "L42"
-    },
-    {
-      "id": "package_devdependencies_sveltejs_adapter_static",
-      "label": "@sveltejs/adapter-static",
-      "_origin": "ast",
-      "community": 64,
-      "community_name": "devDependencies",
-      "file_type": "code",
-      "norm_label": "@sveltejs/adapter-static",
-      "source_file": "package.json",
-      "source_location": "L36"
-    },
-    {
-      "id": "package_devdependencies_sveltejs_kit",
-      "label": "@sveltejs/kit",
-      "_origin": "ast",
-      "community": 64,
-      "community_name": "devDependencies",
-      "file_type": "code",
-      "norm_label": "@sveltejs/kit",
-      "source_file": "package.json",
-      "source_location": "L37"
-    },
-    {
-      "id": "package_devdependencies_sveltejs_vite_plugin_svelte",
-      "label": "@sveltejs/vite-plugin-svelte",
-      "_origin": "ast",
-      "community": 64,
-      "community_name": "devDependencies",
-      "file_type": "code",
-      "norm_label": "@sveltejs/vite-plugin-svelte",
-      "source_file": "package.json",
-      "source_location": "L38"
-    },
-    {
-      "id": "package_devdependencies_tauri_apps_cli",
-      "label": "@tauri-apps/cli",
-      "_origin": "ast",
-      "community": 64,
-      "community_name": "devDependencies",
-      "file_type": "code",
-      "norm_label": "@tauri-apps/cli",
-      "source_file": "package.json",
-      "source_location": "L39"
-    },
-    {
-      "id": "package_devdependencies_types_node",
-      "label": "@types/node",
-      "_origin": "ast",
-      "community": 64,
-      "community_name": "devDependencies",
-      "file_type": "code",
-      "norm_label": "@types/node",
-      "source_file": "package.json",
-      "source_location": "L40"
-    },
-    {
-      "id": "package_devdependencies_typescript",
-      "label": "typescript",
-      "_origin": "ast",
-      "community": 64,
-      "community_name": "devDependencies",
-      "file_type": "code",
-      "norm_label": "typescript",
-      "source_file": "package.json",
-      "source_location": "L43"
-    },
-    {
-      "id": "package_devdependencies_vite",
-      "label": "vite",
-      "_origin": "ast",
-      "community": 64,
-      "community_name": "devDependencies",
-      "file_type": "code",
-      "norm_label": "vite",
-      "source_file": "package.json",
-      "source_location": "L44"
-    },
-    {
-      "id": "package_devdependencies_webdriverio",
-      "label": "webdriverio",
-      "_origin": "ast",
-      "community": 64,
-      "community_name": "devDependencies",
-      "file_type": "code",
-      "norm_label": "webdriverio",
-      "source_file": "package.json",
-      "source_location": "L45"
-    },
-    {
-      "id": "lib_graph_graph",
-      "label": "$lib/graph",
-      "_origin": "ast",
-      "community": 65,
-      "community_name": "$lib/graph",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "$lib/graph",
-      "source_file": "$lib/graph"
-    },
-    {
-      "id": "tauri_apps_api_event_event",
-      "label": "@tauri-apps/api/event",
-      "_origin": "ast",
-      "community": 66,
-      "community_name": "@tauri-apps/api/event",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "@tauri-apps/api/event",
-      "source_file": "@tauri-apps/api/event"
     },
     {
       "id": "src_tauri_tauri_conf",
@@ -10388,6 +10390,18 @@
       "type": "feature"
     },
     {
+      "id": "arc",
+      "label": "arc",
+      "_origin": "semantic",
+      "community": 12,
+      "community_name": "remind.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "arc",
+      "source_file": "",
+      "type": "external"
+    },
+    {
       "id": "btreeset",
       "label": "btreeset",
       "_origin": "semantic",
@@ -10412,6 +10426,18 @@
       "type": "external"
     },
     {
+      "id": "path",
+      "label": "path",
+      "_origin": "semantic",
+      "community": 12,
+      "community_name": "remind.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "path",
+      "source_file": "",
+      "type": "external"
+    },
+    {
       "id": "github_releases",
       "label": "GitHub Releases",
       "_origin": "semantic",
@@ -10432,18 +10458,6 @@
       "external": true,
       "file_type": "concept",
       "norm_label": "hashset",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "path",
-      "label": "path",
-      "_origin": "semantic",
-      "community": 15,
-      "community_name": "attach.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "path",
       "source_file": "",
       "type": "external"
     },
@@ -10700,6 +10714,18 @@
       "type": "external"
     },
     {
+      "id": "collections",
+      "label": "collections",
+      "_origin": "semantic",
+      "community": 22,
+      "community_name": "activity.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "collections",
+      "source_file": "",
+      "type": "external"
+    },
+    {
       "id": "io",
       "label": "io",
       "_origin": "semantic",
@@ -10732,18 +10758,6 @@
       "external": true,
       "file_type": "concept",
       "norm_label": "hashmap",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "collections",
-      "label": "collections",
-      "_origin": "semantic",
-      "community": 24,
-      "community_name": "notes.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "collections",
       "source_file": "",
       "type": "external"
     },
@@ -10888,6 +10902,18 @@
       "external": true,
       "file_type": "concept",
       "norm_label": "json",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "super",
+      "label": "super",
+      "_origin": "semantic",
+      "community": 5,
+      "community_name": "idle.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "super",
       "source_file": "",
       "type": "external"
     },
@@ -11108,30 +11134,6 @@
       "type": "language"
     },
     {
-      "id": "arc",
-      "label": "arc",
-      "_origin": "semantic",
-      "community": 60,
-      "community_name": "super",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "arc",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "super",
-      "label": "super",
-      "_origin": "semantic",
-      "community": 60,
-      "community_name": "super",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "super",
-      "source_file": "",
-      "type": "external"
-    },
-    {
       "id": "command",
       "label": "command",
       "_origin": "semantic",
@@ -11156,24 +11158,13 @@
       "type": "external"
     },
     {
-      "id": "event",
-      "label": "event",
+      "id": "state",
+      "label": "state",
       "community": 29,
       "community_name": "+page.svelte",
       "external": true,
       "file_type": "concept",
-      "norm_label": "event",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "graph",
-      "label": "graph",
-      "community": 35,
-      "community_name": "graph",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "graph",
+      "norm_label": "state",
       "source_file": "",
       "type": "external"
     }
@@ -27468,7 +27459,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": ".claude/agents/implementer.md",
-      "source_location": "L15",
+      "source_location": "L16",
       "weight": 1.0
     },
     {
@@ -27479,7 +27470,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": ".claude/agents/implementer.md",
-      "source_location": "L23",
+      "source_location": "L24",
       "weight": 1.0
     },
     {
@@ -27490,7 +27481,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": ".claude/agents/implementer.md",
-      "source_location": "L34",
+      "source_location": "L37",
       "weight": 1.0
     },
     {
@@ -27501,7 +27492,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": ".claude/agents/implementer.md",
-      "source_location": "L8",
+      "source_location": "L9",
       "weight": 1.0
     },
     {
@@ -27688,7 +27679,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "CLAUDE.md",
-      "source_location": "L86",
+      "source_location": "L87",
       "weight": 1.0
     },
     {
@@ -27699,7 +27690,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "CLAUDE.md",
-      "source_location": "L91",
+      "source_location": "L92",
       "weight": 1.0
     },
     {
@@ -27809,7 +27800,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": ".claude/skills/ship/SKILL.md",
-      "source_location": "L25",
+      "source_location": "L26",
       "weight": 1.0
     },
     {
@@ -27820,7 +27811,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": ".claude/skills/ship/SKILL.md",
-      "source_location": "L31",
+      "source_location": "L32",
       "weight": 1.0
     },
     {
@@ -27831,7 +27822,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": ".claude/skills/ship/SKILL.md",
-      "source_location": "L38",
+      "source_location": "L39",
       "weight": 1.0
     },
     {
@@ -27842,7 +27833,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": ".claude/skills/ship/SKILL.md",
-      "source_location": "L45",
+      "source_location": "L46",
       "weight": 1.0
     },
     {
@@ -27853,7 +27844,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": ".claude/skills/ship/SKILL.md",
-      "source_location": "L48",
+      "source_location": "L49",
       "weight": 1.0
     },
     {
@@ -27864,7 +27855,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": ".claude/skills/ship/SKILL.md",
-      "source_location": "L58",
+      "source_location": "L59",
       "weight": 1.0
     },
     {
@@ -34837,7 +34828,7 @@
     },
     {
       "source": "src_lib_graph_svelte_src_lib_graph",
-      "target": "graph",
+      "target": "lib_graph_graph",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -34909,15 +34900,6 @@
     },
     {
       "source": "src_routes_page",
-      "target": "codemirror_state_state",
-      "relation": "imports_from",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/routes/+page.svelte"
-    },
-    {
-      "source": "src_routes_page",
       "target": "core",
       "relation": "imports_from",
       "_origin": "ast",
@@ -34928,15 +34910,6 @@
     {
       "source": "src_routes_page",
       "target": "editor",
-      "relation": "imports_from",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/routes/+page.svelte"
-    },
-    {
-      "source": "src_routes_page",
-      "target": "event",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -35008,6 +34981,15 @@
     },
     {
       "source": "src_routes_page",
+      "target": "state",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/routes/+page.svelte"
+    },
+    {
+      "source": "src_routes_page",
       "target": "svelte",
       "relation": "imports_from",
       "_origin": "ast",
@@ -35018,6 +35000,15 @@
     {
       "source": "src_routes_page",
       "target": "taskdialog_svelte",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/routes/+page.svelte"
+    },
+    {
+      "source": "src_routes_page",
+      "target": "tauri_apps_api_event_event",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -36036,5 +36027,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "4c3e8af260dea5db8f9833516eb1e73aa8b9119b"
+  "built_at_commit": "002507fa7aa28f95cef2c24fee53e7406a56c1e3"
 }
