@@ -375,9 +375,12 @@ its size, RAM need and licence and asks before downloading it into the app's
 local data folder (not your notes or `data_dir`, so backups don't commit it),
 with a progress bar in the status line. Downloads are checked against a pinned
 checksum and resume where they stopped; the same picker cancels a download and
-deletes models. Running them inside Margin arrives in a later update
-([#132](https://github.com/albin02forsberg/margin/issues/132)); until then use
-Ollama.
+deletes models. Margin runs them with llama.cpp on the CPU (Metal on Apple
+Silicon; x86 needs AVX2): the model loads on the first draft and is unloaded
+after 5 minutes without one; on Linux it won't load when free memory is below the
+model's RAM need. Release builds include this; building from source needs
+`--features embedded-ai` (with cmake, a C++ compiler and libclang), otherwise
+use Ollama.
 
 - **Accept** on a suggestion offers to draft the diary note from that block's
   project, apps and titles; it lands in the note prompt for you to edit.

@@ -699,10 +699,10 @@
   /** The model download in progress, for the status-line bar. */
   let download = $state<{ id: string; have: number; size: number } | null>(null);
 
-  /** Settings for AI drafts: off, a model in Ollama, or one Margin downloads (running it comes later, #132). */
+  /** Settings for AI drafts: off, a model in Ollama, or one Margin downloads and runs (#132). */
   async function aiChoose() {
     const c = cfg.config;
-    type Model = { id: string; name: string; size: number; ram_gb: number; licence: string; path: string; have: number; ready: boolean };
+    type Model = { id: string; name: string; size: number; ram_gb: number; licence: string; path: string; have: number; ready: boolean; runs: boolean };
     const models = await call<Model[]>("ai_models");
     const gb = (n: number) => `${(n / 1e9).toFixed(1)} GB`;
     const pct = (have: number, size: number) => `${Math.floor((have / size) * 100)}%`;
@@ -717,9 +717,9 @@
       await set("ollama", model);
       flash(`Drafts come from ${model} in Ollama.`);
     };
-    const later = "Running it inside Margin comes in a later update; use Ollama until then.";
+    const later = (m: Model) => m.runs ? `Drafts come from ${m.name}.` : "This build of Margin can't run it itself; use Ollama.";
     const embedded = async (m: Model) => {
-      if (m.ready) return set("embedded", m.id).then(() => flash(`Saved. ${later}`));
+      if (m.ready) return set("embedded", m.id).then(() => flash(later(m)));
       if (download) return flash(download.id === m.id ? `${m.name} is downloading.` : "Another model is downloading; cancel it first (AI drafts: choose model…).");
       const go = await pick({
         prompt: `Download ${m.name}?`,
@@ -732,7 +732,7 @@
       try {
         await call("ai_download", { id: m.id });
         await set("embedded", m.id);
-        flash(`${m.name} is downloaded and chosen. ${later}`);
+        flash(`${m.name} is downloaded. ${later(m)}`);
       } finally {
         un();
         download = null;

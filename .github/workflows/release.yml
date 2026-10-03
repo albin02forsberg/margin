@@ -16,11 +16,11 @@ jobs:
       matrix:
         include:
           - platform: ubuntu-22.04
-            args: ''
+            args: '--features embedded-ai'
           - platform: macos-latest
-            args: '--target universal-apple-darwin'
+            args: '--target universal-apple-darwin --features embedded-ai'
           - platform: windows-latest
-            args: ''
+            args: '--features embedded-ai'
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v5
@@ -39,6 +39,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf
+      # Built-in AI (llama.cpp, #132) needs cmake, a C++ compiler and libclang: all on the runners.
+      # On x86_64 it uses AVX2 (ai.rs refuses CPUs without it); llama.cpp's default is SSE only.
+      - name: llama.cpp CPU features
+        if: matrix.platform != 'macos-latest'
+        shell: bash
+        run: printf 'GGML_AVX=ON\nGGML_AVX2=ON\nGGML_FMA=ON\nGGML_F16C=ON\nGGML_BMI2=ON\n' >> "$GITHUB_ENV"
       - run: npm ci
       - uses: tauri-apps/tauri-action@v0
         env:

@@ -1,5 +1,5 @@
 // Drafts of diary and journal notes from a small local model: through Ollama's HTTP API
-// (https://ollama.com), or (coming) a pinned model run inside Margin. Nothing is sent unless
+// (https://ollama.com), or a pinned model run inside Margin (feature `embedded-ai`). Nothing is sent unless
 // `ai_model` is set, and only to localhost.
 
 use crate::activity::{request, Suggestion};
@@ -204,19 +204,136 @@ pub fn clean(text: &str, one_line: bool) -> String {
     bullet.replace_all(text.trim(), "- ").into_owned()
 }
 
-/// A draft for PROMPT from MODEL, through BACKEND (Ollama at URL).
-pub fn generate(backend: Backend, url: &str, model: &str, prompt: &str, one_line: bool) -> Result<String, String> {
+/// A draft for PROMPT from MODEL, through BACKEND (Ollama at URL, or a built-in model in DIR).
+pub fn generate(backend: Backend, url: &str, dir: &Path, model: &str, prompt: &str, one_line: bool) -> Result<String, String> {
     match backend {
         Backend::Ollama => ollama(url, model, prompt, one_line),
-        Backend::Embedded => embedded(model),
+        Backend::Embedded => embedded(dir, model, prompt, one_line),
     }
 }
 
-/// ponytail: inference lands in a later PR of #132; until then this only names the model.
-fn embedded(model: &str) -> Result<String, String> {
-    match MODELS.iter().find(|m| m.id == model) {
-        Some(m) => Err(format!("{} can't run inside Margin yet; that comes in a later update. Use Ollama for now (AI drafts: choose model…).", m.name)),
-        None => Err(format!("Unknown built-in model {model}. Pick one with AI drafts: choose model…")),
+/// Whether this build can run built-in models (the `embedded-ai` cargo feature).
+pub const RUNS: bool = cfg!(feature = "embedded-ai");
+
+/// A draft for PROMPT from built-in MODEL, downloaded into DIR.
+fn embedded(dir: &Path, model: &str, prompt: &str, one_line: bool) -> Result<String, String> {
+    let m = MODELS.iter().find(|m| m.id == model).ok_or_else(|| format!("Unknown built-in model {model}. Pick one with AI drafts: choose model…"))?;
+    #[cfg(not(feature = "embedded-ai"))]
+    {
+        let _ = (dir, prompt, one_line);
+        Err(format!("This build of Margin can't run {} itself. Use Ollama (AI drafts: choose model…).", m.name))
+    }
+    #[cfg(feature = "embedded-ai")]
+    {
+        let path = m.path(dir);
+        if !path.is_file() {
+            return Err(format!("{} isn't downloaded. Download it with AI drafts: choose model…", m.name));
+        }
+        Ok(clean(&llama::generate(m, &path, prompt, if one_line { 48 } else { 320 })?, one_line))
+    }
+}
+
+/// GB of memory the OS can hand out, from /proc/meminfo's MemAvailable.
+#[cfg(any(test, all(feature = "embedded-ai", target_os = "linux")))]
+fn available_gb(meminfo: &str) -> Option<f64> {
+    let kb: f64 = meminfo.lines().find_map(|l| l.strip_prefix("MemAvailable:"))?.trim().trim_end_matches("kB").trim().parse().ok()?;
+    Some(kb / 1024.0 / 1024.0)
+}
+
+/// Built-in models run by llama.cpp on the CPU (GPU through Metal on Apple Silicon). The model
+/// loads on the first draft and stays loaded until IDLE passes without one.
+#[cfg(feature = "embedded-ai")]
+mod llama {
+    use super::{Model, MAX_PROMPT};
+    use llama_cpp_2::context::params::LlamaContextParams;
+    use llama_cpp_2::llama_backend::LlamaBackend;
+    use llama_cpp_2::llama_batch::LlamaBatch;
+    use llama_cpp_2::model::params::LlamaModelParams;
+    use llama_cpp_2::model::{LlamaChatMessage, LlamaModel};
+    use llama_cpp_2::sampling::LlamaSampler;
+    use std::num::NonZeroU32;
+    use std::path::Path;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{Duration, Instant};
+
+    const IDLE: Duration = Duration::from_secs(300);
+    /// Tokens of context: MAX_PROMPT bytes plus the template and the answer fit easily.
+    const CTX: u32 = 2048;
+    static BACKEND: OnceLock<Result<LlamaBackend, String>> = OnceLock::new();
+    /// The loaded model (by id) and when it was last used. Drafts take turns on this lock.
+    static LOADED: Mutex<Option<(&str, Instant, LlamaModel)>> = Mutex::new(None);
+
+    fn load(backend: &LlamaBackend, m: &Model, path: &Path) -> Result<LlamaModel, String> {
+        #[cfg(target_os = "linux")]
+        if let Some(free) = std::fs::read_to_string("/proc/meminfo").ok().as_deref().and_then(super::available_gb) {
+            if free < f64::from(m.ram_gb) {
+                return Err(format!("{} needs ~{} GB of free memory and only {free:.1} GB is free. Close some apps, or pick a smaller model.", m.name, m.ram_gb));
+            }
+        }
+        LlamaModel::load_from_file(backend, path, &LlamaModelParams::default()).map_err(|e| format!("Couldn't load {}: {e}. Delete it and download it again (AI drafts: choose model…).", m.name))
+    }
+
+    /// The model's answer to PROMPT, at most MAX_TOKENS long.
+    pub fn generate(m: &'static Model, path: &Path, prompt: &str, max_tokens: i32) -> Result<String, String> {
+        // Release builds compile llama.cpp for AVX2 (release.yml); without it, it would crash.
+        #[cfg(target_arch = "x86_64")]
+        if !std::is_x86_feature_detected!("avx2") {
+            return Err("Built-in models need a processor with AVX2 (most from 2013 on). Use Ollama instead.".into());
+        }
+        let backend = BACKEND.get_or_init(|| LlamaBackend::init().map(|mut b| { b.void_logs(); b }).map_err(|e| e.to_string())).as_ref()?;
+        let mut slot = LOADED.lock().unwrap_or_else(|e| e.into_inner());
+        if slot.as_ref().is_none_or(|(id, ..)| *id != m.id) {
+            *slot = None; // free the old model before loading another
+            *slot = Some((m.id, Instant::now(), load(backend, m, path)?));
+        }
+        let (_, used, model) = slot.as_mut().expect("loaded above");
+        let text = run(backend, model, prompt, max_tokens);
+        *used = Instant::now();
+        drop(slot);
+        std::thread::spawn(|| {
+            std::thread::sleep(IDLE);
+            let mut slot = LOADED.lock().unwrap_or_else(|e| e.into_inner());
+            if slot.as_ref().is_some_and(|(_, used, _)| used.elapsed() >= IDLE) {
+                *slot = None;
+            }
+        });
+        text
+    }
+
+    fn run(backend: &LlamaBackend, model: &LlamaModel, prompt: &str, max_tokens: i32) -> Result<String, String> {
+        let e = |e: &dyn std::fmt::Display| format!("The built-in model failed: {e}");
+        let chat = [LlamaChatMessage::new("user".into(), prompt.chars().take(MAX_PROMPT + 200).collect()).map_err(|x| e(&x))?];
+        let tmpl = model.chat_template(None).map_err(|x| e(&x))?;
+        let text = model.apply_chat_template(&tmpl, &chat, true).map_err(|x| e(&x))?;
+        let vocab = model.vocab();
+        let tokens = vocab.tokenize(text.as_bytes(), false, true);
+        if tokens.len() as i32 + max_tokens > CTX as i32 {
+            return Err("That prompt is too long for the built-in model.".into());
+        }
+        let threads = std::thread::available_parallelism().map_or(4, |n| n.get().min(8)) as i32;
+        let params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(CTX)).with_n_batch(CTX).with_n_threads(threads).with_n_threads_batch(threads);
+        let mut ctx = model.new_context(backend, params).map_err(|x| e(&x))?;
+        let mut batch = LlamaBatch::new(CTX as usize, 1);
+        let last = tokens.len() as i32 - 1;
+        for (i, t) in (0..).zip(&tokens) {
+            batch.add(*t, i, &[0], i == last).map_err(|x| e(&x))?;
+        }
+        ctx.decode(&mut batch).map_err(|x| e(&x))?;
+        let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_nanos());
+        let mut sampler = LlamaSampler::chain_simple([LlamaSampler::top_k(40), LlamaSampler::top_p(0.9, 1), LlamaSampler::temp(0.7), LlamaSampler::dist(seed)]);
+        let (mut out, mut pos) = (Vec::new(), last + 1);
+        for _ in 0..max_tokens {
+            let t = sampler.sample(&ctx, batch.n_tokens() - 1); // also accepts it
+            if vocab.is_eog(t) {
+                break;
+            }
+            out.extend(vocab.token_to_piece(t, false, None));
+            batch.clear();
+            batch.add(t, pos, &[0], true).map_err(|x| e(&x))?;
+            pos += 1;
+            ctx.decode(&mut batch).map_err(|x| e(&x))?;
+        }
+        Ok(String::from_utf8_lossy(&out).into_owned())
     }
 }
 
@@ -278,9 +395,27 @@ mod tests {
             assert!(m.url.starts_with("https://") && m.url.ends_with(".gguf") && m.sha256.len() == 64 && m.size > 0, "{}", m.id);
         }
         assert!(MODELS[0].id.starts_with("qwen2.5-3b"), "default model");
-        assert!(generate(Backend::Embedded, "", MODELS[0].id, "p", true).unwrap_err().contains("can't run inside Margin yet"));
+        let dir = Path::new("/nonexistent");
+        let err = generate(Backend::Embedded, "", dir, MODELS[0].id, "p", true).unwrap_err();
+        assert!(err.contains(if RUNS { "isn't downloaded" } else { "can't run" }), "{err}");
         // Embedded never talks to ai_url (which would be refused as not local).
-        assert!(generate(Backend::Embedded, "http://example.com", "nope", "p", true).unwrap_err().contains("Unknown built-in model nope"));
+        assert!(generate(Backend::Embedded, "http://example.com", dir, "nope", "p", true).unwrap_err().contains("Unknown built-in model nope"));
+        assert_eq!(available_gb("MemTotal:       16000000 kB\nMemAvailable:    3145728 kB\n"), Some(3.0));
+        assert_eq!(available_gb("MemTotal: 1 kB\n"), None);
+    }
+
+    /// A real draft: `MARGIN_MODELS=<dir holding the 1.5B model> cargo test --features embedded-ai -- --ignored`.
+    #[cfg(feature = "embedded-ai")]
+    #[test]
+    #[ignore]
+    fn embedded_drafts() {
+        let dir = PathBuf::from(std::env::var("MARGIN_MODELS").expect("MARGIN_MODELS"));
+        let p = note_prompt(Some("Margin"), Some("AI drafts"), &v(&["Code"]), &v(&["ai.rs - margin", "llama.cpp docs"]), &[]);
+        for one_line in [true, false] {
+            let d = generate(Backend::Embedded, "", &dir, MODELS[1].id, &p, one_line).unwrap();
+            println!("{d}");
+            assert!(!d.trim().is_empty() && (!one_line || !d.contains('\n')), "{d:?}");
+        }
     }
 
     /// Answers one connection per reply in turn; returns the base URL and the request heads.
@@ -346,7 +481,7 @@ mod tests {
 
     #[test]
     fn http() {
-        let generate = |url: &str, m: &str, p: &str, one: bool| generate(Backend::Ollama, url, m, p, one);
+        let generate = |url: &str, m: &str, p: &str, one: bool| generate(Backend::Ollama, url, Path::new(""), m, p, one);
         assert!(generate("http://example.com:11434", "m", "p", true).unwrap_err().contains("only localhost"));
         // Nothing listens on a port we just freed.
         let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap();

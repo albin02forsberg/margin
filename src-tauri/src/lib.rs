@@ -763,7 +763,7 @@ fn ai_day_prompt(s: State<App>, date_input: String) -> R<String> {
 
 /// The model's draft for PROMPT (the exact text the user was shown); ONE_LINE for a diary note.
 #[tauri::command(async)]
-fn ai_draft(s: State<App>, prompt: String, one_line: bool) -> R<String> {
+fn ai_draft(app: AppHandle, s: State<App>, prompt: String, one_line: bool) -> R<String> {
     let c = s.cfg();
     if c.ai_model.trim().is_empty() {
         return Err("Pick a model with AI drafts: choose model… to draft with a local model.".into());
@@ -771,13 +771,17 @@ fn ai_draft(s: State<App>, prompt: String, one_line: bool) -> R<String> {
     if prompt.len() > ai::MAX_PROMPT + 200 {
         return Err("That prompt is too long to send.".into());
     }
-    ai::generate(c.ai_backend, &c.ai_url, c.ai_model.trim(), &prompt, one_line)
+    ai::generate(c.ai_backend, &c.ai_url, &models_dir(&app)?, c.ai_model.trim(), &prompt, one_line)
 }
 
 /// Where downloaded models live: the app's local data dir, never data_dir (backups commit that).
+fn models_dir(app: &AppHandle) -> R<PathBuf> {
+    Ok(app.path().app_local_data_dir().map_err(|e| e.to_string())?.join("models"))
+}
+
 fn model_file(app: &AppHandle, id: &str) -> R<(&'static ai::Model, PathBuf)> {
     let m = ai::MODELS.iter().find(|m| m.id == id).ok_or_else(|| format!("unknown built-in model {id}"))?;
-    Ok((m, m.path(&app.path().app_local_data_dir().map_err(|e| e.to_string())?.join("models"))))
+    Ok((m, m.path(&models_dir(app)?)))
 }
 
 #[derive(serde::Serialize)]
@@ -788,6 +792,8 @@ struct LocalModel {
     /// Bytes on disk: SIZE once downloaded and checked, else what a paused download has.
     have: u64,
     ready: bool,
+    /// Whether this build can run it (ai::RUNS).
+    runs: bool,
 }
 
 /// The models Margin can download and run itself, and how much of each is here.
@@ -797,7 +803,7 @@ fn ai_models(app: AppHandle) -> R<Vec<LocalModel>> {
         let (_, path) = model_file(&app, m.id)?;
         let ready = path.is_file();
         let have = if ready { m.size } else { std::fs::metadata(ai::part(&path)).map(|x| x.len()).unwrap_or(0) };
-        Ok(LocalModel { model: m, path, have, ready })
+        Ok(LocalModel { model: m, path, have, ready, runs: ai::RUNS })
     }).collect()
 }
 

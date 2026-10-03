@@ -34,6 +34,11 @@ tauri-plugin-process = "2"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 sha2 = "0.10"
+# Runs built-in models inside Margin (#132); needs cmake and a C++ compiler, so it is opt-in.
+llama-cpp-2 = { version = "0.1.158", default-features = false, optional = true }
+
+[features]
+embedded-ai = ["dep:llama-cpp-2"]
 
 
 # Line tables only: smaller debug builds link faster (e2e CI builds a debug binary).
