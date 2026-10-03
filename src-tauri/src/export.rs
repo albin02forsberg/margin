@@ -44,7 +44,7 @@ pub enum Block {
     Rule,
 }
 
-/// id → file name of the exported page holding it.
+/// id → file name of the exported page holding it (or its `#p-N` section in a combined page).
 pub type Ids = HashMap<String, String>;
 
 pub struct Doc {
@@ -276,8 +276,8 @@ pub fn free_name(name: &str, taken: impl Fn(&str) -> bool) -> String {
 }
 
 /// ROOT plus the notes it reaches by id: links within DEPTH hops (from FILES, where ROOT's
-/// own entry is ignored), each with a unique `<stem>.html` name, and the ids those pages hold.
-pub fn bundle<'a>(files: &[&'a OrgFile], root: &'a OrgFile, depth: usize) -> (Vec<(&'a OrgFile, String)>, Ids) {
+/// own entry is ignored), each with a unique `<stem>.<EXT>` name, and the ids those pages hold.
+pub fn bundle<'a>(files: &[&'a OrgFile], root: &'a OrgFile, depth: usize, ext: &str) -> (Vec<(&'a OrgFile, String)>, Ids) {
     let all: Vec<&OrgFile> = std::iter::once(root).chain(files.iter().copied().filter(|f| f.path != root.path)).collect();
     let ids_of = |f: &'a OrgFile| f.id.iter().chain(f.headlines.iter().filter_map(|h| h.id.as_ref()));
     let by_id: HashMap<&str, &OrgFile> = all.iter().flat_map(|&f| ids_of(f).map(move |id| (id.as_str(), f))).collect();
@@ -297,11 +297,16 @@ pub fn bundle<'a>(files: &[&'a OrgFile], root: &'a OrgFile, depth: usize) -> (Ve
     let mut ids = Ids::new();
     for f in pages {
         let stem = f.path.file_stem().map_or("note".into(), |s| s.to_string_lossy().to_string());
-        let name = free_name(&format!("{stem}.html"), |n| out.iter().any(|(_, o)| o.eq_ignore_ascii_case(n)));
+        let name = free_name(&format!("{stem}.{ext}"), |n| out.iter().any(|(_, o)| o.eq_ignore_ascii_case(n)));
         ids.extend(ids_of(f).map(|id| (id.clone(), name.clone())));
         out.push((f, name));
     }
     (out, ids)
+}
+
+/// Names in EXISTING ending in `.EXT` that aren't in KEEP: pages left over from an earlier export.
+pub fn stale(existing: &[String], keep: &[String], ext: &str) -> Vec<String> {
+    existing.iter().filter(|n| n.ends_with(&format!(".{ext}")) && !keep.contains(n)).cloned().collect()
 }
 
 // ---------------------------------------------------------------- HTML
@@ -412,22 +417,40 @@ hr { border: 0; border-top: 1px solid var(--line); }
 .prio { color: var(--dim); font-weight: 400; font-size: .8em; }
 .tags span { font-size: .6em; font-weight: 400; color: var(--dim); border: 1px solid var(--line); border-radius: 1em; padding: 0 .5em; margin-left: .3em; vertical-align: middle; }
 li:has(> input[type=checkbox]) { list-style: none; margin-left: -1.3em; }
-@media print { body { margin: 0; max-width: none; } a { color: inherit; } }
+section + section { border-top: 1px solid var(--line); break-before: page; }
+@media print { body { margin: 0; max-width: none; } a { color: inherit; } section + section { border: 0; } }
 ";
 
 /// Self-contained HTML page. BASE resolves relative file: links, IDS maps id: links to sibling pages; PRINT opens the print dialog on load.
 pub fn html(d: &Doc, fallback_title: &str, base: &Path, ids: &Ids, print: bool) -> String {
+    page(d.title.as_deref().unwrap_or(fallback_title), &html_body(d, fallback_title, base, ids), print)
+}
+
+/// A note's title, subtitle and blocks as HTML.
+fn html_body(d: &Doc, fallback_title: &str, base: &Path, ids: &Ids) -> String {
     let title = d.title.as_deref().unwrap_or(fallback_title);
-    let mut o = format!("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>{}</title>\n<style>{CSS}</style>\n</head>\n<body>\n", esc(title));
-    o += &format!("<h1>{}</h1>\n", html_spans(&spans(title), base, ids));
+    let mut o = format!("<h1>{}</h1>\n", html_spans(&spans(title), base, ids));
     if let Some(s) = &d.subtitle {
         o += &format!("<p class=\"subtitle\">{}</p>\n", html_spans(&spans(s), base, ids));
     }
-    o += &html_blocks(&d.blocks, base, ids);
+    o + &html_blocks(&d.blocks, base, ids)
+}
+
+fn page(title: &str, body: &str, print: bool) -> String {
+    let mut o = format!("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>{}</title>\n<style>{CSS}</style>\n</head>\n<body>\n{body}", esc(title));
     if print {
         o += "<script>addEventListener(\"load\", () => print())</script>\n";
     }
     o + "</body>\n</html>\n"
+}
+
+/// PAGES (from `bundle`) as one print page: a `<section id="p-N">` per note, each on a new
+/// sheet, with IDS pointing at the sections instead of the page files.
+pub fn combined(pages: &[(&OrgFile, String)], ids: &Ids, kw: &Kw) -> String {
+    let ids: Ids = ids.iter().filter_map(|(id, name)| Some((id.clone(), format!("#p-{}", pages.iter().position(|(_, n)| n == name)?)))).collect();
+    let docs: Vec<(Doc, String)> = pages.iter().map(|(f, _)| (parse(&f.text, kw), f.path.file_stem().map_or("note".into(), |s| s.to_string_lossy().to_string()))).collect();
+    let body: String = docs.iter().zip(pages).enumerate().map(|(i, ((d, stem), (f, _)))| format!("<section id=\"p-{i}\">\n{}</section>\n", html_body(d, stem, f.path.parent().unwrap_or(Path::new("")), &ids))).collect();
+    page(docs[0].0.title.as_deref().unwrap_or(&docs[0].1), &body, true)
 }
 
 // ---------------------------------------------------------------- Markdown
@@ -442,7 +465,7 @@ fn md_esc(s: &str) -> String {
     })
 }
 
-fn md_spans(s: &[Span], base: &Path) -> String {
+fn md_spans(s: &[Span], base: &Path, ids: &Ids) -> String {
     s.iter()
         .map(|sp| match sp {
             Span::Text(t) => md_esc(t),
@@ -454,14 +477,14 @@ fn md_spans(s: &[Span], base: &Path) -> String {
             }
             Span::Mark(m, inner) => {
                 let (a, b) = match m { '*' => ("**", "**"), '/' => ("*", "*"), '+' => ("~~", "~~"), _ => ("<u>", "</u>") };
-                format!("{a}{}{b}", md_spans(inner, base))
+                format!("{a}{}{b}", md_spans(inner, base, ids))
             }
-            Span::Link(t, d) => match target(t, d.as_deref(), base, &Ids::new()) {
-                Err(text) => md_spans(&spans(&text), base),
+            Span::Link(t, d) => match target(t, d.as_deref(), base, ids) {
+                Err(text) => md_spans(&spans(&text), base, ids),
                 Ok(u) => {
                     let u = if u.contains([' ', '(', ')', '<', '>']) { format!("<{}>", u.replace('<', "%3C").replace('>', "%3E")) } else { u };
                     let img = if d.is_none() && is_image(t) { "!" } else { "" };
-                    let text = if img.is_empty() { d.as_deref().map_or_else(|| md_esc(t), |d| md_spans(&spans(d), base)) } else { String::new() };
+                    let text = if img.is_empty() { d.as_deref().map_or_else(|| md_esc(t), |d| md_spans(&spans(d), base, ids)) } else { String::new() };
                     format!("{img}[{text}]({u})")
                 }
             },
@@ -469,8 +492,8 @@ fn md_spans(s: &[Span], base: &Path) -> String {
         .collect()
 }
 
-fn md_blocks(bs: &[Block], base: &Path) -> String {
-    let inl = |s: &str| md_spans(&spans(s), base);
+fn md_blocks(bs: &[Block], base: &Path, ids: &Ids) -> String {
+    let inl = |s: &str| md_spans(&spans(s), base, ids);
     let mut parts: Vec<String> = vec![];
     for b in bs {
         parts.push(match b {
@@ -497,7 +520,7 @@ fn md_blocks(bs: &[Block], base: &Path) -> String {
                     let cb = it.check.map_or("", |c| if c == 'X' || c == 'x' { "[x] " } else { "[ ] " });
                     let cb = it.term.as_deref().map_or(cb.to_string(), |t| format!("{cb}**{}**: ", inl(t)));
                     let pad = " ".repeat(marker.len());
-                    let kids = md_blocks(&it.children, base);
+                    let kids = md_blocks(&it.children, base, ids);
                     let kids: String = kids.lines().map(|l| if l.is_empty() { "\n".into() } else { format!("\n{pad}{l}") }).collect();
                     format!("{marker}{cb}{}{kids}", inl(&it.text))
                 })
@@ -522,20 +545,21 @@ fn md_blocks(bs: &[Block], base: &Path) -> String {
                 }
                 format!("{fence}{}\n{body}\n{fence}", if kind == "src" { lang.as_str() } else { "" })
             }
-            Block::Quote(inner) => md_blocks(inner, base).lines().map(|l| if l.is_empty() { ">".into() } else { format!("> {l}") }).collect::<Vec<_>>().join("\n"),
+            Block::Quote(inner) => md_blocks(inner, base, ids).lines().map(|l| if l.is_empty() { ">".into() } else { format!("> {l}") }).collect::<Vec<_>>().join("\n"),
             Block::Rule => "---".into(),
         });
     }
     parts.join("\n\n")
 }
 
-pub fn markdown(d: &Doc, fallback_title: &str, base: &Path) -> String {
+/// Markdown page; IDS maps id: links to sibling pages like `html`.
+pub fn markdown(d: &Doc, fallback_title: &str, base: &Path, ids: &Ids) -> String {
     let title = d.title.as_deref().unwrap_or(fallback_title);
-    let mut o = format!("# {}\n\n", md_spans(&spans(title), base));
+    let mut o = format!("# {}\n\n", md_spans(&spans(title), base, ids));
     if let Some(s) = &d.subtitle {
-        o += &format!("*{}*\n\n", md_spans(&spans(s), base));
+        o += &format!("*{}*\n\n", md_spans(&spans(s), base, ids));
     }
-    o + &md_blocks(&d.blocks, base) + "\n"
+    o + &md_blocks(&d.blocks, base, ids) + "\n"
 }
 
 #[cfg(test)]
@@ -606,7 +630,7 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
 
     #[test]
     fn to_markdown() {
-        let m = markdown(&parse(NOTE, &kw()), "x", Path::new("/notes"));
+        let m = markdown(&parse(NOTE, &kw()), "x", Path::new("/notes"), &Ids::new());
         for want in [
             "# Plans \\<&\\>\n\n## **TODO** \\[#A\\] Ship **it** `work` `urgent`\n\n",
             "Some **bold** *italic* <u>under</u> `a<b` `code` ~~gone~~ text, a\\*b\\*c and 3 + 4. Second line.\n\n",
@@ -637,7 +661,7 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
         ] {
             assert!(h.contains(want), "missing {want:?} in\n{h}");
         }
-        let m = markdown(&d, "x", &dir);
+        let m = markdown(&d, "x", &dir, &Ids::new());
         for want in ["- **Apple**: a fruit", "Roses *red*  \n  violets", "[https://example.com/a\\_b](https://example.com/a_b)"] {
             assert!(m.contains(want), "missing {want:?} in\n{m}");
         }
@@ -661,11 +685,31 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
         let c = p("/n/sub/b.org", ":PROPERTIES:\n:ID: c\n:END:\nBack to [[id:a][A]].\n");
         let stale = p("/n/a.org", "old text\n");
         let files = [&stale, &b, &c];
-        let names = |d| bundle(&files, &a, d).0.into_iter().map(|(f, n)| (f.path.to_string_lossy().to_string(), n)).collect::<Vec<_>>();
+        let names = |d| bundle(&files, &a, d, "html").0.into_iter().map(|(f, n)| (f.path.to_string_lossy().to_string(), n)).collect::<Vec<_>>();
         assert_eq!(names(1), [("/n/a.org".into(), "a.html".into()), ("/n/b.org".into(), "b.html".into())]);
         assert_eq!(names(2)[2], ("/n/sub/b.org".into(), "b (2).html".into()));
-        let (_, ids) = bundle(&files, &a, 1);
+        let (_, ids) = bundle(&files, &a, 1, "html");
         let h = html(&parse(&a.text, &kw()), "a", Path::new("/n"), &ids, false);
         assert!(h.contains("To <a href=\"b.html\">B&#39;s heading</a>, lost, <a href=\"a.html\">me</a>."), "{h}");
+
+        let (pages, ids) = bundle(&files, &a, 2, "md");
+        assert_eq!(pages[2].1, "b (2).md");
+        let m = markdown(&parse(&a.text, &kw()), "a", Path::new("/n"), &ids);
+        assert!(m.contains("To [B's heading](b.md), lost, [me](a.md)."), "{m}");
+        assert!(markdown(&parse(&c.text, &kw()), "b", Path::new("/n/sub"), &ids).contains("Back to [A](a.md)."));
+
+        let p = combined(&pages, &ids, &kw());
+        assert_eq!(p.matches("<section id=").count(), 3);
+        assert_eq!(p.matches("print()").count(), 1);
+        for want in ["<title>a</title>", "<section id=\"p-0\">\n<h1>a</h1>", "To <a href=\"#p-1\">B&#39;s heading</a>, lost, <a href=\"#p-0\">me</a>.", "On to <a href=\"#p-2\">", "<section id=\"p-2\">\n<h1>b</h1>"] {
+            assert!(p.contains(want), "missing {want:?} in\n{p}");
+        }
+    }
+
+    #[test]
+    fn stale_pages() {
+        let v = |s: &[&str]| s.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(stale(&v(&["a.html", "old.html", "pic.png", "b.md", "x.html.bak"]), &v(&["a.html", "b.html"]), "html"), ["old.html"]);
+        assert_eq!(stale(&v(&["a.html", "b.md", "old.md"]), &v(&["b.md"]), "md"), ["old.md"]);
     }
 }
