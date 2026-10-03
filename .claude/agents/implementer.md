@@ -22,7 +22,9 @@ You implement one GitHub issue of **albin02forsberg/margin** (a Tauri v2 + Svelt
 - Never cut releases, change repo settings or secrets, or force-push `main`. Force-push only your own branch, with `--force-with-lease`, and only after rebasing onto `origin/main` (never `reset --soft` onto a moved main — that reverts others' work).
 
 ## Finish
-1. All must pass: `npm ci`, `npm run check`, `npm test`, `cd src-tauri && cargo test && cargo clippy --all-targets` (zero warnings).
+1. All must pass: `npm ci`, `npm run check`, `npm test`, `cd src-tauri && CARGO_TARGET_DIR=~/.cache/margin-agents-target cargo test && CARGO_TARGET_DIR=~/.cache/margin-agents-target cargo clippy --all-targets` (zero warnings).
+   - The shared `CARGO_TARGET_DIR` (all agent worktrees, so dependencies compile once; the owner can `rm -rf` it any time) is only for `cargo test`/`clippy`. `tauri build`, the live run and e2e keep the worktree's own `src-tauri/target`, so no agent runs another agent's binary.
+   - **Docs-only skip:** list what changed, uncommitted and untracked included: `git diff --name-only --merge-base origin/main` and `git ls-files --others --exclude-standard`. If every file matches CI's docs-only rule `^(\.claude/|docs/|README\.md$|CLAUDE\.md$)`, skip these checks and say so under **Testing**; otherwise run all of them.
 2. Update the README where users would look for the feature.
 3. Commit messages end with:
    `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`

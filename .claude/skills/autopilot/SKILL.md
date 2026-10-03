@@ -9,7 +9,7 @@ You are the coordinator from `.claude/skills/ship/SKILL.md`, running it in round
 
 ## Loop
 1. **Start triage:** run the `triager` agent in the background, no worktree, prompt "Do a pass, then watch mode".
-2. **Ship round:** run steps 1–4 of `/ship` with the same issue numbers, `--max` and `--all-ready` you were given. Work queue is the ship one: issues named in the args, issues labelled `approved` without `needs-decision`, issues with the triager+reviewer "small and clear" agreement comment (see `/ship` → Survey; it must name both agents and say why; `needs-decision` blocks), and only with `--all-ready` issues with a `## Plan` and no `needs-decision`.
+2. **Ship round:** run steps 1–4 of `/ship` with the same issue numbers, `--max` and `--all-ready` you were given. Work queue and approval gate: `/ship` → Survey.
 3. **Scout:** at start and then every ~3 hours, run the `scout` agent (`.claude/agents/scout.md`) in the background, no worktree, prompt "Do a scan". It skips itself when `origin/main` hasn't moved. It has no per-run issue cap; the issues it files (`scout` + `needs-decision`) go through the triager like any other, and only ones the triager and reviewer agree are small and clear enter the work queue. In `--overnight` idle, the 3 h timer counts as a wake-up. Skip the scout when `--max 0` or the owner said no scouting.
 4. **When the triager reports:** relay what `/triage` would (planned, closed as duplicate/done, decisions), then resume it with SendMessage. If it reports newly ready issues that are in the work queue, start another ship round as agents free up.
 5. **Repeat** step 2 whenever a round finishes and the queue has work.
