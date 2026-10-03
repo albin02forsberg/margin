@@ -108,7 +108,7 @@ fn config(s: State<App>) -> Value {
     let c = s.cfg();
     let tc = s.tc();
     json!({
-        "config": c, "config_path": s.cfg_path, "notes": c.notes(), "data": c.data(), "export": config::expand(&c.export_dir),
+        "config": c, "defaults": Config::default(), "config_path": s.cfg_path, "notes": c.notes(), "data": c.data(), "export": config::expand(&c.export_dir),
         "profile": s.profile(), "log_path": tc.log_path(), "projects_path": tc.projects_path(), "diary_path": tc.diary, "config_error": s.cfg_error.lock().unwrap().clone(),
     })
 }
@@ -163,11 +163,11 @@ fn setup(app: AppHandle, s: State<App>, notes_dir: String, data_dir: String, pro
     apply_config(app, s, text, c)
 }
 
-/// The settings page's changed VALUES (see config::save), saved like setup's answers.
+/// The settings page's changed VALUES and RESET keys (see config::save), saved like setup's answers.
 #[tauri::command]
-fn save_config(app: AppHandle, s: State<App>, values: toml::Table) -> R<String> {
+fn save_config(app: AppHandle, s: State<App>, values: toml::Table, reset: Option<Vec<String>>) -> R<String> {
     let text = std::fs::read_to_string(&s.cfg_path).map_err(|e| e.to_string())?;
-    let (text, c) = config::save(&text, values)?;
+    let (text, c) = config::save(&text, values, &reset.unwrap_or_default())?;
     apply_config(app, s, text, c)
 }
 
