@@ -19,7 +19,9 @@ When the queue is empty and no agent is running, do no model work: sleep in one 
 ```bash
 gh api 'repos/albin02forsberg/margin/issues?state=all&sort=updated&per_page=30' --jq '[.[]|[.number,.updated_at,.comments]]|sort'; gh pr list -R albin02forsberg/margin --state open --json number,updatedAt; git ls-remote origin main
 ```
-Poll every 3 minutes, every 10 after an hour with no change. A change (new issue/comment/approval/PR, or `main` moved) means a normal loop pass; ignore changes caused by agents' own comments. Idle polling costs no tokens, so don't spawn an agent for it. Stop after 3 consecutive rate-limit/session-limit failures and report.
+Poll every 3 minutes, every 10 after an hour with no change. A change (new issue/comment/approval/PR, or `main` moved) means a normal loop pass; ignore changes caused by agents' own comments. Idle polling costs no tokens, so don't spawn an agent for it.
+
+**Usage limits:** on a rate-limit/session-limit error (yours or an agent's), wait it out instead of stopping: sleep in the same kind of bash `until` loop (each call under ~9 minutes, a plain `date` check, no `gh`; never a bare foreground `sleep`) for 30 minutes, or until the reset time if the error states one. Then resume every stalled agent with SendMessage ("check your branch/PR state and continue") and carry on with the loop. Stop and report only if the limit error comes back right after a wait 3 times in a row. The limit is account-wide, so when agents hit it your own next turn usually fails too and the session may not be re-invoked; don't rely on this overnight. If worktrees are found stalled the next morning, an external restart loop is the fix (#108 option B).
 
 ## Stop
 - After `--hours` (with `--overnight`: only then, never because the queue is empty), or when the queue is empty, no agents are running, and the triager has reported nothing new for ~30 minutes.
