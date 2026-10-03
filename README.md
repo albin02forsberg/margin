@@ -330,6 +330,10 @@ with the top apps and window titles and a project guessed from its name
 appearing in them. With the browser extension (aw-watcher-web) installed, time
 in a browser shows as the page's site and path (`github.com/you/repo`) instead
 of its title, which also helps the project guess; private tabs are left out.
+Likewise, with an editor watcher (aw-watcher-vscode, the JetBrains plugin or any
+other `app.editor.activity` one), editor time shows as `repo · file` (names
+only, never full paths), so a repo named like a project is guessed even when
+the window title doesn't name it.
 **Accept** confirms the project and an optional diary note and adds the session
 to the log at its place in the day; ✎ lets you change its start and end first;
 ✕ hides it, and anything overlapping it, for good (kept in
