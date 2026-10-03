@@ -13,7 +13,7 @@
   "11": "Calendar",
   "12": "attach.rs",
   "13": "GitHub Releases",
-  "14": "devDependencies",
+  "14": "decorate",
   "15": "scripts",
   "16": "Notes",
   "17": "AppImage",
@@ -31,10 +31,10 @@
   "29": "+page.svelte",
   "30": "margin",
   "31": "config.rs",
-  "32": "svelte.config.js",
+  "32": "curLine",
   "33": "lib/TaskDialog.svelte",
-  "34": "vite.config.js",
-  "35": "graph",
+  "34": "level",
+  "35": "$lib/graph",
   "36": "CLAUDE.md",
   "37": "ship/SKILL.md",
   "38": "implementer.md",
@@ -63,6 +63,5 @@
   "61": "backup.rs",
   "62": "super",
   "63": "reviewer.md",
-  "64": "$lib/graph",
-  "65": "@tauri-apps/api/event"
+  "64": "@codemirror/state"
 }
