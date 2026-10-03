@@ -358,7 +358,11 @@ in the HTML, so the page works on its own; bare URLs become links, and
 `term :: text` lists and verse blocks keep their shape.
 
 `e a` exports the note plus the notes it links to by `id:` (one hop, or two) as
-HTML pages in a folder `export_dir/<note>/`, where links between them work.
+HTML or Markdown pages in a folder `export_dir/<note>/`, where links between them
+work, or as one PDF (`export_dir/<note> (linked).html`) with a page break between
+notes and links jumping to the right section. Overwriting the folder moves pages
+(`.html` / `.md`) from an earlier export that are no longer included into its
+`old/` subfolder; other files in it stay.
 
 ## Reminders
 

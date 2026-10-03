@@ -146,10 +146,34 @@ describe("Features", () => {
     await browser.keys(" ");
     await type("ea");
     await answer("Include notes", "Linked from this note");
+    await answer("Export as", "HTML");
     await find(".picker label span", "Exported to");
     await browser.keys(Key.Escape);
     const dir = join(d.exportDir, "hub");
     assert.match(read(join(dir, "hub.html")), /<a href="leaf\.html"[^>]*>the leaf<\/a>/);
     assert.match(read(join(dir, "leaf.html")), /A leaf\./);
+
+    // Overwriting moves pages no longer in the export into old/, and leaves other files alone.
+    writeFileSync(join(dir, "gone.html"), "old");
+    writeFileSync(join(dir, "pic.png"), "png");
+    await browser.keys(" ");
+    await type("ea");
+    await answer("Include notes", "Linked from this note");
+    await answer("Export as", "Markdown");
+    await answer("hub already exists", "Overwrite");
+    await find(".picker label span", "Exported to");
+    await browser.keys(Key.Escape);
+    assert.match(read(join(dir, "hub.md")), /\[the leaf\]\(leaf\.md\)/);
+    assert.ok(existsSync(join(dir, "gone.html")), "Markdown export removed an HTML page");
+    await browser.keys(" ");
+    await type("ea");
+    await answer("Include notes", "Linked from this note");
+    await answer("Export as", "HTML");
+    await answer("hub already exists", "Overwrite");
+    await find(".picker label span", "Exported to");
+    await browser.keys(Key.Escape);
+    assert.ok(!existsSync(join(dir, "gone.html")), "stale page kept");
+    assert.equal(read(join(dir, "old", "gone.html")), "old", "stale page not moved to old/");
+    assert.ok(existsSync(join(dir, "leaf.html")) && existsSync(join(dir, "pic.png")) && existsSync(join(dir, "hub.md")));
   });
 });

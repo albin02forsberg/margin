@@ -792,13 +792,18 @@
     if (path) await exported(path, format === "pdf");
   }
 
-  /** The open note plus the notes it links to by id:, as HTML pages in a folder that link to each other. */
+  /** The open note plus the notes it links to by id:, as HTML/Markdown pages in a folder that link to each other, or one PDF. */
   async function exportLinked() {
     if (!inFile()) return flash("Open a note first.");
     const depth = await pick({ prompt: "Include notes", items: [{ label: "Linked from this note", value: 1 }, { label: "…and the notes they link to", value: 2 }] });
     if (depth == null) return;
-    const path = await exportTo("export_linked", { path: tab.path, text: view.state.doc.toString(), depth });
-    if (path) await exported(path, false);
+    const format = await pick({
+      prompt: "Export as",
+      items: [{ label: "HTML", detail: "a page per note", value: "html" }, { label: "Markdown", detail: "a page per note", value: "md" }, { label: "PDF", detail: "one document, print from the browser", value: "pdf" }],
+    });
+    if (!format) return;
+    const path = await exportTo("export_linked", { path: tab.path, text: view.state.doc.toString(), depth, format });
+    if (path) await exported(path, format === "pdf");
   }
 
   /** Run export command CMD; if its target exists, ask to overwrite or keep both. Null on cancel. */
@@ -1067,7 +1072,7 @@
     { label: "Export: note as HTML", leader: "e h", run: () => exportNote("html") },
     { label: "Export: note as Markdown", leader: "e m", run: () => exportNote("md") },
     { label: "Export: note as PDF", leader: "e p", run: () => exportNote("pdf") },
-    { label: "Export: note and linked notes as HTML…", leader: "e a", run: exportLinked },
+    { label: "Export: note and linked notes…", leader: "e a", run: exportLinked },
     { label: "Export: time report (HTML/PDF)…", leader: "e t", run: exportReport },
   ];
 
