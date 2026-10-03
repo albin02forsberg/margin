@@ -682,7 +682,11 @@ fn activity_suggestions(s: State<App>, date_input: String) -> R<Option<Vec<activ
     let tracked = timeclock::spans(&tc.events(), timeclock::now());
     let tasks: Vec<activity::Task> = org::todos(&s.files(), &s.kw(), false, |_, _| true, today()).into_iter().map(|t| (t.title, t.category)).collect();
     let meetings = activity::rules("activity_meetings", &c.activity_meetings)?;
-    let all = activity::suggest(&window, &afk, &tracked, &exclude, activity::Known { projects: &projects, tasks: &tasks, meetings: &meetings }, d);
+    let calendar = match c.activity_calendar.trim() {
+        "" => vec![],
+        p => ics::events_on(&std::fs::read_to_string(config::expand(p)).map_err(|e| format!("activity_calendar {p}: {e}"))?, d),
+    };
+    let all = activity::suggest(&window, &afk, &tracked, &exclude, activity::Known { projects: &projects, tasks: &tasks, meetings: &meetings, calendar: &calendar }, d);
     Ok(Some(activity::undismissed(all, &dismissed(&tc).unwrap_or_default())))
 }
 

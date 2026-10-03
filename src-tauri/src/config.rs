@@ -42,6 +42,8 @@ pub struct Config {
     pub activity_exclude: Vec<String>,
     /// Regexes (case-insensitive) over app names, window titles and URLs of meetings.
     pub activity_meetings: Vec<String>,
+    /// A local .ics file whose events name meeting suggestions; empty = off.
+    pub activity_calendar: String,
     /// Where drafts come from: "ollama", or "embedded" (a model Margin downloads and runs).
     pub ai_backend: crate::ai::Backend,
     /// Model that drafts diary and journal notes: an Ollama model, e.g. "llama3.2:3b", or a
@@ -130,6 +132,7 @@ impl Default for Config {
             attachments_dir: "attachments".into(),
             activitywatch_url: String::new(),
             activity_exclude: v(&["KeePass", "1Password", "Bitwarden", "Private Browsing", "Incognito", "InPrivate"]),
+            activity_calendar: String::new(),
             activity_meetings: v(&["^zoom", "Microsoft Teams", r"meet\.google\.com", "Slack.*huddle", "Webex"]),
             ai_backend: Default::default(),
             ai_model: String::new(),

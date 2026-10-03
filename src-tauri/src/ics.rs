@@ -1,7 +1,9 @@
 //! Calendar feed: scheduled tasks, deadlines and appointments as an .ics file
-//! that calendar apps can subscribe to.
+//! that calendar apps can subscribe to; and reading a day's events from one.
 
 use crate::org::{Kw, OrgFile, Ts};
+use chrono::{Datelike, Duration, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc, Weekday};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// iCalendar text for every open entry with a date. Timed entries last an hour,
@@ -91,6 +93,103 @@ fn fnv(s: &str) -> u64 {
     s.bytes().fold(0xcbf29ce484222325, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3))
 }
 
+/// A timed calendar event, in local time.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Event {
+    pub start: NaiveDateTime,
+    pub end: NaiveDateTime,
+    pub summary: String,
+    /// Names (CN) or addresses.
+    pub attendees: Vec<String>,
+}
+
+/// A DTSTART/DTEND value → local time: UTC (`…Z`) is converted, TZID and floating times
+/// are taken as local; dates (all-day) give None.
+// ponytail: TZID is assumed to be this machine's zone (no tz database); add chrono-tz if other zones matter.
+fn when(v: &str) -> Option<NaiveDateTime> {
+    let (v, utc) = v.strip_suffix('Z').map_or((v, false), |v| (v, true));
+    let t = NaiveDateTime::parse_from_str(v, "%Y%m%dT%H%M%S").ok()?;
+    Some(if utc { Utc.from_utc_datetime(&t).with_timezone(&Local).naive_local() } else { t })
+}
+
+fn date(v: &str) -> Option<NaiveDate> {
+    NaiveDate::parse_from_str(v.get(..8)?, "%Y%m%d").ok()
+}
+
+fn unescape(s: &str) -> String {
+    s.replace("\\n", " ").replace("\\N", " ").replace("\\,", ",").replace("\\;", ";").replace("\\\\", "\\")
+}
+
+/// Whether a series starting on FIRST under RRULE has an occurrence on DAY. DAILY and WEEKLY
+/// (INTERVAL, BYDAY, UNTIL, COUNT) are understood; other rules only occur on FIRST.
+fn occurs(rule: &str, first: NaiveDate, day: NaiveDate) -> bool {
+    let r: HashMap<&str, &str> = rule.split(';').filter_map(|p| p.split_once('=')).collect();
+    let n = r.get("INTERVAL").and_then(|v| v.parse::<i64>().ok()).unwrap_or(1).max(1);
+    const DAYS: [&str; 7] = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
+    let by: Vec<Weekday> = r.get("BYDAY").map_or(vec![], |v| v.split(',').filter_map(|d| DAYS.iter().position(|x| d.ends_with(x))).filter_map(|i| Weekday::try_from(i as u8).ok()).collect());
+    let monday = |d: NaiveDate| d - Duration::days(d.weekday().num_days_from_monday() as i64);
+    let hit = |d: NaiveDate| match r.get("FREQ").copied() {
+        Some("DAILY") => (d - first).num_days() % n == 0 && (by.is_empty() || by.contains(&d.weekday())),
+        Some("WEEKLY") => (monday(d) - monday(first)).num_days() / 7 % n == 0 && if by.is_empty() { d.weekday() == first.weekday() } else { by.contains(&d.weekday()) },
+        _ => d == first,
+    };
+    if day < first || r.get("UNTIL").and_then(|v| date(v)).is_some_and(|u| day > u) || !hit(day) {
+        return false;
+    }
+    // ponytail: walks the series day by day for COUNT; fine for a few years of a series.
+    r.get("COUNT").and_then(|v| v.parse::<usize>().ok()).is_none_or(|c| first.iter_days().take_while(|d| *d <= day).filter(|d| hit(*d)).count() <= c)
+}
+
+/// Timed events of an .ics TEXT that overlap DAY, recurring ones (see `occurs`) included,
+/// minus cancelled ones, EXDATEs and occurrences moved by a RECURRENCE-ID. All-day events and
+/// events without DTEND are left out.
+pub fn events_on(text: &str, day: NaiveDate) -> Vec<Event> {
+    let text = text.replace("\r\n", "\n").replace("\n ", "").replace("\n\t", "");
+    // Each VEVENT's (NAME, params, value)s, without nested components (alarms).
+    type Props = Vec<(String, String, String)>;
+    let (mut evs, mut cur, mut depth): (Vec<Props>, Option<Props>, i32) = (vec![], None, 0);
+    for l in text.lines() {
+        match l.trim_end() {
+            "BEGIN:VEVENT" => (cur, depth) = (Some(vec![]), 0),
+            "END:VEVENT" => evs.extend(cur.take()),
+            l if l.starts_with("BEGIN:") => depth += 1,
+            l if l.starts_with("END:") => depth -= 1,
+            l => {
+                if let (Some(c), 0, Some((k, v))) = (cur.as_mut(), depth, l.split_once(':')) {
+                    let (name, params) = k.split_once(';').unwrap_or((k, ""));
+                    c.push((name.to_uppercase(), params.to_string(), v.to_string()));
+                }
+            }
+        }
+    }
+    let get = |e: &Props, n: &str| e.iter().find(|p| p.0 == n).map(|p| p.2.clone());
+    let moved: Vec<(String, NaiveDate)> = evs.iter().filter_map(|e| Some((get(e, "UID")?, date(&get(e, "RECURRENCE-ID")?)?))).collect();
+    let (d0, d1) = (day.and_time(NaiveTime::MIN), (day + Duration::days(1)).and_time(NaiveTime::MIN));
+    let mut out = vec![];
+    for e in &evs {
+        let (Some(start), Some(end)) = (get(e, "DTSTART").and_then(|v| when(&v)), get(e, "DTEND").and_then(|v| when(&v))) else { continue };
+        if get(e, "STATUS").is_some_and(|s| s.eq_ignore_ascii_case("CANCELLED")) {
+            continue;
+        }
+        let (start, end) = match get(e, "RRULE") {
+            Some(rule) if get(e, "RECURRENCE-ID").is_none() => {
+                let uid = get(e, "UID").unwrap_or_default();
+                let ex = e.iter().filter(|p| p.0 == "EXDATE").flat_map(|p| p.2.split(',').filter_map(date).collect::<Vec<_>>()).any(|x| x == day);
+                if ex || moved.contains(&(uid, day)) || !occurs(&rule, start.date(), day) {
+                    continue;
+                }
+                (day.and_time(start.time()), day.and_time(start.time()) + (end - start))
+            }
+            _ => (start, end),
+        };
+        if start < d1 && d0 < end {
+            let attendees = e.iter().filter(|p| p.0 == "ATTENDEE").map(|p| p.1.split(';').find_map(|x| x.strip_prefix("CN=")).map_or(p.2.trim_start_matches("mailto:").to_string(), |c| c.trim_matches('"').to_string())).collect();
+            out.push(Event { start, end, summary: get(e, "SUMMARY").map(|s| unescape(&s)).filter(|s| !s.trim().is_empty()).unwrap_or("Busy".into()), attendees });
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,5 +221,35 @@ mod tests {
         let mut long = String::new();
         fold(&mut long, &format!("SUMMARY:{}", "é".repeat(60)));
         assert!(long.split("\r\n").all(|l| l.len() <= 75));
+    }
+
+    #[test]
+    fn reads_events() {
+        let ics = [
+            "BEGIN:VCALENDAR",
+            "BEGIN:VEVENT", "UID:a", "DTSTART:20261005T070000Z", "DTEND:20261005T073000Z", "SUMMARY:Sync with Acme\\, Inc",
+            "ATTENDEE;CN=\"Ann Lee\";ROLE=REQ-PARTICIPANT:mailto:ann@acme.com", "ATTENDEE:mailto:bob@x.org",
+            "BEGIN:VALARM", "SUMMARY:Alarm", "TRIGGER:-PT10M", "END:VALARM", "END:VEVENT",
+            // Mondays and Wednesdays, but not 30 Sep; 7 Oct moved to 11:00.
+            "BEGIN:VEVENT", "UID:standup", "DTSTART;TZID=Europe/Stockholm:20260921T091500", "DTEND;TZID=Europe/Stockholm:20260921T093000",
+            "RRULE:FREQ=WEEKLY;BYDAY=MO,WE", "EXDATE;TZID=Europe/Stockholm:20260930T091500", "SUMMARY:Stand", " up", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:standup", "RECURRENCE-ID;TZID=Europe/Stockholm:20261007T091500",
+            "DTSTART;TZID=Europe/Stockholm:20261007T110000", "DTEND;TZID=Europe/Stockholm:20261007T111500", "SUMMARY:Standup (moved)", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:c", "DTSTART;VALUE=DATE:20261005", "DTEND;VALUE=DATE:20261006", "SUMMARY:Holiday", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:d", "DTSTART:20261005T120000", "DTEND:20261005T130000", "STATUS:CANCELLED", "SUMMARY:Lunch", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:e", "DTSTART:20260928T140000", "DTEND:20260928T150000", "RRULE:FREQ=DAILY;COUNT=3", "END:VEVENT",
+            "END:VCALENDAR",
+        ]
+        .join("\r\n");
+        let on = |d: &str| events_on(&ics, d.parse().unwrap());
+        let at = |d: &str| NaiveDateTime::parse_from_str(d, "%Y-%m-%d %H:%M").unwrap();
+        let short = |d: &str| on(d).into_iter().map(|e| (e.start, e.end, e.summary)).collect::<Vec<_>>();
+        let e = on("2026-10-05");
+        let utc7 = Utc.with_ymd_and_hms(2026, 10, 5, 7, 0, 0).unwrap().with_timezone(&Local).naive_local();
+        assert_eq!(e[0], Event { start: utc7, end: utc7 + Duration::minutes(30), summary: "Sync with Acme, Inc".into(), attendees: vec!["Ann Lee".into(), "bob@x.org".into()] });
+        assert_eq!(short("2026-10-05")[1..], [(at("2026-10-05 09:15"), at("2026-10-05 09:30"), "Standup".into())], "all-day and cancelled are left out");
+        assert_eq!(short("2026-09-30"), [(at("2026-09-30 14:00"), at("2026-09-30 15:00"), "Busy".into())], "EXDATE; COUNT's third day");
+        assert_eq!(short("2026-10-07"), [(at("2026-10-07 11:00"), at("2026-10-07 11:15"), "Standup (moved)".into())]);
+        assert!(short("2026-10-01").is_empty() && short("2026-10-06").is_empty() && short("2026-09-14").is_empty());
     }
 }
