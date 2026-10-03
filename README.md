@@ -295,7 +295,7 @@ vmedian abs round floor ceil sqrt exp ln`; format with `;%.2f` or `;%d`.
 
 The Time view shows what you're tracking, today's sessions (click ✎ to edit),
 the week's hours against expected, flex balance and per-project totals. Keys:
-`i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV,
+`i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV (import template: `Project` = export code, `Duration` in decimal hours, `1,5`),
 `E` export a report as HTML/PDF.
 Space t … has every timeclock command (same letters as the old Emacs menu).
 If `projects.toml`, the time log or the diary can't be read or parsed (say, after

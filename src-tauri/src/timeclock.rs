@@ -636,12 +636,12 @@ fn csv_field(v: &str) -> String {
     format!("\"{}\"", v.replace('"', "\"\""))
 }
 
-/// Same columns and Swedish decimal comma as `albin/timeclock-export-csv`.
+/// Import-template columns; `Project` is the export code, hours use a decimal comma (`1,5`).
 pub fn csv(sessions: &[Session], projects: &Projects, start: NaiveDate, end: NaiveDate) -> String {
     let rounded = apply_carry(&prepare_report_sessions(sessions), projects).0;
-    let mut out = String::from("Project,ExportCode,Description,Date,Duration\n");
+    let mut out = String::from("Project,Description,Date,Duration\n");
     for s in rounded.iter().filter(|s| start <= s.date && s.date <= end) {
-        let f = [s.project.clone(), export_code(&s.project, projects), s.desc.clone(), s.date.to_string(), format!("{:.2}", s.hours).replace('.', ",")];
+        let f = [export_code(&s.project, projects), s.desc.clone(), s.date.to_string(), format!("{:.2}", s.hours).trim_end_matches('0').trim_end_matches('.').replace('.', ",")];
         out += &(f.iter().map(|x| csv_field(x)).collect::<Vec<_>>().join(",") + "\n");
     }
     out
@@ -967,6 +967,8 @@ mod tests {
     fn csv_quotes_and_comma() {
         let s = vec![Session { date: d("2026-10-01"), project: "A".into(), desc: "say \"hi\"".into(), hours: 1.5, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None }];
         let out = csv(&s, &Projects::new(), d("2026-10-01"), d("2026-10-01"));
-        assert_eq!(out.lines().nth(1).unwrap(), r#""A","A","say ""hi""","2026-10-01","1,50""#);
+        assert_eq!(out.lines().nth(1).unwrap(), r#""A","say ""hi""","2026-10-01","1,5""#);
+        let s = vec![Session { hours: 2.0, ..s[0].clone() }];
+        assert!(csv(&s, &Projects::new(), d("2026-10-01"), d("2026-10-01")).ends_with(",\"2\"\n"));
     }
 }
