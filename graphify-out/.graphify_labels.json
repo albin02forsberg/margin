@@ -30,15 +30,15 @@
   "28": "main.rs",
   "29": "+page.svelte",
   "30": "margin",
-  "31": "config.rs",
+  "31": "ai.rs",
   "32": "curLine",
   "33": "lib/TaskDialog.svelte",
   "34": "level",
-  "35": "graph",
+  "35": "$lib/graph",
   "36": "CLAUDE.md",
   "37": "ship/SKILL.md",
   "38": "implementer.md",
-  "39": "$lib/graph",
+  "39": "scripts",
   "40": "release/SKILL.md",
   "41": "autopilot/SKILL.md",
   "42": "verify-all/SKILL.md",
@@ -61,6 +61,6 @@
   "59": "TypeScript",
   "60": "ics.rs",
   "61": "backup.rs",
-  "62": "$lib/projects",
-  "63": "@tauri-apps/api/event"
+  "62": "devDependencies",
+  "63": "@codemirror/state"
 }
