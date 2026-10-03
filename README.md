@@ -381,7 +381,8 @@ with a progress bar in the status line. Downloads are checked against a pinned
 checksum and resume where they stopped; the same picker cancels a download and
 deletes models. Margin runs them with llama.cpp on the CPU (Metal on Apple
 Silicon; x86 needs AVX2): the model loads on the first draft and is unloaded
-after 5 minutes without one; on Linux it won't load when free memory is below the
+after 5 minutes without one; *Drafting… cancel* in the status line stops a
+running draft; on Linux it won't load when free memory is below the
 model's RAM need. Release builds include this; building from source needs
 `--features embedded-ai` (with cmake, a C++ compiler and libclang), otherwise
 use Ollama.
