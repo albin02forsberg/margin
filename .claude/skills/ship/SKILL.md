@@ -21,6 +21,7 @@ gh pr list -R albin02forsberg/margin --state open --json number,title,headRefNam
   - Never build an issue outside these routes.
 - **Open PRs** with no agent working on them → queue a `pr-shepherd` for each.
 - Approved issues with no `## Plan` → run a `triager` pass on just those first.
+- **Stale worktrees:** `git worktree list --porcelain`. Remove (as in step 4) each one under `.claude/worktrees/` that is not `locked` (running agents' worktrees are), whose branch has a merged PR (`gh pr list -R albin02forsberg/margin --state merged --head <branch>`) or is gone on origin with a clean `git -C <path> status --porcelain`. Never the main checkout; `--force` deletes uncommitted work.
 
 ## 2. Dispatch
 Run at most `--max` agents at once (default 3) with `isolation: "worktree"` and `run_in_background: true`.
