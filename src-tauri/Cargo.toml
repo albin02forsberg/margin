@@ -30,6 +30,10 @@ regex = "1.13.1"
 notify-debouncer-mini = "0.7.0"
 base64 = "0.22"
 tauri-plugin-process = "2"
+# Model downloads (#132); all three already come with tauri-plugin-updater.
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+sha2 = "0.10"
 
 
 # Line tables only: smaller debug builds link faster (e2e CI builds a debug binary).

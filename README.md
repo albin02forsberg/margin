@@ -364,9 +364,14 @@ while `ai_model` is empty (the default).
 The same picker lists models Margin will download and run itself, without
 Ollama (`ai_backend = "embedded"`): Qwen2.5 3B Instruct (the default, ~2.1 GB,
 Qwen Research licence: non-commercial use only) and Qwen2.5 1.5B Instruct
-(~1.1 GB, Apache-2.0). Nothing is bundled or downloaded yet: the download and
-running them inside Margin arrive in later updates
-([#132](https://github.com/albin02forsberg/margin/issues/132)).
+(~1.1 GB, Apache-2.0). Nothing is bundled: choosing one that isn't here shows
+its size, RAM need and licence and asks before downloading it into the app's
+local data folder (not your notes or `data_dir`, so backups don't commit it),
+with a progress bar in the status line. Downloads are checked against a pinned
+checksum and resume where they stopped; the same picker cancels a download and
+deletes models. Running them inside Margin arrives in a later update
+([#132](https://github.com/albin02forsberg/margin/issues/132)); until then use
+Ollama.
 
 - **Accept** on a suggestion offers to draft the diary note from that block's
   project, apps and titles; it lands in the note prompt for you to edit.

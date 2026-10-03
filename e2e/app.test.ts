@@ -1,7 +1,7 @@
 // End-to-end tests of the basics; setup and helpers are in setup.ts.
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { answer, browser, close, fileMatches, find, Key, launch, palette, today, type, type Dirs } from "./setup.ts";
 
@@ -94,10 +94,26 @@ describe("Margin", () => {
     await answer("AI drafts", "Ollama");
     await answer("Ollama model", "qwen2.5:3b");
     await fileMatches(cfg, (s) => /^ai_backend = "ollama"$/m.test(s) && /^ai_model = "qwen2.5:3b"$/m.test(s) && /^templates = \[\]$/m.test(s), "Ollama choice not saved");
+    // A pinned model that isn't here asks first; declining downloads and saves nothing.
+    const models = join(cfgDir, "..", "..", "share", "dev.albin.margin.e2e", "models");
     await palette("AI drafts: choose model");
-    await answer("AI drafts", "1.5B"); // a pinned model: only saved, nothing is downloaded yet
+    await answer("AI drafts", "1.5B");
+    await find(".picker .body", "GB of free RAM");
+    await answer("Download Qwen2.5 1.5B", "Not now");
+    assert.ok(!existsSync(models), "nothing should be downloaded");
+    assert.match(readFileSync(cfg, "utf8"), /^ai_backend = "ollama"$/m);
+    // One that is here (in the app's local data dir) is just chosen, and can be deleted.
+    const file = join(models, "qwen2.5-1.5b-instruct-q4_k_m.gguf");
+    mkdirSync(models, { recursive: true });
+    writeFileSync(file, "fake model");
+    await palette("AI drafts: choose model");
+    await find(".picker li small", "downloaded · needs ~2 GB");
+    await answer("AI drafts", "1.5B downloaded"); // not "Delete Qwen2.5 1.5B…"
     await fileMatches(cfg, (s) => /^ai_backend = "embedded"$/m.test(s) && /^ai_model = "qwen2.5-1.5b-instruct-q4"$/m.test(s), "built-in model choice not saved");
     await find(".status .msg", "comes in a later update");
+    await palette("AI drafts: choose model");
+    await answer("AI drafts", "Delete Qwen2.5 1.5B");
+    await browser.waitUntil(async () => !existsSync(file), { timeoutMsg: "model not deleted" });
     await palette("AI drafts: choose model");
     await answer("AI drafts", "Off");
     await fileMatches(cfg, (s) => /^ai_model = ""$/m.test(s), "drafts not turned off");
