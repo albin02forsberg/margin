@@ -34,7 +34,7 @@
   "32": "curLine",
   "33": "lib/TaskDialog.svelte",
   "34": "level",
-  "35": "$lib/graph",
+  "35": "graph",
   "36": "CLAUDE.md",
   "37": "ship/SKILL.md",
   "38": "implementer.md",
@@ -59,8 +59,9 @@
   "57": "wayland_idle.rs",
   "58": "Time Tracking",
   "59": "TypeScript",
-  "60": "ics.rs",
+  "60": "super",
   "61": "backup.rs",
   "62": "devDependencies",
-  "63": "@codemirror/state"
+  "63": "$lib/graph",
+  "64": "@tauri-apps/api/event"
 }

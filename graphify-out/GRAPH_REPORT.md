@@ -6,12 +6,12 @@
 - Unclassified: 6 file(s) not represented in the graph (top: (none) 2, .icns 1, .ico 1)
 
 ## Summary
-- 983 nodes · 2162 edges · 64 communities (37 shown, 27 thin omitted)
+- 984 nodes · 2162 edges · 65 communities (37 shown, 28 thin omitted)
 - Extraction: 98% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 25 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `cbf6077a`
+- Built from commit: `8534d4cc`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -70,7 +70,7 @@
 - wayland_idle.rs
 - Time Tracking
 - TypeScript
-- ics.rs
+- super
 - backup.rs
 - devDependencies
 
@@ -101,7 +101,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (64 total, 27 thin omitted)
+## Communities (65 total, 28 thin omitted)
 
 ### Community 0 - "org.rs"
 Cohesion: 0.07
@@ -124,7 +124,7 @@ Cohesion: 0.20
 Nodes (10): [], dateChip(), dayInput(), fmtDay(), goToday(), key(), monday(), op() (+2 more)
 
 ### Community 5 - "idle.rs"
-Cohesion: 0.20
+Cohesion: 0.22
 Nodes (3): source(), start(), step()
 
 ### Community 6 - "orgtable.ts"
@@ -152,7 +152,7 @@ Cohesion: 0.67
 Nodes (3): Calendar, iCalendar, Tasks
 
 ### Community 12 - "remind.rs"
-Cohesion: 0.22
+Cohesion: 0.27
 Nodes (5): Due, notify(), picks_due_reminders(), start(), tick()
 
 ### Community 14 - "decorate"
@@ -239,8 +239,8 @@ Nodes (3): Usage, What it does, When to use
 Cohesion: 0.27
 Nodes (5): refresh(), setup(), show(), tracking(), Tray
 
-### Community 60 - "ics.rs"
-Cohesion: 0.43
+### Community 60 - "super"
+Cohesion: 0.31
 Nodes (5): builds_feed(), event(), feed(), fnv(), fold()
 
 ### Community 61 - "backup.rs"
@@ -253,8 +253,8 @@ Nodes (11): devDependencies, svelte, svelte-check, @sveltejs/adapter-static, @sv
 
 ## Knowledge Gaps
 - **210 isolated node(s):** `y`, `day`, `events`, `app`, `out` (+205 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 346 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **27 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 347 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **28 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -264,7 +264,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **Why does `format()` connect `orgtable.ts` to `+page.svelte`?**
   _High betweenness centrality (0.057) - this node is a cross-community bridge._
 - **Why does `palette()` connect `setup.ts` to `+page.svelte`?**
-  _High betweenness centrality (0.057) - this node is a cross-community bridge._
+  _High betweenness centrality (0.056) - this node is a cross-community bridge._
 - **What connects `y`, `day`, `events` to the rest of the system?**
   _210 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `org.rs` be split into smaller, more focused modules?**
