@@ -38,7 +38,7 @@ sha2 = "0.10"
 llama-cpp-2 = { version = "0.1.158", default-features = false, optional = true }
 
 [features]
-embedded-ai = ["dep:llama-cpp-2"]
+embedded-ai = ["dep:llama-cpp-2", "dep:windows-sys"]
 
 
 # Line tables only: smaller debug builds link faster (e2e CI builds a debug binary).
@@ -57,6 +57,10 @@ strip = true
 notify-rust = "4"
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+
+# Free-RAM check before loading a built-in model (#149); already in the tree through Tauri.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_SystemInformation"], optional = true }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
