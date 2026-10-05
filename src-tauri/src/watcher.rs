@@ -7,13 +7,17 @@ use chrono::{Duration, NaiveDate, NaiveDateTime};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::sync::Mutex;
 
 const POLL_SECS: i64 = 5;
 /// No input for this long is away: nothing is recorded (ActivityWatch's default too).
 const AFK_MINS: i64 = 3;
-/// An unchanged window is still written this often, so quitting loses at most this much.
+/// An unchanged window is still written this often, so a crash loses at most this much.
 const MAX_SECS: i64 = 5 * 60;
 const MAX_TITLE: usize = 300;
+
+/// The record being grown by the sampler, shared so quitting can write it (`flush`).
+static OPEN: Mutex<Option<Rec>> = Mutex::new(None);
 
 /// One line of the log: a window active from START to END.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -79,6 +83,18 @@ fn append(dir: &Path, r: &Rec) -> std::io::Result<()> {
     writeln!(f, "{}", serde_json::to_string(r)?)
 }
 
+fn write(dir: &Path, r: &Rec) {
+    append(dir, r).unwrap_or_else(|e| eprintln!("activity log {}: {e}", dir.display()))
+}
+
+/// Write the open record to DIR, ended when its window was last seen (on quit or when the
+/// watcher is turned off); one that never grew is dropped.
+pub fn flush(dir: &Path) {
+    if let Some(r) = OPEN.lock().unwrap().take().filter(|r| r.end > r.start) {
+        write(dir, &r);
+    }
+}
+
 /// The active window's app and title: X11, Windows, macOS, and KDE or Hyprland under Wayland
 /// (elsewhere on Wayland only XWayland windows show).
 #[cfg(desktop)]
@@ -94,18 +110,15 @@ pub fn start(app: &tauri::AppHandle) {
     use tauri::Manager;
     let app = app.clone();
     std::thread::spawn(move || {
-        let (mut cur, mut last, mut day, mut idle) = (None::<Rec>, now(), None, None);
+        let (mut last, mut day, mut idle) = (now(), None, None);
         loop {
             std::thread::sleep(std::time::Duration::from_secs(POLL_SECS as u64));
             let (c, t) = (app.state::<App>().cfg(), now());
             let dir = c.data().join("activity");
-            let write = |r: Rec| append(&dir, &r).unwrap_or_else(|e| eprintln!("activity log {}: {e}", dir.display()));
             // A bad pattern records nothing rather than what it should have hidden.
             let exclude = activity::exclude_rules(&c.activity_exclude).ok();
             let Some(exclude) = exclude.filter(|_| c.activity_watcher) else {
-                if let Some(r) = cur.take() {
-                    write(r);
-                }
+                flush(&dir);
                 last = t;
                 continue;
             };
@@ -117,11 +130,12 @@ pub fn start(app: &tauri::AppHandle) {
             let afk = away >= Duration::minutes(AFK_MINS);
             let seen = if t - last > Duration::seconds(3 * POLL_SECS) { last } else if afk { t - away } else { t };
             let sample = if afk { None } else { active().and_then(|(a, title)| clean(&a, &title, &exclude)) };
-            let (next, done) = step(cur.take(), sample, seen, t);
+            let mut open = OPEN.lock().unwrap();
+            let (next, done) = step(open.take(), sample, seen, t);
             if let Some(r) = done {
-                write(r);
+                write(&dir, &r);
             }
-            (cur, last) = (next, t);
+            (*open, last) = (next, t);
         }
     });
 }
@@ -168,6 +182,19 @@ mod tests {
         let late = Rec { start: t("23:59:50"), end: t("23:59:58"), app: "Code".into(), title: "x".into() };
         let next = t("00:00:00") + Duration::days(1);
         assert_eq!(step(Some(late), w("Code", "x"), next, next).0.unwrap().start, next);
+    }
+
+    #[test]
+    fn flush_writes_the_open_record_once() {
+        let dir = std::env::temp_dir().join(format!("margin-flush-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let r = Rec { start: t("09:00:00"), end: t("09:03:20"), app: "Code".into(), title: "x".into() };
+        *OPEN.lock().unwrap() = Some(r.clone());
+        flush(&dir);
+        flush(&dir);
+        let text = std::fs::read_to_string(dir.join("2026-10-01.jsonl")).unwrap();
+        assert_eq!(text.lines().map(|l| serde_json::from_str::<Rec>(l).unwrap()).collect::<Vec<_>>(), vec![r]);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

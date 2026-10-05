@@ -1188,7 +1188,10 @@ pub fn run() {
         .run(|app, ev| {
             // Replaces kill-emacs-hook: commit on exit.
             match ev {
-                RunEvent::ExitRequested { .. } => app.state::<App>().backup(),
+                RunEvent::ExitRequested { .. } => {
+                    watcher::flush(&app.state::<App>().cfg().data().join("activity"));
+                    app.state::<App>().backup()
+                }
                 #[cfg(target_os = "macos")]
                 RunEvent::Reopen { .. } => tray::show(app), // dock icon click after hiding to tray
                 _ => {}
