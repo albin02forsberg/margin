@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changes, checkViews, GROUPS, refresh, refreshRows, type Field } from "./settings.ts";
+import { changes, checkTemplates, checkViews, GROUPS, refresh, refreshRows, type Field } from "./settings.ts";
 
 const config = { notes_dir: "~/notes", expected_daily_hours: 8, profiles: ["Work", "Home"], reminders: true };
 const fields: Field[] = GROUPS.flatMap((g) => g.fields).filter((f) => f.key in config);
@@ -34,4 +34,14 @@ test("rows keep unsaved edits across a reload", () => {
   const edited = [...rows, { name: "", query: "" }];
   assert.deepEqual(refreshRows(edited, base, [{ name: "A", query: "a" }]), [edited, base, false]);
   assert.equal(refreshRows(edited, base, [])[2], true);
+});
+
+test("templates need a unique one-character key and a name", () => {
+  const t = { key: " j ", name: " Journal ", file: " ", heading: " Log ", body: "* %?\n" };
+  assert.deepEqual(checkTemplates([t]), [{ key: "j", name: "Journal", body: "* %?\n", heading: "Log" }]);
+  assert.throws(() => checkTemplates([{ ...t, key: "jj" }]), /one-character/);
+  assert.throws(() => checkTemplates([{ ...t, key: "" }]), /one-character/);
+  assert.throws(() => checkTemplates([t, { ...t, key: "k" }, { ...t, key: "j" }]), /Templates 1 and 3/);
+  assert.throws(() => checkTemplates([{ ...t, name: "" }]), /needs a name/);
+  assert.deepEqual(refreshRows([], [], [{ key: "n", heading: null }])[1], [{ key: "n", heading: "" }]);
 });
