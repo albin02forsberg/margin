@@ -259,7 +259,15 @@
     cfg = await call("config");
     reload++;
     await refreshTc();
+    syncFromDisk(); // an open config.toml tab shows the new file
     flash(warn ? `⚠ config.toml recreated. ${warn}` : "config.toml recreated from the current settings.");
+  }
+
+  /** Open config.toml, recreated from the current settings first if it's gone (saving an empty buffer would reset them). */
+  async function editConfig() {
+    cfg = await call("config");
+    if (cfg.config_missing) await recreateConfig();
+    await openFile(cfg.config_path);
   }
 
   // Search tabs take the name of the view with their query, or the query itself once no view has it.
@@ -1083,7 +1091,7 @@
     { label: "Save this search as a view…", leader: "v v", run: saveView },
     { label: "Toggle sidebar", keys: ["Ctrl+\\"], leader: "v s", run: () => { sidebar = !sidebar; store("sidebar", sidebar ? "1" : "0"); } },
     { label: "Settings", keys: ["Ctrl+,"], leader: "f c", run: () => openView("settings") },
-    { label: "Settings: edit config.toml", leader: "f C", run: () => openFile(cfg.config_path) },
+    { label: "Settings: edit config.toml", leader: "f C", run: editConfig },
     { label: "AI drafts: choose model…", leader: "f a", run: aiChoose },
     { label: "Save", keys: ["Ctrl+S"], leader: "f s", run: () => saveTab(tab, true) },
     { label: "Reload from disk (discard unsaved changes)", leader: "f r", run: reloadFromDisk },
@@ -1502,7 +1510,7 @@
               {:else if v.kind === "projects"}
                 <Projects {act} active={v === tab} {reload} />
               {:else if v.kind === "settings"}
-                <Settings config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} missing={cfg.config_missing} save={saveSettings} recreate={recreateConfig} edit={() => act(() => openFile(cfg.config_path))} />
+                <Settings config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} missing={cfg.config_missing} save={saveSettings} recreate={recreateConfig} edit={() => act(editConfig)} />
               {:else}
                 <Agenda mode={v.kind as "agenda" | "todo"} api={agendaApi} active={v === tab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} />
               {/if}
