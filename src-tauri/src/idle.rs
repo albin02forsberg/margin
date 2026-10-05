@@ -25,7 +25,7 @@ pub fn step(away: Option<NaiveDateTime>, last: NaiveDateTime, idle: Duration, th
 
 /// How long since the last input, if this desktop can tell: X11, macOS and Windows
 /// through user-idle, Wayland through ext-idle-notify (threshold fixed at startup).
-fn source(threshold: Duration) -> Option<Box<dyn Fn() -> Duration + Send>> {
+pub(crate) fn source(threshold: Duration) -> Option<Box<dyn Fn() -> Duration + Send>> {
     let user_idle = || Box::new(|| Duration::seconds(UserIdle::get_time().map_or(0, |i| i.as_seconds() as i64))) as Box<dyn Fn() -> Duration + Send>;
     #[cfg(target_os = "linux")]
     if std::env::var_os("WAYLAND_DISPLAY").is_some() {

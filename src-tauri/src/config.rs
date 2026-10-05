@@ -44,6 +44,10 @@ pub struct Config {
     pub activity_meetings: Vec<String>,
     /// A local .ics file whose events name meeting suggestions; empty = off.
     pub activity_calendar: String,
+    /// Record the active app and window title to <data>/activity/ (opt-in; see watcher.rs).
+    pub activity_watcher: bool,
+    /// Days of that log to keep; 0 = all.
+    pub activity_retention_days: i64,
     /// Where drafts come from: "ollama", or "embedded" (a model Margin downloads and runs).
     pub ai_backend: crate::ai::Backend,
     /// Model that drafts diary and journal notes: an Ollama model, e.g. "llama3.2:3b", or a
@@ -133,6 +137,8 @@ impl Default for Config {
             activitywatch_url: String::new(),
             activity_exclude: v(&["KeePass", "1Password", "Bitwarden", "Private Browsing", "Incognito", "InPrivate"]),
             activity_calendar: String::new(),
+            activity_watcher: false,
+            activity_retention_days: 30,
             activity_meetings: v(&["^zoom", "Microsoft Teams", r"meet\.google\.com", "Slack.*huddle", "Webex"]),
             ai_backend: Default::default(),
             ai_model: String::new(),

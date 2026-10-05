@@ -31,13 +31,15 @@
     const t = setInterval(() => api.act(refresh), 30_000);
     return () => clearInterval(t);
   });
-  // ActivityWatch suggestions for DAY: null when off; errors show as a hint, not a flash.
+  // Suggestions for DAY from ActivityWatch or the built-in watcher (SOURCE): null when off; errors show as a hint, not a flash.
   let day = $state(new Date().toLocaleDateString("sv-SE"));
   let sugg = $state<Suggestion[] | null>(null);
+  let source = $state("ActivityWatch");
   let awError = $state("");
   async function loadSuggestions() {
     try {
-      [sugg, awError] = [await invoke("activity_suggestions", { dateInput: day }), ""];
+      const r = await invoke<{ source: string; items: Suggestion[] } | null>("activity_suggestions", { dateInput: day });
+      [sugg, source, awError] = [r?.items ?? null, r?.source ?? source, ""];
     } catch (e) {
       [sugg, awError] = [[], String(e)];
     }
@@ -167,7 +169,7 @@
 
     {#if sugg}
       <section class="suggested">
-        <h3>Suggested <span class="dim">from ActivityWatch · {day === todayIso ? "today" : `${dayName(day)} ${day}`} · <kbd>h</kbd><kbd>l</kbd> day</span></h3>
+        <h3>Suggested <span class="dim">from {source === "Margin" ? "this computer's activity" : source} ·{day === todayIso ? "today" : `${dayName(day)} ${day}`} · <kbd>h</kbd><kbd>l</kbd> day</span></h3>
         {#if awError}
           <p class="dim">{awError}. Is <a href="https://activitywatch.net/" target="_blank" rel="noreferrer">ActivityWatch</a> running?</p>
         {:else if sugg.length}

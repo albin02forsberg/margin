@@ -14,6 +14,7 @@ mod org;
 mod remind;
 mod timeclock;
 mod tray;
+mod watcher;
 
 use chrono::{Duration, NaiveDate, NaiveDateTime};
 use config::Config;
@@ -750,15 +751,21 @@ fn tc_add_session(s: State<App>, start: NaiveDateTime, end: NaiveDateTime, proje
     Ok(format!("✅ Logged {}–{} on {}", start.format("%H:%M"), end.format("%H:%M"), if project.trim().is_empty() { "Other" } else { project.trim() }))
 }
 
-/// Suggested sessions for DATE_INPUT from ActivityWatch; None when `activitywatch_url` is empty.
+/// Suggested sessions for DATE_INPUT as `{source, items}`: from ActivityWatch when `activitywatch_url`
+/// is set and answers, else from the built-in watcher's log when it's on; null when both are off.
 #[tauri::command(async)]
-fn activity_suggestions(s: State<App>, date_input: String) -> R<Option<Vec<activity::Suggestion>>> {
+fn activity_suggestions(s: State<App>, date_input: String) -> R<Value> {
     let c = s.cfg();
-    if c.activitywatch_url.trim().is_empty() {
-        return Ok(None);
+    let aw = !c.activitywatch_url.trim().is_empty();
+    if !aw && !c.activity_watcher {
+        return Ok(Value::Null);
     }
     let (d, exclude) = (date(&date_input)?, activity::exclude_rules(&c.activity_exclude)?);
-    let (window, afk) = activity::fetch(&c.activitywatch_url, d, &exclude)?;
+    let (source, (window, afk)) = match aw.then(|| activity::fetch(&c.activitywatch_url, d, &exclude)) {
+        Some(Ok(x)) => ("ActivityWatch", x),
+        Some(Err(e)) if !c.activity_watcher => return Err(e),
+        _ => ("Margin", (watcher::spans(&c.data().join("activity"), d), vec![])),
+    };
     let tc = s.tc();
     let projects: Vec<String> = tc.projects().into_iter().filter(|(_, p)| p.active).map(|(n, _)| n).collect();
     let tracked = timeclock::spans(&tc.events(), timeclock::now());
@@ -770,7 +777,7 @@ fn activity_suggestions(s: State<App>, date_input: String) -> R<Option<Vec<activ
     };
     let rules = activity::parse_rules(&timeclock::read_or_empty(&tc.dir.join("activity_rules.toml"))?)?;
     let all = activity::suggest(&window, &afk, &tracked, &exclude, activity::Known { projects: &projects, tasks: &tasks, meetings: &meetings, calendar: &calendar, rules: &rules }, d);
-    Ok(Some(activity::undismissed(all, &dismissed(&tc).unwrap_or_default())))
+    Ok(json!({ "source": source, "items": activity::undismissed(all, &dismissed(&tc).unwrap_or_default()) }))
 }
 
 /// The profile's `activity_dismissed.json`; missing is empty, unreadable or malformed is an error.
@@ -1141,6 +1148,7 @@ pub fn run() {
             #[cfg(desktop)]
             {
                 idle::start(app.handle());
+                watcher::start(app.handle());
                 use tauri_plugin_global_shortcut::ShortcutState;
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
