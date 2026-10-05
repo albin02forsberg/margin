@@ -25,6 +25,8 @@ pub struct Span {
     pub app: String,
     pub title: String,
     pub url: String,
+    /// An editor event, or a window part labelled by one (`title` is `repo · file`).
+    pub editor: bool,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -39,6 +41,8 @@ pub struct Suggestion {
     pub task: Option<String>,
     /// Set when the block is mostly a meeting: the top matching title (or app).
     pub meeting: Option<String>,
+    /// The top title is an editor's `repo · file` label (learned as its repo).
+    pub editor: bool,
 }
 
 #[derive(Deserialize)]
@@ -91,18 +95,26 @@ pub fn parse_events<Tz: TimeZone>(json: &str, tz: &Tz) -> Result<Vec<Span>, Stri
             let end = e.timestamp + Duration::milliseconds((e.duration * 1000.0) as i64);
             let local = |t: DateTime<FixedOffset>| t.with_timezone(tz).naive_local();
             let base = |k: &str| s(k).and_then(|p| p.trim_end_matches(['/', '\\']).rsplit(['/', '\\']).next().map(String::from)).filter(|p| !p.is_empty() && p != "unknown");
-            let (title, url) = match base("file") {
-                Some(f) => (f.clone(), base("project").map_or(f.clone(), |p| format!("{p} · {f}"))),
-                None => (s("title").unwrap_or_default(), s("url").unwrap_or_default()),
+            let (title, url, editor) = match base("file") {
+                Some(f) => (f.clone(), base("project").map_or(f.clone(), |p| format!("{p} · {f}")), true),
+                None => (s("title").unwrap_or_default(), s("url").unwrap_or_default(), false),
             };
-            Span { start: local(e.timestamp), end: local(end), app: s("app").or_else(|| s("status")).unwrap_or_default(), title, url }
+            Span { start: local(e.timestamp), end: local(end), app: s("app").or_else(|| s("status")).unwrap_or_default(), title, url, editor }
         })
         .collect())
 }
 
 /// Config KEY's patterns, case-insensitive.
 pub fn rules(key: &str, pats: &[String]) -> Result<Vec<Regex>, String> {
-    pats.iter().map(|p| Regex::new(&format!("(?i){p}")).map_err(|e| format!("{key}: {e}"))).collect()
+    let (rs, errs) = lenient(key, pats);
+    errs.into_iter().next().map_or(Ok(rs), Err)
+}
+
+/// Config KEY's patterns that compile (case-insensitive), and the errors of those that don't.
+pub fn lenient(key: &str, pats: &[String]) -> (Vec<Regex>, Vec<String>) {
+    let mut errs = vec![];
+    let rs = pats.iter().filter_map(|p| Regex::new(&format!("(?i){p}")).map_err(|e| errs.push(format!("{key}: {e}"))).ok()).collect();
+    (rs, errs)
 }
 
 /// `activity_exclude` patterns.
@@ -135,7 +147,7 @@ pub fn with_urls(window: &[Span], web: &[Span], exclude: &[Regex]) -> Vec<Span> 
         for t in web.iter().filter(|t| t.start < w.end && w.start < t.end && !t.title.is_empty() && w.title.contains(&t.title)) {
             let (s, e) = (t.start.max(w.start), t.end.min(w.end));
             if !exclude.iter().any(|r| r.is_match(&t.url) || r.is_match(&t.title)) {
-                out.push(Span { start: s, end: e, title: url_label(&t.url), url: w.title.clone(), ..w.clone() });
+                out.push(Span { start: s, end: e, title: url_label(&t.url), url: w.title.clone(), editor: t.editor, ..w.clone() });
             }
             rest = cut(rest, s, e);
         }
@@ -171,26 +183,51 @@ struct Rule {
     project: String,
 }
 
-/// `activity_rules.toml` → (pattern, project) rules; a later rule with the same pattern replaces an earlier one.
-pub fn parse_rules(text: &str) -> Result<Vec<(Regex, String)>, String> {
-    let mut rs = toml::from_str::<Rules>(text).map_err(|e| format!("activity_rules.toml: {e}"))?.rule;
+/// `activity_rules.toml` → (pattern, project) rules, and errors: a bad pattern skips its rule,
+/// a file that isn't TOML all of them. A later rule with the same pattern replaces an earlier one.
+pub fn parse_rules(text: &str) -> (Vec<(Regex, String)>, Vec<String>) {
+    let mut rs = match toml::from_str::<Rules>(text) {
+        Ok(r) => r.rule,
+        Err(e) => return (vec![], vec![format!("activity_rules.toml: {e}")]),
+    };
     let mut seen = std::collections::HashSet::new();
     rs.reverse();
     rs.retain(|r| seen.insert(r.pattern.clone()));
     rs.reverse();
-    let pats = rules("activity_rules.toml", &rs.iter().map(|r| r.pattern.clone()).collect::<Vec<_>>())?;
-    Ok(pats.into_iter().zip(rs.into_iter().map(|r| r.project)).collect())
+    let mut errs = vec![];
+    let out = rs
+        .into_iter()
+        .filter_map(|r| {
+            let (mut p, e) = lenient("activity_rules.toml", &[r.pattern]);
+            errs.extend(e);
+            p.pop().map(|p| (p, r.project))
+        })
+        .collect();
+    (out, errs)
 }
 
-/// TEXT plus a rule sending blocks titled TITLE to PROJECT; an editor's `repo · file` is learned as its repo.
-pub fn learn(text: &str, title: &str, project: &str) -> String {
-    let pat = match title.split_once(" · ") {
+/// TEXT plus a rule sending blocks titled TITLE to PROJECT; an EDITOR's `repo · file` is learned as its repo.
+pub fn learn(text: &str, title: &str, project: &str, editor: bool) -> String {
+    let pat = match title.split_once(" · ").filter(|_| editor) {
         Some((repo, _)) => format!("^{} · ", regex::escape(repo)),
         None => format!("^{}$", regex::escape(title)),
     };
     let q = |s: &str| toml::Value::String(s.into()).to_string();
     let sep = if text.is_empty() || text.ends_with('\n') { "" } else { "\n" };
     format!("{text}{sep}\n[[rule]]\npattern = {}\nproject = {}\n", q(&pat), q(project))
+}
+
+/// Add a `learn`ed rule to the file at PATH, one writer at a time so two at once both stay.
+/// A blank title or project is ignored.
+pub fn learn_file(path: &std::path::Path, title: &str, project: &str, editor: bool) -> Result<(), String> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    if title.trim().is_empty() || project.trim().is_empty() {
+        return Ok(());
+    }
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let text = learn(&crate::timeclock::read_or_empty(path)?, title, project.trim(), editor);
+    std::fs::create_dir_all(path.parent().unwrap_or(path)).map_err(|e| e.to_string())?;
+    crate::config::write_atomic(path, text).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// Lowercase words, separated and surrounded by single spaces: ` feat fix crash ` (a branch
@@ -304,7 +341,9 @@ pub fn suggest(window: &[Span], afk: &[Span], tracked: &[(NaiveDateTime, NaiveDa
                 .then(|| top(|p| &p.title, &call).into_iter().chain(top(|p| &p.app, &call)).next())
                 .flatten();
             let meeting = event.map(|e| e.summary.clone()).or(meeting);
-            Suggestion { start, end, apps: top(|p| &p.app, &all), titles: top(|p| &p.title, &all), project, task: task.map(|t| t.0.clone()), meeting }
+            let titles = top(|p| &p.title, &all);
+            let editor = titles.first().is_some_and(|t| b.iter().any(|p| p.editor && p.title == *t));
+            Suggestion { start, end, apps: top(|p| &p.app, &all), titles, project, task: task.map(|t| t.0.clone()), meeting, editor }
         })
         .collect()
 }
@@ -508,7 +547,7 @@ mod tests {
 
     #[test]
     fn task_matching() {
-        let sp = |a: &str, b: &str, title: &str| Span { start: dt(&format!("2026-10-01 {a}")), end: dt(&format!("2026-10-01 {b}")), app: "x".into(), title: title.into(), url: String::new() };
+        let sp = |a: &str, b: &str, title: &str| Span { start: dt(&format!("2026-10-01 {a}")), end: dt(&format!("2026-10-01 {b}")), app: "x".into(), title: title.into(), url: String::new(), editor: false };
         let task = |t: &str, cat: &str| (t.to_string(), cat.to_string());
         let tasks = [task("Fix crash on save", "acme"), task("Review", "work"), task("CI", "work"), task("Speed up search #42", "margin"), task("Ship PROJ-7 export", "work"), task("Fix crash on save", "acme")];
         let projects = ["Acme".to_string(), "Margin".to_string()];
@@ -526,7 +565,7 @@ mod tests {
 
     #[test]
     fn meetings() {
-        let sp = |a: &str, b: &str, app: &str, title: &str| Span { start: dt(&format!("2026-10-01 {a}")), end: dt(&format!("2026-10-01 {b}")), app: app.into(), title: title.into(), url: String::new() };
+        let sp = |a: &str, b: &str, app: &str, title: &str| Span { start: dt(&format!("2026-10-01 {a}")), end: dt(&format!("2026-10-01 {b}")), app: app.into(), title: title.into(), url: String::new(), editor: false };
         let rules = super::rules("activity_meetings", &crate::config::Config::default().activity_meetings).unwrap();
         let got = |w: &[Span]| suggest(w, &[], &[], &[], Known { meetings: &rules, ..Default::default() }, "2026-10-01".parse().unwrap()).into_iter().map(|s| s.meeting).collect::<Vec<_>>();
         let zoom = [sp("09:00", "09:30", "zoom", "Zoom Meeting"), sp("09:30", "09:45", "Code", "lib.rs"), sp("09:45", "10:15", "zoom", "")];
@@ -547,20 +586,37 @@ mod tests {
 
     #[test]
     fn learned_rules() {
-        let sp = |a: &str, b: &str, title: &str| Span { start: dt(&format!("2026-10-01 {a}")), end: dt(&format!("2026-10-01 {b}")), app: "x".into(), title: title.into(), url: String::new() };
+        let sp = |a: &str, b: &str, title: &str| Span { start: dt(&format!("2026-10-01 {a}")), end: dt(&format!("2026-10-01 {b}")), app: "x".into(), title: title.into(), url: String::new(), editor: false };
         let projects = ["Margin".to_string(), "Acme".to_string()];
-        let text = learn(&learn("# mine\n", "github.com/x/web", "Margin"), "tool · lib.rs", "Gone");
-        let text = learn(&text, "github.com/x/web", "Acme"); // a later choice replaces the earlier one
+        let text = learn(&learn("# mine\n", "github.com/x/web", "Margin", false), "tool · lib.rs", "Gone", true);
+        let text = learn(&text, "github.com/x/web", "Acme", false); // a later choice replaces the earlier one
+        let text = learn(&text, "PR 61 · x/web", "Acme", false); // not an editor label: the whole title
         assert!(text.starts_with("# mine\n\n[[rule]]\npattern = "), "hand-written lines survive: {text}");
-        let rules = parse_rules(&text).unwrap();
-        assert_eq!(rules.iter().map(|(r, p)| (r.as_str(), p.as_str())).collect::<Vec<_>>(), [("(?i)^tool · ", "Gone"), ("(?i)^github\\.com/x/web$", "Acme")]);
+        let (rules, errs) = parse_rules(&format!("{text}\n[[rule]]\npattern = \"(\"\nproject = \"A\""));
+        assert_eq!(rules.iter().map(|(r, p)| (r.as_str(), p.as_str())).collect::<Vec<_>>(), [("(?i)^tool · ", "Gone"), ("(?i)^github\\.com/x/web$", "Acme"), ("(?i)^PR 61 · x/web$", "Acme")]);
+        assert!(errs.len() == 1 && errs[0].starts_with("activity_rules.toml: "), "a bad pattern is skipped, the rest apply: {errs:?}");
         let got = |w: &[Span]| suggest(w, &[], &[], &[], Known { projects: &projects, rules: &rules, ..Default::default() }, "2026-10-01".parse().unwrap()).into_iter().map(|s| s.project).collect::<Vec<_>>();
         // The rule beats a project name in the titles; a rule for a deleted project is skipped.
         assert_eq!(got(&[sp("09:00", "09:20", "github.com/x/web"), sp("09:20", "09:30", "margin notes")]), [Some("Acme".into())]);
         assert_eq!(got(&[sp("09:00", "09:30", "tool · lib.rs"), sp("09:30", "09:35", "margin")]), [Some("Margin".into())]);
         assert_eq!(got(&[sp("09:00", "09:30", "github.com/x/web/issues")]), [None], "anchored: a longer title isn't the same page");
-        assert!(parse_rules("").unwrap().is_empty());
-        assert!(parse_rules("[[rule]]\npattern = \"(\"\nproject = \"A\"").unwrap_err().starts_with("activity_rules.toml: "));
+        assert_eq!(parse_rules("").0.len(), 0);
+        assert_eq!(parse_rules("[[rule").1.len(), 1);
+        let (ex, errs) = lenient("activity_exclude", &["keepass".into(), "(".into()]);
+        assert_eq!((ex.len(), errs.len()), (1, 1));
+    }
+
+    #[test]
+    fn learning_to_a_file() {
+        let dir = std::env::temp_dir().join(format!("margin-learn-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("activity_rules.toml");
+        learn_file(&path, "a", " ", false).unwrap();
+        assert!(!path.exists(), "a blank project is ignored");
+        let ts: Vec<_> = (0..8).map(|i| { let p = path.clone(); std::thread::spawn(move || learn_file(&p, &format!("t{i}"), "P", false)) }).collect();
+        ts.into_iter().for_each(|t| t.join().unwrap().unwrap());
+        assert_eq!(parse_rules(&std::fs::read_to_string(&path).unwrap()).0.len(), 8, "concurrent learns all stay");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -572,7 +628,7 @@ mod tests {
         d = dismiss(d, dt("2026-10-03 09:10"), dt("2026-10-03 11:20"), today);
         let d: Dismissed = serde_json::from_str(&serde_json::to_string(&d).unwrap()).unwrap();
         assert_eq!(d.keys().map(|k| k.to_string()).collect::<Vec<_>>(), ["2026-09-03", "2026-10-03"]);
-        let sg = |a: &str, b: &str| Suggestion { start: dt(a), end: dt(b), apps: vec![], titles: vec![], project: None, task: None, meeting: None };
+        let sg = |a: &str, b: &str| Suggestion { start: dt(a), end: dt(b), apps: vec![], titles: vec![], project: None, task: None, meeting: None, editor: false };
         // The dismissed block has grown a little since; a later one is untouched.
         let left = undismissed(vec![sg("2026-10-03 09:05", "2026-10-03 11:25"), sg("2026-10-03 11:30", "2026-10-03 12:00")], &d);
         assert_eq!(left, vec![sg("2026-10-03 11:30", "2026-10-03 12:00")]);

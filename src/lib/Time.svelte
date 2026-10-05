@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type Suggestion = { start: string; end: string; apps: string[]; titles: string[]; project: string | null; task: string | null; meeting: string | null };
+  export type Suggestion = { start: string; end: string; apps: string[]; titles: string[]; project: string | null; task: string | null; meeting: string | null; editor: boolean };
   export type Session = { date: string; project: string; desc: string; hours: number; start: string; end: string; line: number | null };
   export type TimeApi = {
     act: (f: () => unknown) => void;
@@ -36,10 +36,11 @@
   let sugg = $state<Suggestion[] | null>(null);
   let source = $state("ActivityWatch");
   let awError = $state("");
+  let warnings = $state<string[]>([]);
   async function loadSuggestions() {
     try {
-      const r = await invoke<{ source: string; items: Suggestion[] } | null>("activity_suggestions", { dateInput: day });
-      [sugg, source, awError] = [r?.items ?? null, r?.source ?? source, ""];
+      const r = await invoke<{ source: string; items: Suggestion[]; warnings: string[] } | null>("activity_suggestions", { dateInput: day });
+      [sugg, source, awError, warnings] = [r?.items ?? null, r?.source ?? source, "", r?.warnings ?? []];
     } catch (e) {
       [sugg, awError] = [[], String(e)];
     }
@@ -170,6 +171,9 @@
     {#if sugg}
       <section class="suggested">
         <h3>Suggested <span class="dim">from {source === "Margin" ? "this computer's activity" : source} ·{day === todayIso ? "today" : `${dayName(day)} ${day}`} · <kbd>h</kbd><kbd>l</kbd> day</span></h3>
+        {#each warnings as w}
+          <p class="dim">Skipped a bad pattern: {w}</p>
+        {/each}
         {#if awError}
           <p class="dim">{awError}. Is <a href="https://activitywatch.net/" target="_blank" rel="noreferrer">ActivityWatch</a> running?</p>
         {:else if sugg.length}

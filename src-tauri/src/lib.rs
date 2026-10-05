@@ -760,7 +760,8 @@ fn activity_suggestions(s: State<App>, date_input: String) -> R<Value> {
     if !aw && !c.activity_watcher {
         return Ok(Value::Null);
     }
-    let (d, exclude) = (date(&date_input)?, activity::exclude_rules(&c.activity_exclude)?);
+    // Bad patterns are skipped and reported, so one typo doesn't hide all suggestions.
+    let (d, (exclude, mut warnings)) = (date(&date_input)?, activity::lenient("activity_exclude", &c.activity_exclude));
     let (source, (window, afk)) = match aw.then(|| activity::fetch(&c.activitywatch_url, d, &exclude)) {
         Some(Ok(x)) => ("ActivityWatch", x),
         Some(Err(e)) if !c.activity_watcher => return Err(e),
@@ -775,9 +776,10 @@ fn activity_suggestions(s: State<App>, date_input: String) -> R<Value> {
         "" => vec![],
         p => ics::events_on(&std::fs::read_to_string(config::expand(p)).map_err(|e| format!("activity_calendar {p}: {e}"))?, d),
     };
-    let rules = activity::parse_rules(&timeclock::read_or_empty(&tc.dir.join("activity_rules.toml"))?)?;
+    let (rules, bad) = activity::parse_rules(&timeclock::read_or_empty(&tc.dir.join("activity_rules.toml"))?);
+    warnings.extend(bad);
     let all = activity::suggest(&window, &afk, &tracked, &exclude, activity::Known { projects: &projects, tasks: &tasks, meetings: &meetings, calendar: &calendar, rules: &rules }, d);
-    Ok(json!({ "source": source, "items": activity::undismissed(all, &dismissed(&tc).unwrap_or_default()) }))
+    Ok(json!({ "source": source, "items": activity::undismissed(all, &dismissed(&tc).unwrap_or_default()), "warnings": warnings }))
 }
 
 /// The profile's `activity_dismissed.json`; missing is empty, unreadable or malformed is an error.
@@ -798,13 +800,10 @@ fn activity_dismiss(s: State<App>, start: NaiveDateTime, end: NaiveDateTime) -> 
     config::write_atomic(&tc.dir.join("activity_dismissed.json"), serde_json::to_string(&d).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 
-/// Remember that blocks titled TITLE go to PROJECT (the user picked another project than the guess).
+/// Remember that blocks titled TITLE (an EDITOR label) go to PROJECT (the user picked another project than the guess).
 #[tauri::command]
-fn activity_learn(s: State<App>, title: String, project: String) -> R<()> {
-    let path = s.tc().dir.join("activity_rules.toml");
-    let text = activity::learn(&timeclock::read_or_empty(&path)?, &title, &project);
-    std::fs::create_dir_all(path.parent().unwrap_or(&path)).map_err(|e| e.to_string())?;
-    config::write_atomic(&path, text).map_err(|e| e.to_string())
+fn activity_learn(s: State<App>, title: String, project: String, editor: bool) -> R<()> {
+    activity::learn_file(&s.tc().dir.join("activity_rules.toml"), &title, &project, editor)
 }
 
 /// What the model gets to draft a diary note for an accepted suggestion.
