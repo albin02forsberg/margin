@@ -170,4 +170,25 @@ describe("Margin", () => {
     await browser.waitUntil(async () => (await browser.$(`${label}/input`).getValue()) === "8", { timeoutMsg: "field doesn't show the default" });
     assert.ok(!(await browser.$(`${label}//button`).isExisting()), "reset shown for a default value");
   });
+
+  it("adds and reorders saved views on the settings page", async () => {
+    const cfg = join(cfgDir, "config.toml");
+    const last = async (css: string) => Array.from(await browser.$$(css)).at(-1)!;
+    const add = async (name: string, query: string) => {
+      await (await find(".settings button", "Add view")).click();
+      await (await last(".settings input[aria-label='View name']")).click();
+      await type(name);
+      await (await last(".settings input[aria-label='View query']")).click();
+      await type(query);
+    };
+    await add("Work", "tag:work");
+    await add("Next up", "todo:NEXT");
+    await (await browser.$$(".settings .row button[title='Move up']"))[1].click();
+    await (await find(".settings button", "Save views")).click();
+    await fileMatches(cfg, (s) => /\[\[views\]\]\nname = "Next up"\nquery = "todo:NEXT"\n\n\[\[views\]\]\nname = "Work"/.test(s) && /^templates = \[\]$/m.test(s), "views not saved");
+    await find(".side nav button", "Next up");
+    await (await browser.$$(".settings .row button[title='Remove']"))[0].click();
+    await (await find(".settings button", "Save views")).click();
+    await fileMatches(cfg, (s) => !s.includes("Next up") && s.includes(`name = "Work"`), "view not removed");
+  });
 });

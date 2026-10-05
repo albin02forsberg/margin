@@ -73,3 +73,22 @@ export function refresh(form: Form, base: Form, config: Record<string, unknown>)
   }
   return [kept, next, clash];
 }
+
+/** A `[[views]]`/`[[templates]]` entry on the settings page. */
+export type Row = Record<string, string>;
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/** ROWS (edited since BASE) refreshed from the config's LIST; returns [rows, base, whether a kept edit clashes]. */
+export function refreshRows(rows: Row[], base: Row[], list: unknown): [Row[], Row[], boolean] {
+  const next = ((list ?? []) as Row[]).map((r) => ({ ...r }));
+  const edited = !same(rows, base);
+  return [edited ? rows : next.map((r) => ({ ...r })), next, edited && !same(next, base)];
+}
+
+/** VIEWS trimmed for save_config; throws when one lacks a name or query. */
+export function checkViews(views: Row[]): Row[] {
+  const out = views.map((v) => ({ name: (v.name ?? "").trim(), query: (v.query ?? "").trim() }));
+  const bad = out.findIndex((v) => !v.name || !v.query);
+  if (bad >= 0) throw new Error(`View ${bad + 1} needs a name and a query`);
+  return out;
+}

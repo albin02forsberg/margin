@@ -1,22 +1,45 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
-  import { changes, GROUPS, refresh, toForm, type Field, type Form } from "$lib/settings";
+  import { changes, checkViews, GROUPS, refresh, refreshRows, toForm, type Field, type Form, type Row } from "$lib/settings";
 
   /** The config.toml settings as a form, saved per group; unsaved fields survive a reload of CONFIG. */
-  let { config, defaults, error, save, edit }: { config: Record<string, unknown>; defaults: Record<string, unknown>; error: string | null; save: (values: Record<string, unknown>, reset?: string[]) => Promise<void>; edit: () => void } = $props();
+  let { config, defaults, error, save, edit }: { config: Record<string, unknown>; defaults: Record<string, unknown>; error: string | null; save: (values: Record<string, unknown>, reset?: string[], views?: Row[]) => Promise<void>; edit: () => void } = $props();
   let form = $state<Form>({});
   let base = $state<Form>({});
   let errors = $state<Record<string, string>>({});
   /** Fields with unsaved edits here that config.toml also changed underneath. */
   let clash = $state<string[]>([]);
+  /** Saved views (`[[views]]`) as edited here, and as last loaded. */
+  let views = $state<Row[]>([]);
+  let viewsBase = $state<Row[]>([]);
+  let viewsClash = $state(false);
   $effect(() => {
     const c = config;
     untrack(() => {
       let more: string[];
       [form, base, more] = refresh(form, base, c);
       clash = [...new Set([...more, ...clash.filter((k) => form[k] !== base[k])])];
+      let vclash: boolean;
+      [views, viewsBase, vclash] = refreshRows(views, viewsBase, c.views);
+      viewsClash = vclash || (viewsClash && JSON.stringify(views) !== JSON.stringify(viewsBase));
     });
   });
+  const viewsDirty = $derived(JSON.stringify(views) !== JSON.stringify(viewsBase));
+  async function saveViews() {
+    try {
+      await save({}, [], checkViews(views));
+      await tick();
+      views = viewsBase.map((v) => ({ ...v }));
+      viewsClash = false;
+      errors.views = "";
+    } catch (e) {
+      errors.views = String(e);
+    }
+  }
+  /** Swap rows I and I+D of LIST. */
+  function move(list: Row[], i: number, d: number) {
+    [list[i], list[i + d]] = [list[i + d], list[i]];
+  }
   const FIELDS = GROUPS.flatMap((g) => g.fields);
   const clashing = $derived(FIELDS.filter((f) => clash.includes(f.key) && form[f.key] !== base[f.key]));
 
@@ -47,7 +70,7 @@
 
 <div class="settings">
   <h1>Settings</h1>
-  <p class="dim">Saved to config.toml; comments and everything not shown here stay as written. <button class="link" onclick={edit}>Edit config.toml</button> for saved views and templates.</p>
+  <p class="dim">Saved to config.toml; comments and everything not shown here stay as written. <button class="link" onclick={edit}>Edit config.toml</button> for capture templates.</p>
   {#if error}
     <p class="error">⚠ config.toml was ignored ({error}), so these are the defaults. Fix the file first.</p>
   {/if}
@@ -82,6 +105,25 @@
       </fieldset>
     </form>
   {/each}
+  <form onsubmit={(e) => { e.preventDefault(); saveViews(); }}>
+    <fieldset disabled={!!error} class="views">
+      <legend>Saved views</legend>
+      <small>Task searches in the sidebar. Saving rewrites the [[views]] tables of config.toml; comments inside them are not kept.</small>
+      {#each views as v, i}
+        <div class="row">
+          <input aria-label="View name" placeholder="Name" bind:value={v.name} />
+          <input aria-label="View query" placeholder="Query, e.g. todo:NEXT tag:work" bind:value={v.query} />
+          <button type="button" class="link" title="Move up" disabled={i === 0} onclick={() => move(views, i, -1)}>↑</button>
+          <button type="button" class="link" title="Move down" disabled={i === views.length - 1} onclick={() => move(views, i, 1)}>↓</button>
+          <button type="button" class="link" title="Remove" onclick={() => views.splice(i, 1)}>✕</button>
+        </div>
+      {/each}
+      <button type="button" class="link add" onclick={() => views.push({ name: "", query: "" })}>Add view</button>
+      {#if viewsClash && viewsDirty}<p class="error">⚠ config.toml changed on disk; saving your unsaved views would overwrite it.</p>{/if}
+      {#if errors.views}<p class="error">⚠ {errors.views}</p>{/if}
+      <button type="submit" disabled={!viewsDirty}>Save views</button>
+    </fieldset>
+  </form>
 </div>
 
 <style>
@@ -100,6 +142,10 @@
   button.link { background: none; border: none; color: var(--accent); padding: 0; margin: 0; font: inherit; text-decoration: underline; }
   button.reset { justify-self: start; font-size: var(--fs-sm); }
   label.check button.reset { grid-column: 2; }
+  .views { display: grid; gap: var(--s1); justify-items: start; }
+  .row { display: grid; grid-template-columns: 1fr 2fr auto auto auto; gap: var(--s1); align-items: center; width: 100%; }
+  .row button.link { text-decoration: none; padding: 0 var(--s1); }
+  .row button.link:disabled { background: none; color: var(--dim); }
   .dim { color: var(--dim); font-size: var(--fs-md); }
   .error { color: var(--todo); }
 </style>
