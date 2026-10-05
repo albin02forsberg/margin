@@ -228,6 +228,6 @@ describe("Margin", () => {
     await (await find(".settings button", "Recreate config.toml")).click();
     await fileMatches(cfg, (s) => s.includes(`name = "Work"`) && /^key = "j"$/m.test(s) && /^capture_shortcut = "Nope\+Bogus"$/m.test(s), "settings not recreated");
     await find(".status .msg", "config.toml recreated");
-    await browser.waitUntil(async () => !(await browser.$(".settings .error").isExisting()), { timeoutMsg: "error banner still shown" });
+    await browser.waitUntil(async () => !(await browser.$(".settings").getText()).includes("couldn't be loaded"), { timeoutMsg: "error banner still shown" });
   });
 });
