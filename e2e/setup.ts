@@ -113,6 +113,13 @@ export async function find(css: string, text: string) {
   }
 }
 
+/** Click BTN inside the first CSS element containing TEXT, retrying when a re-render makes the handle stale. */
+export async function clickIn(css: string, text: string, btn: string) {
+  await browser.waitUntil(async () => {
+    try { await (await (await find(css, text)).$(btn)).click(); return true; } catch { return false; }
+  }, { timeoutMsg: `could not click ${btn} in ${css} with “${text}”` });
+}
+
 /** Press keys one at a time (keys("abc") would hold them all down together). */
 export async function type(s: string) {
   for (const c of s) await browser.keys(c);

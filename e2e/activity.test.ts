@@ -4,7 +4,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { answer, browser, close, fileMatches, find, isoDay, Key, launch, texts, type Dirs } from "./setup.ts";
+import { answer, browser, clickIn, close, fileMatches, find, isoDay, Key, launch, texts, type Dirs } from "./setup.ts";
 
 // Yesterday, so the sessions are over whenever the test runs.
 const y = new Date();
@@ -56,11 +56,11 @@ describe("ActivityWatch suggestions", () => {
     await row("github.com/albin02forsberg/margin");
     await row("Margin / Ship the suggestions #61"); // task guessed from the PR number
 
-    await (await (await row("Visual Studio Code")).$("button[title=Dismiss]")).click();
+    await clickIn(".suggested tr", "Visual Studio Code", "button[title=Dismiss]");
     await fileMatches(join(d.data, "work", "activity_dismissed.json"), (s) => s.includes(`"${day}":[["${day}T11:00:00","${day}T11:30:00"]]`), "dismissal not kept");
     await browser.waitUntil(async () => !(await texts(".suggested tr")).some((t) => t.includes("Visual Studio Code")));
 
-    await (await (await row("github.com")).$("button[title^=Change]")).click();
+    await clickIn(".suggested tr", "github.com", "button[title^=Change]");
     await answer("Start (HH:MM)", "09:10");
     await answer("End (HH:MM)", "9:50");
     await answer("Log 09:10–09:50 to project", "Margin");
