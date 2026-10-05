@@ -375,8 +375,8 @@ older than `activity_retention_days` (30) are deleted. Suggestions use it when
 `activitywatch_url` is empty or ActivityWatch isn't running (no browser tab or
 editor detail, only window titles). Works on X11, Windows and macOS (where titles
 may need the Screen Recording permission), and under
-Wayland on KDE and Hyprland; on GNOME Wayland only XWayland windows are seen for
-now. Turning it off stops recording and keeps the log.
+Wayland on KDE, Hyprland, Sway, River and other wlroots compositors; on GNOME
+Wayland only XWayland windows are seen for now. Turning it off stops recording and keeps the log.
 
 ### Drafts from a local model
 

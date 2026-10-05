@@ -9,6 +9,9 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Mutex;
 
+#[cfg(target_os = "linux")]
+mod wlr;
+
 const POLL_SECS: i64 = 5;
 /// No input for this long is away: nothing is recorded (ActivityWatch's default too).
 const AFK_MINS: i64 = 3;
@@ -95,11 +98,14 @@ pub fn flush(dir: &Path) {
     }
 }
 
-/// The active window's app and title: X11, Windows, macOS, and KDE or Hyprland under Wayland
-/// (elsewhere on Wayland only XWayland windows show).
+/// The active window's app and title: X11, Windows, macOS, KDE and Hyprland under Wayland, then
+/// wlroots compositors (Sway, River, labwc). On GNOME Wayland only XWayland windows show.
 #[cfg(desktop)]
 fn active() -> Option<(String, String)> {
-    active_win_pos_rs::get_active_window().ok().map(|w| (w.app_name, w.title))
+    let w = active_win_pos_rs::get_active_window().ok().map(|w| (w.app_name, w.title));
+    #[cfg(target_os = "linux")]
+    let w = w.or_else(|| std::env::var_os("WAYLAND_DISPLAY").and_then(|_| wlr::active()));
+    w
 }
 
 /// Poll every 5 s while `activity_watcher` is on (checked each poll, so the setting applies at
