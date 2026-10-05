@@ -339,7 +339,8 @@ other `app.editor.activity` one), editor time shows as `repo · file` (names
 only, never full paths), so a repo named like a project is guessed even when
 the window title doesn't name it. An open task is guessed too, when its title
 (as words, so a branch like `feat/fix-crash-on-save` in a terminal or editor
-title counts) or an id in it (`#123`, `ABC-123`) shows up longest; it becomes
+title, or the branch an editor watcher reports, counts) or an id in it (`#123`,
+`ABC-123`) shows up longest; it becomes
 the default diary note, gives the project when its org category is one, and
 goes into the AI draft. A block at least half spent in a call is marked
 **Meeting** and its note starts as `Meeting: <window title>` (no AI draft);

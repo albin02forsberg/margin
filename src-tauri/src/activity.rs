@@ -15,9 +15,10 @@ const GAP_SECS: i64 = 5 * 60;
 const MIN_BLOCK_SECS: i64 = 15 * 60;
 
 /// An event as local time. AFK events carry their status ("afk"/"not-afk") as `app`;
-/// browser tab events have a `url`; editor events have the file name as `title` and
-/// `repo · file` as `url`. A window part `with_urls` labels keeps the full window title
-/// (which has the tab title, e.g. an issue number) as `url`, for task matching.
+/// browser tab events have a `url`; editor events have the file name as `title`,
+/// `repo · file` as `url` and the git branch as `app`. A window part `with_urls` labels keeps
+/// the full window title (which has the tab title, e.g. an issue number; plus an editor's
+/// branch) as `url`, for task matching.
 #[derive(Clone, Debug)]
 pub struct Span {
     pub start: NaiveDateTime,
@@ -95,11 +96,11 @@ pub fn parse_events<Tz: TimeZone>(json: &str, tz: &Tz) -> Result<Vec<Span>, Stri
             let end = e.timestamp + Duration::milliseconds((e.duration * 1000.0) as i64);
             let local = |t: DateTime<FixedOffset>| t.with_timezone(tz).naive_local();
             let base = |k: &str| s(k).and_then(|p| p.trim_end_matches(['/', '\\']).rsplit(['/', '\\']).next().map(String::from)).filter(|p| !p.is_empty() && p != "unknown");
-            let (title, url, editor) = match base("file") {
-                Some(f) => (f.clone(), base("project").map_or(f.clone(), |p| format!("{p} · {f}")), true),
-                None => (s("title").unwrap_or_default(), s("url").unwrap_or_default(), false),
+            let (title, url, app, editor) = match base("file") {
+                Some(f) => (f.clone(), base("project").map_or(f.clone(), |p| format!("{p} · {f}")), s("branch"), true),
+                None => (s("title").unwrap_or_default(), s("url").unwrap_or_default(), s("app").or_else(|| s("status")), false),
             };
-            Span { start: local(e.timestamp), end: local(end), app: s("app").or_else(|| s("status")).unwrap_or_default(), title, url, editor }
+            Span { start: local(e.timestamp), end: local(end), app: app.unwrap_or_default(), title, url, editor }
         })
         .collect())
 }
@@ -139,15 +140,16 @@ fn url_label(url: &str) -> String {
 /// WINDOW with browser and editor windows split by the WEB tab (or editor) events shown
 /// in them (the window title contains the tab title or file name, which also tells several
 /// browsers apart): those parts get the tab's `host/path` (the editor's `repo · file`) as
-/// title. Parts showing a tab or file that EXCLUDE matches (URL or title) are dropped.
+/// title. Parts showing a tab or file that EXCLUDE matches (URL, title or branch) are dropped.
 pub fn with_urls(window: &[Span], web: &[Span], exclude: &[Regex]) -> Vec<Span> {
     let mut out = vec![];
     for w in window {
         let mut rest = vec![(w.start, w.end)];
         for t in web.iter().filter(|t| t.start < w.end && w.start < t.end && !t.title.is_empty() && w.title.contains(&t.title)) {
             let (s, e) = (t.start.max(w.start), t.end.min(w.end));
-            if !exclude.iter().any(|r| r.is_match(&t.url) || r.is_match(&t.title)) {
-                out.push(Span { start: s, end: e, title: url_label(&t.url), url: w.title.clone(), editor: t.editor, ..w.clone() });
+            let branch = if t.editor { t.app.as_str() } else { "" };
+            if !exclude.iter().any(|r| r.is_match(&t.url) || r.is_match(&t.title) || (!branch.is_empty() && r.is_match(branch))) {
+                out.push(Span { start: s, end: e, title: url_label(&t.url), url: format!("{} {branch}", w.title).trim_end().into(), editor: t.editor, ..w.clone() });
             }
             rest = cut(rest, s, e);
         }
@@ -543,6 +545,13 @@ mod tests {
         let s = suggest(&w, &[], &[], &ex, Known { projects: &["Tool".into()], ..Default::default() }, "2026-10-01".parse().unwrap());
         assert_eq!(s[0].project.as_deref(), Some("Tool"));
         assert!(s[0].titles.contains(&"tool · lib.rs".to_string()));
+        // The branch finds the task, and never shows; an exclude on it drops the part.
+        let editor = parse_events(&format!("[{}]", ev("2026-10-01T07:00:00+00:00", 30.0, r#"{"file":"/home/me/acme/lib.rs","project":"/home/me/acme","branch":"feat/fix-crash-on-save"}"#)), &tz).unwrap();
+        let window = &window[..1];
+        let tasks = [("Fix crash on save".to_string(), String::new())];
+        let got = |ex: &[Regex]| suggest(&with_urls(window, &editor, ex), &[], &[], ex, Known { tasks: &tasks, ..Default::default() }, "2026-10-01".parse().unwrap()).into_iter().map(|s| (s.task, s.titles.join(" "))).collect::<Vec<_>>();
+        assert_eq!(got(&[]), [(Some("Fix crash on save".into()), "acme · lib.rs".into())]);
+        assert!(got(&exclude_rules(&["^feat/".into()]).unwrap()).is_empty());
     }
 
     #[test]
