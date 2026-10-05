@@ -1,17 +1,17 @@
 # Graph Report - margin  (2026-10-05)
 
 ## Corpus Check
-- 70 files · ~94,470 words
+- 70 files · ~94,494 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 6 file(s) not represented in the graph (top: (none) 2, .icns 1, .ico 1)
 
 ## Summary
-- 1187 nodes · 2636 edges · 69 communities (41 shown, 28 thin omitted)
+- 1185 nodes · 2636 edges · 67 communities (41 shown, 26 thin omitted)
 - Extraction: 98% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 32 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `33b57d2d`
+- Built from commit: `fae1a001`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -104,11 +104,11 @@
 ## Import Cycles
 - 1-file cycle: `src-tauri/src/ai.rs -> src-tauri/src/ai.rs`
 
-## Communities (69 total, 28 thin omitted)
+## Communities (67 total, 26 thin omitted)
 
 ### Community 0 - "org.rs"
 Cohesion: 0.07
-Nodes (76): add_interval(), agenda(), agenda_week(), ALIAS, all_tags(), archive(), at(), Cache (+68 more)
+Nodes (74): add_interval(), agenda(), agenda_week(), ALIAS, archive(), at(), Cache, capture_insert() (+66 more)
 
 ### Community 1 - "timeclock.rs"
 Cohesion: 0.07
@@ -127,7 +127,7 @@ Cohesion: 0.20
 Nodes (10): [], dateChip(), dayInput(), fmtDay(), goToday(), key(), monday(), op() (+2 more)
 
 ### Community 5 - "watcher.rs"
-Cohesion: 0.14
+Cohesion: 0.15
 Nodes (22): active(), active_window(), AFK_MINS, append(), clean(), flush(), flush_writes_the_open_record_once(), log_to_suggestions_and_retention() (+14 more)
 
 ### Community 6 - "orgtable.ts"
@@ -176,15 +176,15 @@ Nodes (50): ADR-0007, ADR-0008, at(), buckets, day, ev(), events, y (+42 more)
 
 ### Community 22 - "activity.rs"
 Cohesion: 0.08
-Nodes (41): AwEvent, browser_urls(), Bucket, Buckets, CEST, COMMON, cut(), dismiss() (+33 more)
+Nodes (40): AwEvent, browser_urls(), Bucket, Buckets, CEST, COMMON, cut(), dismiss() (+32 more)
 
 ### Community 23 - "export.rs"
-Cohesion: 0.08
+Cohesion: 0.09
 Nodes (46): BLOCK, Heading, List, Para, Pre, Quote, Rule, Table (+38 more)
 
 ### Community 24 - "notes.rs"
-Cohesion: 0.11
-Nodes (22): ANY_LINK, backlinks(), ensure_id(), ensures_ids(), files(), gen_id(), Graph, graph_neighbourhood() (+14 more)
+Cohesion: 0.13
+Nodes (24): ANY_LINK, backlinks(), ensure_id(), ensures_ids(), files(), gen_id(), Graph, graph_neighbourhood() (+16 more)
 
 ### Community 25 - "Sync"
 Cohesion: 0.67
@@ -192,7 +192,7 @@ Nodes (3): Emacs, Git, Sync
 
 ### Community 31 - "ai.rs"
 Cohesion: 0.05
-Nodes (46): available_gb(), Backend, Embedded, Ollama, body(), cancel_draft(), cancel_hits_only_the_running_draft(), CANCELLED (+38 more)
+Nodes (47): request(), available_gb(), Backend, Embedded, Ollama, body(), cancel_draft(), cancel_hits_only_the_running_draft() (+39 more)
 
 ### Community 32 - "idle.rs"
 Cohesion: 0.24
@@ -272,8 +272,8 @@ Nodes (11): devDependencies, svelte, svelte-check, @sveltejs/adapter-static, @sv
 
 ## Knowledge Gaps
 - **229 isolated node(s):** `y`, `day`, `events`, `app`, `out` (+224 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 393 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **28 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 391 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **26 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -287,7 +287,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **What connects `y`, `day`, `events` to the rest of the system?**
   _229 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `org.rs` be split into smaller, more focused modules?**
-  _Cohesion score 0.06545114539504442 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06544566544566545 - nodes in this community are weakly interconnected._
 - **Should `timeclock.rs` be split into smaller, more focused modules?**
   _Cohesion score 0.06813186813186813 - nodes in this community are weakly interconnected._
 - **Should `lib.rs` be split into smaller, more focused modules?**

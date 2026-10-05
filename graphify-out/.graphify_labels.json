@@ -11,7 +11,7 @@
   "9": "compilerOptions",
   "10": "dependencies",
   "11": "Calendar",
-  "12": "graph",
+  "12": "$lib/graph",
   "13": "GitHub Releases",
   "14": "remind.rs",
   "15": "super",
@@ -65,7 +65,5 @@
   "63": "level",
   "64": "settings.ts",
   "65": "devDependencies",
-  "66": "$lib/graph",
-  "67": "$lib/projects",
-  "68": "@tauri-apps/api/event"
+  "66": "@codemirror/state"
 }
