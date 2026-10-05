@@ -57,6 +57,8 @@ strip = true
 notify-rust = "4"
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+# The active window on wlroots compositors (Sway, River, labwc) for the activity watcher (#179).
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 
 # Free-RAM check before loading a built-in model (#149); already in the tree through Tauri.
 [target.'cfg(windows)'.dependencies]

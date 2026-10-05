@@ -31,7 +31,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "calendar_file", label: "Calendar feed (.ics)", hint: "kept up to date with scheduled tasks and deadlines; empty = off" },
   ] },
   { name: "Integrations", fields: [
-    { key: "activity_watcher", label: "Built-in activity watcher", kind: "bool", hint: "records the active app and window title every 5 s into the time-tracking folder's activity/ for suggestions in the Time view; stays on this computer, never uploaded. Used when ActivityWatch is off or not running. Wayland: KDE and Hyprland only for now (elsewhere only XWayland windows)" },
+    { key: "activity_watcher", label: "Built-in activity watcher", kind: "bool", hint: "records the active app and window title every 5 s into the time-tracking folder's activity/ for suggestions in the Time view; stays on this computer, never uploaded. Used when ActivityWatch is off or not running. Wayland: KDE, Hyprland, Sway and other wlroots compositors; on GNOME only XWayland windows for now" },
     { key: "activity_retention_days", label: "Keep the activity log (days)", kind: "number", step: 1, hint: "older days are deleted; 0 = keep all" },
     { key: "activitywatch_url", label: "ActivityWatch server", hint: "e.g. http://localhost:5600; empty = off" },
     { key: "activity_exclude", label: "Activity to ignore", kind: "list", hint: "regexes over app names and window titles, one per line" },
