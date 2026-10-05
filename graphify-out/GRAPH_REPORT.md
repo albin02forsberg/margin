@@ -1,17 +1,17 @@
 # Graph Report - margin  (2026-10-05)
 
 ## Corpus Check
-- 68 files · ~91,304 words
+- 68 files · ~91,702 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 6 file(s) not represented in the graph (top: (none) 2, .icns 1, .ico 1)
 
 ## Summary
-- 1124 nodes · 2493 edges · 67 communities (38 shown, 29 thin omitted)
+- 1125 nodes · 2507 edges · 64 communities (37 shown, 27 thin omitted)
 - Extraction: 98% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 28 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `0c01f563`
+- Built from commit: `48095b28`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -21,12 +21,11 @@
 - lib.rs
 - editor.ts
 - []
-- dependencies
 - orgtable.ts
 - tauri.conf.json
 - package.json
 - compilerOptions
-- scripts
+- dependencies
 - Calendar
 - GitHub Releases
 - idle.rs
@@ -76,14 +75,14 @@
 - settings.ts
 
 ## God Nodes (most connected - your core abstractions)
-1. `App` - 81 edges
-2. `State` - 73 edges
+1. `App` - 82 edges
+2. `State` - 74 edges
 3. `Tc` - 31 edges
-4. `cfg()` - 29 edges
+4. `cfg()` - 30 edges
 5. `Kw` - 25 edges
 6. `OrgFile` - 22 edges
-7. `[]` - 19 edges
-8. `reload_config()` - 18 edges
+7. `reload_config()` - 19 edges
+8. `[]` - 19 edges
 9. `Session` - 18 edges
 10. `level()` - 18 edges
 
@@ -102,7 +101,7 @@
 ## Import Cycles
 - 1-file cycle: `src-tauri/src/ai.rs -> src-tauri/src/ai.rs`
 
-## Communities (67 total, 29 thin omitted)
+## Communities (64 total, 27 thin omitted)
 
 ### Community 0 - "org.rs"
 Cohesion: 0.07
@@ -114,7 +113,7 @@ Nodes (50): add_past_sessions(), append_diary(), apply_carry(), breaks_accumulat
 
 ### Community 2 - "lib.rs"
 Cohesion: 0.06
-Nodes (98): activity_dismiss(), activity_learn(), activity_suggestions(), agenda(), ai_day_prompt(), ai_download(), ai_draft(), ai_model_delete() (+90 more)
+Nodes (99): activity_dismiss(), activity_learn(), activity_suggestions(), agenda(), ai_day_prompt(), ai_download(), ai_draft(), ai_model_delete() (+91 more)
 
 ### Community 3 - "editor.ts"
 Cohesion: 0.09
@@ -123,10 +122,6 @@ Nodes (22): applyText(), Block, BULLETS, clicks, diffChange(), hide, hooks, LANG
 ### Community 4 - "[]"
 Cohesion: 0.20
 Nodes (10): [], dateChip(), dayInput(), fmtDay(), goToday(), key(), monday(), op() (+2 more)
-
-### Community 5 - "dependencies"
-Cohesion: 0.15
-Nodes (13): dependencies, @codemirror/commands, @codemirror/language, @codemirror/language-data, @codemirror/search, @codemirror/state, @codemirror/view, @lezer/highlight (+5 more)
 
 ### Community 6 - "orgtable.ts"
 Cohesion: 0.09
@@ -144,9 +139,9 @@ Nodes (26): description, license, name, type, version, @codemirror/commands, @co
 Cohesion: 0.14
 Nodes (13): ./.svelte-kit/tsconfig.json, compilerOptions, allowImportingTsExtensions, allowJs, checkJs, esModuleInterop, forceConsistentCasingInFileNames, moduleResolution (+5 more)
 
-### Community 10 - "scripts"
-Cohesion: 0.08
-Nodes (24): devDependencies, svelte, svelte-check, @sveltejs/adapter-static, @sveltejs/kit, @sveltejs/vite-plugin-svelte, @tauri-apps/cli, @types/node (+16 more)
+### Community 10 - "dependencies"
+Cohesion: 0.05
+Nodes (37): dependencies, @codemirror/commands, @codemirror/language, @codemirror/language-data, @codemirror/search, @codemirror/state, @codemirror/view, @lezer/highlight (+29 more)
 
 ### Community 11 - "Calendar"
 Cohesion: 0.67
@@ -206,7 +201,7 @@ Nodes (5): refresh(), setup(), show(), tracking(), Tray
 
 ### Community 35 - "config.rs"
 Cohesion: 0.10
-Nodes (23): add_view(), add_views(), atomic_writes(), Config, defaults_round_trip(), expand(), remove_key(), rename_view() (+15 more)
+Nodes (25): add_view(), add_views(), atomic_writes(), Config, defaults_round_trip(), expand(), recreate(), recreate_only_when_missing() (+17 more)
 
 ### Community 36 - "CLAUDE.md"
 Cohesion: 0.17
@@ -258,8 +253,8 @@ Nodes (14): changes(), checkTemplates(), checkViews(), Field, Form, fromForm(), 
 
 ## Knowledge Gaps
 - **224 isolated node(s):** `y`, `day`, `events`, `app`, `out` (+219 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 384 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **29 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 382 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **27 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -267,9 +262,9 @@ _Questions this graph is uniquely positioned to answer:_
 - **Why does `insertTable()` connect `curLine` to `editor.ts`, `+page.svelte`?**
   _High betweenness centrality (0.142) - this node is a cross-community bridge._
 - **Why does `palette()` connect `setup.ts` to `+page.svelte`?**
-  _High betweenness centrality (0.057) - this node is a cross-community bridge._
-- **Why does `format()` connect `orgtable.ts` to `+page.svelte`?**
-  _High betweenness centrality (0.035) - this node is a cross-community bridge._
+  _High betweenness centrality (0.054) - this node is a cross-community bridge._
+- **Why does `[]` connect `[]` to `settings.ts`, `svelte`?**
+  _High betweenness centrality (0.045) - this node is a cross-community bridge._
 - **What connects `y`, `day`, `events` to the rest of the system?**
   _224 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `org.rs` be split into smaller, more focused modules?**
@@ -277,4 +272,4 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `timeclock.rs` be split into smaller, more focused modules?**
   _Cohesion score 0.06813186813186813 - nodes in this community are weakly interconnected._
 - **Should `lib.rs` be split into smaller, more focused modules?**
-  _Cohesion score 0.05675381263616558 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.056676685272649206 - nodes in this community are weakly interconnected._
