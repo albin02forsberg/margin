@@ -90,12 +90,13 @@ export async function fileMatches(file: string, ok: (s: string) => boolean, msg:
   }
 }
 
-/** textContent of the displayed elements matching CSS.
+/** textContent of the displayed (laid out, not visibility: hidden) elements matching CSS.
+ *  Read in one script, so a re-render can't leave a stale element handle in between;
  *  textContent, since WebKitWebDriver's getText is "" for text-overflow: ellipsis spans. */
-export async function texts(css: string) {
-  const out: string[] = [];
-  for (const el of await browser.$$(css)) if (await el.isDisplayed()) out.push(String(await el.getProperty("textContent")));
-  return out;
+export async function texts(css: string): Promise<string[]> {
+  return browser.execute((css: string) => [...document.querySelectorAll(css)]
+    .filter((e) => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== "hidden")
+    .map((e) => e.textContent ?? ""), css);
 }
 
 /** The first displayed element matching CSS whose text includes TEXT, once there is one. */
