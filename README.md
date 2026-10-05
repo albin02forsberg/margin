@@ -449,6 +449,8 @@ default" under a changed setting removes its line from the file. Changing the fo
 timer, like setup. Saved views and capture templates have their own groups (see [Saved searches](#saved-searches), [Capture templates](#capture-templates)); for anything else
 `Space f C` (or "Edit config.toml" on the page) opens the file; saving it there reloads the settings and warns, like the page,
 about a shortcut that won't register or files left in old folders. It's created with the defaults on first run;
-an existing file that can't be read or parsed is left alone and the app runs on
-the defaults until it's fixed, saying so (with the error) at startup. Old Emacs timeclock data can be imported from
+an existing file that can't be read or parsed is left alone and the app keeps the
+last good settings (the defaults if it never loaded) until it's fixed, saying so (with the error). If the
+file is deleted while the app runs, the settings page offers "Recreate config.toml from the current
+settings" (values only; comments in the lost file are gone). Old Emacs timeclock data can be imported from
 the Time view.

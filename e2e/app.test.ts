@@ -1,7 +1,7 @@
 // End-to-end tests of the basics; setup and helpers are in setup.ts.
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { answer, browser, close, fileMatches, find, Key, launch, palette, today, type, type Dirs } from "./setup.ts";
 
@@ -216,5 +216,18 @@ describe("Margin", () => {
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(cfg, (s) => /^capture_shortcut = "Nope\+Bogus"$/m.test(s), "config.toml not saved");
     await find(".status .msg", "quick capture shortcut Nope+Bogus");
+  });
+
+  it("recreates a deleted config.toml from the current settings", async () => {
+    const cfg = join(cfgDir, "config.toml");
+    await browser.keys([Key.Ctrl, ","]);
+    await find(".settings h1", "Settings");
+    unlinkSync(cfg);
+    await find(".settings .error", "couldn't be loaded");
+    assert.ok(!(await browser.$("//div[contains(@class, 'settings')]//button[contains(., 'Edit config.toml')]").isExisting()), "Edit config.toml offered for a missing file");
+    await (await find(".settings button", "Recreate config.toml")).click();
+    await fileMatches(cfg, (s) => s.includes(`name = "Work"`) && /^key = "j"$/m.test(s) && /^capture_shortcut = "Nope\+Bogus"$/m.test(s), "settings not recreated");
+    await find(".status .msg", "config.toml recreated");
+    await browser.waitUntil(async () => !(await browser.$(".settings .error").isExisting()), { timeoutMsg: "error banner still shown" });
   });
 });

@@ -253,6 +253,15 @@
     flash(warn ? `⚠ Settings saved. ${warn}` : "Settings saved.");
   }
 
+  /** Write a missing config.toml from the current settings (Settings' button); errors go back to the page. */
+  async function recreateConfig() {
+    const warn: string = await call("config_recreate");
+    cfg = await call("config");
+    reload++;
+    await refreshTc();
+    flash(warn ? `⚠ config.toml recreated. ${warn}` : "config.toml recreated from the current settings.");
+  }
+
   // Search tabs take the name of the view with their query, or the query itself once no view has it.
   $effect(() => {
     for (const t of tabs) {
@@ -1359,7 +1368,7 @@
         await openFile(tut);
       }
       await refreshTc();
-      if (cfg.config_error) flash(`⚠ config.toml was ignored (${cfg.config_error}); running on defaults. The file is untouched.`);
+      if (cfg.config_error) flash(`⚠ config.toml couldn't be loaded (${cfg.config_error}); Margin keeps running on the last good settings (defaults if it never loaded). The file is untouched.`);
       if (!import.meta.env.DEV) checkUpdate(true).catch(() => {}); // offline or no release yet: stay quiet
     });
     const timer = setInterval(() => act(refreshTc), 60_000);
@@ -1492,7 +1501,7 @@
               {:else if v.kind === "projects"}
                 <Projects {act} active={v === tab} {reload} />
               {:else if v.kind === "settings"}
-                <Settings config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} save={saveSettings} edit={() => act(() => openFile(cfg.config_path))} />
+                <Settings config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} missing={cfg.config_missing} save={saveSettings} recreate={recreateConfig} edit={() => act(() => openFile(cfg.config_path))} />
               {:else}
                 <Agenda mode={v.kind as "agenda" | "todo"} api={agendaApi} active={v === tab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} />
               {/if}
