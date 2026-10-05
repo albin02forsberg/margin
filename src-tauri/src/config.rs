@@ -294,6 +294,9 @@ pub fn save(text: &str, values: toml::Table, reset: &[String]) -> Result<(String
         out = remove_key(&out, key)?;
     }
     let c = toml::from_str::<Config>(&out).map_err(|e| format!("config.toml: {e}"))?;
+    if c.profiles.is_empty() {
+        return Err("keep at least one profile".into());
+    }
     Ok((out, c))
 }
 
@@ -422,6 +425,7 @@ mod tests {
         assert_eq!(save(mine, t("idle_threshold_minutes = 5"), &[]).unwrap().1.idle_threshold_minutes, 5);
         assert!(save(mine, t("idle_threshold_minutes = 1.5"), &[]).is_err()); // wrong type
         assert!(save(mine, t("nope = 1"), &[]).is_err() && save(mine, t("views = []"), &[]).is_err());
+        assert!(save(mine, t("profiles = []"), &[]).is_err()); // keep at least one profile
         assert!(save("profiles = [\n  \"A\",\n]\n", t("profiles = [\"B\"]"), &[]).is_err()); // multi-line: by hand
     }
 
