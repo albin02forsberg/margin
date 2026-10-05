@@ -996,8 +996,9 @@
     const note = await ask("What did you do? (optional)", draft ?? (s.meeting ? `Meeting: ${s.meeting}` : s.task) ?? "", "goes into the work diary");
     if (note == null) return;
     await tcDo("tc_add_session", { start: s.start, end: s.end, project: p.project, exportCode: p.code, note });
-    // Another project than guessed: remember it for blocks with this title.
-    if (p.project && p.project !== s.project && s.titles[0]) await call("activity_learn", { title: s.titles[0], project: p.project });
+    // Another project than guessed: remember it for blocks with this title. The session is logged either way.
+    if (p.project && p.project !== s.project && s.titles[0])
+      await call("activity_learn", { title: s.titles[0], project: p.project, editor: s.editor }).catch((e) => flash(`Logged, but couldn't remember the project: ${e}`));
   }
 
   /** Accept S after changing its start and end (HH:MM on its day). */

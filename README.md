@@ -357,7 +357,8 @@ to the log at its place in the day. Pick another project than the guessed one
 and Margin learns it: a rule for the block's top title (a site, or an editor's
 repo) goes into `activity_rules.toml` in the profile's data folder
 (`[[rule]]` with a `pattern` regex and a `project`; edit or delete as you like),
-and rules win over the name guess next time. ✎ lets you change its start and end first;
+and rules win over the name guess next time. A rule or `activity_exclude`
+pattern that isn't a valid regex is skipped and named under Suggested. ✎ lets you change its start and end first;
 ✕ hides it, and anything overlapping it, for good (kept in
 `activity_dismissed.json` in the profile's data folder for 30 days). `h`/`l`
 step through days. Only local addresses are accepted, and `activity_exclude`

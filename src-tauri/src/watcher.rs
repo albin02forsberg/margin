@@ -52,7 +52,7 @@ pub fn step(cur: Option<Rec>, sample: Option<(String, String)>, seen: NaiveDateT
 pub fn parse(text: &str) -> Vec<Span> {
     text.lines()
         .filter_map(|l| serde_json::from_str::<Rec>(l).ok())
-        .map(|r| Span { start: r.start, end: r.end, app: r.app, title: r.title, url: String::new() })
+        .map(|r| Span { start: r.start, end: r.end, app: r.app, title: r.title, url: String::new(), editor: false })
         .collect()
 }
 
