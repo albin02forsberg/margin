@@ -138,7 +138,7 @@
     t.conflict = false;
     clearTimeout(saveTimers.get(t.key));
     const text = stateOf(t).doc.toString();
-    await call("write_file", { path: t.path, text });
+    const warn: string = await call("write_file", { path: t.path, text });
     t.saved = text;
     // Keystrokes typed while the write was in flight keep the tab dirty.
     if (stateOf(t).doc.toString() === text) t.dirty = false;
@@ -147,7 +147,7 @@
       if (!r.includes("No issues")) flash("Saved — the time log or projects have problems, see Time → Check log");
     } else if (t.path === cfg.config_path) {
       cfg = await call("config");
-      flash("Settings reloaded.");
+      flash(warn ? `⚠ Settings reloaded. ${warn}` : "Settings reloaded.");
     }
     reload++;
     refreshBacklinks();
@@ -224,9 +224,9 @@
     if (rename === null) return;
     const name = await ask(rename === "rename" ? `Rename “${old}” to` : "Save this search as a view named", tab.title === query ? "" : tab.title, query);
     if (!name?.trim()) return;
-    await call("save_view", { name: name.trim(), query, rename: rename === "rename" });
+    const warn: string = await call("save_view", { name: name.trim(), query, rename: rename === "rename" });
     cfg = await call("config");
-    flash(`Saved “${name.trim()}” to the sidebar.`);
+    flash(warn ? `⚠ Saved “${name.trim()}” to the sidebar. ${warn}` : `Saved “${name.trim()}” to the sidebar.`);
   }
 
   /** Setup prompts (first run, or from the palette); Esc at any step changes nothing. */
@@ -316,7 +316,8 @@
     if (next === old) return;
     if (recording && !recording.some((r) => r.path === path)) recording.push({ path, text: old });
     if (!t) {
-      await call("write_file", { path, text: next });
+      const warn: string = await call("write_file", { path, text: next });
+      if (warn) flash(`⚠ ${warn}`);
       reload++;
       return;
     }
@@ -713,19 +714,20 @@
     const gb = (n: number) => `${(n / 1e9).toFixed(1)} GB`;
     const pct = (have: number, size: number) => `${Math.floor((have / size) * 100)}%`;
     const on = (b: string, m = "") => c.ai_model && c.ai_backend === b && (!m || c.ai_model === m) ? "✓ " : "";
-    const set = async (backend: string, model: string) => {
-      await call("ai_set", { backend, model });
+    /** Save the choice, then flash MSG (plus the reload's warning, if any). */
+    const set = async (backend: string, model: string, msg: string) => {
+      const warn: string = await call("ai_set", { backend, model });
       cfg = await call("config");
+      flash(warn ? `⚠ ${msg} ${warn}` : msg);
     };
     const ollama = async () => {
       const model = (await ask("Ollama model", c.ai_backend === "ollama" && c.ai_model ? c.ai_model : "llama3.2:3b", "as in `ollama pull <model>`"))?.trim();
       if (!model) return;
-      await set("ollama", model);
-      flash(`Drafts come from ${model} in Ollama.`);
+      await set("ollama", model, `Drafts come from ${model} in Ollama.`);
     };
     const later = (m: Model) => m.runs ? `Drafts come from ${m.name}.` : "This build of Margin can't run it itself; use Ollama.";
     const embedded = async (m: Model) => {
-      if (m.ready) return set("embedded", m.id).then(() => flash(later(m)));
+      if (m.ready) return set("embedded", m.id, later(m));
       if (download) return flash(download.id === m.id ? `${m.name} is downloading.` : "Another model is downloading; cancel it first (AI drafts: choose model…).");
       const go = await pick({
         prompt: `Download ${m.name}?`,
@@ -737,8 +739,7 @@
       const un = await listen<{ id: string; have: number; size: number }>("ai-download", (e) => (download = e.payload));
       try {
         await call("ai_download", { id: m.id });
-        await set("embedded", m.id);
-        flash(`${m.name} is downloaded. ${later(m)}`);
+        await set("embedded", m.id, `${m.name} is downloaded. ${later(m)}`);
       } finally {
         un();
         download = null;
@@ -747,7 +748,7 @@
     const run = await pick({
       prompt: "AI drafts",
       items: [
-        { label: `${c.ai_model ? "" : "✓ "}Off`, value: () => set(c.ai_backend, "").then(() => flash("AI drafts are off.")) },
+        { label: `${c.ai_model ? "" : "✓ "}Off`, value: () => set(c.ai_backend, "", "AI drafts are off.") },
         { label: `${on("ollama")}Ollama`, detail: c.ai_backend === "ollama" && c.ai_model ? c.ai_model : "a model you run in ollama.com", value: ollama },
         ...models.map((m) => ({
           label: `${on("embedded", m.id)}${m.name}`,

@@ -158,12 +158,13 @@ fn rebind_capture(_: &AppHandle, _: &str, _: &str) -> R<()> {
 }
 
 /// Add a `[[views]]` entry to config.toml (or RENAME the one with QUERY), leaving the rest of the file as written.
+/// Returns reload_config's warning (or "").
 #[tauri::command]
-fn save_view(app: AppHandle, s: State<App>, name: String, query: String, rename: bool) -> R<()> {
+fn save_view(app: AppHandle, s: State<App>, name: String, query: String, rename: bool) -> R<String> {
     let text = std::fs::read_to_string(&s.cfg_path).map_err(|e| e.to_string())?;
     let new = if rename { config::rename_view(&text, &query, &name)? } else { config::add_view(&text, &name, &query)? };
     config::write_atomic(&s.cfg_path, new).map_err(|e| e.to_string())?;
-    reload_config(app, s).map(drop)
+    reload_config(app, s)
 }
 
 /// The setup prompts' answers (see config::setup): create the folders, save, reload, and
@@ -300,17 +301,18 @@ fn read_file(s: State<App>, path: PathBuf) -> R<String> {
     std::fs::read_to_string(&path).or_else(|e| if path.exists() { Err(e.to_string()) } else { Ok(String::new()) })
 }
 
+/// Returns reload_config's warning when PATH is config.toml, else "".
 #[tauri::command]
-fn write_file(app: AppHandle, s: State<App>, path: PathBuf, text: String) -> R<()> {
+fn write_file(app: AppHandle, s: State<App>, path: PathBuf, text: String) -> R<String> {
     s.check(&path)?;
     if let Some(d) = path.parent() {
         std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
     }
     config::write_atomic(&path, text).map_err(|e| e.to_string())?;
     if path == s.cfg_path {
-        reload_config(app, s)?;
+        return reload_config(app, s);
     }
-    Ok(())
+    Ok(String::new())
 }
 
 /// Copy SRC into NOTE's attachment folder; returns the link target relative to the note.
@@ -904,8 +906,9 @@ fn ai_model_delete(app: AppHandle, id: String) -> R<()> {
 }
 
 /// Save the draft BACKEND and MODEL ("" = off) to config.toml, leaving the rest as written.
+/// Returns reload_config's warning (or "").
 #[tauri::command]
-fn ai_set(app: AppHandle, s: State<App>, backend: ai::Backend, model: String) -> R<()> {
+fn ai_set(app: AppHandle, s: State<App>, backend: ai::Backend, model: String) -> R<String> {
     let model = model.trim();
     if backend == ai::Backend::Embedded && !model.is_empty() && !ai::MODELS.iter().any(|m| m.id == model) {
         return Err(format!("unknown built-in model {model}"));
@@ -914,7 +917,7 @@ fn ai_set(app: AppHandle, s: State<App>, backend: ai::Backend, model: String) ->
     let text = config::set_key(&text, "ai_backend", toml::Value::try_from(backend).map_err(|e| e.to_string())?)?;
     let text = config::set_key(&text, "ai_model", model.into())?;
     config::write_atomic(&s.cfg_path, text).map_err(|e| e.to_string())?;
-    reload_config(app, s).map(drop)
+    reload_config(app, s)
 }
 
 /// Org-formatted report text. KIND: daily | weekly | holidays | flex | doctor | backup.

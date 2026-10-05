@@ -204,4 +204,17 @@ describe("Margin", () => {
     await fileMatches(cfg, (s) => s.includes(`name = "Work"`), "views lost");
     await browser.waitUntil(async () => !(await (await find(".settings button", "Save templates")).isEnabled()), { timeoutMsg: "template still unsaved after reload" });
   });
+
+  it("warns when config.toml saved in the editor has a shortcut that won't register", async () => {
+    const cfg = join(cfgDir, "config.toml");
+    await palette("Settings: edit config.toml");
+    await find(".status .file", "config.toml");
+    await type("/capture_shortcut");
+    await browser.keys(Key.Enter);
+    await type(`Ccapture_shortcut = "Nope+Bogus"`);
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(cfg, (s) => /^capture_shortcut = "Nope\+Bogus"$/m.test(s), "config.toml not saved");
+    await find(".status .msg", "quick capture shortcut Nope+Bogus");
+  });
 });
