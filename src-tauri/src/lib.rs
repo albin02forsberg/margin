@@ -200,9 +200,9 @@ fn apply_config(app: AppHandle, s: State<App>, text: String, c: Config) -> R<Str
 }
 
 /// Clock out OLD_TC if the config moves the notes or data folder or drops PROFILE (the config
-/// then points elsewhere, and the clock-out would land in the wrong log).
+/// then points elsewhere, and the clock-out would land in the wrong log). An empty list drops nothing.
 fn clock_out_before_setup(old_tc: &Tc, old: &Config, new: &Config, profile: &str) -> R<bool> {
-    if old.notes() == new.notes() && old.data() == new.data() && new.profiles.iter().any(|p| p == profile) {
+    if old.notes() == new.notes() && old.data() == new.data() && (new.profiles.is_empty() || new.profiles.iter().any(|p| p == profile)) {
         return Ok(false);
     }
     old_tc.clock_out("Auto-clockout (Config changed folders or profiles)")
@@ -1207,6 +1207,9 @@ mod tests {
         tc.clock_in("Acme", "", None).unwrap();
         // Same folders, profile kept: nothing happens.
         assert!(!clock_out_before_setup(&tc, &old, &cfg(&n1, &d1, "\"Work\""), "Work").unwrap());
+        assert!(tc.current().is_some());
+        // An empty profile list (hand-edited) is no constraint either; a folder change still closes.
+        assert!(!clock_out_before_setup(&tc, &old, &cfg(&n1, &d1, ""), "Work").unwrap());
         assert!(tc.current().is_some());
         // Data dir changes: the old log is closed.
         let new = cfg(&n2, &d2, "\"Work\"");
