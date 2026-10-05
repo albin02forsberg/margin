@@ -645,7 +645,7 @@ fn csv_field(v: &str) -> String {
 pub fn csv(sessions: &[Session], projects: &Projects, start: NaiveDate, end: NaiveDate) -> String {
     let rounded = apply_carry(&prepare_report_sessions(sessions), projects).0;
     let mut out = String::from("Project,Description,Date,Duration\n");
-    for s in rounded.iter().filter(|s| start <= s.date && s.date <= end) {
+    for s in rounded.iter().filter(|s| start <= s.date && s.date <= end && (s.hours * 100.0).round() > 0.0) {
         let f = [export_code(&s.project, projects), s.desc.clone(), s.date.to_string(), format!("{:.2}", s.hours).trim_end_matches('0').trim_end_matches('.').replace('.', ",")];
         out += &(f.iter().map(|x| csv_field(x)).collect::<Vec<_>>().join(",") + "\n");
     }
@@ -990,5 +990,12 @@ mod tests {
         assert_eq!(out.lines().nth(1).unwrap(), r#""A","say ""hi""","2026-10-01","1,5""#);
         let s = vec![Session { hours: 2.0, ..s[0].clone() }];
         assert!(csv(&s, &Projects::new(), d("2026-10-01"), d("2026-10-01")).ends_with(",\"2\"\n"));
+    }
+
+    #[test]
+    fn csv_skips_zero_rows() {
+        let s = |h| vec![Session { date: d("2026-10-01"), project: "A".into(), desc: "x".into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None }];
+        let rows = |h| csv(&s(h), &Projects::new(), d("2026-10-01"), d("2026-10-01")).lines().count();
+        assert_eq!((rows(0.0), rows(0.2), rows(0.3)), (1, 1, 2)); // default rounding is 0.5 h
     }
 }
