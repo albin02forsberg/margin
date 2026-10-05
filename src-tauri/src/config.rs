@@ -181,21 +181,24 @@ impl Config {
         (t.starts_with(&n) && t != n && !t.components().any(|c| c == Component::ParentDir)).then_some(t)
     }
 
-    /// Load PATH, writing the defaults there on first run (only when it doesn't exist:
-    /// an unreadable file is an error, never overwritten).
+    /// Load PATH; a missing or unreadable file is an error (nothing is written).
     pub fn load(path: &Path) -> Result<Config, String> {
-        match std::fs::read_to_string(path) {
-            Ok(s) => toml::from_str(&s).map_err(|e| format!("{}: {e}", path.display())),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let c = Config::default();
-                if let Some(d) = path.parent() {
-                    let _ = std::fs::create_dir_all(d);
-                }
-                let _ = write_atomic(path, toml::to_string(&c).unwrap());
-                Ok(c)
-            }
-            Err(e) => Err(format!("{}: {e}", path.display())),
+        let s = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        toml::from_str(&s).map_err(|e| format!("{}: {e}", path.display()))
+    }
+
+    /// Startup: like `load`, but writes the defaults on first run (only when PATH doesn't exist:
+    /// an unreadable file is an error, never overwritten).
+    pub fn load_or_create(path: &Path) -> Result<Config, String> {
+        if !matches!(path.try_exists(), Ok(false)) {
+            return Self::load(path);
         }
+        let c = Config::default();
+        if let Some(d) = path.parent() {
+            let _ = std::fs::create_dir_all(d);
+        }
+        let _ = write_atomic(path, toml::to_string(&c).unwrap());
+        Ok(c)
     }
 }
 
@@ -566,9 +569,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("margin-load-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let p = dir.join("config.toml");
-        assert!(Config::load(&p).is_ok() && toml::from_str::<Config>(&std::fs::read_to_string(&p).unwrap()).is_ok()); // first run
+        assert!(Config::load(&p).is_err() && !p.exists()); // strict load never creates
+        assert!(Config::load_or_create(&p).is_ok() && toml::from_str::<Config>(&std::fs::read_to_string(&p).unwrap()).is_ok()); // first run
         std::fs::write(&p, b"notes_dir = \"\xff\"\n").unwrap();
-        assert!(Config::load(&p).is_err());
+        assert!(Config::load(&p).is_err() && Config::load_or_create(&p).is_err());
         assert_eq!(std::fs::read(&p).unwrap(), b"notes_dir = \"\xff\"\n");
         std::fs::remove_dir_all(&dir).unwrap();
     }
