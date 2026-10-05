@@ -10,6 +10,8 @@ use std::path::Path;
 use std::sync::Mutex;
 
 #[cfg(target_os = "linux")]
+mod gnome;
+#[cfg(target_os = "linux")]
 mod wlr;
 
 const POLL_SECS: i64 = 5;
@@ -99,13 +101,30 @@ pub fn flush(dir: &Path) {
 }
 
 /// The active window's app and title: X11, Windows, macOS, KDE and Hyprland under Wayland, then
-/// wlroots compositors (Sway, River, labwc). On GNOME Wayland only XWayland windows show.
+/// GNOME (through its extension) or wlroots compositors (Sway, River, labwc).
 #[cfg(desktop)]
 fn active() -> Option<(String, String)> {
     let w = active_win_pos_rs::get_active_window().ok().map(|w| (w.app_name, w.title));
     #[cfg(target_os = "linux")]
-    let w = w.or_else(|| std::env::var_os("WAYLAND_DISPLAY").and_then(|_| wlr::active()));
+    let w = w.or_else(|| std::env::var_os("WAYLAND_DISPLAY").and_then(|_| if gnome::session() { gnome::active() } else { wlr::active() }));
     w
+}
+
+/// On GNOME Wayland the watcher's extension: "running", "installed" (log in again, then enable
+/// it) or "missing"; INSTALL copies it first. Null elsewhere.
+#[tauri::command]
+pub fn gnome_extension(app: tauri::AppHandle, install: bool) -> Result<Option<&'static str>, String> {
+    #[cfg(target_os = "linux")]
+    if gnome::session() && std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        use tauri::Manager;
+        let data = app.path().data_dir().map_err(|e| e.to_string())?;
+        if install {
+            gnome::install(&data).map_err(|e| format!("installing the GNOME extension: {e}"))?;
+        }
+        return Ok(Some(gnome::status(&data)));
+    }
+    let _ = (app, install);
+    Ok(None)
 }
 
 /// Poll every 5 s while `activity_watcher` is on (checked each poll, so the setting applies at
