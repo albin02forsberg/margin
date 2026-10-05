@@ -375,8 +375,9 @@ notes the active app and window title (titles cut to 300 characters) in
 minutes without input. The log stays on this computer and is never uploaded; days
 older than `activity_retention_days` (30) are deleted. Suggestions use it when
 `activitywatch_url` is empty or ActivityWatch isn't running (no browser tab or
-editor detail, only window titles). Works on X11, Windows and macOS (where titles
-may need the Screen Recording permission), and under
+editor detail, only window titles). Works on X11, Windows and macOS (turning it
+on there first explains what is recorded and asks for the Screen Recording
+permission, which macOS requires for window titles), and under
 Wayland on KDE, Hyprland, Sway, River and other wlroots compositors. Turning it
 off stops recording and keeps the log.
 

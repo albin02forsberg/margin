@@ -2641,6 +2641,7 @@ dependencies = [
  "active-win-pos-rs",
  "base64 0.22.1",
  "chrono",
+ "core-graphics 0.23.2",
  "llama-cpp-2",
  "notify-debouncer-mini",
  "notify-rust",

@@ -63,6 +63,10 @@ wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 zbus = "5"
 
 # Free-RAM check before loading a built-in model (#149); already in the tree through Tauri.
+# Screen Recording permission check for window titles (#181); already in the tree via active-win-pos-rs.
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics = "0.23"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_System_SystemInformation"], optional = true }
 

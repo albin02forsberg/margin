@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { changes, checkTemplates, checkViews, GROUPS, refresh, refreshRows, toForm, type Field, type Form, type Row } from "$lib/settings";
+  import { changes, checkTemplates, checkViews, GROUPS, needsMacPrompt, refresh, refreshRows, toForm, type Field, type Form, type Row } from "$lib/settings";
 
   type List = "views" | "templates";
   /** The config.toml settings as a form, saved per group; unsaved fields survive a reload of CONFIG. */
@@ -103,6 +103,25 @@
     void reload;
     if (active) untrack(() => loadRules());
   });
+  /** macOS: whether Margin may read window titles (the Screen Recording permission); null elsewhere. */
+  let granted = $state<boolean | null>(null);
+  invoke<boolean | null>("screen_recording", { request: false }).then((g) => (granted = g), () => {});
+  let macDialog: HTMLDialogElement;
+  const MAC_OK = "activity-watcher-macos-ok";
+  function check(f: Field, box: HTMLInputElement) {
+    let ok = false;
+    try { ok = localStorage.getItem(MAC_OK) === "1"; } catch {}
+    if (f.key === "activity_watcher" && needsMacPrompt(granted, base[f.key] as boolean, box.checked, ok)) {
+      box.checked = false;
+      macDialog.showModal();
+    } else form[f.key] = box.checked;
+  }
+  async function macContinue() {
+    try { localStorage.setItem(MAC_OK, "1"); } catch {}
+    macDialog.close();
+    form.activity_watcher = true;
+    granted = await invoke<boolean | null>("screen_recording", { request: true }).catch(() => granted);
+  }
   const text = (e: Event) => (e.currentTarget as HTMLInputElement).value;
   async function restore() {
     try {
@@ -132,7 +151,7 @@
         {#each g.fields as f (f.key)}
           <label class:check={f.kind === "bool"}>
             {#if f.kind === "bool"}
-              <input type="checkbox" checked={form[f.key] as boolean} onchange={(e) => (form[f.key] = (e.currentTarget as HTMLInputElement).checked)} />
+              <input type="checkbox" checked={form[f.key] as boolean} onchange={(e) => check(f, e.currentTarget)} />
               <span>{f.label}</span>
             {:else}
               <span>{f.label}</span>
@@ -156,6 +175,9 @@
           {/if}
           {#if errors.gnome}<p class="error">⚠ {errors.gnome}</p>{/if}
         {/if}
+        {#if g.name === "Integrations" && base.activity_watcher && granted === false}
+          <p class="dim">macOS hides window titles until Margin has the Screen Recording permission: System Settings → Privacy & Security → Screen & System Audio Recording, turn on Margin, then restart it.</p>
+        {/if}
         {#if errors[g.name]}<p class="error">⚠ {errors[g.name]}</p>{/if}
         <button type="submit" disabled={!dirty(g.fields)}>Save {g.name.toLowerCase()}</button>
       </fieldset>
@@ -175,6 +197,12 @@
       {#if errors.rules}<p class="error">⚠ {errors.rules}</p>{/if}
     </fieldset>
   {/if}
+  <dialog bind:this={macDialog}>
+    <p>The activity watcher notes the active app and window title every 5 seconds in the time-tracking folder, for suggestions in the Time view. It stays on this Mac and is never uploaded.</p>
+    <p>macOS only shows window titles to apps with the <b>Screen Recording</b> permission, so it asks for it next. Margin never captures the screen itself.</p>
+    <button onclick={macContinue}>Continue</button>
+    <button class="link" onclick={() => macDialog.close()}>Cancel</button>
+  </dialog>
   {#snippet buttons(list: Row[], i: number)}
     <button type="button" class="link" title="Move up" disabled={i === 0} onclick={() => move(list, i, -1)}>↑</button>
     <button type="button" class="link" title="Move down" disabled={i === list.length - 1} onclick={() => move(list, i, 1)}>↓</button>
@@ -253,5 +281,6 @@
   .rules code { font: var(--fs-md) var(--mono); overflow-wrap: anywhere; }
   .gone { color: var(--dim); }
   .dim { color: var(--dim); font-size: var(--fs-md); }
+  dialog { background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); max-width: 440px; font-size: var(--fs-base); }
   .error { color: var(--todo); }
 </style>

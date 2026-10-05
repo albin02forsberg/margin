@@ -127,6 +127,22 @@ pub fn gnome_extension(app: tauri::AppHandle, install: bool) -> Result<Option<&'
     Ok(None)
 }
 
+/// macOS: whether Margin may read window titles (the Screen Recording permission), REQUEST
+/// first asking for it (the system prompt shows once). Null elsewhere.
+#[tauri::command]
+pub fn screen_recording(request: bool) -> Option<bool> {
+    #[cfg(target_os = "macos")]
+    {
+        let a = core_graphics::access::ScreenCaptureAccess;
+        Some(if request { a.request() } else { a.preflight() })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = request;
+        None
+    }
+}
+
 /// Poll every 5 s while `activity_watcher` is on (checked each poll, so the setting applies at
 /// once); the idle source is only set up once it's first on.
 #[cfg(desktop)]
