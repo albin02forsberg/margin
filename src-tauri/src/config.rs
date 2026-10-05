@@ -294,6 +294,45 @@ pub fn save(text: &str, values: toml::Table, reset: &[String]) -> Result<(String
     Ok((out, c))
 }
 
+/// TEXT with the `[[KEY]]` tables (`views` or `templates`) replaced by ITEMS, appended at the end;
+/// other lines stay as written, comments inside the old tables are dropped. An empty list is
+/// written `KEY = []` (a missing `templates` means the built-in ones). Errors if anything else would change.
+pub fn set_tables(text: &str, key: &str, items: Vec<toml::Table>) -> Result<(String, Config), String> {
+    if key != "views" && key != "templates" {
+        return Err(format!("{key} isn't a list of tables"));
+    }
+    let err = |e: toml::de::Error| format!("can't update config.toml: {e}");
+    let hand = || format!("can't save {key} without changing other settings; edit config.toml by hand (Space f C)");
+    let mut want: toml::Table = text.parse().map_err(err)?;
+    want.insert(key.into(), toml::Value::Array(items.iter().cloned().map(toml::Value::Table).collect()));
+    let header = format!("[[{key}]]");
+    let mut inside = false;
+    let out: String = text
+        .split_inclusive('\n')
+        .filter(|l| {
+            let t = l.trim_start();
+            if t.starts_with('[') {
+                inside = t.split('#').next().unwrap_or("").trim_end() == header;
+            }
+            !inside
+        })
+        .collect();
+    // A top-level `key = […]` (the first-run `views = []`, or the inline form) goes too.
+    let out = remove_key(&out, key).map_err(|_| hand())?;
+    let out = if items.is_empty() {
+        set_key(&out, key, toml::Value::Array(vec![]))?
+    } else {
+        let blocks = toml::to_string(&toml::Table::from_iter([(key.to_string(), want[key].clone())])).map_err(|e| e.to_string())?;
+        let head = out.trim_end();
+        format!("{head}{}{blocks}", if head.is_empty() { "" } else { "\n\n" })
+    };
+    if out.parse::<toml::Table>().map_err(|_| hand())? != want {
+        return Err(hand());
+    }
+    let c = toml::from_str::<Config>(&out).map_err(|e| format!("config.toml: {e}"))?;
+    Ok((out, c))
+}
+
 /// LINE's trailing ` # comment` (with the spaces before it, without the line ending), or "":
 /// it starts at the first `#` whose prefix parses on its own, so a `#` inside a string isn't one.
 fn trailing_comment(line: &str) -> &str {
@@ -435,6 +474,37 @@ mod tests {
         // A `[[views]]` lookalike inside a multi-line string is refused, not miswritten.
         let body = "[[templates]]\nkey = \"v\"\nname = \"V\"\nbody = \"\"\"\n[[views]]\nname = x\n\"\"\"\n\n[[views]]\nname = \"A\"\nquery = \"a\"\n";
         assert!(rename_view(body, "a", "X").is_err_and(|e| e.contains("changing")));
+    }
+
+    #[test]
+    fn set_views_and_templates() {
+        let t = |s: &str| s.parse::<toml::Table>().unwrap();
+        let views = |s: &str| t(s)["views"].as_array().unwrap().iter().map(|v| v.as_table().unwrap().clone()).collect::<Vec<_>>();
+        let two = views("views = [{ name = 'B \"x\"', query = 'tag:b' }, { name = 'A', query = 'todo:NEXT' }]");
+        let mine = "# mine\nnotes_dir = \"~/org\" # here\n\n[[views]] # old\nname = \"A\"\nquery = \"a\"\n\n[[templates]]\nkey = \"t\"\nname = \"T\"\nbody = \"x\"\n\n[[views]]\nname = \"C\"\nquery = \"c\"\n";
+        let (s, c) = set_tables(mine, "views", two.clone()).unwrap();
+        assert!(s.starts_with("# mine\nnotes_dir = \"~/org\" # here\n\n[[templates]]\nkey = \"t\"\nname = \"T\"\nbody = \"x\"\n\n[[views]]\n"), "{s}");
+        assert_eq!(c.views.iter().map(|v| v.name.as_str()).collect::<Vec<_>>(), ["B \"x\"", "A"]);
+        assert_eq!(c.templates.len(), 1);
+        let (s, c) = set_tables(&s, "views", vec![]).unwrap(); // empty: all gone
+        assert!(c.views.is_empty() && s.starts_with("views = []\n# mine\n") && !s.contains("[[views]]"), "{s}");
+        // First run: `views = []` and the default templates' tables are replaced.
+        let first = toml::to_string(&Config::default()).unwrap();
+        let (s, c) = set_tables(&first, "views", two.clone()).unwrap();
+        assert!(!s.contains("views = []") && c.views.len() == 2 && c.templates.len() == 2, "{s}");
+        let (s, c) = set_tables(&s, "templates", vec![]).unwrap();
+        assert!(c.templates.is_empty() && c.views.len() == 2 && s.contains("templates = []\n"), "{s}");
+        let tpl = views("views = [{ key = 'j', name = 'J', body = \"* %?\\n[[file:a.org]]\\n\", heading = 'Log' }]");
+        let (s, c) = set_tables(&s, "templates", tpl.clone()).unwrap();
+        assert!(!s.contains("templates = []") && c.templates[0].heading.as_deref() == Some("Log") && c.templates[0].body == "* %?\n[[file:a.org]]\n", "{s}");
+        // Inline arrays: one line is replaced, multi-line is refused.
+        assert_eq!(set_tables("views = [{ name = 'A', query = 'a' }]\n", "views", two.clone()).unwrap().1.views.len(), 2);
+        assert!(set_tables("views = [\n  { name = 'A', query = 'a' },\n]\n", "views", two.clone()).is_err_and(|e| e.contains("by hand")));
+        // A body line that looks like a table header is refused, not miswritten.
+        let body = "[[templates]]\nkey = \"j\"\nname = \"J\"\nbody = \"\"\"\n[[file:a.org]]\nx = 1\n\"\"\"\n";
+        assert!(set_tables(body, "templates", tpl).is_err_and(|e| e.contains("by hand")));
+        assert!(set_tables(mine, "views", views("views = [{ name = 1, query = 'a' }]")).is_err()); // bad type
+        assert!(set_tables(mine, "profiles", vec![]).is_err());
     }
 
     #[test]
