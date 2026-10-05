@@ -364,6 +364,19 @@ step through days. Only local addresses are accepted, and `activity_exclude`
 (regexes over app names, window titles and URLs; password managers and private
 browsing by default) keeps windows and pages out of suggestions. Off by default.
 
+**Without ActivityWatch:** turn on the built-in activity watcher in Settings →
+Integrations (`activity_watcher = true`, off by default). Every 5 seconds Margin
+notes the active app and window title (titles cut to 300 characters) in
+`activity/YYYY-MM-DD.jsonl` in the time-tracking folder, skipping
+`activity_exclude` matches before anything is written and any time after 3
+minutes without input. The log stays on this computer and is never uploaded; days
+older than `activity_retention_days` (30) are deleted. Suggestions use it when
+`activitywatch_url` is empty or ActivityWatch isn't running (no browser tab or
+editor detail, only window titles). Works on X11, Windows and macOS (where titles
+may need the Screen Recording permission), and under
+Wayland on KDE and Hyprland; on GNOME Wayland only XWayland windows are seen for
+now. Turning it off stops recording and keeps the log.
+
 ### Drafts from a local model
 
 Margin can draft diary and journal notes with a small model running on your own

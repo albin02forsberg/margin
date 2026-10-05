@@ -68,3 +68,5 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-notification = "2"
 user-idle = "0.6"
+# The built-in activity watcher's active window (#175): X11, Windows, macOS, KDE and Hyprland Wayland.
+active-win-pos-rs = "0.11"

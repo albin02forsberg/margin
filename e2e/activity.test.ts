@@ -2,7 +2,8 @@
 import { after, before, describe, it } from "node:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { writeFileSync } from "node:fs";
+import assert from "node:assert/strict";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { answer, browser, clickIn, close, fileMatches, find, isoDay, Key, launch, texts, type Dirs } from "./setup.ts";
 
@@ -68,5 +69,32 @@ describe("ActivityWatch suggestions", () => {
     await fileMatches(join(d.data, "work", "timelog.jsonl"), (s) =>
       s.includes(`{"ev":"in","t":"${day}T09:10:00","project":"Margin"}\n{"ev":"out","t":"${day}T09:50:00","note":"reviewed"}`), "edited session not logged");
     await find(".suggested p", "Nothing to suggest"); // what's left is 10 minutes either side
+  });
+});
+
+describe("Built-in activity watcher", () => {
+  before(async () => {
+    await launch({
+      config: [`activity_watcher = true`],
+      files: ({ data }) => {
+        writeFileSync(join(data, "work", "projects.toml"), `[Margin]\nexport_code = "M"\n`);
+        mkdirSync(join(data, "activity"));
+        const rec = (s: string, e: string, app: string, title: string) => JSON.stringify({ start: `${day}T${s}`, end: `${day}T${e}`, app, title });
+        writeFileSync(join(data, "activity", `${day}.jsonl`), [rec("09:00:00", "09:40:00", "Code", "lib.rs - margin"), rec("09:41:00", "10:00:00", "KeePassXC", "bank.kdbx")].join("\n") + "\n");
+      },
+    });
+  });
+  after(close, { timeout: 30_000 });
+
+  it("suggests sessions from its own log when ActivityWatch is off", async () => {
+    await find(".agenda h1", "Today");
+    await browser.keys([Key.Ctrl, "4"]);
+    await find(".suggested h3", "this computer's activity");
+    await browser.keys("h");
+    await find(".suggested tr", "Margin");
+    const rows = await texts(".suggested tr");
+    assert.equal(rows.length, 1, rows.join("\n"));
+    assert.match(rows[0], /09:00–09:40/);
+    assert.doesNotMatch(rows[0], /KeePass/, "excluded app shown");
   });
 });
