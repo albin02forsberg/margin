@@ -244,9 +244,9 @@
     flash(warn ? `⚠ Settings saved. ${warn}` : "Settings saved — Ctrl+, has the rest.");
   }
 
-  /** The settings page's changed VALUES (and saved VIEWS); errors go back to the page. */
-  async function saveSettings(values: Record<string, unknown>, reset: string[] = [], views?: Record<string, string>[]) {
-    const warn: string = await call("save_config", { values, reset, views });
+  /** The settings page's changed VALUES (and saved views or templates: TABLES); errors go back to the page. */
+  async function saveSettings(values: Record<string, unknown>, reset: string[] = [], tables: Record<string, unknown> = {}) {
+    const warn: string = await call("save_config", { values, reset, ...tables });
     cfg = await call("config");
     reload++;
     await refreshTc();

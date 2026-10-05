@@ -78,9 +78,9 @@ export function refresh(form: Form, base: Form, config: Record<string, unknown>)
 export type Row = Record<string, string>;
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-/** ROWS (edited since BASE) refreshed from the config's LIST; returns [rows, base, whether a kept edit clashes]. */
+/** ROWS (edited since BASE) refreshed from the config's LIST (nulls as ""); returns [rows, base, whether a kept edit clashes]. */
 export function refreshRows(rows: Row[], base: Row[], list: unknown): [Row[], Row[], boolean] {
-  const next = ((list ?? []) as Row[]).map((r) => ({ ...r }));
+  const next = ((list ?? []) as Record<string, string | null>[]).map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v ?? ""])));
   const edited = !same(rows, base);
   return [edited ? rows : next.map((r) => ({ ...r })), next, edited && !same(next, base)];
 }
@@ -91,4 +91,18 @@ export function checkViews(views: Row[]): Row[] {
   const bad = out.findIndex((v) => !v.name || !v.query);
   if (bad >= 0) throw new Error(`View ${bad + 1} needs a name and a query`);
   return out;
+}
+
+/** TEMPLATES trimmed for save_config (empty file and heading left out); throws unless each has
+ *  a one-character key of its own and a name. */
+export function checkTemplates(tpls: Row[]): Row[] {
+  return tpls.map((t, i) => {
+    const r: Row = { key: (t.key ?? "").trim(), name: (t.name ?? "").trim(), body: t.body ?? "" };
+    for (const k of ["file", "heading"]) if ((t[k] ?? "").trim()) r[k] = t[k].trim();
+    const other = tpls.findIndex((u) => (u.key ?? "").trim() === r.key);
+    if ([...r.key].length !== 1) throw new Error(`Template ${i + 1} needs a one-character key`);
+    if (other < i) throw new Error(`Templates ${other + 1} and ${i + 1} have the same key`);
+    if (!r.name) throw new Error(`Template ${i + 1} needs a name`);
+    return r;
+  });
 }

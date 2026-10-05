@@ -179,7 +179,9 @@ A search tab is titled by its view's name, or by its query once no view has it.
 
 `Space c` (or "Capture with template…" in Ctrl+K) picks a template, asks its
 fields and files the entry, then opens it with the cursor at `%?`. Undo with `u`
-in the task views. Define them in settings:
+in the task views. Edit them in the settings page's "Capture templates" group
+(one-character keys, each its own; saving rewrites the `[[templates]]` tables, so
+comments inside them aren't kept), or in `config.toml`:
 
 ```toml
 [[templates]]
@@ -443,8 +445,8 @@ the `# …` after a changed value) and everything else in the file. Editing the 
 elsewhere (another editor, a sync tool) applies right away; unsaved edits on the
 page are kept, with a notice if the file changed the same setting. "Reset to
 default" under a changed setting removes its line from the file. Changing the folders or profiles clocks out a running
-timer, like setup. Saved views have their own group (see [Saved searches](#saved-searches)); capture templates stay in the file itself:
-`Space f C` (or "Edit config.toml" on the page) opens it. It's created with the defaults on first run;
+timer, like setup. Saved views and capture templates have their own groups (see [Saved searches](#saved-searches), [Capture templates](#capture-templates)); for anything else
+`Space f C` (or "Edit config.toml" on the page) opens the file. It's created with the defaults on first run;
 an existing file that can't be read or parsed is left alone and the app runs on
 the defaults until it's fixed, saying so (with the error) at startup. Old Emacs timeclock data can be imported from
 the Time view.
