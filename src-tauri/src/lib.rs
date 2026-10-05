@@ -116,10 +116,10 @@ fn config(s: State<App>) -> Value {
 /// Re-read config.toml and apply it. Before the swap the open session is clocked out of the
 /// log it started in if the folders or profile change (whoever edited the file); afterwards the
 /// profile falls back to the first one if gone. Returns a warning (or "") for a shortcut that
-/// won't register and for files left behind in old folders. A broken file keeps the current settings.
+/// won't register and for files left behind in old folders. A broken or missing file keeps the current settings (and is reported via `cfg_error`).
 #[tauri::command]
 fn reload_config(app: AppHandle, s: State<App>) -> R<String> {
-    let new = Config::load(&s.cfg_path)?;
+    let new = Config::load(&s.cfg_path).inspect_err(|e| *s.cfg_error.lock().unwrap() = Some(e.clone()))?;
     let (old, profile) = (s.cfg(), s.profile());
     if clock_out_before_setup(&s.tc(), &old, &new, &profile)? {
         s.backup();
@@ -1112,7 +1112,7 @@ pub fn run() {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             let cfg_path = app.path().app_config_dir()?.join("config.toml");
-            let (cfg, cfg_error) = match Config::load(&cfg_path) {
+            let (cfg, cfg_error) = match Config::load_or_create(&cfg_path) {
                 Ok(c) => (c, None),
                 Err(e) => {
                     eprintln!("{e}; using defaults");
