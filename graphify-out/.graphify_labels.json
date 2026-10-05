@@ -11,7 +11,7 @@
   "9": "compilerOptions",
   "10": "dependencies",
   "11": "Calendar",
-  "12": "graph",
+  "12": "$lib/graph",
   "13": "GitHub Releases",
   "14": "remind.rs",
   "15": "super",
@@ -51,12 +51,12 @@
   "49": "Tauri Global Shortcut Plugin",
   "50": "Windows Installer",
   "51": "Journal",
-  "52": "$lib/graph",
+  "52": "wlr.rs",
   "53": "Node.js",
   "54": "Tauri Notification Plugin",
   "55": "Tauri Single Instance Plugin",
   "56": "Tauri Action",
-  "57": "$lib/projects",
+  "57": "scripts",
   "58": "Time Tracking",
   "59": "TypeScript",
   "60": "ics.rs",
@@ -64,5 +64,6 @@
   "62": "curLine",
   "63": "level",
   "64": "settings.ts",
-  "65": "@tauri-apps/api/event"
+  "65": "devDependencies",
+  "66": "@codemirror/state"
 }
