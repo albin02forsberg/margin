@@ -194,12 +194,20 @@ impl Config {
             return Self::load(path);
         }
         let c = Config::default();
-        if let Some(d) = path.parent() {
-            let _ = std::fs::create_dir_all(d);
-        }
-        let _ = write_atomic(path, toml::to_string(&c).unwrap());
+        let _ = recreate(path, &c);
         Ok(c)
     }
+}
+
+/// Write C to PATH, but only while PATH doesn't exist (a file restored meanwhile is never overwritten).
+pub fn recreate(path: &Path, c: &Config) -> Result<(), String> {
+    if !matches!(path.try_exists(), Ok(false)) {
+        return Err(format!("{} exists again; reload it instead", path.display()));
+    }
+    if let Some(d) = path.parent() {
+        std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
+    }
+    write_atomic(path, toml::to_string(c).map_err(|e| e.to_string())?).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// TEXT (a config.toml) with a `[[views]]` entry appended; errors if the result won't
@@ -578,6 +586,21 @@ mod tests {
         std::fs::write(&p, b"notes_dir = \"\xff\"\n").unwrap();
         assert!(Config::load(&p).is_err() && Config::load_or_create(&p).is_err());
         assert_eq!(std::fs::read(&p).unwrap(), b"notes_dir = \"\xff\"\n");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn recreate_only_when_missing() {
+        let dir = std::env::temp_dir().join(format!("margin-recreate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let p = dir.join("sub/config.toml");
+        let c = Config { notes_dir: "/n".into(), profiles: vec!["A".into()], expected_daily_hours: 6.5, ..Config::default() };
+        recreate(&p, &c).unwrap();
+        let back = Config::load(&p).unwrap();
+        assert_eq!(toml::Table::try_from(back).unwrap(), toml::Table::try_from(&c).unwrap());
+        std::fs::write(&p, "# mine\n").unwrap();
+        assert!(recreate(&p, &Config::default()).is_err());
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "# mine\n");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

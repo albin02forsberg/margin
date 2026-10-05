@@ -30,7 +30,7 @@ type R<T> = Result<T, String>;
 struct App {
     cfg_path: PathBuf,
     cfg: Mutex<Config>,
-    /// Why config.toml was ignored at startup (running on defaults); cleared by a good reload.
+    /// Why config.toml couldn't be loaded (the last good settings, or the defaults at startup, stay); cleared by a good reload.
     cfg_error: Mutex<Option<String>>,
     profile: Mutex<String>,
     cache: org::Cache,
@@ -110,7 +110,15 @@ fn config(s: State<App>) -> Value {
     json!({
         "config": c, "defaults": Config::default(), "config_path": s.cfg_path, "notes": c.notes(), "data": c.data(), "export": config::expand(&c.export_dir),
         "profile": s.profile(), "log_path": tc.log_path(), "projects_path": tc.projects_path(), "diary_path": tc.diary, "config_error": s.cfg_error.lock().unwrap().clone(),
+        "config_missing": matches!(s.cfg_path.try_exists(), Ok(false)),
     })
+}
+
+/// Write the current settings to a missing config.toml (never over one that exists again) and reload.
+#[tauri::command]
+fn config_recreate(app: AppHandle, s: State<App>) -> R<String> {
+    config::recreate(&s.cfg_path, &s.cfg())?;
+    reload_config(app, s)
 }
 
 /// Re-read config.toml and apply it. Before the swap the open session is clocked out of the
@@ -256,7 +264,7 @@ fn watch(app: &AppHandle) {
         if cfg_changed {
             let disk = std::fs::read_to_string(&cfg_path).ok().and_then(|t| toml::from_str::<Config>(&t).ok());
             let s = handle.state::<App>();
-            // Running on defaults (cfg_error) means the file was broken: a fix always reloads.
+            // A load error (cfg_error) means the file was broken or gone: a fix always reloads.
             if disk.and_then(|d| toml::Table::try_from(d).ok()) != toml::Table::try_from(s.cfg()).ok() || s.cfg_error.lock().unwrap().is_some() {
                 let _ = handle.emit("config-changed", ());
             }
@@ -1159,7 +1167,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            config, tutorial, reload_config, save_view, setup, save_config, list_files, read_file, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
+            config, config_recreate, tutorial, reload_config, save_view, setup, save_config, list_files, read_file, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,

@@ -5,7 +5,8 @@
 
   type List = "views" | "templates";
   /** The config.toml settings as a form, saved per group; unsaved fields survive a reload of CONFIG. */
-  let { config, defaults, error, save, edit }: { config: Record<string, unknown>; defaults: Record<string, unknown>; error: string | null; save: (values: Record<string, unknown>, reset?: string[], tables?: Partial<Record<List, Row[]>>) => Promise<void>; edit: () => void } = $props();
+  /** ERROR: why config.toml couldn't be loaded; MISSING: it's gone, so RECREATE can write it from the current settings. */
+  let { config, defaults, error, missing, save, edit, recreate }: { config: Record<string, unknown>; defaults: Record<string, unknown>; error: string | null; missing: boolean; save: (values: Record<string, unknown>, reset?: string[], tables?: Partial<Record<List, Row[]>>) => Promise<void>; edit: () => void; recreate: () => Promise<void> } = $props();
   let form = $state<Form>({});
   let base = $state<Form>({});
   let errors = $state<Record<string, string>>({});
@@ -76,13 +77,23 @@
     }
   }
   const text = (e: Event) => (e.currentTarget as HTMLInputElement).value;
+  async function restore() {
+    try {
+      await recreate();
+      errors.config = "";
+    } catch (e) {
+      errors.config = String(e);
+    }
+  }
 </script>
 
 <div class="settings">
   <h1>Settings</h1>
-  <p class="dim">Saved to config.toml; comments and everything not shown here stay as written. <button class="link" onclick={edit}>Edit config.toml</button> by hand.</p>
+  <p class="dim">Saved to config.toml; comments and everything not shown here stay as written.{#if !missing} <button class="link" onclick={edit}>Edit config.toml</button> by hand.{/if}</p>
   {#if error}
-    <p class="error">⚠ config.toml was ignored ({error}), so these are the defaults. Fix the file first.</p>
+    <p class="error">⚠ config.toml couldn't be loaded ({error}); Margin keeps running on the last good settings (defaults if it never loaded).{missing ? "" : " Fix the file first."}</p>
+    {#if missing}<button onclick={restore}>Recreate config.toml from the current settings</button>{/if}
+    {#if errors.config}<p class="error">⚠ {errors.config}</p>{/if}
   {/if}
   {#if clashing.length}
     <p class="error">⚠ config.toml changed on disk; your unsaved {clashing.map((f) => f.label).join(", ")} would overwrite it.</p>

@@ -52,8 +52,8 @@ describe("Broken config.toml", () => {
   before(async () => { d = await launch({ files: ({ cfgDir }) => writeFileSync(join(cfgDir, "config.toml"), bad) }); });
   after(close, { timeout: 30_000 });
 
-  it("says it runs on defaults and leaves the file alone", async () => {
-    await find(".status .msg", "config.toml was ignored");
+  it("says it can't load the file and leaves it alone", async () => {
+    await find(".status .msg", "config.toml couldn't be loaded");
     assert.deepEqual(readFileSync(join(d.cfgDir, "config.toml")), bad);
     // The default ~/timeclock landed under the temp HOME, not the real one.
     assert.ok(existsSync(join(d.root, "timeclock")), "default data dir not under the temp HOME");
