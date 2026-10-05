@@ -191,4 +191,17 @@ describe("Margin", () => {
     await (await find(".settings button", "Save views")).click();
     await fileMatches(cfg, (s) => !s.includes("Next up") && s.includes(`name = "Work"`), "view not removed");
   });
+
+  it("adds a capture template on the settings page", async () => {
+    const cfg = join(cfgDir, "config.toml");
+    await (await find(".settings button", "Add template")).click();
+    for (const [label, text] of [["key", "j"], ["name", "Journal"], ["heading", "Log"], ["body", "* %?"]]) {
+      await (await browser.$(`.settings [aria-label='Template ${label}']`)).click();
+      await type(text);
+    }
+    await (await find(".settings button", "Save templates")).click();
+    await fileMatches(cfg, (s) => /\[\[templates\]\]/.test(s) && /^key = "j"$/m.test(s) && /^heading = "Log"$/m.test(s) && !/^templates = \[\]$/m.test(s) && !/^file =/m.test(s), "template not saved");
+    await fileMatches(cfg, (s) => s.includes(`name = "Work"`), "views lost");
+    await browser.waitUntil(async () => !(await (await find(".settings button", "Save templates")).isEnabled()), { timeoutMsg: "template still unsaved after reload" });
+  });
 });

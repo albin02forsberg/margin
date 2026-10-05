@@ -176,14 +176,16 @@ fn setup(app: AppHandle, s: State<App>, notes_dir: String, data_dir: String, pro
     apply_config(app, s, text, c)
 }
 
-/// The settings page's changed VALUES, RESET keys (see config::save) and saved VIEWS
-/// (see config::set_tables), saved like setup's answers.
+/// The settings page's changed VALUES, RESET keys (see config::save), saved VIEWS and capture
+/// TEMPLATES (see config::set_tables), saved like setup's answers.
 #[tauri::command]
-fn save_config(app: AppHandle, s: State<App>, values: toml::Table, reset: Option<Vec<String>>, views: Option<Vec<toml::Table>>) -> R<String> {
+fn save_config(app: AppHandle, s: State<App>, values: toml::Table, reset: Option<Vec<String>>, views: Option<Vec<toml::Table>>, templates: Option<Vec<toml::Table>>) -> R<String> {
     let text = std::fs::read_to_string(&s.cfg_path).map_err(|e| e.to_string())?;
     let (mut text, mut c) = config::save(&text, values, &reset.unwrap_or_default())?;
-    if let Some(v) = views {
-        (text, c) = config::set_tables(&text, "views", v)?;
+    for (key, items) in [("views", views), ("templates", templates)] {
+        if let Some(v) = items {
+            (text, c) = config::set_tables(&text, key, v)?;
+        }
     }
     apply_config(app, s, text, c)
 }
