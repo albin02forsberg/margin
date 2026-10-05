@@ -11,7 +11,7 @@
   "9": "compilerOptions",
   "10": "scripts",
   "11": "Calendar",
-  "12": "graph",
+  "12": "$lib/graph",
   "13": "GitHub Releases",
   "14": "super",
   "15": "attach.rs",
@@ -60,10 +60,9 @@
   "58": "Time Tracking",
   "59": "TypeScript",
   "60": "ics.rs",
-  "61": "svelte.config.js",
-  "62": "vite.config.js",
-  "63": "$lib/graph",
+  "61": "decorate",
+  "62": "curLine",
+  "63": "level",
   "64": "settings.test.ts",
-  "65": "$lib/projects",
-  "66": "@tauri-apps/api/event"
+  "65": "@codemirror/state"
 }
