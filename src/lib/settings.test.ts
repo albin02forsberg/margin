@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changes, GROUPS, refresh, type Field } from "./settings.ts";
+import { changes, checkViews, GROUPS, refresh, refreshRows, type Field } from "./settings.ts";
 
 const config = { notes_dir: "~/notes", expected_daily_hours: 8, profiles: ["Work", "Home"], reminders: true };
 const fields: Field[] = GROUPS.flatMap((g) => g.fields).filter((f) => f.key in config);
@@ -21,4 +21,17 @@ test("a reload keeps unsaved edits and refreshes the rest", () => {
   assert.equal(next.expected_daily_hours, "6");
   assert.deepEqual(clash, ["notes_dir"]); // reminders was edited too, but not changed on disk
   assert.deepEqual(refresh(edited, base, config)[2], []);
+});
+
+test("views are trimmed and need a name and query", () => {
+  assert.deepEqual(checkViews([{ name: " A ", query: "tag:a " }]), [{ name: "A", query: "tag:a" }]);
+  assert.throws(() => checkViews([{ name: "A", query: "a" }, { name: "B", query: " " }]), /View 2/);
+});
+
+test("rows keep unsaved edits across a reload", () => {
+  const [rows, base] = refreshRows([], [], [{ name: "A", query: "a" }]);
+  assert.deepEqual(refreshRows(rows, base, [{ name: "B", query: "b" }])[0], [{ name: "B", query: "b" }]);
+  const edited = [...rows, { name: "", query: "" }];
+  assert.deepEqual(refreshRows(edited, base, [{ name: "A", query: "a" }]), [edited, base, false]);
+  assert.equal(refreshRows(edited, base, [])[2], true);
 });

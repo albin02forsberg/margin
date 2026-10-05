@@ -162,7 +162,9 @@ Values can be quoted too: `file:"my notes"`, `-tag:"x y"`.
 you want.
 
 "Save this search as a view…" (`Space v v`, from a search tab) adds it to the
-sidebar; it's kept in settings, where you can rename or edit it:
+sidebar; it's kept in `config.toml`. The settings page's "Saved views" group adds,
+renames, edits, reorders and removes them (saving rewrites the `[[views]]` tables,
+so comments inside them aren't kept); or edit the file:
 
 ```toml
 [[views]]
@@ -442,7 +444,7 @@ the `# …` after a changed value) and everything else in the file. Editing the 
 elsewhere (another editor, a sync tool) applies right away; unsaved edits on the
 page are kept, with a notice if the file changed the same setting. "Reset to
 default" under a changed setting removes its line from the file. Changing the folders or profiles clocks out a running
-timer, like setup. Saved views and capture templates stay in the file itself:
+timer, like setup. Saved views have their own group (see [Saved searches](#saved-searches)); capture templates stay in the file itself:
 `Space f C` (or "Edit config.toml" on the page) opens it. It's created with the defaults on first run;
 an existing file that can't be read or parsed is left alone and the app runs on
 the defaults until it's fixed, saying so (with the error) at startup. Old Emacs timeclock data can be imported from
