@@ -728,6 +728,18 @@
       "source_location": "L635"
     },
     {
+      "id": "src_lib_editor_scan",
+      "label": "scan()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "editor.ts",
+      "file_type": "code",
+      "norm_label": "scan()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L51"
+    },
+    {
       "id": "src_lib_editor_shifttimestamp",
       "label": "shiftTimestamp()",
       "_callable": true,
@@ -1820,18 +1832,6 @@
       "source_location": "L533"
     },
     {
-      "id": "src_lib_editor_scan",
-      "label": "scan()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 63,
-      "community_name": "level",
-      "file_type": "code",
-      "norm_label": "scan()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L51"
-    },
-    {
       "id": "src_lib_editor_shiftheading",
       "label": "shiftHeading()",
       "_callable": true,
@@ -2444,18 +2444,6 @@
       "source_location": "L27"
     },
     {
-      "id": "src_tauri_src_tray_tray",
-      "label": "Tray",
-      "_origin": "ast",
-      "_rust_declaration_count": 1,
-      "community": 34,
-      "community_name": "tray.rs",
-      "file_type": "code",
-      "norm_label": "tray",
-      "source_file": "src-tauri/src/tray.rs",
-      "source_location": "L11"
-    },
-    {
       "id": "src_tauri_src_config_config",
       "label": "Config",
       "_origin": "ast",
@@ -2501,7 +2489,7 @@
       "file_type": "code",
       "norm_label": "rec",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L20"
+      "source_location": "L24"
     },
     {
       "id": "src_tauri_src_ics_event",
@@ -2514,6 +2502,18 @@
       "norm_label": "event()",
       "source_file": "src-tauri/src/ics.rs",
       "source_location": "L35"
+    },
+    {
+      "id": "src_tauri_src_tray_tray",
+      "label": "Tray",
+      "_origin": "ast",
+      "_rust_declaration_count": 1,
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "tray",
+      "source_file": "src-tauri/src/tray.rs",
+      "source_location": "L11"
     },
     {
       "id": "captures",
@@ -4474,92 +4474,37 @@
       "source_location": "L33"
     },
     {
+      "id": "lib_graph_graph",
+      "label": "$lib/graph",
+      "_origin": "ast",
+      "community": 12,
+      "community_name": "$lib/graph",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "$lib/graph",
+      "source_file": "$lib/graph"
+    },
+    {
       "id": "src_lib_graph_svelte_src_lib_graph",
       "label": "lib/Graph.svelte",
       "_origin": "ast",
       "community": 12,
-      "community_name": "graph",
+      "community_name": "$lib/graph",
       "file_type": "code",
       "norm_label": "lib/graph.svelte",
       "source_file": "src/lib/Graph.svelte",
       "source_location": "L1"
     },
     {
-      "id": "src_tauri_src_idle",
-      "label": "idle.rs",
+      "id": "codemirror_state_state",
+      "label": "@codemirror/state",
       "_origin": "ast",
       "community": 14,
-      "community_name": "super",
+      "community_name": "@codemirror/state",
+      "confidence": "EXTRACTED",
       "file_type": "code",
-      "norm_label": "idle.rs",
-      "source_file": "src-tauri/src/idle.rs",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_tauri_src_idle_idle_steps",
-      "label": "idle_steps()",
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "super",
-      "file_type": "code",
-      "norm_label": "idle_steps()",
-      "source_file": "src-tauri/src/idle.rs",
-      "source_location": "L69"
-    },
-    {
-      "id": "src_tauri_src_idle_rs_apphandle",
-      "label": "AppHandle",
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "super",
-      "file_type": "code",
-      "norm_label": "apphandle",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "src_tauri_src_idle_rs_naivedatetime",
-      "label": "NaiveDateTime",
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "super",
-      "file_type": "code",
-      "norm_label": "naivedatetime",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "src_tauri_src_idle_source",
-      "label": "source()",
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "super",
-      "file_type": "code",
-      "norm_label": "source()",
-      "source_file": "src-tauri/src/idle.rs",
-      "source_location": "L28"
-    },
-    {
-      "id": "src_tauri_src_idle_start",
-      "label": "start()",
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "super",
-      "file_type": "code",
-      "norm_label": "start()",
-      "source_file": "src-tauri/src/idle.rs",
-      "source_location": "L41"
-    },
-    {
-      "id": "src_tauri_src_idle_step",
-      "label": "step()",
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "super",
-      "file_type": "code",
-      "norm_label": "step()",
-      "source_file": "src-tauri/src/idle.rs",
-      "source_location": "L14"
+      "norm_label": "@codemirror/state",
+      "source_file": "@codemirror/state"
     },
     {
       "id": "src_tauri_src_attach",
@@ -4672,6 +4617,105 @@
       "source_location": "L95"
     },
     {
+      "id": "src_tauri_src_backup",
+      "label": "backup.rs",
+      "_origin": "ast",
+      "community": 15,
+      "community_name": "path",
+      "file_type": "code",
+      "norm_label": "backup.rs",
+      "source_file": "src-tauri/src/backup.rs",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_tauri_src_backup_backup",
+      "label": "backup()",
+      "_origin": "ast",
+      "community": 15,
+      "community_name": "path",
+      "file_type": "code",
+      "norm_label": "backup()",
+      "source_file": "src-tauri/src/backup.rs",
+      "source_location": "L54"
+    },
+    {
+      "id": "src_tauri_src_backup_fail",
+      "label": "fail()",
+      "_origin": "ast",
+      "community": 15,
+      "community_name": "path",
+      "file_type": "code",
+      "norm_label": "fail()",
+      "source_file": "src-tauri/src/backup.rs",
+      "source_location": "L25"
+    },
+    {
+      "id": "src_tauri_src_backup_git",
+      "label": "git()",
+      "_origin": "ast",
+      "community": 15,
+      "community_name": "path",
+      "file_type": "code",
+      "norm_label": "git()",
+      "source_file": "src-tauri/src/backup.rs",
+      "source_location": "L38"
+    },
+    {
+      "id": "src_tauri_src_backup_last_failure",
+      "label": "LAST_FAILURE",
+      "_origin": "ast",
+      "community": 15,
+      "community_name": "path",
+      "file_type": "code",
+      "norm_label": "last_failure",
+      "source_file": "src-tauri/src/backup.rs",
+      "source_location": "L9"
+    },
+    {
+      "id": "src_tauri_src_backup_log",
+      "label": "LOG",
+      "_origin": "ast",
+      "community": 15,
+      "community_name": "path",
+      "file_type": "code",
+      "norm_label": "log",
+      "source_file": "src-tauri/src/backup.rs",
+      "source_location": "L8"
+    },
+    {
+      "id": "src_tauri_src_backup_log_text",
+      "label": "log_text()",
+      "_origin": "ast",
+      "community": 15,
+      "community_name": "path",
+      "file_type": "code",
+      "norm_label": "log_text()",
+      "source_file": "src-tauri/src/backup.rs",
+      "source_location": "L30"
+    },
+    {
+      "id": "src_tauri_src_backup_ok",
+      "label": "ok()",
+      "_origin": "ast",
+      "community": 15,
+      "community_name": "path",
+      "file_type": "code",
+      "norm_label": "ok()",
+      "source_file": "src-tauri/src/backup.rs",
+      "source_location": "L20"
+    },
+    {
+      "id": "src_tauri_src_backup_rs_mutex",
+      "label": "Mutex",
+      "_origin": "ast",
+      "community": 15,
+      "community_name": "path",
+      "file_type": "code",
+      "norm_label": "mutex",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "core",
       "label": "@tauri-apps/api/core",
       "_origin": "ast",
@@ -4681,6 +4725,17 @@
       "file_type": "code",
       "norm_label": "@tauri-apps/api/core",
       "source_file": "@tauri-apps/api/core"
+    },
+    {
+      "id": "lib_projects_projects",
+      "label": "$lib/projects",
+      "_origin": "ast",
+      "community": 18,
+      "community_name": "svelte",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "$lib/projects",
+      "source_file": "$lib/projects"
     },
     {
       "id": "settings",
@@ -5274,7 +5329,7 @@
       "file_type": "code",
       "norm_label": "cfg()",
       "source_file": "src-tauri/src/lib.rs",
-      "source_location": "L1215"
+      "source_location": "L1218"
     },
     {
       "id": "src_tauri_src_lib_clock_out_before_setup",
@@ -5307,7 +5362,7 @@
       "file_type": "code",
       "norm_label": "config_changes_split_out()",
       "source_file": "src-tauri/src/lib.rs",
-      "source_location": "L1204"
+      "source_location": "L1207"
     },
     {
       "id": "src_tauri_src_lib_config_recreate",
@@ -5857,7 +5912,7 @@
       "file_type": "code",
       "norm_label": "setup_clocks_out_in_old_folder_and_warns_about_orphans()",
       "source_file": "src-tauri/src/lib.rs",
-      "source_location": "L1220"
+      "source_location": "L1223"
     },
     {
       "id": "src_tauri_src_lib_split_changes",
@@ -6916,17 +6971,6 @@
       "source_location": "L70"
     },
     {
-      "id": "src_tauri_src_activity_request",
-      "label": "request()",
-      "_origin": "ast",
-      "community": 22,
-      "community_name": "activity.rs",
-      "file_type": "code",
-      "norm_label": "request()",
-      "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L340"
-    },
-    {
       "id": "src_tauri_src_activity_rs_naivedate",
       "label": "NaiveDate",
       "_origin": "ast",
@@ -7078,7 +7122,7 @@
       "file_type": "code",
       "norm_label": "exclusion_and_truncation_before_write()",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L174"
+      "source_location": "L201"
     },
     {
       "id": "task",
@@ -7972,17 +8016,6 @@
       "source_file": "$lib/Agenda.svelte"
     },
     {
-      "id": "codemirror_state_state",
-      "label": "@codemirror/state",
-      "_origin": "ast",
-      "community": 29,
-      "community_name": "+page.svelte",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "@codemirror/state",
-      "source_file": "@codemirror/state"
-    },
-    {
       "id": "editor",
       "label": "$lib/editor",
       "_origin": "ast",
@@ -8102,6 +8135,17 @@
       "file_type": "code",
       "norm_label": "$lib/taskdialog.svelte",
       "source_file": "$lib/TaskDialog.svelte"
+    },
+    {
+      "id": "tauri_apps_api_event_event",
+      "label": "@tauri-apps/api/event",
+      "_origin": "ast",
+      "community": 29,
+      "community_name": "+page.svelte",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "@tauri-apps/api/event",
+      "source_file": "@tauri-apps/api/event"
     },
     {
       "id": "theme_css",
@@ -8380,6 +8424,17 @@
       "norm_label": "oncelock",
       "source_file": "",
       "source_location": ""
+    },
+    {
+      "id": "src_tauri_src_activity_request",
+      "label": "request()",
+      "_origin": "ast",
+      "community": 31,
+      "community_name": "ai.rs",
+      "file_type": "code",
+      "norm_label": "request()",
+      "source_file": "src-tauri/src/activity.rs",
+      "source_location": "L340"
     },
     {
       "id": "src_tauri_src_ai",
@@ -8965,83 +9020,6 @@
       "source_location": "L142"
     },
     {
-      "id": "app",
-      "label": "@tauri-apps/api/app",
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "remind.rs",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "@tauri-apps/api/app",
-      "source_file": "@tauri-apps/api/app"
-    },
-    {
-      "id": "src_tauri_src_remind",
-      "label": "remind.rs",
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "remind.rs",
-      "file_type": "code",
-      "norm_label": "remind.rs",
-      "source_file": "src-tauri/src/remind.rs",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_tauri_src_remind_notify",
-      "label": "notify()",
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "remind.rs",
-      "file_type": "code",
-      "norm_label": "notify()",
-      "source_file": "src-tauri/src/remind.rs",
-      "source_location": "L94"
-    },
-    {
-      "id": "src_tauri_src_remind_picks_due_reminders",
-      "label": "picks_due_reminders()",
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "remind.rs",
-      "file_type": "code",
-      "norm_label": "picks_due_reminders()",
-      "source_file": "src-tauri/src/remind.rs",
-      "source_location": "L118"
-    },
-    {
-      "id": "src_tauri_src_remind_rs_apphandle",
-      "label": "AppHandle",
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "remind.rs",
-      "file_type": "code",
-      "norm_label": "apphandle",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "src_tauri_src_remind_start",
-      "label": "start()",
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "remind.rs",
-      "file_type": "code",
-      "norm_label": "start()",
-      "source_file": "src-tauri/src/remind.rs",
-      "source_location": "L59"
-    },
-    {
-      "id": "src_tauri_src_remind_tick",
-      "label": "tick()",
-      "_origin": "ast",
-      "community": 32,
-      "community_name": "remind.rs",
-      "file_type": "code",
-      "norm_label": "tick()",
-      "source_file": "src-tauri/src/remind.rs",
-      "source_location": "L67"
-    },
-    {
       "id": "src_lib_taskdialog",
       "label": "lib/TaskDialog.svelte",
       "_origin": "ast",
@@ -9117,105 +9095,6 @@
       "norm_label": "svelte",
       "source_file": "package.json",
       "source_location": "L41"
-    },
-    {
-      "id": "menuitem",
-      "label": "MenuItem",
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "tray.rs",
-      "file_type": "code",
-      "norm_label": "menuitem",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "src_tauri_src_tray",
-      "label": "tray.rs",
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "tray.rs",
-      "file_type": "code",
-      "norm_label": "tray.rs",
-      "source_file": "src-tauri/src/tray.rs",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_tauri_src_tray_refresh",
-      "label": "refresh()",
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "tray.rs",
-      "file_type": "code",
-      "norm_label": "refresh()",
-      "source_file": "src-tauri/src/tray.rs",
-      "source_location": "L68"
-    },
-    {
-      "id": "src_tauri_src_tray_rs_apphandle",
-      "label": "AppHandle",
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "tray.rs",
-      "file_type": "code",
-      "norm_label": "apphandle",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "src_tauri_src_tray_setup",
-      "label": "setup()",
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "tray.rs",
-      "file_type": "code",
-      "norm_label": "setup()",
-      "source_file": "src-tauri/src/tray.rs",
-      "source_location": "L21"
-    },
-    {
-      "id": "src_tauri_src_tray_show",
-      "label": "show()",
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "tray.rs",
-      "file_type": "code",
-      "norm_label": "show()",
-      "source_file": "src-tauri/src/tray.rs",
-      "source_location": "L55"
-    },
-    {
-      "id": "src_tauri_src_tray_tracking",
-      "label": "tracking()",
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "tray.rs",
-      "file_type": "code",
-      "norm_label": "tracking()",
-      "source_file": "src-tauri/src/tray.rs",
-      "source_location": "L62"
-    },
-    {
-      "id": "trayicon",
-      "label": "TrayIcon",
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "tray.rs",
-      "file_type": "code",
-      "norm_label": "trayicon",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "wry",
-      "label": "Wry",
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "tray.rs",
-      "file_type": "code",
-      "norm_label": "wry",
-      "source_file": "",
-      "source_location": ""
     },
     {
       "id": "src_tauri_src_config",
@@ -10357,7 +10236,7 @@
       "file_type": "code",
       "norm_label": "active()",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L85"
+      "source_location": "L101"
     },
     {
       "id": "src_tauri_src_watcher_active_window",
@@ -10368,7 +10247,7 @@
       "file_type": "code",
       "norm_label": "active_window()",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L144"
+      "source_location": "L158"
     },
     {
       "id": "src_tauri_src_watcher_afk_mins",
@@ -10379,7 +10258,7 @@
       "file_type": "code",
       "norm_label": "afk_mins",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L13"
+      "source_location": "L14"
     },
     {
       "id": "src_tauri_src_watcher_append",
@@ -10390,7 +10269,7 @@
       "file_type": "code",
       "norm_label": "append()",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L75"
+      "source_location": "L79"
     },
     {
       "id": "src_tauri_src_watcher_clean",
@@ -10401,7 +10280,29 @@
       "file_type": "code",
       "norm_label": "clean()",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L28"
+      "source_location": "L32"
+    },
+    {
+      "id": "src_tauri_src_watcher_flush",
+      "label": "flush()",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "watcher.rs",
+      "file_type": "code",
+      "norm_label": "flush()",
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L92"
+    },
+    {
+      "id": "src_tauri_src_watcher_flush_writes_the_open_record_once",
+      "label": "flush_writes_the_open_record_once()",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "watcher.rs",
+      "file_type": "code",
+      "norm_label": "flush_writes_the_open_record_once()",
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L188"
     },
     {
       "id": "src_tauri_src_watcher_log_to_suggestions_and_retention",
@@ -10412,7 +10313,7 @@
       "file_type": "code",
       "norm_label": "log_to_suggestions_and_retention()",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L182"
+      "source_location": "L209"
     },
     {
       "id": "src_tauri_src_watcher_max_secs",
@@ -10423,7 +10324,7 @@
       "file_type": "code",
       "norm_label": "max_secs",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L15"
+      "source_location": "L16"
     },
     {
       "id": "src_tauri_src_watcher_max_title",
@@ -10434,7 +10335,18 @@
       "file_type": "code",
       "norm_label": "max_title",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L16"
+      "source_location": "L17"
+    },
+    {
+      "id": "src_tauri_src_watcher_open",
+      "label": "OPEN",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "watcher.rs",
+      "file_type": "code",
+      "norm_label": "open",
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L20"
     },
     {
       "id": "src_tauri_src_watcher_parse",
@@ -10445,7 +10357,7 @@
       "file_type": "code",
       "norm_label": "parse()",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L48"
+      "source_location": "L52"
     },
     {
       "id": "src_tauri_src_watcher_poll_secs",
@@ -10456,7 +10368,7 @@
       "file_type": "code",
       "norm_label": "poll_secs",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L11"
+      "source_location": "L12"
     },
     {
       "id": "src_tauri_src_watcher_prune",
@@ -10467,7 +10379,7 @@
       "file_type": "code",
       "norm_label": "prune()",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L61"
+      "source_location": "L65"
     },
     {
       "id": "src_tauri_src_watcher_rs_apphandle",
@@ -10477,6 +10389,17 @@
       "community_name": "watcher.rs",
       "file_type": "code",
       "norm_label": "apphandle",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "src_tauri_src_watcher_rs_mutex",
+      "label": "Mutex",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "watcher.rs",
+      "file_type": "code",
+      "norm_label": "mutex",
       "source_file": "",
       "source_location": ""
     },
@@ -10522,7 +10445,7 @@
       "file_type": "code",
       "norm_label": "samples_merge_and_close()",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L151"
+      "source_location": "L165"
     },
     {
       "id": "src_tauri_src_watcher_spans",
@@ -10533,7 +10456,7 @@
       "file_type": "code",
       "norm_label": "spans()",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L56"
+      "source_location": "L60"
     },
     {
       "id": "src_tauri_src_watcher_start",
@@ -10544,7 +10467,7 @@
       "file_type": "code",
       "norm_label": "start()",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L92"
+      "source_location": "L108"
     },
     {
       "id": "src_tauri_src_watcher_step",
@@ -10555,7 +10478,7 @@
       "file_type": "code",
       "norm_label": "step()",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L38"
+      "source_location": "L42"
     },
     {
       "id": "src_tauri_src_watcher_t",
@@ -10566,7 +10489,7 @@
       "file_type": "code",
       "norm_label": "t()",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L134"
+      "source_location": "L148"
     },
     {
       "id": "src_tauri_src_watcher_w",
@@ -10577,139 +10500,18 @@
       "file_type": "code",
       "norm_label": "w()",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L137"
+      "source_location": "L151"
     },
     {
-      "id": "src_tauri_src_backup",
-      "label": "backup.rs",
+      "id": "src_tauri_src_watcher_write",
+      "label": "write()",
       "_origin": "ast",
-      "community": 52,
-      "community_name": "backup.rs",
+      "community": 5,
+      "community_name": "watcher.rs",
       "file_type": "code",
-      "norm_label": "backup.rs",
-      "source_file": "src-tauri/src/backup.rs",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_tauri_src_backup_backup",
-      "label": "backup()",
-      "_origin": "ast",
-      "community": 52,
-      "community_name": "backup.rs",
-      "file_type": "code",
-      "norm_label": "backup()",
-      "source_file": "src-tauri/src/backup.rs",
-      "source_location": "L54"
-    },
-    {
-      "id": "src_tauri_src_backup_fail",
-      "label": "fail()",
-      "_origin": "ast",
-      "community": 52,
-      "community_name": "backup.rs",
-      "file_type": "code",
-      "norm_label": "fail()",
-      "source_file": "src-tauri/src/backup.rs",
-      "source_location": "L25"
-    },
-    {
-      "id": "src_tauri_src_backup_git",
-      "label": "git()",
-      "_origin": "ast",
-      "community": 52,
-      "community_name": "backup.rs",
-      "file_type": "code",
-      "norm_label": "git()",
-      "source_file": "src-tauri/src/backup.rs",
-      "source_location": "L38"
-    },
-    {
-      "id": "src_tauri_src_backup_last_failure",
-      "label": "LAST_FAILURE",
-      "_origin": "ast",
-      "community": 52,
-      "community_name": "backup.rs",
-      "file_type": "code",
-      "norm_label": "last_failure",
-      "source_file": "src-tauri/src/backup.rs",
-      "source_location": "L9"
-    },
-    {
-      "id": "src_tauri_src_backup_log",
-      "label": "LOG",
-      "_origin": "ast",
-      "community": 52,
-      "community_name": "backup.rs",
-      "file_type": "code",
-      "norm_label": "log",
-      "source_file": "src-tauri/src/backup.rs",
-      "source_location": "L8"
-    },
-    {
-      "id": "src_tauri_src_backup_log_text",
-      "label": "log_text()",
-      "_origin": "ast",
-      "community": 52,
-      "community_name": "backup.rs",
-      "file_type": "code",
-      "norm_label": "log_text()",
-      "source_file": "src-tauri/src/backup.rs",
-      "source_location": "L30"
-    },
-    {
-      "id": "src_tauri_src_backup_ok",
-      "label": "ok()",
-      "_origin": "ast",
-      "community": 52,
-      "community_name": "backup.rs",
-      "file_type": "code",
-      "norm_label": "ok()",
-      "source_file": "src-tauri/src/backup.rs",
-      "source_location": "L20"
-    },
-    {
-      "id": "src_tauri_src_backup_rs_mutex",
-      "label": "Mutex",
-      "_origin": "ast",
-      "community": 52,
-      "community_name": "backup.rs",
-      "file_type": "code",
-      "norm_label": "mutex",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "src_tauri_src_wayland_idle",
-      "label": "wayland_idle.rs",
-      "_origin": "ast",
-      "community": 57,
-      "community_name": "wayland_idle.rs",
-      "file_type": "code",
-      "norm_label": "wayland_idle.rs",
-      "source_file": "src-tauri/src/wayland_idle.rs",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_tauri_src_wayland_idle_start",
-      "label": "start()",
-      "_origin": "ast",
-      "community": 57,
-      "community_name": "wayland_idle.rs",
-      "file_type": "code",
-      "norm_label": "start()",
-      "source_file": "src-tauri/src/wayland_idle.rs",
-      "source_location": "L22"
-    },
-    {
-      "id": "src_tauri_src_wayland_idle_wayland_reports_idle",
-      "label": "wayland_reports_idle()",
-      "_origin": "ast",
-      "community": 57,
-      "community_name": "wayland_idle.rs",
-      "file_type": "code",
-      "norm_label": "wayland_reports_idle()",
-      "source_file": "src-tauri/src/wayland_idle.rs",
-      "source_location": "L66"
+      "norm_label": "write()",
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L86"
     },
     {
       "id": "src_lib_orgtable",
@@ -10838,6 +10640,28 @@
       "norm_label": "watch mode (only when asked)",
       "source_file": ".claude/agents/triager.md",
       "source_location": "L30"
+    },
+    {
+      "id": "app",
+      "label": "@tauri-apps/api/app",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "@tauri-apps/api/app",
+      "source_file": "@tauri-apps/api/app"
+    },
+    {
+      "id": "menuitem",
+      "label": "MenuItem",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "menuitem",
+      "source_file": "",
+      "source_location": ""
     },
     {
       "id": "src_tauri_src_ics",
@@ -11005,6 +10829,259 @@
       "source_location": "L119"
     },
     {
+      "id": "src_tauri_src_idle",
+      "label": "idle.rs",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "idle.rs",
+      "source_file": "src-tauri/src/idle.rs",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_tauri_src_idle_idle_steps",
+      "label": "idle_steps()",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "idle_steps()",
+      "source_file": "src-tauri/src/idle.rs",
+      "source_location": "L69"
+    },
+    {
+      "id": "src_tauri_src_idle_rs_apphandle",
+      "label": "AppHandle",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "apphandle",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "src_tauri_src_idle_rs_naivedatetime",
+      "label": "NaiveDateTime",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "naivedatetime",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "src_tauri_src_idle_source",
+      "label": "source()",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "source()",
+      "source_file": "src-tauri/src/idle.rs",
+      "source_location": "L28"
+    },
+    {
+      "id": "src_tauri_src_idle_start",
+      "label": "start()",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "start()",
+      "source_file": "src-tauri/src/idle.rs",
+      "source_location": "L41"
+    },
+    {
+      "id": "src_tauri_src_idle_step",
+      "label": "step()",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "step()",
+      "source_file": "src-tauri/src/idle.rs",
+      "source_location": "L14"
+    },
+    {
+      "id": "src_tauri_src_remind",
+      "label": "remind.rs",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "remind.rs",
+      "source_file": "src-tauri/src/remind.rs",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_tauri_src_remind_notify",
+      "label": "notify()",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "notify()",
+      "source_file": "src-tauri/src/remind.rs",
+      "source_location": "L94"
+    },
+    {
+      "id": "src_tauri_src_remind_picks_due_reminders",
+      "label": "picks_due_reminders()",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "picks_due_reminders()",
+      "source_file": "src-tauri/src/remind.rs",
+      "source_location": "L118"
+    },
+    {
+      "id": "src_tauri_src_remind_rs_apphandle",
+      "label": "AppHandle",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "apphandle",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "src_tauri_src_remind_start",
+      "label": "start()",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "start()",
+      "source_file": "src-tauri/src/remind.rs",
+      "source_location": "L59"
+    },
+    {
+      "id": "src_tauri_src_remind_tick",
+      "label": "tick()",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "tick()",
+      "source_file": "src-tauri/src/remind.rs",
+      "source_location": "L67"
+    },
+    {
+      "id": "src_tauri_src_tray",
+      "label": "tray.rs",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "tray.rs",
+      "source_file": "src-tauri/src/tray.rs",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_tauri_src_tray_refresh",
+      "label": "refresh()",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "refresh()",
+      "source_file": "src-tauri/src/tray.rs",
+      "source_location": "L68"
+    },
+    {
+      "id": "src_tauri_src_tray_rs_apphandle",
+      "label": "AppHandle",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "apphandle",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "src_tauri_src_tray_setup",
+      "label": "setup()",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "setup()",
+      "source_file": "src-tauri/src/tray.rs",
+      "source_location": "L21"
+    },
+    {
+      "id": "src_tauri_src_tray_show",
+      "label": "show()",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "show()",
+      "source_file": "src-tauri/src/tray.rs",
+      "source_location": "L55"
+    },
+    {
+      "id": "src_tauri_src_tray_tracking",
+      "label": "tracking()",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "tracking()",
+      "source_file": "src-tauri/src/tray.rs",
+      "source_location": "L62"
+    },
+    {
+      "id": "src_tauri_src_wayland_idle",
+      "label": "wayland_idle.rs",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "wayland_idle.rs",
+      "source_file": "src-tauri/src/wayland_idle.rs",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_tauri_src_wayland_idle_start",
+      "label": "start()",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "start()",
+      "source_file": "src-tauri/src/wayland_idle.rs",
+      "source_location": "L22"
+    },
+    {
+      "id": "src_tauri_src_wayland_idle_wayland_reports_idle",
+      "label": "wayland_reports_idle()",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "wayland_reports_idle()",
+      "source_file": "src-tauri/src/wayland_idle.rs",
+      "source_location": "L66"
+    },
+    {
+      "id": "trayicon",
+      "label": "TrayIcon",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "trayicon",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "ts",
       "label": "Ts",
       "_origin": "ast",
@@ -11012,6 +11089,17 @@
       "community_name": "ics.rs",
       "file_type": "code",
       "norm_label": "ts",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "wry",
+      "label": "Wry",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "ics.rs",
+      "file_type": "code",
+      "norm_label": "wry",
       "source_file": "",
       "source_location": ""
     },
@@ -11201,39 +11289,6 @@
       "norm_label": "webdriverio",
       "source_file": "package.json",
       "source_location": "L45"
-    },
-    {
-      "id": "lib_graph_graph",
-      "label": "$lib/graph",
-      "_origin": "ast",
-      "community": 66,
-      "community_name": "$lib/graph",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "$lib/graph",
-      "source_file": "$lib/graph"
-    },
-    {
-      "id": "lib_projects_projects",
-      "label": "$lib/projects",
-      "_origin": "ast",
-      "community": 67,
-      "community_name": "$lib/projects",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "$lib/projects",
-      "source_file": "$lib/projects"
-    },
-    {
-      "id": "tauri_apps_api_event_event",
-      "label": "@tauri-apps/api/event",
-      "_origin": "ast",
-      "community": 68,
-      "community_name": "@tauri-apps/api/event",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "@tauri-apps/api/event",
-      "source_file": "@tauri-apps/api/event"
     },
     {
       "id": "src_tauri_tauri_conf",
@@ -12190,62 +12245,14 @@
       "type": "integration"
     },
     {
-      "id": "crate",
-      "label": "crate",
+      "id": "command",
+      "label": "command",
       "_origin": "semantic",
-      "community": 14,
-      "community_name": "super",
+      "community": 15,
+      "community_name": "path",
       "external": true,
       "file_type": "concept",
-      "norm_label": "crate",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "json",
-      "label": "json",
-      "_origin": "semantic",
-      "community": 14,
-      "community_name": "super",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "json",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "super",
-      "label": "super",
-      "_origin": "semantic",
-      "community": 14,
-      "community_name": "super",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "super",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "tauri",
-      "label": "tauri",
-      "_origin": "semantic",
-      "community": 14,
-      "community_name": "super",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "tauri",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "useridle",
-      "label": "useridle",
-      "_origin": "semantic",
-      "community": 14,
-      "community_name": "super",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "useridle",
+      "norm_label": "command",
       "source_file": "",
       "type": "external"
     },
@@ -12526,6 +12533,18 @@
       "type": "external"
     },
     {
+      "id": "collections",
+      "label": "collections",
+      "_origin": "semantic",
+      "community": 22,
+      "community_name": "activity.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "collections",
+      "source_file": "",
+      "type": "external"
+    },
+    {
       "id": "io",
       "label": "io",
       "_origin": "semantic",
@@ -12546,18 +12565,6 @@
       "external": true,
       "file_type": "concept",
       "norm_label": "net",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "collections",
-      "label": "collections",
-      "_origin": "semantic",
-      "community": 24,
-      "community_name": "notes.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "collections",
       "source_file": "",
       "type": "external"
     },
@@ -12730,66 +12737,6 @@
       "type": "external"
     },
     {
-      "id": "arc",
-      "label": "arc",
-      "_origin": "semantic",
-      "community": 32,
-      "community_name": "remind.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "arc",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "btreeset",
-      "label": "btreeset",
-      "_origin": "semantic",
-      "community": 32,
-      "community_name": "remind.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "btreeset",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "chrono",
-      "label": "chrono",
-      "_origin": "semantic",
-      "community": 32,
-      "community_name": "remind.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "chrono",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "notificationext",
-      "label": "notificationext",
-      "_origin": "semantic",
-      "community": 32,
-      "community_name": "remind.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "notificationext",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "menu",
-      "label": "menu",
-      "_origin": "semantic",
-      "community": 34,
-      "community_name": "tray.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "menu",
-      "source_file": "",
-      "type": "external"
-    },
-    {
       "id": "serde",
       "label": "serde",
       "_origin": "semantic",
@@ -12874,18 +12821,6 @@
       "type": "feature"
     },
     {
-      "id": "command",
-      "label": "command",
-      "_origin": "semantic",
-      "community": 52,
-      "community_name": "backup.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "command",
-      "source_file": "",
-      "type": "external"
-    },
-    {
       "id": "node",
       "label": "Node.js",
       "_origin": "semantic",
@@ -12934,78 +12869,6 @@
       "type": "ci_tool"
     },
     {
-      "id": "ext_idle_notification_v1",
-      "label": "ext_idle_notification_v1",
-      "_origin": "semantic",
-      "community": 57,
-      "community_name": "wayland_idle.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "ext_idle_notification_v1",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "globals",
-      "label": "globals",
-      "_origin": "semantic",
-      "community": 57,
-      "community_name": "wayland_idle.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "globals",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "now",
-      "label": "now",
-      "_origin": "semantic",
-      "community": 57,
-      "community_name": "wayland_idle.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "now",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "protocol",
-      "label": "protocol",
-      "_origin": "semantic",
-      "community": 57,
-      "community_name": "wayland_idle.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "protocol",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "sync",
-      "label": "sync",
-      "_origin": "semantic",
-      "community": 57,
-      "community_name": "wayland_idle.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "sync",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "wayland_client",
-      "label": "wayland_client",
-      "_origin": "semantic",
-      "community": 57,
-      "community_name": "wayland_idle.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "wayland_client",
-      "source_file": "",
-      "type": "external"
-    },
-    {
       "id": "time_tracking_feature",
       "label": "Time Tracking",
       "_origin": "semantic",
@@ -13030,6 +12893,78 @@
       "type": "language"
     },
     {
+      "id": "arc",
+      "label": "arc",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "ics.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "arc",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "btreeset",
+      "label": "btreeset",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "ics.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "btreeset",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "chrono",
+      "label": "chrono",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "ics.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "chrono",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "crate",
+      "label": "crate",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "ics.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "crate",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "ext_idle_notification_v1",
+      "label": "ext_idle_notification_v1",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "ics.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "ext_idle_notification_v1",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "globals",
+      "label": "globals",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "ics.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "globals",
+      "source_file": "",
+      "type": "external"
+    },
+    {
       "id": "hashmap",
       "label": "hashmap",
       "_origin": "semantic",
@@ -13038,6 +12973,126 @@
       "external": true,
       "file_type": "concept",
       "norm_label": "hashmap",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "json",
+      "label": "json",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "ics.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "json",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "menu",
+      "label": "menu",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "ics.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "menu",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "notificationext",
+      "label": "notificationext",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "ics.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "notificationext",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "now",
+      "label": "now",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "ics.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "now",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "protocol",
+      "label": "protocol",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "ics.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "protocol",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "super",
+      "label": "super",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "ics.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "super",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "sync",
+      "label": "sync",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "ics.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "sync",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "tauri",
+      "label": "tauri",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "ics.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "tauri",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "useridle",
+      "label": "useridle",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "ics.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "useridle",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "wayland_client",
+      "label": "wayland_client",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "ics.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "wayland_client",
       "source_file": "",
       "type": "external"
     },
@@ -13054,35 +13109,13 @@
       "type": "external"
     },
     {
-      "id": "graph",
-      "label": "graph",
-      "community": 12,
-      "community_name": "graph",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "graph",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "projects",
-      "label": "projects",
-      "community": 18,
-      "community_name": "svelte",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "projects",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "event",
-      "label": "event",
+      "id": "state",
+      "label": "state",
       "community": 29,
       "community_name": "+page.svelte",
       "external": true,
       "file_type": "concept",
-      "norm_label": "event",
+      "norm_label": "state",
       "source_file": "",
       "type": "external"
     }
@@ -18161,7 +18194,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/lib.rs",
-      "source_location": "L1191",
+      "source_location": "L1193",
       "weight": 1.0
     },
     {
@@ -18257,7 +18290,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/lib.rs",
-      "source_location": "L1224",
+      "source_location": "L1227",
       "weight": 1.0
     },
     {
@@ -18269,7 +18302,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/lib.rs",
-      "source_location": "L1240",
+      "source_location": "L1243",
       "weight": 1.0
     },
     {
@@ -22121,7 +22154,43 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L145",
+      "source_location": "L159",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_watcher_flush",
+      "target": "src_tauri_src_watcher_write",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L94",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_watcher_flush_writes_the_open_record_once",
+      "target": "src_tauri_src_watcher_t",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L191",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_watcher_flush_writes_the_open_record_once",
+      "target": "src_tauri_src_watcher_flush",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L193",
       "weight": 1.0
     },
     {
@@ -22133,7 +22202,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L185",
+      "source_location": "L212",
       "weight": 1.0
     },
     {
@@ -22145,7 +22214,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L186",
+      "source_location": "L213",
       "weight": 1.0
     },
     {
@@ -22157,7 +22226,19 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L190",
+      "source_location": "L217",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_watcher_log_to_suggestions_and_retention",
+      "target": "src_tauri_src_watcher_write",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L222",
       "weight": 1.0
     },
     {
@@ -22169,7 +22250,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L198",
+      "source_location": "L225",
       "weight": 1.0
     },
     {
@@ -22181,7 +22262,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L152",
+      "source_location": "L166",
       "weight": 1.0
     },
     {
@@ -22193,7 +22274,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L153",
+      "source_location": "L167",
       "weight": 1.0
     },
     {
@@ -22205,7 +22286,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L153",
+      "source_location": "L167",
       "weight": 1.0
     },
     {
@@ -22217,19 +22298,19 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L57",
+      "source_location": "L61",
       "weight": 1.0
     },
     {
       "source": "src_tauri_src_watcher_start",
-      "target": "src_tauri_src_watcher_append",
+      "target": "src_tauri_src_watcher_flush",
       "relation": "calls",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L102",
+      "source_location": "L121",
       "weight": 1.0
     },
     {
@@ -22241,7 +22322,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L113",
+      "source_location": "L126",
       "weight": 1.0
     },
     {
@@ -22253,7 +22334,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L119",
+      "source_location": "L132",
       "weight": 1.0
     },
     {
@@ -22265,7 +22346,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L119",
+      "source_location": "L132",
       "weight": 1.0
     },
     {
@@ -22277,7 +22358,31 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L120",
+      "source_location": "L134",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_watcher_start",
+      "target": "src_tauri_src_watcher_write",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L136",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_watcher_write",
+      "target": "src_tauri_src_watcher_append",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L87",
       "weight": 1.0
     },
     {
@@ -22989,6 +23094,18 @@
       "weight": 1.0
     },
     {
+      "source": "src_tauri_src_watcher_open",
+      "target": "src_tauri_src_watcher_rs_mutex",
+      "relation": "references",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "field",
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
       "source": "src_tauri_src_watcher_rec",
       "target": "src_tauri_src_watcher_rs_naivedatetime",
       "relation": "references",
@@ -22997,7 +23114,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L22",
+      "source_location": "L26",
       "weight": 1.0
     },
     {
@@ -25257,6 +25374,18 @@
       "weight": 1.0
     },
     {
+      "source": "src_tauri_src_watcher_open",
+      "target": "src_tauri_src_watcher_rec",
+      "relation": "references",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "generic_arg",
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
       "source": "src_tauri_src_watcher_parse",
       "target": "span",
       "relation": "references",
@@ -25265,7 +25394,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L48",
+      "source_location": "L52",
       "weight": 1.0
     },
     {
@@ -25277,7 +25406,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L56",
+      "source_location": "L60",
       "weight": 1.0
     },
     {
@@ -25289,7 +25418,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L38",
+      "source_location": "L42",
       "weight": 1.0
     },
     {
@@ -27642,7 +27771,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "src-tauri/src/lib.rs",
-      "source_location": "L1201",
+      "source_location": "L1204",
       "weight": 1.0
     },
     {
@@ -28199,6 +28328,18 @@
     },
     {
       "source": "src_tauri_src_watcher",
+      "target": "src_tauri_src_watcher_rs_mutex",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "import",
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_watcher",
       "target": "super",
       "relation": "imports_from",
       "_origin": "ast",
@@ -28206,7 +28347,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L131",
+      "source_location": "L145",
       "weight": 1.0
     },
     {
@@ -28218,7 +28359,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L132",
+      "source_location": "L146",
       "weight": 1.0
     },
     {
@@ -31182,7 +31323,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L75",
+      "source_location": "L79",
       "weight": 1.0
     },
     {
@@ -31194,7 +31335,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L28",
+      "source_location": "L32",
       "weight": 1.0
     },
     {
@@ -31206,7 +31347,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L61",
+      "source_location": "L65",
       "weight": 1.0
     },
     {
@@ -31218,7 +31359,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L56",
+      "source_location": "L60",
       "weight": 1.0
     },
     {
@@ -31230,7 +31371,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L92",
+      "source_location": "L108",
       "weight": 1.0
     },
     {
@@ -31242,7 +31383,19 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L38",
+      "source_location": "L42",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_watcher_write",
+      "target": "src_tauri_src_watcher_rec",
+      "relation": "references",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "parameter_type",
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L86",
       "weight": 1.0
     },
     {
@@ -32442,7 +32595,7 @@
       "confidence_score": 1.0,
       "context": "return_type",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L134",
+      "source_location": "L148",
       "weight": 1.0
     },
     {
@@ -37821,7 +37974,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/lib.rs",
-      "source_location": "L1204",
+      "source_location": "L1207",
       "weight": 1.0
     },
     {
@@ -37832,7 +37985,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/lib.rs",
-      "source_location": "L1215",
+      "source_location": "L1218",
       "weight": 1.0
     },
     {
@@ -37843,7 +37996,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/lib.rs",
-      "source_location": "L1220",
+      "source_location": "L1223",
       "weight": 1.0
     },
     {
@@ -40598,13 +40751,35 @@
     },
     {
       "source": "src_tauri_src_watcher",
+      "target": "src_tauri_src_watcher_active",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L101",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_watcher",
+      "target": "src_tauri_src_watcher_start",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L108",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_watcher",
       "target": "src_tauri_src_watcher_poll_secs",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L11",
+      "source_location": "L12",
       "weight": 1.0
     },
     {
@@ -40615,7 +40790,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L13",
+      "source_location": "L14",
       "weight": 1.0
     },
     {
@@ -40626,7 +40801,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L134",
+      "source_location": "L148",
       "weight": 1.0
     },
     {
@@ -40637,7 +40812,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L137",
+      "source_location": "L151",
       "weight": 1.0
     },
     {
@@ -40648,7 +40823,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L144",
+      "source_location": "L158",
       "weight": 1.0
     },
     {
@@ -40659,7 +40834,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L15",
+      "source_location": "L16",
       "weight": 1.0
     },
     {
@@ -40670,7 +40845,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L151",
+      "source_location": "L165",
       "weight": 1.0
     },
     {
@@ -40681,34 +40856,23 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L16",
+      "source_location": "L17",
       "weight": 1.0
     },
     {
       "source": "src_tauri_src_watcher",
-      "target": "src_tauri_src_watcher_exclusion_and_truncation_before_write",
+      "target": "src_tauri_src_watcher_flush_writes_the_open_record_once",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L174",
+      "source_location": "L188",
       "weight": 1.0
     },
     {
       "source": "src_tauri_src_watcher",
-      "target": "src_tauri_src_watcher_log_to_suggestions_and_retention",
-      "relation": "contains",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L182",
-      "weight": 1.0
-    },
-    {
-      "source": "src_tauri_src_watcher",
-      "target": "src_tauri_src_watcher_rec",
+      "target": "src_tauri_src_watcher_open",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -40719,13 +40883,46 @@
     },
     {
       "source": "src_tauri_src_watcher",
+      "target": "src_tauri_src_watcher_exclusion_and_truncation_before_write",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L201",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_watcher",
+      "target": "src_tauri_src_watcher_log_to_suggestions_and_retention",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L209",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_watcher",
+      "target": "src_tauri_src_watcher_rec",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src-tauri/src/watcher.rs",
+      "source_location": "L24",
+      "weight": 1.0
+    },
+    {
+      "source": "src_tauri_src_watcher",
       "target": "src_tauri_src_watcher_clean",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L28",
+      "source_location": "L32",
       "weight": 1.0
     },
     {
@@ -40736,7 +40933,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L38",
+      "source_location": "L42",
       "weight": 1.0
     },
     {
@@ -40747,7 +40944,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L48",
+      "source_location": "L52",
       "weight": 1.0
     },
     {
@@ -40758,7 +40955,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L56",
+      "source_location": "L60",
       "weight": 1.0
     },
     {
@@ -40769,7 +40966,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L61",
+      "source_location": "L65",
       "weight": 1.0
     },
     {
@@ -40780,23 +40977,23 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L75",
+      "source_location": "L79",
       "weight": 1.0
     },
     {
       "source": "src_tauri_src_watcher",
-      "target": "src_tauri_src_watcher_active",
+      "target": "src_tauri_src_watcher_write",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L85",
+      "source_location": "L86",
       "weight": 1.0
     },
     {
       "source": "src_tauri_src_watcher",
-      "target": "src_tauri_src_watcher_start",
+      "target": "src_tauri_src_watcher_flush",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -41384,7 +41581,7 @@
     },
     {
       "source": "src_lib_graph_svelte_src_lib_graph",
-      "target": "graph",
+      "target": "lib_graph_graph",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -41411,7 +41608,7 @@
     },
     {
       "source": "src_lib_projects_svelte_src_lib_projects",
-      "target": "projects",
+      "target": "lib_projects_projects",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -41501,15 +41698,6 @@
     },
     {
       "source": "src_routes_page",
-      "target": "codemirror_state_state",
-      "relation": "imports_from",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/routes/+page.svelte"
-    },
-    {
-      "source": "src_routes_page",
       "target": "core",
       "relation": "imports_from",
       "_origin": "ast",
@@ -41520,15 +41708,6 @@
     {
       "source": "src_routes_page",
       "target": "editor",
-      "relation": "imports_from",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/routes/+page.svelte"
-    },
-    {
-      "source": "src_routes_page",
-      "target": "event",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -41618,6 +41797,15 @@
     },
     {
       "source": "src_routes_page",
+      "target": "state",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/routes/+page.svelte"
+    },
+    {
+      "source": "src_routes_page",
       "target": "svelte",
       "relation": "imports_from",
       "_origin": "ast",
@@ -41628,6 +41816,15 @@
     {
       "source": "src_routes_page",
       "target": "taskdialog_svelte",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/routes/+page.svelte"
+    },
+    {
+      "source": "src_routes_page",
+      "target": "tauri_apps_api_event_event",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -42510,6 +42707,18 @@
       "weight": 1.0
     },
     {
+      "source": "src_tauri_src_export_blocks",
+      "target": "src_tauri_src_watcher_flush",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "context": "call",
+      "source_file": "src-tauri/src/export.rs",
+      "source_location": "L83",
+      "weight": 1.0
+    },
+    {
       "source": "src_tauri_src_export_md_blocks",
       "target": "src_tauri_src_org_parts_line",
       "relation": "calls",
@@ -42554,7 +42763,7 @@
       "confidence_score": 0.85,
       "context": "call",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L175",
+      "source_location": "L202",
       "weight": 1.0
     },
     {
@@ -42566,7 +42775,7 @@
       "confidence_score": 0.85,
       "context": "call",
       "source_file": "src-tauri/src/watcher.rs",
-      "source_location": "L193",
+      "source_location": "L220",
       "weight": 1.0
     },
     {
@@ -42799,5 +43008,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "ba3a884529e69cc3d6d3bb0bb8276e4d2aa8b682"
+  "built_at_commit": "8de8e095a30cd524fc104b3e33e607553f75b7ff"
 }
