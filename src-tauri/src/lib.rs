@@ -865,7 +865,17 @@ fn ai_draft(app: AppHandle, s: State<App>, prompt: String, one_line: bool) -> R<
     ai::generate(c.ai_backend, &c.ai_url, &models_dir(&app)?, c.ai_model.trim(), &prompt, one_line)
 }
 
-/// Stop the built-in model's running draft; it returns an error.
+/// The model's answer to the chat MESSAGES, about the open NOTE (name, text) if given.
+#[tauri::command(async)]
+fn ai_chat(app: AppHandle, s: State<App>, messages: Vec<ai::Msg>, note: Option<(String, String)>) -> R<String> {
+    let c = s.cfg();
+    if c.ai_model.trim().is_empty() {
+        return Err("Pick a model with AI drafts: choose model… (Space f a) to chat with a local model.".into());
+    }
+    ai::chat(c.ai_backend, &c.ai_url, &models_dir(&app)?, c.ai_model.trim(), note.as_ref().map(|(n, t)| (n.as_str(), t.as_str())), &messages)
+}
+
+/// Stop the built-in model's running draft or chat answer; it returns an error.
 #[tauri::command]
 fn ai_draft_cancel() {
     ai::cancel_draft();
@@ -1209,7 +1219,7 @@ pub fn run() {
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_edit_session, tc_add_session, activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_edit_session, tc_add_session, activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_linked, export_report, export_open
         ])
         .build(tauri::generate_context!())

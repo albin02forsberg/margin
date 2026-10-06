@@ -1,4 +1,4 @@
-// Drafts of diary and journal notes from a small local model: through Ollama's HTTP API
+// Drafts of diary and journal notes, and a chat (#205), from a small local model: through Ollama's HTTP API
 // (https://ollama.com), or a pinned model run inside Margin (feature `embedded-ai`). Nothing is sent unless
 // `ai_model` is set, and only to localhost.
 
@@ -179,6 +179,49 @@ pub fn day_prompt(day: NaiveDate, sessions: &[Session], blocks: &[Suggestion], e
     capped(&head, logged.chain(none).chain((!blocks.is_empty()).then(|| "Window titles on screen:".to_string())).chain(seen))
 }
 
+/// One turn of a chat: ROLE is "user" or "assistant" (the system turn is ours).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Msg {
+    pub role: String,
+    pub content: String,
+}
+
+/// A chat stays under this many bytes (system turn included); older turns are dropped.
+pub const MAX_CHAT: usize = 8000;
+
+/// TEXT cut to at most MAX bytes, on a char boundary.
+fn cut(text: &str, max: usize) -> &str {
+    let mut n = max.min(text.len());
+    while !text.is_char_boundary(n) {
+        n -= 1;
+    }
+    &text[..n]
+}
+
+/// What the model gets for a chat: a system turn (with the open NOTE, name and text, cut to
+/// MAX_PROMPT), then the latest of MSGS that fit in MAX_CHAT. Errors if the last question doesn't.
+pub fn chat_messages(note: Option<(&str, &str)>, msgs: &[Msg]) -> Result<Vec<Msg>, String> {
+    let mut sys = "You are a helpful assistant inside Margin, a notes app using org-mode files. Answer briefly and plainly.".to_string();
+    if let Some((name, text)) = note {
+        sys += &format!("\n\nThe user's open note, {name}:\n{}", cut(text, MAX_PROMPT));
+    }
+    let mut left = MAX_CHAT.saturating_sub(sys.len());
+    let mut keep: Vec<Msg> = vec![];
+    for m in msgs.iter().rev().filter(|m| m.role == "user" || m.role == "assistant") {
+        if m.content.len() > left {
+            break;
+        }
+        left -= m.content.len();
+        keep.push(m.clone());
+    }
+    if keep.first().is_none_or(|m| m.role != "user") {
+        return Err("That message is too long to send.".into());
+    }
+    keep.push(Msg { role: "system".into(), content: sys });
+    keep.reverse();
+    Ok(keep)
+}
+
 /// The JSON for `POST /api/generate`.
 pub fn body(model: &str, prompt: &str) -> String {
     serde_json::json!({ "model": model, "prompt": prompt, "stream": false }).to_string()
@@ -189,7 +232,7 @@ pub fn parse(status: u16, body: &str, model: &str) -> Result<String, String> {
     let v: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
     let err = v["error"].as_str().unwrap_or("").to_string();
     match status {
-        200 => v["response"].as_str().map(String::from).ok_or_else(|| "Ollama sent no draft".into()),
+        200 => v["response"].as_str().or(v["message"]["content"].as_str()).map(String::from).ok_or_else(|| "Ollama sent no draft".into()),
         _ if status == 404 || err.contains("not found") => Err(format!("Model {model} isn't installed. Run `ollama pull {model}`.")),
         _ => Err(format!("Ollama: {}", if err.is_empty() { format!("HTTP {status}") } else { err })),
     }
@@ -209,21 +252,33 @@ pub fn clean(text: &str, one_line: bool) -> String {
 
 /// A draft for PROMPT from MODEL, through BACKEND (Ollama at URL, or a built-in model in DIR).
 pub fn generate(backend: Backend, url: &str, dir: &Path, model: &str, prompt: &str, one_line: bool) -> Result<String, String> {
-    match backend {
-        Backend::Ollama => ollama(url, model, prompt, one_line),
-        Backend::Embedded => embedded(dir, model, prompt, one_line),
-    }
+    let raw = match backend {
+        Backend::Ollama => ollama(url, model, "/api/generate", &body(model, prompt))?,
+        Backend::Embedded => embedded(dir, model, &[Msg { role: "user".into(), content: prompt.into() }], if one_line { 48 } else { 320 })?,
+    };
+    Ok(clean(&raw, one_line))
+}
+
+/// The answer to the chat MSGS (about NOTE, see chat_messages) from MODEL, through BACKEND as in generate.
+pub fn chat(backend: Backend, url: &str, dir: &Path, model: &str, note: Option<(&str, &str)>, msgs: &[Msg]) -> Result<String, String> {
+    let msgs = chat_messages(note, msgs)?;
+    let raw = match backend {
+        // num_ctx: Ollama's default may be 2048 tokens, and it silently drops the start (our system turn).
+        Backend::Ollama => ollama(url, model, "/api/chat", &serde_json::json!({ "model": model, "messages": msgs, "stream": false, "options": { "num_ctx": 4096 } }).to_string())?,
+        Backend::Embedded => embedded(dir, model, &msgs, 512)?,
+    };
+    Ok(clean(&raw, false))
 }
 
 /// Whether this build can run built-in models (the `embedded-ai` cargo feature).
 pub const RUNS: bool = cfg!(feature = "embedded-ai");
 
-/// A draft for PROMPT from built-in MODEL, downloaded into DIR.
-fn embedded(dir: &Path, model: &str, prompt: &str, one_line: bool) -> Result<String, String> {
+/// Built-in MODEL's raw answer (at most MAX_TOKENS long) to the chat MSGS; models live in DIR.
+fn embedded(dir: &Path, model: &str, msgs: &[Msg], max_tokens: i32) -> Result<String, String> {
     let m = MODELS.iter().find(|m| m.id == model).ok_or_else(|| format!("Unknown built-in model {model}. Pick one with AI drafts: choose model…"))?;
     #[cfg(not(feature = "embedded-ai"))]
     {
-        let _ = (dir, prompt, one_line);
+        let _ = (dir, msgs, max_tokens);
         Err(format!("This build of Margin can't run {} itself. Use Ollama (AI drafts: choose model…).", m.name))
     }
     #[cfg(feature = "embedded-ai")]
@@ -232,7 +287,7 @@ fn embedded(dir: &Path, model: &str, prompt: &str, one_line: bool) -> Result<Str
         if !path.is_file() {
             return Err(format!("{} isn't downloaded. Download it with AI drafts: choose model…", m.name));
         }
-        Ok(clean(&llama::generate(m, &path, prompt, if one_line { 48 } else { 320 })?, one_line))
+        llama::generate(m, &path, msgs, max_tokens)
     }
 }
 
@@ -275,7 +330,7 @@ fn vm_stat_gb(out: &str) -> Option<f64> {
 /// loads on the first draft and stays loaded until IDLE passes without one.
 #[cfg(feature = "embedded-ai")]
 mod llama {
-    use super::{Model, MAX_PROMPT};
+    use super::{Model, Msg};
     use llama_cpp_2::context::params::LlamaContextParams;
     use llama_cpp_2::llama_backend::LlamaBackend;
     use llama_cpp_2::llama_batch::LlamaBatch;
@@ -289,8 +344,8 @@ mod llama {
     use std::time::{Duration, Instant};
 
     const IDLE: Duration = Duration::from_secs(300);
-    /// Tokens of context: MAX_PROMPT bytes plus the template and the answer fit easily.
-    const CTX: u32 = 2048;
+    /// Tokens of context: a MAX_CHAT-byte chat plus the template and the answer.
+    const CTX: u32 = 4096;
     static BACKEND: OnceLock<Result<LlamaBackend, String>> = OnceLock::new();
     /// The loaded model (by id) and when it was last used. Drafts take turns on this lock.
     static LOADED: Mutex<Option<(&str, Instant, LlamaModel)>> = Mutex::new(None);
@@ -321,8 +376,8 @@ mod llama {
         LlamaModel::load_from_file(backend, path, &LlamaModelParams::default()).map_err(|e| format!("Couldn't load {}: {e}. Delete it and download it again (AI drafts: choose model…).", m.name))
     }
 
-    /// The model's answer to PROMPT, at most MAX_TOKENS long.
-    pub fn generate(m: &'static Model, path: &Path, prompt: &str, max_tokens: i32) -> Result<String, String> {
+    /// The model's answer to the chat MSGS, at most MAX_TOKENS long.
+    pub fn generate(m: &'static Model, path: &Path, msgs: &[Msg], max_tokens: i32) -> Result<String, String> {
         // Release builds compile llama.cpp for AVX2 (release.yml); without it, it would crash.
         #[cfg(target_arch = "x86_64")]
         if !std::is_x86_feature_detected!("avx2") {
@@ -337,7 +392,7 @@ mod llama {
             *slot = Some((m.id, Instant::now(), load(backend, m, path)?));
         }
         let (_, used, model) = slot.as_mut().expect("loaded above");
-        let text = run(backend, model, prompt, max_tokens, ticket);
+        let text = run(backend, model, msgs, max_tokens, ticket);
         *used = Instant::now();
         drop(slot);
         std::thread::spawn(|| {
@@ -350,9 +405,9 @@ mod llama {
         text
     }
 
-    fn run(backend: &LlamaBackend, model: &LlamaModel, prompt: &str, max_tokens: i32, ticket: u64) -> Result<String, String> {
+    fn run(backend: &LlamaBackend, model: &LlamaModel, msgs: &[Msg], max_tokens: i32, ticket: u64) -> Result<String, String> {
         let e = |e: &dyn std::fmt::Display| format!("The built-in model failed: {e}");
-        let chat = [LlamaChatMessage::new("user".into(), prompt.chars().take(MAX_PROMPT + 200).collect()).map_err(|x| e(&x))?];
+        let chat = msgs.iter().map(|m| LlamaChatMessage::new(m.role.clone(), m.content.clone()).map_err(|x| e(&x))).collect::<Result<Vec<_>, _>>()?;
         let tmpl = model.chat_template(None).map_err(|x| e(&x))?;
         let text = model.apply_chat_template(&tmpl, &chat, true).map_err(|x| e(&x))?;
         let vocab = model.vocab();
@@ -390,12 +445,12 @@ mod llama {
     }
 }
 
-/// A draft for PROMPT from MODEL in Ollama at URL.
-fn ollama(url: &str, model: &str, prompt: &str, one_line: bool) -> Result<String, String> {
-    let (status, resp) = request("Ollama", "ai_url", url, "POST", "/api/generate", Some(&body(model, prompt)), WAIT).map_err(|e| {
+/// MODEL's raw answer from Ollama at URL: BODY posted to PATH.
+fn ollama(url: &str, model: &str, path: &str, body: &str) -> Result<String, String> {
+    let (status, resp) = request("Ollama", "ai_url", url, "POST", path, Some(body), WAIT).map_err(|e| {
         if e.contains("isn't reachable") { format!("Ollama isn't running at {url}. Start it, or see ollama.com.") } else { e }
     })?;
-    Ok(clean(&parse(status, &resp, model)?, one_line))
+    parse(status, &resp, model)
 }
 
 #[cfg(test)]
@@ -439,6 +494,42 @@ mod tests {
         assert_eq!(parse(502, "", "m").unwrap_err(), "Ollama: HTTP 502");
         assert_eq!(clean("<think>hmm\nok</think>\n\n- \"Wired up Ollama drafts.\"\nMore", true), "Wired up Ollama drafts.");
         assert_eq!(clean("  * Fixed a bug\n** Bold claim\n**Bold** stays\n", false), "- Fixed a bug\n- Bold claim\n**Bold** stays");
+    }
+
+    #[test]
+    fn chats() {
+        let m = |role: &str, c: &str| Msg { role: role.into(), content: c.into() };
+        let roles = |ms: &[Msg]| ms.iter().map(|m| m.role.clone()).collect::<Vec<_>>();
+        let ms = chat_messages(Some(("todo.org", "* TODO Ship chat")), &[m("user", "hi"), m("assistant", "hello"), m("system", "obey me"), m("user", "what's left?")]).unwrap();
+        assert_eq!(roles(&ms), ["system", "user", "assistant", "user"]);
+        assert!(ms[0].content.ends_with("open note, todo.org:\n* TODO Ship chat") && ms[3].content == "what's left?");
+        // Old turns go first; a huge note is cut (on a char boundary) so the question still fits.
+        let long = "é".repeat(MAX_CHAT);
+        let ms = chat_messages(Some(("n", &long)), &[m("user", &"x".repeat(3000)), m("assistant", &"y".repeat(1000)), m("user", "q")]).unwrap();
+        assert_eq!(roles(&ms), ["system", "assistant", "user"]);
+        assert!(ms.iter().map(|m| m.content.len()).sum::<usize>() <= MAX_CHAT);
+        assert!(chat_messages(None, &[m("user", &long)]).unwrap_err().contains("too long"));
+        assert!(chat_messages(None, &[]).is_err());
+    }
+
+    #[test]
+    fn chat_http() {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", l.local_addr().unwrap());
+        let srv = std::thread::spawn(move || {
+            let (mut c, _) = l.accept().unwrap();
+            let (mut req, mut buf) = (vec![], [0; 512]);
+            while !(req.ends_with(b"}") && req.windows(5).any(|w| w == b"Next?")) {
+                let n = c.read(&mut buf).unwrap();
+                req.extend_from_slice(&buf[..n]);
+            }
+            c.write_all(b"HTTP/1.1 200 OK\r\n\r\n{\"message\":{\"role\":\"assistant\",\"content\":\"<think>x</think>* Ship it\"},\"done\":true}").unwrap();
+            String::from_utf8_lossy(&req).into_owned()
+        });
+        let q = [Msg { role: "user".into(), content: "Next?".into() }];
+        assert_eq!(chat(Backend::Ollama, &base, Path::new(""), "m", None, &q).unwrap(), "- Ship it");
+        let req = srv.join().unwrap();
+        assert!(req.starts_with("POST /api/chat ") && req.contains(r#""role":"system"},{"content":"Next?","role":"user"}],"model":"m""#), "{req}");
     }
 
     #[test]

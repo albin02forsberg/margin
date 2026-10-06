@@ -234,6 +234,7 @@ Vim keys everywhere. On top of that:
 | Space x … | Task commands for the heading at the cursor |
 | Space n b | Notes linking here, plus unlinked mentions of this note's title (**Link** turns one into an `[[id:]]` link; Space n u undoes) |
 | Space n g | Graph of notes within two links of this one; click a note to open it |
+| Space n a | AI chat with the local model, about this note if you like ([Drafts from a local model](#drafts-from-a-local-model)) |
 
 ![A note with its local graph](docs/screenshots/graph.png)
 
@@ -429,6 +430,12 @@ use Ollama.
 
 Both show exactly what the model gets and send nothing until you confirm.
 `activity_exclude` titles are never included.
+
+**AI chat** (`Space n a`) opens a chat panel with the same model. With a note
+open, *Include <note>* (on by default) sends that note's text, unsaved edits
+included, along with your messages; untick it to chat without it. Long chats
+drop their oldest turns. The chat lives only in memory: **Clear** empties it,
+and it's gone when Margin quits.
 
 ## Export
 
