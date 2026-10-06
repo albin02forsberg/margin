@@ -806,6 +806,21 @@ fn activity_learn(s: State<App>, title: String, project: String, editor: bool) -
     activity::learn_file(&s.tc().dir.join("activity_rules.toml"), &title, &project, editor)
 }
 
+/// The learned rules as `[{pattern, project, missing}]`; MISSING when the project isn't an active one, so the rule is skipped.
+#[tauri::command]
+fn activity_rules_list(s: State<App>) -> R<Value> {
+    let tc = s.tc();
+    let projects = tc.projects();
+    let rules = activity::rule_list(&timeclock::read_or_empty(&tc.dir.join("activity_rules.toml"))?)?;
+    Ok(rules.into_iter().map(|(p, project)| json!({ "pattern": p, "missing": !projects.get(&project).is_some_and(|x| x.active), "project": project })).collect())
+}
+
+/// Forget the learned rule for PATTERN.
+#[tauri::command]
+fn activity_rules_delete(s: State<App>, pattern: String) -> R<()> {
+    activity::forget_file(&s.tc().dir.join("activity_rules.toml"), &pattern)
+}
+
 /// What the model gets to draft a diary note for an accepted suggestion.
 #[tauri::command]
 fn ai_note_prompt(s: State<App>, project: Option<String>, task: Option<String>, apps: Vec<String>, titles: Vec<String>) -> R<String> {
@@ -1180,7 +1195,7 @@ pub fn run() {
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_edit_session, tc_add_session, activity_suggestions, activity_dismiss, activity_learn, ai_note_prompt, ai_day_prompt, ai_draft, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_edit_session, tc_add_session, activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_linked, export_report, export_open
         ])
         .build(tauri::generate_context!())

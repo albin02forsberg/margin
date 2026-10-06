@@ -6,7 +6,7 @@
   type List = "views" | "templates";
   /** The config.toml settings as a form, saved per group; unsaved fields survive a reload of CONFIG. */
   /** ERROR: why config.toml couldn't be loaded; MISSING: it's gone, so RECREATE can write it from the current settings. */
-  let { config, defaults, error, missing, save, edit, recreate }: { config: Record<string, unknown>; defaults: Record<string, unknown>; error: string | null; missing: boolean; save: (values: Record<string, unknown>, reset?: string[], tables?: Partial<Record<List, Row[]>>) => Promise<void>; edit: () => void; recreate: () => Promise<void> } = $props();
+  let { config, defaults, error, missing, save, edit, recreate, active, reload }: { config: Record<string, unknown>; defaults: Record<string, unknown>; error: string | null; missing: boolean; save: (values: Record<string, unknown>, reset?: string[], tables?: Partial<Record<List, Row[]>>) => Promise<void>; edit: () => void; recreate: () => Promise<void>; active: boolean; reload: number } = $props();
   let form = $state<Form>({});
   let base = $state<Form>({});
   let errors = $state<Record<string, string>>({});
@@ -87,6 +87,22 @@
     }
   }
   gnomeExtension();
+  /** The profile's learned activity rules (activity_rules.toml), reloaded when the page is shown. */
+  type Rule = { pattern: string; project: string; missing: boolean };
+  let rules = $state<Rule[]>([]);
+  async function loadRules(f: () => Promise<unknown> = async () => {}) {
+    try {
+      await f();
+      rules = await invoke<Rule[]>("activity_rules_list");
+      errors.rules = "";
+    } catch (e) {
+      errors.rules = String(e);
+    }
+  }
+  $effect(() => {
+    void reload;
+    if (active) untrack(() => loadRules());
+  });
   const text = (e: Event) => (e.currentTarget as HTMLInputElement).value;
   async function restore() {
     try {
@@ -145,6 +161,20 @@
       </fieldset>
     </form>
   {/each}
+  {#if rules.length || errors.rules}
+    <fieldset class="list rules">
+      <legend>Learned activity rules</legend>
+      <small>Suggested blocks whose title matches go to the project; learned when you log a suggestion to another project than guessed. Kept in this profile's activity_rules.toml.</small>
+      {#each rules as r (r.pattern)}
+        <div class="row" class:gone={r.missing}>
+          <code>{r.pattern}</code>
+          <span>→ {r.project}{#if r.missing} <small>(no such active project, so it's skipped)</small>{/if}</span>
+          <button type="button" class="link" title="Delete rule" onclick={() => loadRules(() => invoke("activity_rules_delete", { pattern: r.pattern }))}>✕</button>
+        </div>
+      {/each}
+      {#if errors.rules}<p class="error">⚠ {errors.rules}</p>{/if}
+    </fieldset>
+  {/if}
   {#snippet buttons(list: Row[], i: number)}
     <button type="button" class="link" title="Move up" disabled={i === 0} onclick={() => move(list, i, -1)}>↑</button>
     <button type="button" class="link" title="Move down" disabled={i === list.length - 1} onclick={() => move(list, i, 1)}>↓</button>
@@ -218,6 +248,10 @@
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s1); }
   .row button.link { text-decoration: none; padding: 0 var(--s1); }
   .row button.link:disabled { background: none; color: var(--dim); }
+  .rules { margin-top: 18px; }
+  .rules .row { grid-template-columns: 1fr 1fr auto; }
+  .rules code { font: var(--fs-md) var(--mono); overflow-wrap: anywhere; }
+  .gone { color: var(--dim); }
   .dim { color: var(--dim); font-size: var(--fs-md); }
   .error { color: var(--todo); }
 </style>
