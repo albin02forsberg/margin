@@ -44,7 +44,7 @@
       "deb": { "depends": ["libxss1"] },
       "rpm": { "depends": ["libXScrnSaver"] }
     },
-    "macOS": { "signingIdentity": "-" }
+    "macOS": { "signingIdentity": "-", "minimumSystemVersion": "10.15" }
   },
   "plugins": {
     "updater": {

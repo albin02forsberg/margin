@@ -8,6 +8,7 @@ on:
       - src-tauri/Cargo.toml
       - src-tauri/Cargo.lock
       - src-tauri/src/ai.rs
+      - src-tauri/tauri.conf.json
       - .github/workflows/embedded-ai.yml
       - .github/workflows/release.yml
   workflow_dispatch:
@@ -35,6 +36,10 @@ jobs:
         if: matrix.platform != 'macos-latest'
         shell: bash
         run: printf 'GGML_AVX=ON\nGGML_AVX2=ON\nGGML_FMA=ON\nGGML_F16C=ON\nGGML_BMI2=ON\n' >> "$GITHUB_ENV"
+      # tauri build sets MACOSX_DEPLOYMENT_TARGET from minimumSystemVersion; llama.cpp needs >= 10.15.
+      - name: macOS deployment target (as tauri build)
+        if: matrix.platform == 'macos-latest'
+        run: echo "MACOSX_DEPLOYMENT_TARGET=$(jq -r .bundle.macOS.minimumSystemVersion src-tauri/tauri.conf.json)" >> "$GITHUB_ENV"
       - name: Build
         shell: bash
         working-directory: src-tauri
