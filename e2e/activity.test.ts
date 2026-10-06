@@ -76,7 +76,7 @@ describe("Built-in activity watcher", () => {
   let d: Dirs;
   before(async () => {
     d = await launch({
-      config: [`activity_watcher = true`],
+      config: [`activity_watcher = true`, `activity_meetings = ["("]`],
       files: ({ data }) => {
         writeFileSync(join(data, "work", "projects.toml"), `[Margin]\nexport_code = "M"\n\n[Acme]\nexport_code = "A"\n`);
         mkdirSync(join(data, "activity"));
@@ -97,6 +97,9 @@ describe("Built-in activity watcher", () => {
     assert.equal(rows.length, 1, rows.join("\n"));
     assert.match(rows[0], /09:00–09:40/);
     assert.doesNotMatch(rows[0], /KeePass/, "excluded app shown");
+    // A bad meeting pattern is a warning next to the suggestions, without the ActivityWatch hint.
+    await find(".suggested p", "activity_meetings:");
+    assert.ok(!(await texts(".suggested p")).some((t) => t.includes("running?")), "ActivityWatch hint shown");
   });
 
   it("learns the project picked over the guess, and deletes the rule in Settings", async () => {

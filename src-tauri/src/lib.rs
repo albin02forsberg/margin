@@ -771,15 +771,29 @@ fn activity_suggestions(s: State<App>, date_input: String) -> R<Value> {
     let projects: Vec<String> = tc.projects().into_iter().filter(|(_, p)| p.active).map(|(n, _)| n).collect();
     let tracked = timeclock::spans(&tc.events(), timeclock::now());
     let tasks: Vec<activity::Task> = org::todos(&s.files(), &s.kw(), false, |_, _| true, today()).into_iter().map(|t| (t.title, t.category)).collect();
-    let meetings = activity::rules("activity_meetings", &c.activity_meetings)?;
-    let calendar = match c.activity_calendar.trim() {
-        "" => vec![],
-        p => ics::events_on(&ics::calendar(p, &ics::CALENDAR, std::time::Instant::now(), ics::get)?, d),
-    };
+    let (meetings, calendar, w) = meetings_and_calendar(&c, d, |p| ics::calendar(p, &ics::CALENDAR, std::time::Instant::now(), ics::get));
+    warnings.extend(w);
     let (rules, bad) = activity::parse_rules(&timeclock::read_or_empty(&tc.dir.join("activity_rules.toml"))?);
     warnings.extend(bad);
     let all = activity::suggest(&window, &afk, &tracked, &exclude, activity::Known { projects: &projects, tasks: &tasks, meetings: &meetings, calendar: &calendar, rules: &rules }, d);
     Ok(json!({ "source": source, "items": activity::undismissed(all, &dismissed(&tc).unwrap_or_default()), "warnings": warnings }))
+}
+
+/// The meeting patterns that compile and the calendar's events on D (via LOAD, the .ics text of the configured source);
+/// a bad pattern or an unreachable calendar is a warning, not a reason to hide the other suggestions.
+fn meetings_and_calendar(c: &Config, d: NaiveDate, load: impl FnOnce(&str) -> R<String>) -> (Vec<regex::Regex>, Vec<ics::Event>, Vec<String>) {
+    let (meetings, mut warnings) = activity::lenient("activity_meetings", &c.activity_meetings);
+    let calendar = match c.activity_calendar.trim() {
+        "" => vec![],
+        p => match load(p) {
+            Ok(t) => ics::events_on(&t, d),
+            Err(e) => {
+                warnings.push(e);
+                vec![]
+            }
+        },
+    };
+    (meetings, calendar, warnings)
 }
 
 /// The profile's `activity_dismissed.json`; missing is empty, unreadable or malformed is an error.
@@ -1217,6 +1231,15 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bad_meeting_pattern_and_calendar_only_warn() {
+        let c: Config = toml::from_str("activity_meetings = [\"(\", \"standup\"]\nactivity_calendar = \"x.ics\"").unwrap();
+        let d = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+        let (m, cal, w) = meetings_and_calendar(&c, d, |_| Err("activity_calendar (URL): offline".into()));
+        assert_eq!((m.len(), cal.len(), w.len()), (1, 0, 2));
+        assert!(w[0].starts_with("activity_meetings:") && w[1].starts_with("activity_calendar"));
+    }
 
     #[test]
     fn config_changes_split_out() {

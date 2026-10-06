@@ -355,7 +355,8 @@ when its title or attendees name one. Daily, weekly, monthly (by date,
 or like "second Monday" / "last Friday") and yearly repeats (with exceptions)
 are understood;
 times with a time zone are read as this computer's time, all-day events are
-ignored.
+ignored. A bad `activity_meetings` pattern or an unreadable calendar is shown as a
+warning above the suggestions; the rest still appear.
 **Accept** confirms the project and an optional diary note and adds the session
 to the log at its place in the day. Pick another project than the guessed one
 and Margin learns it: a rule for the block's top title (a site, or an editor's

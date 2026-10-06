@@ -170,12 +170,12 @@
 
     {#if sugg}
       <section class="suggested">
-        <h3>Suggested <span class="dim">from {source === "Margin" ? "this computer's activity" : source} ·{day === todayIso ? "today" : `${dayName(day)} ${day}`} · <kbd>h</kbd><kbd>l</kbd> day</span></h3>
+        <h3>Suggested <span class="dim">from {source === "Margin" ? "this computer's activity" : source} · {day === todayIso ? "today" : `${dayName(day)} ${day}`} · <kbd>h</kbd><kbd>l</kbd> day</span></h3>
         {#each warnings as w}
-          <p class="dim">Skipped a bad pattern: {w}</p>
+          <p class="dim">{w}</p>
         {/each}
         {#if awError}
-          <p class="dim">{awError}. Is <a href="https://activitywatch.net/" target="_blank" rel="noreferrer">ActivityWatch</a> running?</p>
+          <p class="dim">{awError}.{#if /activitywatch/i.test(awError)} Is <a href="https://activitywatch.net/" target="_blank" rel="noreferrer">ActivityWatch</a> running?{/if}</p>
         {:else if sugg.length}
           <table>
             <tbody>
