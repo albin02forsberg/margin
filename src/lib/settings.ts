@@ -36,7 +36,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "activitywatch_url", label: "ActivityWatch server", hint: "e.g. http://localhost:5600; empty = off" },
     { key: "activity_exclude", label: "Activity to ignore", kind: "list", hint: "regexes over app names and window titles, one per line" },
     { key: "activity_meetings", label: "Meetings", kind: "list", hint: "regexes over app names, window titles and URLs, one per line" },
-    { key: "activity_calendar", label: "Meeting calendar (.ics)", hint: "names meeting suggestions; empty = off" },
+    { key: "activity_calendar", label: "Meeting calendar (.ics)", hint: "a file or an https:// URL; names meeting suggestions; empty = off" },
     { key: "ai_url", label: "Ollama server", hint: "local addresses only; pick the model with Space f a" },
   ] },
 ];

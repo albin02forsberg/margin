@@ -200,10 +200,85 @@ pub fn events_on(text: &str, day: NaiveDate) -> Vec<Event> {
     out
 }
 
+/// How long a fetched calendar is reused before it's fetched again.
+const CALENDAR_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+/// The last fetched calendar: its URL, when, and the text or error.
+pub type CalendarCache = std::sync::Mutex<Option<(String, std::time::Instant, Result<String, String>)>>;
+pub static CALENDAR: CalendarCache = std::sync::Mutex::new(None);
+
+/// The .ics text of `activity_calendar` SRC: an `https://` (or `webcal://`) URL goes through
+/// FETCH, its answer (or error) reused for 5 minutes from CACHE; anything else is a file path.
+/// Errors never show the URL: private calendar URLs hold a secret.
+pub fn calendar(src: &str, cache: &CalendarCache, now: std::time::Instant, fetch: impl FnOnce(&str) -> Result<String, String>) -> Result<String, String> {
+    if src.starts_with("http://") {
+        return Err("activity_calendar: only https:// URLs are read".into());
+    }
+    let Some(url) = src.strip_prefix("webcal://").map(|r| format!("https://{r}")).or_else(|| src.starts_with("https://").then(|| src.to_string())) else {
+        return std::fs::read_to_string(crate::config::expand(src)).map_err(|e| format!("activity_calendar {src}: {e}"));
+    };
+    let mut c = cache.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((_, _, r)) = c.as_ref().filter(|(u, at, _)| *u == url && now.duration_since(*at) < CALENDAR_TTL) {
+        return r.clone();
+    }
+    let r = fetch(&url).map_err(|e| format!("activity_calendar (URL): {e}"));
+    *c = Some((url, now, r.clone()));
+    r
+}
+
+/// GET URL over HTTPS (10 s timeout) on a thread of its own, so it works from any caller. Errors leave the URL out.
+pub fn get(url: &str) -> Result<String, String> {
+    let url = url.to_string();
+    let run = async move {
+        if rustls::crypto::CryptoProvider::get_default().is_none() {
+            let _ = rustls::crypto::ring::default_provider().install_default();
+        }
+        let e = |e: reqwest::Error| e.without_url().to_string();
+        let resp = reqwest::Client::builder().user_agent("Margin").timeout(std::time::Duration::from_secs(10)).build().map_err(e)?.get(url).send().await.map_err(e)?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status().as_u16()));
+        }
+        resp.text().await.map_err(e)
+    };
+    std::thread::spawn(move || tauri::async_runtime::block_on(run)).join().map_err(|_| "fetch failed".to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn calendar_from_a_url() {
+        let (cache, t0) = (CalendarCache::default(), std::time::Instant::now());
+        let calls = std::cell::RefCell::new(vec![]);
+        let fetch = |u: &str| {
+            calls.borrow_mut().push(u.to_string());
+            if u.contains("bad") { Err("HTTP 404".to_string()) } else { Ok(format!("ics of {u}")) }
+        };
+        let at = |s: u64| t0 + std::time::Duration::from_secs(s);
+        assert_eq!(calendar("https://c.example/s3cret.ics", &cache, t0, fetch), Ok("ics of https://c.example/s3cret.ics".into()));
+        assert_eq!(calendar("https://c.example/s3cret.ics", &cache, at(299), fetch), Ok("ics of https://c.example/s3cret.ics".into()));
+        assert_eq!(calls.borrow().len(), 1, "reused within 5 minutes");
+        calendar("https://c.example/s3cret.ics", &cache, at(300), fetch).unwrap();
+        assert_eq!(calls.borrow().len(), 2, "fetched again after");
+        calendar("webcal://c.example/other.ics", &cache, at(301), fetch).unwrap();
+        assert_eq!(calls.borrow()[2], "https://c.example/other.ics", "another URL isn't the cached one; webcal is https");
+        let err = calendar("https://c.example/bad/s3cret", &cache, at(302), fetch).unwrap_err();
+        assert_eq!(err, "activity_calendar (URL): HTTP 404");
+        assert_eq!(calendar("https://c.example/bad/s3cret", &cache, at(303), fetch), Err(err), "errors are cached too");
+        assert_eq!(calls.borrow().len(), 4);
+        assert!(!calendar("http://c.example/s3cret", &cache, t0, fetch).unwrap_err().contains("s3cret"));
+        assert!(calendar("/no/such/file.ics", &cache, t0, fetch).unwrap_err().starts_with("activity_calendar /no/such/file.ics: "), "a path is read as a file");
+        assert_eq!(calls.borrow().len(), 4);
+    }
+
+    #[test]
+    #[ignore = "needs the network"]
+    fn fetches_over_https() {
+        assert!(get("https://example.com/").unwrap().contains("<html"));
+        let err = get("https://margin.invalid/s3cret.ics").unwrap_err();
+        assert!(!err.contains("s3cret") && !err.contains("margin.invalid"), "{err}");
+    }
 
     #[test]
     fn builds_feed() {

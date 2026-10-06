@@ -774,7 +774,7 @@ fn activity_suggestions(s: State<App>, date_input: String) -> R<Value> {
     let meetings = activity::rules("activity_meetings", &c.activity_meetings)?;
     let calendar = match c.activity_calendar.trim() {
         "" => vec![],
-        p => ics::events_on(&std::fs::read_to_string(config::expand(p)).map_err(|e| format!("activity_calendar {p}: {e}"))?, d),
+        p => ics::events_on(&ics::calendar(p, &ics::CALENDAR, std::time::Instant::now(), ics::get)?, d),
     };
     let (rules, bad) = activity::parse_rules(&timeclock::read_or_empty(&tc.dir.join("activity_rules.toml"))?);
     warnings.extend(bad);
