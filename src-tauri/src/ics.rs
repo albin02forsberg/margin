@@ -130,17 +130,35 @@ fn unescape(s: &str) -> String {
     s.replace("\\n", " ").replace("\\N", " ").replace("\\,", ",").replace("\\;", ";").replace("\\\\", "\\")
 }
 
-/// Whether a series starting on FIRST under RRULE has an occurrence on DAY. DAILY and WEEKLY
-/// (INTERVAL, BYDAY, UNTIL, COUNT) are understood; other rules only occur on FIRST.
+/// Whether a series starting on FIRST under RRULE has an occurrence on DAY. DAILY, WEEKLY,
+/// MONTHLY and YEARLY (INTERVAL, BYDAY with `2MO`/`-1FR` ordinals, BYMONTHDAY, BYMONTH, UNTIL,
+/// COUNT) are understood; other rules only occur on FIRST.
+// ponytail: no BYSETPOS/BYWEEKNO/BYYEARDAY, and a YEARLY BYDAY ordinal counts within the month, not the year.
 fn occurs(rule: &str, first: NaiveDate, day: NaiveDate) -> bool {
     let r: HashMap<&str, &str> = rule.split(';').filter_map(|p| p.split_once('=')).collect();
     let n = r.get("INTERVAL").and_then(|v| v.parse::<i64>().ok()).unwrap_or(1).max(1);
+    let nums = |k: &str| -> Vec<i64> { r.get(k).map_or(vec![], |v| v.split(',').filter_map(|x| x.parse().ok()).collect()) };
     const DAYS: [&str; 7] = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
-    let by: Vec<Weekday> = r.get("BYDAY").map_or(vec![], |v| v.split(',').filter_map(|d| DAYS.iter().position(|x| d.ends_with(x))).filter_map(|i| Weekday::try_from(i as u8).ok()).collect());
+    // (ordinal, weekday): 0 is every such weekday.
+    let by: Vec<(i64, Weekday)> = r.get("BYDAY").map_or(vec![], |v| {
+        v.split(',').filter_map(|d| Some((d.get(..d.len().saturating_sub(2)).and_then(|o| o.parse().ok()).unwrap_or(0),Weekday::try_from(DAYS.iter().position(|x| d.ends_with(x))? as u8).ok()?))).collect()
+    });
+    let (mdays, months) = (nums("BYMONTHDAY"), nums("BYMONTH"));
+    let weekday = |d: NaiveDate| by.iter().any(|b| b.1 == d.weekday());
+    // On a BYMONTHDAY (negative: from the end) and a BYDAY (with an ordinal: the nth in the month), else on FIRST's day.
+    let in_month = |d: NaiveDate| {
+        let (dd, last) = (d.day() as i64, d.num_days_in_month() as i64);
+        (mdays.is_empty() || mdays.iter().any(|&m| m == dd || m == dd - last - 1))
+            && (by.is_empty() || by.iter().any(|&(k, w)| w == d.weekday() && (k == 0 || k == (dd - 1) / 7 + 1 || k == -((last - dd) / 7 + 1))))
+            && (!mdays.is_empty() || !by.is_empty() || d.day() == first.day())
+    };
     let monday = |d: NaiveDate| d - Duration::days(d.weekday().num_days_from_monday() as i64);
+    let month = |d: NaiveDate| d.year() as i64 * 12 + d.month0() as i64;
     let hit = |d: NaiveDate| match r.get("FREQ").copied() {
-        Some("DAILY") => (d - first).num_days() % n == 0 && (by.is_empty() || by.contains(&d.weekday())),
-        Some("WEEKLY") => (monday(d) - monday(first)).num_days() / 7 % n == 0 && if by.is_empty() { d.weekday() == first.weekday() } else { by.contains(&d.weekday()) },
+        Some("DAILY") => (d - first).num_days() % n == 0 && (by.is_empty() || weekday(d)),
+        Some("WEEKLY") => (monday(d) - monday(first)).num_days() / 7 % n == 0 && if by.is_empty() { d.weekday() == first.weekday() } else { weekday(d) },
+        Some("MONTHLY") => (month(d) - month(first)) % n == 0 && (months.is_empty() || months.contains(&(d.month() as i64))) && in_month(d),
+        Some("YEARLY") => (d.year() - first.year()) as i64 % n == 0 && if months.is_empty() { d.month() == first.month() } else { months.contains(&(d.month() as i64)) } && in_month(d),
         _ => d == first,
     };
     if day < first || r.get("UNTIL").and_then(|v| date(v)).is_some_and(|u| day > u) || !hit(day) {
@@ -270,6 +288,29 @@ mod tests {
         assert!(!calendar("http://c.example/s3cret", &cache, t0, fetch).unwrap_err().contains("s3cret"));
         assert!(calendar("/no/such/file.ics", &cache, t0, fetch).unwrap_err().starts_with("activity_calendar /no/such/file.ics: "), "a path is read as a file");
         assert_eq!(calls.borrow().len(), 4);
+    }
+
+    #[test]
+    fn monthly_and_yearly() {
+        let on = |rule: &str, first: &str, days: &[&str]| days.iter().map(|d| occurs(rule, first.parse().unwrap(), d.parse().unwrap())).collect::<Vec<_>>();
+        assert_eq!(on("FREQ=MONTHLY", "2026-01-15", &["2026-01-15", "2026-03-15", "2026-03-16", "2025-12-15"]), [true, true, false, false], "by date");
+        assert_eq!(on("FREQ=MONTHLY", "2026-01-31", &["2026-02-28", "2026-03-31", "2026-04-30"]), [false, true, false], "a month without the 31st is skipped");
+        assert_eq!(on("FREQ=MONTHLY;BYDAY=2MO", "2026-01-12", &["2026-10-12", "2026-10-05", "2026-10-19", "2026-10-13"]), [true, false, false, false], "second Monday");
+        assert_eq!(on("FREQ=MONTHLY;BYDAY=-1FR", "2026-01-30", &["2026-10-30", "2026-10-23", "2026-02-27"]), [true, false, true], "last Friday");
+        assert_eq!(on("FREQ=MONTHLY;BYMONTHDAY=1,-1", "2026-01-01", &["2026-02-01", "2026-02-28", "2026-02-27"]), [true, true, false], "first and last day");
+        assert_eq!(on("FREQ=MONTHLY;INTERVAL=2", "2026-01-15", &["2026-02-15", "2026-03-15", "2027-01-15"]), [false, true, true], "every other month, across a year");
+        assert_eq!(on("FREQ=MONTHLY;COUNT=3", "2026-01-15", &["2026-03-15", "2026-04-15"]), [true, false]);
+        assert_eq!(on("FREQ=MONTHLY;UNTIL=20260301T000000Z", "2026-01-15", &["2026-02-15", "2026-03-15"]), [true, false]);
+        assert_eq!(on("FREQ=YEARLY", "2024-03-10", &["2026-03-10", "2026-03-11", "2026-04-10"]), [true, false, false], "same month and day");
+        assert_eq!(on("FREQ=YEARLY", "2024-02-29", &["2025-02-28", "2028-02-29"]), [false, true], "29 February only in leap years");
+        assert_eq!(on("FREQ=YEARLY;INTERVAL=2;COUNT=2", "2024-03-10", &["2025-03-10", "2026-03-10", "2028-03-10"]), [false, true, false]);
+        assert_eq!(on("FREQ=YEARLY;BYMONTH=11;BYDAY=4TH", "2025-11-27", &["2026-11-26", "2026-11-19"]), [true, false], "fourth Thursday of November");
+
+        // EXDATE and a moved occurrence work as for weekly series.
+        let ics = ["BEGIN:VEVENT", "UID:m", "DTSTART:20260112T100000", "DTEND:20260112T110000", "RRULE:FREQ=MONTHLY;BYDAY=2MO", "EXDATE:20260209T100000", "SUMMARY:Review", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:m", "RECURRENCE-ID:20260309T100000", "DTSTART:20260310T130000", "DTEND:20260310T140000", "SUMMARY:Review (moved)", "END:VEVENT"].join("\n");
+        let names = |d: &str| events_on(&ics, d.parse().unwrap()).into_iter().map(|e| e.summary).collect::<Vec<_>>();
+        assert_eq!((names("2026-01-12"), names("2026-02-09"), names("2026-03-09"), names("2026-03-10"), names("2026-04-13")), (vec!["Review".into()], vec![], vec![], vec!["Review (moved)".into()], vec!["Review".into()]));
     }
 
     #[test]

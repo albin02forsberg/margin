@@ -351,8 +351,9 @@ A call in the background while you type elsewhere isn't noticed. Set
 or to the calendar's private `https://` (or `webcal://`) ICS address, fetched at
 most every 5 minutes and never shown in error messages,
 and an event covering at least half a block names it, and gives the project
-when its title or attendees name one. Daily and weekly repeats (with
-exceptions) are understood, other repeats only count on their first day;
+when its title or attendees name one. Daily, weekly, monthly (by date,
+or like "second Monday" / "last Friday") and yearly repeats (with exceptions)
+are understood;
 times with a time zone are read as this computer's time, all-day events are
 ignored.
 **Accept** confirms the project and an optional diary note and adds the session
