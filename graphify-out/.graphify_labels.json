@@ -11,10 +11,10 @@
   "9": "compilerOptions",
   "10": "dependencies",
   "11": "Calendar",
-  "12": "$lib/graph",
+  "12": "graph",
   "13": "GitHub Releases",
-  "14": "remind.rs",
-  "15": "super",
+  "14": "super",
+  "15": "path",
   "16": "Notes",
   "17": "AppImage",
   "18": "svelte",
@@ -38,7 +38,7 @@
   "36": "CLAUDE.md",
   "37": "ship/SKILL.md",
   "38": "implementer.md",
-  "39": "devDependencies",
+  "39": "State",
   "40": "release/SKILL.md",
   "41": "autopilot/SKILL.md",
   "42": "verify-all/SKILL.md",
@@ -67,5 +67,8 @@
   "65": "level",
   "66": "extension.js",
   "67": "backup.rs",
-  "68": "@codemirror/state"
+  "68": "wayland_idle.rs",
+  "69": "$lib/graph",
+  "70": "$lib/projects",
+  "71": "@tauri-apps/api/event"
 }
