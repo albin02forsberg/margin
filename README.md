@@ -476,5 +476,5 @@ about a shortcut that won't register or files left in old folders. It's created 
 an existing file that can't be read or parsed is left alone and the app keeps the
 last good settings (the defaults if it never loaded) until it's fixed, saying so (with the error). If the
 file is deleted while the app runs, the settings page offers "Recreate config.toml from the current
-settings" (values only; comments in the lost file are gone). Old Emacs timeclock data can be imported from
+settings" and `Space f C` recreates it that way before opening it (values only; comments in the lost file are gone). Old Emacs timeclock data can be imported from
 the Time view.

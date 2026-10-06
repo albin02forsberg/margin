@@ -230,4 +230,15 @@ describe("Margin", () => {
     await find(".status .msg", "config.toml recreated");
     await browser.waitUntil(async () => !(await browser.$(".settings").getText()).includes("couldn't be loaded"), { timeoutMsg: "error banner still shown" });
   });
+
+  it("Space f C recreates a deleted config.toml before opening it", async () => {
+    const cfg = join(cfgDir, "config.toml");
+    await browser.keys([Key.Ctrl, "1"]);
+    await find(".agenda h1", "Today");
+    unlinkSync(cfg);
+    await type(" fC");
+    await fileMatches(cfg, (s) => s.includes(`name = "Work"`) && /^capture_shortcut = "Nope\+Bogus"$/m.test(s), "settings not recreated");
+    await find(".status .file", "config.toml");
+    await find(".cm-content", `capture_shortcut = "Nope+Bogus"`);
+  });
 });
