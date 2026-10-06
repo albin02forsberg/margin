@@ -21,6 +21,7 @@
   import Projects from "$lib/Projects.svelte";
   import Settings from "$lib/Settings.svelte";
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
+  import Chat, { type ChatMsg } from "$lib/Chat.svelte";
 
   type View = "agenda" | "todo" | "time" | "projects" | "settings";
   /** SAVED: the text last read from / written to disk, to tell our own writes from outside changes.
@@ -56,6 +57,8 @@
   let mentions = $state.raw<Mention[]>([]);
   let graph = $state.raw<NoteGraph | null>(null);
   let showGraph = $state(false);
+  let showChat = $state(false);
+  let chat = $state<Chat>();
   let reload = $state(0);
   const stored = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
   const store = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch {} };
@@ -717,7 +720,22 @@
     }
   }
 
-  /** Drafts in progress, for the status line's Cancel button (built-in models only; #149). */
+  /** The chat panel's answer to MESSAGES, about the open note when WITH_NOTE (unsaved edits included). */
+  async function chatAsk(messages: ChatMsg[], withNote: boolean): Promise<string> {
+    drafting++;
+    try {
+      return await call<string>("ai_chat", { messages, note: withNote && tab?.kind === "file" ? [tab.title, view.state.doc.toString()] : null });
+    } finally {
+      drafting--;
+    }
+  }
+
+  async function toggleChat() {
+    showChat = !showChat;
+    if (showChat) { await tick(); chat?.focus(); }
+  }
+
+  /** Drafts and chat answers in progress, for the status line's Cancel button (built-in models only; #149). */
   let drafting = $state(0);
 
   /** The model download in progress, for the status-line bar. */
@@ -1080,6 +1098,7 @@
     { label: "Show notes linking here", leader: "n b", run: () => { showBacklinks = !showBacklinks; return refreshBacklinks(); } },
     { label: "Jump to a note linking here…", leader: "n l", run: pickBacklink },
     { label: "Show note graph", leader: "n g", run: () => { showGraph = !showGraph; return refreshBacklinks(); } },
+    { label: "AI chat (local model)", leader: "n a", run: toggleChat },
     { label: "Undo last edit made from a task view or the links panel", leader: "n u", run: () => undo().then(refreshBacklinks) },
     { label: "Follow link at cursor (also gf, Ctrl+click)", keys: ["Enter"], ctx: "normal", leader: "n o", run: () => (ed.linkAtCursor(view) ? (act(() => followLink()), true) : false) },
 
@@ -1212,8 +1231,8 @@
   }
 
   /** Under 1000 px the graph / links panels are drawers over the pane (see the CSS); Esc outside the editor or a click on the pane closes them. */
-  const drawerOpen = () => (showGraph || showBacklinks) && matchMedia("(max-width: 999px)").matches;
-  const closeDrawer = () => { showGraph = showBacklinks = false; };
+  const drawerOpen = () => (showGraph || showBacklinks || showChat) && matchMedia("(max-width: 999px)").matches;
+  const closeDrawer = () => { showGraph = showBacklinks = showChat = false; };
 
   function onKey(e: KeyboardEvent) {
     if (picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen()) return;
@@ -1524,6 +1543,8 @@
           {#if graph?.nodes.length}<Graph {graph} open={(p) => act(() => openFile(p))} />{:else}<p>Open a note to see its links.</p>{/if}
         </aside>
       {/if}
+      <!-- hidden, not removed, so the chat survives closing the panel -->
+      <aside class="links chat" style:display={showChat ? null : "none"}><Chat bind:this={chat} ask={chatAsk} note={tab?.kind === "file" ? tab.title : null} /></aside>
       {#if showBacklinks}
         <aside class="links">
           <h3>Linked from <small>{backlinks.length}</small></h3>
@@ -1612,6 +1633,7 @@
   .links button:hover { background: var(--active); }
   .links button span { display: block; color: var(--dim); font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .links p { color: var(--dim); margin: 6px; font-size: var(--fs-sm); }
+  .links.chat { width: min(360px, 40vw); overflow: hidden; }
   .mention { display: flex; align-items: center; }
   .mention button:first-child { min-width: 0; }
   .links .link-it { width: auto; flex: none; color: var(--link); font-size: var(--fs-sm); }
