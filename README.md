@@ -347,12 +347,14 @@ goes into the AI draft. A block at least half spent in a call is marked
 `activity_meetings` holds the regexes over app names, titles and URLs (Zoom,
 Teams, Google Meet, Slack huddles and Webex by default; `[]` turns it off).
 A call in the background while you type elsewhere isn't noticed. Set
-`activity_calendar` to a local `.ics` file (an export of your work calendar)
+`activity_calendar` to a local `.ics` file (an export of your work calendar),
+or to the calendar's private `https://` (or `webcal://`) ICS address, fetched at
+most every 5 minutes and never shown in error messages,
 and an event covering at least half a block names it, and gives the project
 when its title or attendees name one. Daily and weekly repeats (with
 exceptions) are understood, other repeats only count on their first day;
 times with a time zone are read as this computer's time, all-day events are
-ignored. Only a file for now, not a calendar URL.
+ignored.
 **Accept** confirms the project and an optional diary note and adds the session
 to the log at its place in the day. Pick another project than the guessed one
 and Margin learns it: a rule for the block's top title (a site, or an editor's
