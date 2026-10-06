@@ -1,0 +1,7 @@
+{
+  "uuid": "active-window@margin.albin.dev",
+  "name": "Margin active window",
+  "description": "Lets Margin's activity watcher see the focused window's class and title (D-Bus org.margin.ActiveWindow). Nothing leaves the computer.",
+  "shell-version": ["45", "46", "47", "48", "49", "50", "51"],
+  "url": "https://github.com/albin02forsberg/margin"
+}

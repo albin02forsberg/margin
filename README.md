@@ -376,8 +376,17 @@ older than `activity_retention_days` (30) are deleted. Suggestions use it when
 `activitywatch_url` is empty or ActivityWatch isn't running (no browser tab or
 editor detail, only window titles). Works on X11, Windows and macOS (where titles
 may need the Screen Recording permission), and under
-Wayland on KDE, Hyprland, Sway, River and other wlroots compositors; on GNOME
-Wayland only XWayland windows are seen for now. Turning it off stops recording and keeps the log.
+Wayland on KDE, Hyprland, Sway, River and other wlroots compositors. Turning it
+off stops recording and keeps the log.
+
+**GNOME on Wayland** gives apps no way to see the focused window, so Margin
+ships a small Shell extension (GNOME 45+, source in `packaging/gnome-extension/`).
+With the watcher on, Settings → Integrations offers **Install the extension**,
+which copies it to `~/.local/share/gnome-shell/extensions/active-window@margin.albin.dev/`;
+log out and in once, then turn on "Margin active window" in the Extensions app
+(or `gnome-extensions enable active-window@margin.albin.dev`). It answers
+`org.margin.ActiveWindow.Get` on the session bus with the focused window's class
+and title and does nothing else. Without it only XWayland windows are seen.
 
 ### Drafts from a local model
 

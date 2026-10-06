@@ -76,6 +76,17 @@
       errors[name] = String(e);
     }
   }
+  /** On GNOME Wayland the activity watcher's Shell extension: "running", "installed" or "missing"; null elsewhere. */
+  let gnome = $state<string | null>(null);
+  async function gnomeExtension(install = false) {
+    try {
+      gnome = await invoke<string | null>("gnome_extension", { install });
+      errors.gnome = "";
+    } catch (e) {
+      errors.gnome = String(e);
+    }
+  }
+  gnomeExtension();
   const text = (e: Event) => (e.currentTarget as HTMLInputElement).value;
   async function restore() {
     try {
@@ -121,6 +132,14 @@
             {/if}
           </label>
         {/each}
+        {#if g.name === "Integrations" && base.activity_watcher && gnome && gnome !== "running"}
+          {#if gnome === "missing"}
+            <p class="dim">On GNOME Wayland the activity watcher needs a small Shell extension to see windows. <button type="button" class="link" onclick={() => gnomeExtension(true)}>Install the extension</button></p>
+          {:else}
+            <p class="dim">GNOME extension installed: log out and in once, then turn on “Margin active window” in the Extensions app.</p>
+          {/if}
+          {#if errors.gnome}<p class="error">⚠ {errors.gnome}</p>{/if}
+        {/if}
         {#if errors[g.name]}<p class="error">⚠ {errors[g.name]}</p>{/if}
         <button type="submit" disabled={!dirty(g.fields)}>Save {g.name.toLowerCase()}</button>
       </fieldset>
