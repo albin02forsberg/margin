@@ -27,7 +27,7 @@ Download the latest build from
 [Releases](https://github.com/albin02forsberg/margin/releases/latest):
 
 - **Linux** — `.AppImage` (updates itself; `chmod +x` and run), or `.deb` / `.rpm`
-- **macOS** — `.dmg` (universal). Ad-hoc signed, not notarized: the first time,
+- **macOS** (10.15+) — `.dmg` (universal). Ad-hoc signed, not notarized: the first time,
   right-click Margin → Open. If macOS still refuses, run
   `xattr -dr com.apple.quarantine /Applications/Margin.app`.
 - **Windows** — `-setup.exe`. Not signed yet: SmartScreen → More info → Run anyway.
