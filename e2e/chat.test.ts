@@ -27,6 +27,7 @@ describe("AI chat", () => {
   after(async () => { await close(); ollama.close(); }, { timeout: 30_000 });
 
   it("answers about the open note and keeps the history", async () => {
+    await find(".agenda h1", "Today");
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "Plans");
     await find(".status .file", "plans.org");
