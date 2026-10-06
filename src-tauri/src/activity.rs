@@ -188,24 +188,61 @@ struct Rule {
 /// `activity_rules.toml` → (pattern, project) rules, and errors: a bad pattern skips its rule,
 /// a file that isn't TOML all of them. A later rule with the same pattern replaces an earlier one.
 pub fn parse_rules(text: &str) -> (Vec<(Regex, String)>, Vec<String>) {
-    let mut rs = match toml::from_str::<Rules>(text) {
-        Ok(r) => r.rule,
-        Err(e) => return (vec![], vec![format!("activity_rules.toml: {e}")]),
+    let rs = match rule_list(text) {
+        Ok(r) => r,
+        Err(e) => return (vec![], vec![e]),
     };
+    let mut errs = vec![];
+    let out = rs
+        .into_iter()
+        .filter_map(|(pat, project)| {
+            let (mut p, e) = lenient("activity_rules.toml", &[pat]);
+            errs.extend(e);
+            p.pop().map(|p| (p, project))
+        })
+        .collect();
+    (out, errs)
+}
+
+/// `activity_rules.toml` TEXT's rules as written, (pattern, project); a later rule with the same pattern replaces an earlier one.
+pub fn rule_list(text: &str) -> Result<Vec<(String, String)>, String> {
+    let mut rs = toml::from_str::<Rules>(text).map_err(|e| format!("activity_rules.toml: {e}"))?.rule;
     let mut seen = std::collections::HashSet::new();
     rs.reverse();
     rs.retain(|r| seen.insert(r.pattern.clone()));
     rs.reverse();
-    let mut errs = vec![];
-    let out = rs
-        .into_iter()
-        .filter_map(|r| {
-            let (mut p, e) = lenient("activity_rules.toml", &[r.pattern]);
-            errs.extend(e);
-            p.pop().map(|p| (p, r.project))
-        })
-        .collect();
-    (out, errs)
+    Ok(rs.into_iter().map(|r| (r.pattern, r.project)).collect())
+}
+
+/// TEXT without its `[[rule]]` tables for PATTERN (from the header to the last key line, and the
+/// blank line before it): comments between rules and the other rules stay as written.
+pub fn forget(text: &str, pattern: &str) -> Result<String, String> {
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let head = |l: &str| l.trim_start().starts_with('[');
+    let mut keep = vec![true; lines.len()];
+    for s in (0..lines.len()).filter(|&i| lines[i].split('#').next().unwrap_or("").replace(' ', "").trim() == "[[rule]]") {
+        let next = (s + 1..lines.len()).find(|&i| head(lines[i])).unwrap_or(lines.len());
+        let end = (s + 1..next).rev().find(|&i| !lines[i].trim().is_empty() && !lines[i].trim_start().starts_with('#')).map_or(s + 1, |i| i + 1);
+        if toml::from_str::<Rules>(&lines[s..end].concat()).is_ok_and(|r| r.rule.iter().any(|r| r.pattern == pattern)) {
+            let from = if s > 0 && lines[s - 1].trim().is_empty() { s - 1 } else { s };
+            keep[from..end].iter_mut().for_each(|k| *k = false);
+        }
+    }
+    let out: String = lines.iter().zip(&keep).filter(|(_, k)| **k).map(|(l, _)| *l).collect();
+    match rule_list(&out) {
+        Ok(r) if r.iter().all(|(p, _)| p != pattern) => Ok(out),
+        _ => Err("activity_rules.toml: couldn't remove that rule, edit the file by hand".into()),
+    }
+}
+
+/// One writer of `activity_rules.toml` at a time, so two edits at once both stay.
+static RULES_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Drop the rule for PATTERN from the file at PATH.
+pub fn forget_file(path: &std::path::Path, pattern: &str) -> Result<(), String> {
+    let _g = RULES_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let text = forget(&crate::timeclock::read_or_empty(path)?, pattern)?;
+    crate::config::write_atomic(path, text).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// TEXT plus a rule sending blocks titled TITLE to PROJECT; an EDITOR's `repo · file` is learned as its repo.
@@ -219,14 +256,12 @@ pub fn learn(text: &str, title: &str, project: &str, editor: bool) -> String {
     format!("{text}{sep}\n[[rule]]\npattern = {}\nproject = {}\n", q(&pat), q(project))
 }
 
-/// Add a `learn`ed rule to the file at PATH, one writer at a time so two at once both stay.
-/// A blank title or project is ignored.
+/// Add a `learn`ed rule to the file at PATH. A blank title or project is ignored.
 pub fn learn_file(path: &std::path::Path, title: &str, project: &str, editor: bool) -> Result<(), String> {
-    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     if title.trim().is_empty() || project.trim().is_empty() {
         return Ok(());
     }
-    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = RULES_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let text = learn(&crate::timeclock::read_or_empty(path)?, title, project.trim(), editor);
     std::fs::create_dir_all(path.parent().unwrap_or(path)).map_err(|e| e.to_string())?;
     crate::config::write_atomic(path, text).map_err(|e| format!("{}: {e}", path.display()))
@@ -613,6 +648,20 @@ mod tests {
         assert_eq!(parse_rules("[[rule").1.len(), 1);
         let (ex, errs) = lenient("activity_exclude", &["keepass".into(), "(".into()]);
         assert_eq!((ex.len(), errs.len()), (1, 1));
+    }
+
+    #[test]
+    fn forgetting_rules() {
+        let text = learn(&learn("# mine\n", "a", "A", false), "b", "B", false);
+        let text = format!("{text}# about c\n[[rule]] # c\npattern = \"^c$\"\nproject = \"C\" # trailing\n# after c\n");
+        let text = learn(&text, "a", "A2", false); // a later duplicate of a
+        assert_eq!(rule_list(&text).unwrap(), [("^b$".into(), "B".into()), ("^c$".into(), "C".into()), ("^a$".into(), "A2".into())]);
+        let out = forget(&text, "^a$").unwrap();
+        assert_eq!(out, "# mine\n\n[[rule]]\npattern = \"^b$\"\nproject = \"B\"\n# about c\n[[rule]] # c\npattern = \"^c$\"\nproject = \"C\" # trailing\n# after c\n", "every copy goes, comments and other rules stay");
+        assert_eq!(forget(&out, "^c$").unwrap(), "# mine\n\n[[rule]]\npattern = \"^b$\"\nproject = \"B\"\n# about c\n# after c\n");
+        assert_eq!(forget(&out, "^zz$").unwrap(), out, "an unknown pattern changes nothing");
+        assert!(forget("rule = [{ pattern = \"x\", project = \"X\" }]\n", "x").is_err(), "a form it can't edit is an error, not a silent no-op");
+        assert!(forget("[[rule\n", "x").is_err());
     }
 
     #[test]

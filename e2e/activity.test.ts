@@ -73,11 +73,12 @@ describe("ActivityWatch suggestions", () => {
 });
 
 describe("Built-in activity watcher", () => {
+  let d: Dirs;
   before(async () => {
-    await launch({
+    d = await launch({
       config: [`activity_watcher = true`],
       files: ({ data }) => {
-        writeFileSync(join(data, "work", "projects.toml"), `[Margin]\nexport_code = "M"\n`);
+        writeFileSync(join(data, "work", "projects.toml"), `[Margin]\nexport_code = "M"\n\n[Acme]\nexport_code = "A"\n`);
         mkdirSync(join(data, "activity"));
         const rec = (s: string, e: string, app: string, title: string) => JSON.stringify({ start: `${day}T${s}`, end: `${day}T${e}`, app, title });
         writeFileSync(join(data, "activity", `${day}.jsonl`), [rec("09:00:00", "09:40:00", "Code", "lib.rs - margin"), rec("09:41:00", "10:00:00", "KeePassXC", "bank.kdbx")].join("\n") + "\n");
@@ -96,5 +97,18 @@ describe("Built-in activity watcher", () => {
     assert.equal(rows.length, 1, rows.join("\n"));
     assert.match(rows[0], /09:00–09:40/);
     assert.doesNotMatch(rows[0], /KeePass/, "excluded app shown");
+  });
+
+  it("learns the project picked over the guess, and deletes the rule in Settings", async () => {
+    const rules = join(d.data, "work", "activity_rules.toml");
+    await clickIn(".suggested tr", "Margin", "button");
+    await answer("Log 09:00–09:40 to project", "Acme");
+    await answer("What did you do?", "");
+    await fileMatches(rules, (s) => s.includes(`project = "Acme"`), "rule not learned");
+    await browser.keys([Key.Ctrl, ","]);
+    await find(".settings .rules .row", "→ Acme");
+    await clickIn(".settings .rules .row", "Acme", "button[title='Delete rule']");
+    await fileMatches(rules, (s) => !s.includes("[[rule]]"), "rule not deleted");
+    await browser.waitUntil(async () => (await texts(".settings .rules .row")).length === 0, { timeoutMsg: "deleted rule still listed" });
   });
 });
