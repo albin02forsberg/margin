@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changes, checkTemplates, checkViews, GROUPS, refresh, refreshRows, type Field } from "./settings.ts";
+import { changes, checkTemplates, checkViews, GROUPS, needsMacPrompt, refresh, refreshRows, type Field } from "./settings.ts";
 
 const config = { notes_dir: "~/notes", expected_daily_hours: 8, profiles: ["Work", "Home"], reminders: true };
 const fields: Field[] = GROUPS.flatMap((g) => g.fields).filter((f) => f.key in config);
@@ -44,4 +44,13 @@ test("templates need a unique one-character key and a name", () => {
   assert.throws(() => checkTemplates([t, { ...t, key: "k" }, { ...t, key: "j" }]), /Templates 1 and 3/);
   assert.throws(() => checkTemplates([{ ...t, name: "" }]), /needs a name/);
   assert.deepEqual(refreshRows([], [], [{ key: "n", heading: null }])[1], [{ key: "n", heading: "" }]);
+});
+
+test("the macOS watcher dialog shows once, only when turning it on without the permission", () => {
+  assert.equal(needsMacPrompt(false, false, true, false), true);
+  assert.equal(needsMacPrompt(null, false, true, false), false, "not macOS");
+  assert.equal(needsMacPrompt(true, false, true, false), false, "already granted");
+  assert.equal(needsMacPrompt(false, false, true, true), false, "confirmed before");
+  assert.equal(needsMacPrompt(false, true, true, false), false, "already on");
+  assert.equal(needsMacPrompt(false, false, false, false), false, "turning it off");
 });

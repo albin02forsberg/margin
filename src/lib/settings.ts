@@ -41,6 +41,11 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
   ] },
 ];
 
+/** Whether ticking the activity watcher (BEFORE saved, AFTER ticked) first needs the macOS dialog:
+ *  GRANTED is the Screen Recording permission (null off macOS), OK an earlier confirmation. */
+export const needsMacPrompt = (granted: boolean | null, before: boolean, after: boolean, ok: boolean) =>
+  granted === false && !before && after && !ok;
+
 /** VALUE (from the config) as the form edits it. */
 export const toForm = (f: Field, v: unknown): string | boolean =>
   f.kind === "bool" ? !!v : f.kind === "list" ? ((v ?? []) as string[]).join("\n") : String(v ?? "");
