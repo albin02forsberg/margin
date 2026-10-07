@@ -64,15 +64,29 @@
   const run = (name: string, arg?: unknown) => api.act(async () => { await api.run(name, arg); await refresh(); root?.focus(); });
   const clock = (iso: string) => iso?.slice(11, 16);
   const dayName = (s: string) => new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)).toLocaleDateString(undefined, { weekday: "short" });
-  const max = $derived(d ? Math.max(1, ...d.week.map((w: any) => Math.max(w.hours, w.expected))) : 1);
+  const max = $derived(d ? Math.max(1, ...d.week.map((w: any) => Math.max(w.hours, w.expected, w.leave_hours))) : 1);
   const weekTotal = $derived(d ? d.week.reduce((s: number, w: any) => s + w.hours, 0) : 0);
   const weekExpected = $derived(d ? d.week.reduce((s: number, w: any) => s + w.expected, 0) : 0);
   const todayIso = $derived(new Date().toLocaleDateString("sv-SE"));
   const signed = (h: number) => `${h >= 0 ? "+" : "−"}${hm(Math.abs(h))}`;
 
+  // Time off: a range of days, full days, N hours a day, or the rest of the day after work (sick).
+  let off = $state({ kind: "vacation", from: new Date().toLocaleDateString("sv-SE"), to: "", mode: "full", hours: 4, note: "" });
+  const isoAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toLocaleDateString("sv-SE");
+  const recentOff = $derived(d ? d.leave.filter(([, l]: [number, any]) => l.to >= isoAgo(31)).sort((a: any, b: any) => (a[1].from < b[1].from ? -1 : 1)) : []);
+  const addOff = () =>
+    api.act(async () => {
+      const leave = { kind: off.kind, from: off.from, to: off.to || off.from, hours: off.mode === "hours" ? off.hours : null, rest: off.mode === "rest", note: off.note };
+      await invoke("tc_leave_add", { leave });
+      [off.to, off.note] = ["", ""];
+      await refresh();
+    });
+  const removeOff = (line: number) => api.act(async () => { await invoke("tc_leave_remove", { line }); await refresh(); });
+  const offHours = (l: any) => (l.rest ? "rest of day" : l.hours ? `${hm(l.hours)}/day` : "full day");
+
   const KEYS: Record<string, string> = { i: "start", o: "stop", p: "pause", r: "resume", c: "switch", a: "adjust", e: "export", E: "exportReport", t: "daily", w: "weekly" };
   function key(e: KeyboardEvent) {
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.ctrlKey || e.metaKey || e.altKey || (e.target as HTMLElement).closest("input, select")) return;
     if (sugg && (e.key === "h" || e.key === "l")) return shiftDay(e.key === "h" ? -1 : 1);
     const name = KEYS[e.key];
     if (!name) return;
@@ -150,8 +164,9 @@
         <h3>This week <span class="dim">{hm(weekTotal)} of {hm(weekExpected)}</span></h3>
         <div class="chart" role="img" aria-label="Hours worked per day this week">
           {#each d.week as w}
-            <div class="col" class:today={w.date === todayIso} title="{dayName(w.date)} {w.date}: {hm(w.hours)} worked, {hm(w.expected)} expected">
+            <div class="col" class:today={w.date === todayIso} title="{dayName(w.date)} {w.date}: {hm(w.hours)} worked, {hm(w.expected)} expected{w.leave ? `, ${w.leave} ${hm(w.leave_hours)}` : ""}">
               <div class="plot">
+                {#if w.leave_hours > 0}<div class="off" style:height="{(w.leave_hours / max) * 100}%"></div>{/if}
                 {#if w.expected > 0}<div class="expected" style:bottom="{(w.expected / max) * 100}%"></div>{/if}
                 <div class="bar" style:height="{(w.hours / max) * 100}%"></div>
               </div>
@@ -160,7 +175,7 @@
             </div>
           {/each}
         </div>
-        <p class="legend"><span class="dash"></span> expected hours</p>
+        <p class="legend"><span class="dash"></span> expected hours{#if d.week.some((w: any) => w.leave_hours > 0)} <span class="hatch"></span> time off{/if}</p>
         <div class="flex">
           <div><small>Flex balance</small><strong class:neg={d.flex_total < 0}>{signed(d.flex_total)}</strong></div>
           <div><small>This week</small><strong class:neg={d.flex_week < 0}>{signed(d.flex_week)}</strong></div>
@@ -208,6 +223,39 @@
         </table>
       {:else}
         <p class="dim">Nothing tracked this week.</p>
+      {/if}
+    </section>
+
+    <section class="timeoff">
+      <h3>Time off <span class="dim">lowers the day's expected hours; work on those days is flex</span></h3>
+      <form onsubmit={(e) => { e.preventDefault(); addOff(); }}>
+        <input list="leave-kinds" bind:value={off.kind} aria-label="Kind of time off" size="10" required />
+        <datalist id="leave-kinds"><option>vacation</option><option>sick</option><option>other</option></datalist>
+        <input type="date" bind:value={off.from} aria-label="First day off" required />
+        <span class="dim">to</span>
+        <input type="date" bind:value={off.to} min={off.from} aria-label="Last day off (empty: one day)" />
+        <select bind:value={off.mode} aria-label="Hours off per day">
+          <option value="full">Full day</option>
+          <option value="hours">Hours a day</option>
+          {#if off.kind === "sick"}<option value="rest">Rest of the day</option>{/if}
+        </select>
+        {#if off.mode === "hours"}<input type="number" bind:value={off.hours} min="0.25" step="0.25" aria-label="Hours a day" />{/if}
+        <input bind:value={off.note} placeholder="Note" aria-label="Time off note" />
+        <button type="submit">Add</button>
+      </form>
+      {#if recentOff.length}
+        <table>
+          <tbody>
+            {#each recentOff as [line, l] (line)}
+              <tr>
+                <td><strong>{l.kind}</strong> <span class="dim">{l.note ?? ""}</span></td>
+                <td class="mono">{l.from}{l.to !== l.from ? ` – ${l.to}` : ""}</td>
+                <td class="num">{offHours(l)}</td>
+                <td><button class="icon" title="Remove time off" onclick={() => removeOff(line)}>✕</button></td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
       {/if}
     </section>
 
@@ -268,6 +316,11 @@
   .plot { flex: 1; width: 100%; position: relative; border-bottom: 1px solid var(--border); }
   .bar { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: min(26px, 70%); background: var(--link); border-radius: var(--radius-sm) 4px 0 0; min-height: 0; }
   .col:hover .bar { filter: brightness(1.15); }
+  .off { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: min(26px, 70%); background: repeating-linear-gradient(135deg, var(--border) 0 3px, transparent 3px 6px); border: 1px solid var(--border); border-bottom: 0; box-sizing: border-box; }
+  .hatch { width: 12px; height: 10px; margin-left: var(--s3); background: repeating-linear-gradient(135deg, var(--dim) 0 2px, transparent 2px 4px); }
+  .timeoff form { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; margin-bottom: var(--s2); }
+  input { background: var(--panel); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s1) var(--s2); font: var(--fs-md) var(--sans); }
+  input[type="number"] { width: 5em; }
   .expected { position: absolute; left: 8%; right: 8%; border-top: 1.5px dashed var(--dim); }
   .val { font: var(--fs-xs) var(--mono); color: var(--fg); white-space: nowrap; }
   .day { font-size: var(--fs-xs); color: var(--dim); }

@@ -635,6 +635,8 @@ fn tc_dashboard(s: State<App>) -> Value {
     let sessions = tc.sessions();
     let projects = tc.projects();
     let (cur, on_break, today_h) = tc.status();
+    let leave = tc.leave();
+    let leave_only: Vec<_> = leave.iter().map(|x| x.1.clone()).collect();
     let monday = t - Duration::days(t.weekday().num_days_from_monday() as i64);
     let sunday = monday + Duration::days(6);
     let in_week = |d: NaiveDate| monday <= d && d <= sunday;
@@ -642,7 +644,10 @@ fn tc_dashboard(s: State<App>) -> Value {
         .map(|i| {
             let d = monday + Duration::days(i);
             let h: f64 = if d == t { today_h } else { sessions.iter().filter(|x| x.date == d).map(|x| x.hours).sum() };
-            json!({ "date": d, "hours": h, "expected": timeclock::expected_hours(d, tc.expected) })
+            let e = timeclock::expected_hours(d, tc.expected);
+            let off = timeclock::leave_on(&leave_only, d, e, h);
+            let kinds: Vec<&str> = off.iter().map(|x| x.0.kind.as_str()).collect();
+            json!({ "date": d, "hours": h, "expected": e - timeclock::leave_credit(&leave_only, d, e, h), "leave": kinds.join(", "), "leave_hours": off.iter().map(|x| x.1).sum::<f64>() })
         })
         .collect();
     let merged = timeclock::prepare_report_sessions(&sessions);
@@ -655,13 +660,28 @@ fn tc_dashboard(s: State<App>) -> Value {
         .map(|(p, (w, b))| json!({ "project": if p.is_empty() { "Other".to_string() } else { p.clone() }, "code": timeclock::export_code(&p, &projects), "worked": w, "billable": b }))
         .collect();
     per_project.sort_by(|a, b| b["worked"].as_f64().unwrap_or(0.0).total_cmp(&a["worked"].as_f64().unwrap_or(0.0)));
-    let (flex_total, flex_week, _) = timeclock::flex(&sessions, &projects, tc.expected, Some((monday, t)));
+    let (flex_total, flex_week, _) = timeclock::flex(&sessions, &projects, &leave_only, tc.expected, Some((monday, t)));
     json!({
         "profile": s.profile(), "profiles": s.cfg().profiles,
         "project": cur.as_ref().map(|c| &c.1), "since": cur.as_ref().map(|c| c.0), "task": cur.as_ref().map(|c| &c.2), "on_break": on_break,
         "today_hours": today_h, "today": sessions.iter().filter(|x| x.date == t).collect::<Vec<_>>(),
-        "week": week, "projects": per_project, "flex_total": flex_total, "flex_week": flex_week, "backup_error": backup::last_failure(),
+        "week": week, "leave": leave, "projects": per_project, "flex_total": flex_total, "flex_week": flex_week, "backup_error": backup::last_failure(),
     })
+}
+
+/// Log time off (vacation, sick, …) FROM..=TO.
+#[tauri::command]
+fn tc_leave_add(s: State<App>, leave: timeclock::Leave) -> R<()> {
+    s.tc().add_leave(leave)?;
+    s.backup();
+    Ok(())
+}
+
+#[tauri::command]
+fn tc_leave_remove(s: State<App>, line: usize) -> R<()> {
+    s.tc().remove_leave(line)?;
+    s.backup();
+    Ok(())
 }
 
 #[tauri::command]
@@ -978,14 +998,15 @@ fn ai_set(app: AppHandle, s: State<App>, backend: ai::Backend, model: String) ->
 fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<String> {
     let tc = s.tc();
     let profile = s.profile();
+    let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
     Ok(match kind.as_str() {
-        "daily" => timeclock::daily_report(&tc.sessions(), &tc.projects(), date(date_input.as_deref().unwrap_or(""))?, &profile),
-        "weekly" => timeclock::weekly_report(&tc.sessions(), &tc.projects(), today() - Duration::days(7), today(), &profile),
+        "daily" => timeclock::daily_report(&tc.sessions(), &tc.projects(), &leave, tc.expected, date(date_input.as_deref().unwrap_or(""))?, &profile),
+        "weekly" => timeclock::weekly_report(&tc.sessions(), &tc.projects(), &leave, tc.expected, today() - Duration::days(7), today(), &profile),
         "holidays" => timeclock::holidays_report(date(date_input.as_deref().unwrap_or(""))?.format("%Y").to_string().parse().unwrap()),
         "flex" => {
             let t = today();
             let week = (t - Duration::days(7), t);
-            let (total, period, days) = timeclock::flex(&tc.sessions(), &tc.projects(), tc.expected, Some(week));
+            let (total, period, days) = timeclock::flex(&tc.sessions(), &tc.projects(), &leave, tc.expected, Some(week));
             format!("Flex ({profile}): total {total:+.2} h, last 7 days {period:+.2} h over {days} worked days")
         }
         "doctor" => {
@@ -1081,7 +1102,8 @@ fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, forma
 fn export_report(s: State<App>, start: String, end: String, print: bool, overwrite: Option<bool>) -> R<PathBuf> {
     let tc = s.tc();
     let (start, end) = (date(&start)?, date(&end)?);
-    let org = timeclock::weekly_report(&tc.sessions(), &tc.load_projects()?, start, end, &s.profile());
+    let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
+    let org = timeclock::weekly_report(&tc.sessions(), &tc.load_projects()?, &leave, tc.expected, start, end, &s.profile());
     let html = export::html(&export::parse(&org, &s.kw()), "Time report", Path::new(""), &export::Ids::new(), print);
     write_export(&s, &format!("time_report_{}_{start}_{end}.html", s.profile().to_lowercase()), html, overwrite)
 }
@@ -1219,7 +1241,7 @@ pub fn run() {
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_edit_session, tc_add_session, activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_linked, export_report, export_open
         ])
         .build(tauri::generate_context!())
