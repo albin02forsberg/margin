@@ -1,0 +1,94 @@
+name: Nightly
+
+# Once a day, when main has moved, build main as <next patch>-nightly.<UTC yyyymmddhhmm> and publish it
+# to the moving prerelease `nightly` with its own latest.json, which copies with "Nightly updates" on
+# (#213) update from. Stable copies read releases/latest, which never points at a prerelease.
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+concurrency: nightly
+
+jobs:
+  prepare:
+    if: github.repository == 'albin02forsberg/margin'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: v
+        run: |
+          last=$(gh release view nightly --json body -q .body 2>/dev/null | grep -o '[0-9a-f]\{40\}' | head -1 || true)
+          if [ "${{ github.event_name }}" = schedule ] && [ "$last" = "$GITHUB_SHA" ]; then
+            echo "main has not moved since the last nightly ($last)"; exit 0
+          fi
+          version=$(STAMP=$(date -u +%Y%m%d%H%M) node -p "const [a, b, c] = require('./src-tauri/tauri.conf.json').version.split('-')[0].split('.').map(Number); [a, b, c + 1].join('.') + '-nightly.' + process.env.STAMP")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # A fresh release each time, so old nightlies' assets don't pile up.
+          gh release delete nightly --cleanup-tag -y || true
+          gh release create nightly --target "$GITHUB_SHA" --prerelease --title "Margin nightly $version" \
+            --notes "Untested build of main at $GITHUB_SHA. Turn on Settings → Nightly updates to get these."
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.version
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # MSI rejects non-numeric prerelease versions and rpm one with a '-', so nightlies skip both.
+        include:
+          - platform: ubuntu-22.04
+            args: '--features embedded-ai --bundles appimage,deb'
+          - platform: macos-latest
+            args: '--target universal-apple-darwin --features embedded-ai --bundles app,dmg'
+          - platform: windows-latest
+            args: '--features embedded-ai --bundles nsis'
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: System deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf
+      - name: llama.cpp CPU features
+        if: matrix.platform != 'macos-latest'
+        shell: bash
+        run: printf 'GGML_AVX=ON\nGGML_AVX2=ON\nGGML_FMA=ON\nGGML_F16C=ON\nGGML_BMI2=ON\n' >> "$GITHUB_ENV"
+      - name: Nightly version
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          node -e "const f = 'src-tauri/tauri.conf.json', c = require('./' + f); c.version = process.env.VERSION; require('fs').writeFileSync(f, JSON.stringify(c, null, 2))"
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: nightly
+          releaseName: Margin nightly ${{ needs.prepare.outputs.version }}
+          releaseDraft: false
+          prerelease: true
+          args: ${{ matrix.args }}

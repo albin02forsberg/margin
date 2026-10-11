@@ -32,12 +32,19 @@ Download the latest build from
   `xattr -dr com.apple.quarantine /Applications/Margin.app`.
 - **Windows** — `-setup.exe`. Not signed yet: SmartScreen → More info → Run anyway.
 
+**Nightly:** the [`nightly`](https://github.com/albin02forsberg/margin/releases/tag/nightly)
+prerelease is rebuilt from `main` once a day when it has changed (AppImage/.deb, .dmg,
+`-setup.exe`). Untested. Tick **Settings → Nightly updates** to have an installed copy update
+to them; unticking waits for the next stable release newer than your nightly.
+
 ## Code signing policy
 
 Release installers are built only by this repository's GitHub Actions
 ([release.yml](.github/workflows/release.yml)) from a tagged commit on `main`;
 nothing is built or signed on a personal machine. Releases are drafted by CI
 and published by the maintainer, Albin Forsberg, who approves every release.
+Opt-in nightly builds ([nightly.yml](.github/workflows/nightly.yml)) are built
+and published by CI from `main` without that per-build approval.
 Update bundles are signed with the project's updater key so installed copies
 only accept builds from this pipeline. macOS builds are ad-hoc signed. Windows
 signing via [SignPath Foundation](https://signpath.org) is planned (#13); once
