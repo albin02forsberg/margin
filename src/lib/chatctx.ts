@@ -1,0 +1,38 @@
+/** What of the open note the AI chat sends (#211): the Rust side cuts the note to its first 4000 bytes, so pick the useful part here. */
+const LIMIT = 4000;
+const enc = new TextEncoder();
+const bytes = (s: string) => enc.encode(s).length;
+const level = (l: string) => /^(\*+) /.exec(l)?.[1].length ?? 0;
+
+/**
+ * The part of DOC to send, for a selection FROM..TO and cursor HEAD (character offsets), with a LABEL for the UI:
+ * a non-empty selection wins; else the whole note if it fits; else the largest section around the cursor that
+ * fits; else about LIMIT bytes of lines around the cursor. TITLE labels the whole note.
+ */
+export function chatContext(doc: string, from: number, to: number, head: number, title: string, limit = LIMIT): { text: string; label: string } {
+  if (from !== to) return { text: doc.slice(Math.min(from, to), Math.max(from, to)), label: "selection" };
+  if (bytes(doc) <= limit) return { text: doc, label: title };
+  const lines = doc.split("\n");
+  const cur = doc.slice(0, head).split("\n").length - 1;
+  // headings enclosing the cursor line, outermost first (a heading line encloses itself)
+  const anc: number[] = [];
+  for (let i = cur, lvl = Infinity; i >= 0; i--) {
+    const l = level(lines[i]);
+    if (l && l < lvl) { anc.unshift(i); lvl = l; }
+  }
+  for (const h of anc) {
+    let end = h + 1;
+    while (end < lines.length && !(level(lines[end]) && level(lines[end]) <= level(lines[h]))) end++;
+    const text = lines.slice(h, end).join("\n");
+    if (bytes(text) <= limit) return { text, label: `section ${lines[h].replace(/^\*+ /, "")}` };
+  }
+  let [a, b, size] = [cur, cur + 1, bytes(lines[cur]) + 1];
+  for (;;) { // grow alternately, a line at a time, while it fits
+    const up = a > 0 && size + bytes(lines[a - 1]) + 1 <= limit;
+    const down = b < lines.length && size + bytes(lines[b]) + 1 <= limit;
+    if (!up && !down) break;
+    if (up && (cur - a <= b - cur - 1 || !down)) size += bytes(lines[--a]) + 1;
+    else size += bytes(lines[b++]) + 1;
+  }
+  return { text: lines.slice(a, b).join("\n"), label: "text around the cursor" };
+}
