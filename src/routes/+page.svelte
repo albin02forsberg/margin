@@ -12,7 +12,7 @@
   import { EditorView } from "@codemirror/view";
   import type { EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
-  import { relativeTo } from "$lib/paths";
+  import { journalNeighbour, relativeTo } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
@@ -688,6 +688,15 @@
     view.dispatch({ selection: { anchor: view.state.doc.length }, scrollIntoView: true });
   }
 
+  /** Open the previous/next existing journal entry, counted from the current journal tab's day, else today. */
+  async function journalStep(dir: 1 | -1) {
+    const daily: string = cfg.config.daily_dir, t = new Date();
+    const from = tab?.path && journalNeighbour([tab.path], daily, "0000-00-00", 1) ? base(tab.path).slice(0, 10) : `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+    const f = journalNeighbour(await call<string[]>("list_files"), daily, from, dir);
+    if (f) await openFile(f);
+    else flash(`No ${dir < 0 ? "earlier" : "later"} journal entry`);
+  }
+
   async function journalPick() {
     const d = await datePick("Open journal for");
     if (d && d !== "rm") await journal(d);
@@ -1113,6 +1122,8 @@
     { label: "New note", keys: ["Ctrl+Shift+N"], leader: "n n", run: newNote },
     { label: "Today's journal", keys: ["Ctrl+J"], leader: "j", run: () => journal() },
     { label: "Journal for another day…", leader: "n J", run: journalPick },
+    { label: "Journal: previous entry", leader: "n [", run: () => journalStep(-1) },
+    { label: "Journal: next entry", leader: "n ]", run: () => journalStep(1) },
     { label: "Add a line to today's journal", leader: "n e", run: journalEntry },
     { label: "Journal: draft summary of today (local model)", leader: "n s", run: draftSummary },
     { label: "Insert link to a note…", keys: ["Ctrl+L"], leader: "n i", ctx: "editor", run: insertLink },

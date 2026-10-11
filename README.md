@@ -10,7 +10,8 @@ the editor has vim keys.
   unlinked mentions and a local note graph, tables with formulas, code blocks, inline images, folding.
 - **Tasks** — Today and All tasks views, schedules, deadlines, priorities,
   tags, repeaters; capture from anywhere with a global shortcut.
-- **Journal** — a daily note, one keypress away.
+- **Journal** — a daily note, one keypress away; `Space n [` / `Space n ]`
+  step to the previous / next existing entry.
 - **Time** — a timeclock with breaks, projects, flex balance and reports, in
   the window or the tray.
 - **Stays in sync** with Emacs, git or any sync tool editing the same files,
