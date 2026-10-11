@@ -124,6 +124,7 @@ profile clocks out first, and warns where old files stay (nothing is moved).
 | Ctrl+Shift+F | Search all notes as you type |
 | Ctrl+L | Insert a link to another note |
 | Ctrl+S / `:w` | Save (also saves automatically) |
+| Ctrl+Shift+T / `Space b u` | Reopen the last closed tab, at the line you left (up to 20) |
 
 ![The command palette](docs/screenshots/palette.png)
 

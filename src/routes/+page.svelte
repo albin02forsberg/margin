@@ -281,11 +281,29 @@
     }
   });
 
+  /** Recently closed tabs (newest last) for "Reopen closed tab": a file with its line, or a view / task search. */
+  const closed: ({ path: string; line: number } | { kind: View; query?: string; title: string })[] = [];
+
+  async function reopenTab() {
+    for (let c; (c = closed.pop()); ) {
+      try {
+        if ("path" in c) await openFile(c.path, c.line);
+        else if (c.query != null) await openSearch(c.title, c.query);
+        else await openView(c.kind);
+        return;
+      } catch { /* e.g. the file is gone; try the one before */ }
+    }
+    flash("No closed tabs");
+  }
+
   async function closeTab(i = cur) {
     const t = tabs[i];
     if (!t) return;
     if (i === cur && isText(t)) t.state = view.state;
     await saveTab(t);
+    if (t.kind === "file" && t.path && t.state) closed.push({ path: t.path, line: t.state.doc.lineAt(t.state.selection.main.head).number - 1 });
+    else if (t.kind !== "file" && t.kind !== "report") closed.push({ kind: t.kind, query: t.query, title: t.title });
+    if (closed.length > 20) closed.shift();
     tabs.splice(i, 1);
     if (!tabs.length) {
       cur = -1;
@@ -1155,6 +1173,7 @@
     { label: "Next tab (also gt)", keys: ["Ctrl+Tab"], leader: "b n", run: () => cycleTab(1) },
     { label: "Previous tab (also gT)", keys: ["Ctrl+Shift+Tab"], leader: "b p", run: () => cycleTab(-1) },
     { label: "Close tab (also :q)", leader: "b d", run: () => closeTab() },
+    { label: "Reopen closed tab", keys: ["Ctrl+Shift+T"], leader: "b u", run: reopenTab },
 
     { label: "Task: mark done / reopen", leader: "x x", run: () => atCursor("done") },
     { label: "Task: set status…", leader: "x t", run: () => atCursor("state") },

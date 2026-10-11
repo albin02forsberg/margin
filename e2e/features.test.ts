@@ -212,4 +212,22 @@ describe("Features", () => {
     assert.equal(read(join(dir, "old", "gone.html")), "old", "stale page not moved to old/");
     assert.ok(existsSync(join(dir, "leaf.html")) && existsSync(join(dir, "pic.png")) && existsSync(join(dir, "hub.md")));
   });
+
+  it("reopens a closed tab at the line it was on", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Beta");
+    await find(".status .file", "beta.org");
+    await browser.keys(Key.Escape);
+    await browser.keys("G");
+    await browser.keys(" ");
+    await type("bd");
+    await browser.waitUntil(async () => !(await texts(".tabs .tab button")).some((t) => t.includes("Beta")), { timeoutMsg: "tab not closed" });
+    await browser.keys(" ");
+    await type("bu");
+    await find(".status .file", "beta.org");
+    await type("iX");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "beta.org"), (s) => s.endsWith("today.\nX"), "reopened tab lost its line");
+  });
 });
