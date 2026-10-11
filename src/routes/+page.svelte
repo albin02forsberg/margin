@@ -1,7 +1,7 @@
 <script lang="ts">
   import "$lib/theme.css";
   import { onMount, tick } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
+  import { Channel, invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { getVersion } from "@tauri-apps/api/app";
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -730,12 +730,15 @@
   const chatNote = () => { const c = chatPart(); return [c.label === tab!.title ? c.label : `${tab!.title}, ${c.label}`, c.text]; };
 
   /** The chat panel's answer to MESSAGES, about the open note's chatPart when WITH_NOTE (unsaved edits included). */
-  async function chatAsk(messages: ChatMsg[], withNote: boolean): Promise<string> {
+  async function chatAsk(messages: ChatMsg[], withNote: boolean, onPiece: (piece: string) => void): Promise<string> {
+    const ch = new Channel<string>(onPiece);
     drafting++;
+    chatting = true;
     try {
-      return await call<string>("ai_chat", { messages, note: withNote && tab?.kind === "file" ? chatNote() : null });
+      return await call<string>("ai_chat", { messages, note: withNote && tab?.kind === "file" ? chatNote() : null, onPiece: ch });
     } finally {
       drafting--;
+      chatting = false;
     }
   }
 
@@ -752,6 +755,8 @@
 
   /** Drafts and chat answers in progress, for the status line's Cancel button (built-in models only; #149). */
   let drafting = $state(0);
+  /** A chat answer is streaming in: cancellable over Ollama too (#210). */
+  let chatting = $state(false);
 
   /** The model download in progress, for the status-line bar. */
   let download = $state<{ id: string; have: number; size: number } | null>(null);
@@ -1587,7 +1592,7 @@
       <span class="file">{tab?.path ? rel(tab.path) : ""}{tab?.conflict ? " • changed on disk (:w keeps yours, Space f r reloads)" : tab?.dirty ? " • unsaved" : ""}</span>
       <span class="msg">{message}</span>
       {#if download}<progress class="dl" max={download.size} value={download.have} title="Downloading the AI model ({Math.floor((download.have / download.size) * 100)}%); cancel it in AI drafts: choose model…"></progress>{/if}
-      {#if drafting && cfg.config.ai_backend === "embedded"}<button class="hint cancel" onclick={() => act(() => call("ai_draft_cancel"))}>Drafting… cancel</button>{/if}
+      {#if drafting && (cfg.config.ai_backend === "embedded" || chatting)}<button class="hint cancel" onclick={() => act(() => call("ai_draft_cancel"))}>Drafting… cancel</button>{/if}
       <button class="hint" onclick={() => act(palette)}>Space menu · {pretty("Ctrl")}+K commands</button>
     </footer>
   </div>

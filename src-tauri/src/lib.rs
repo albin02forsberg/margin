@@ -904,17 +904,20 @@ fn ai_draft(app: AppHandle, s: State<App>, prompt: String, one_line: bool) -> R<
     ai::generate(c.ai_backend, &c.ai_url, &models_dir(&app)?, c.ai_model.trim(), &prompt, one_line)
 }
 
-/// The model's answer to the chat MESSAGES, about the open NOTE (name, text) if given.
+/// The model's answer to the chat MESSAGES, about the open NOTE (name, text) if given; the raw answer
+/// streams to ON_PIECE as it comes, and the cleaned one is returned.
 #[tauri::command(async)]
-fn ai_chat(app: AppHandle, s: State<App>, messages: Vec<ai::Msg>, note: Option<(String, String)>) -> R<String> {
+fn ai_chat(app: AppHandle, s: State<App>, messages: Vec<ai::Msg>, note: Option<(String, String)>, on_piece: tauri::ipc::Channel<String>) -> R<String> {
     let c = s.cfg();
     if c.ai_model.trim().is_empty() {
         return Err("Pick a model with AI drafts: choose model… (Space f a) to chat with a local model.".into());
     }
-    ai::chat(c.ai_backend, &c.ai_url, &models_dir(&app)?, c.ai_model.trim(), note.as_ref().map(|(n, t)| (n.as_str(), t.as_str())), &messages)
+    ai::chat(c.ai_backend, &c.ai_url, &models_dir(&app)?, c.ai_model.trim(), note.as_ref().map(|(n, t)| (n.as_str(), t.as_str())), &messages, &mut |p| {
+        let _ = on_piece.send(p.into());
+    })
 }
 
-/// Stop the built-in model's running draft or chat answer; it returns an error.
+/// Stop the built-in model's running draft or a chat answer; it returns an error.
 #[tauri::command]
 fn ai_draft_cancel() {
     ai::cancel_draft();

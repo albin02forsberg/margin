@@ -46,6 +46,7 @@ and published either by the maintainer, Albin Forsberg, or by the repository's
 release agent under a gate he set: CI green, the nightly built clean for the
 same commit, at most one release per 3 days, and a `no-release` label that
 stops it ([releaser.md](.claude/agents/releaser.md)).
+
 Opt-in nightly builds ([nightly.yml](.github/workflows/nightly.yml)) are built
 and published by CI from `main` without that per-build approval.
 Update bundles are signed with the project's updater key so installed copies
@@ -456,7 +457,9 @@ included, along with your messages; untick it to chat without it. The model
 gets about 4 KB: with a selection, the selection; with a longer note, the
 section around the cursor (or the lines around it if no section fits), and
 the checkbox says which. Long chats
-drop their oldest turns. **Insert** under an answer puts it at the cursor
+drop their oldest turns, and answers stop at about 512 tokens. Answers appear
+as they're written; *Drafting… cancel* in the status line stops one (with
+either backend) and keeps what came so far. **Insert** under an answer puts it at the cursor
 (replacing the selection) in the open note; **Copy** copies it. The chat lives only in memory: **Clear** empties it,
 and it's gone when Margin quits.
 
