@@ -1,17 +1,17 @@
 # Graph Report - margin  (2026-10-11)
 
 ## Corpus Check
-- 79 files · ~106,277 words
+- 79 files · ~106,559 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 6 file(s) not represented in the graph (top: (none) 2, .icns 1, .ico 1)
 
 ## Summary
-- 1304 nodes · 2918 edges · 80 communities (48 shown, 32 thin omitted)
+- 1302 nodes · 2920 edges · 77 communities (48 shown, 29 thin omitted)
 - Extraction: 98% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 36 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `ba53a08c`
+- Built from commit: `93651ae8`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -76,10 +76,10 @@
 - curLine
 - gnome.rs
 - settings.ts
-- super
+- idle.rs
 - extension.js
 - tray.rs
-- path
+- super
 - backup.rs
 - devDependencies
 - focus
@@ -105,17 +105,17 @@
   .claude/agents/reviewer.md → src/lib/orgtable.ts
 - `Pass` --references--> `done()`  [INFERRED]
   .claude/agents/triager.md → src/lib/orgtable.ts
-- `exclusion_and_truncation_before_write()` --calls--> `exclude_rules()`  [INFERRED]
-  src-tauri/src/watcher.rs → src-tauri/src/activity.rs
 - `calendar_from_a_url()` --calls--> `at()`  [INFERRED]
   src-tauri/src/ics.rs → src-tauri/src/org.rs
 - `picks_due_reminders()` --calls--> `at()`  [INFERRED]
   src-tauri/src/remind.rs → src-tauri/src/org.rs
+- `exclusion_and_truncation_before_write()` --calls--> `exclude_rules()`  [INFERRED]
+  src-tauri/src/watcher.rs → src-tauri/src/activity.rs
 
 ## Import Cycles
 - 1-file cycle: `src-tauri/src/ai.rs -> src-tauri/src/ai.rs`
 
-## Communities (80 total, 32 thin omitted)
+## Communities (77 total, 29 thin omitted)
 
 ### Community 0 - "org.rs"
 Cohesion: 0.07
@@ -139,7 +139,7 @@ Nodes (10): [], dateChip(), dayInput(), fmtDay(), goToday(), key(), monday(), op
 
 ### Community 5 - "watcher.rs"
 Cohesion: 0.13
-Nodes (24): active(), active_window(), AFK_MINS, append(), clean(), exclusion_and_truncation_before_write(), flush(), flush_writes_the_open_record_once() (+16 more)
+Nodes (23): active(), active_window(), AFK_MINS, append(), clean(), flush(), flush_writes_the_open_record_once(), gnome_extension() (+15 more)
 
 ### Community 6 - "orgtable.ts"
 Cohesion: 0.09
@@ -183,11 +183,11 @@ Nodes (5): description, identifier, permissions, $schema, windows
 
 ### Community 21 - "setup.ts"
 Cohesion: 0.05
-Nodes (56): ADR-0007, ADR-0008, at(), buckets, day, ev(), events, y (+48 more)
+Nodes (57): ADR-0007, ADR-0008, at(), buckets, day, ev(), events, y (+49 more)
 
 ### Community 22 - "activity.rs"
 Cohesion: 0.07
-Nodes (47): AwEvent, browser_urls(), Bucket, Buckets, CEST, COMMON, cut(), dismiss() (+39 more)
+Nodes (49): AwEvent, browser_urls(), Bucket, Buckets, CEST, COMMON, cut(), dismiss() (+41 more)
 
 ### Community 23 - "export.rs"
 Cohesion: 0.09
@@ -254,12 +254,12 @@ Cohesion: 0.07
 Nodes (15): active(), apply(), Ev, App, Closed, State, Title, focused() (+7 more)
 
 ### Community 57 - "ollama"
-Cohesion: 0.18
-Nodes (11): available_gb(), cancel_draft(), cancel_hits_only_the_running_draft(), free_gb(), ollama(), ollama_chat(), parse(), read_chat() (+3 more)
+Cohesion: 0.22
+Nodes (9): available_gb(), free_gb(), ollama(), ollama_chat(), parse(), read_chat(), ticket(), unreachable() (+1 more)
 
 ### Community 60 - "ics.rs"
-Cohesion: 0.16
-Nodes (18): builds_feed(), CALENDAR, calendar_from_a_url(), CALENDAR_TTL, date(), event(), events_on(), feed() (+10 more)
+Cohesion: 0.19
+Nodes (17): builds_feed(), calendar_from_a_url(), CALENDAR_TTL, date(), event(), events_on(), feed(), fetches_over_https() (+9 more)
 
 ### Community 61 - "decorate"
 Cohesion: 0.13
@@ -277,15 +277,15 @@ Nodes (10): active(), BUS, FILES, get(), install(), install_copies_the_extension
 Cohesion: 0.21
 Nodes (15): changes(), checkTemplates(), checkViews(), Field, Form, fromForm(), GROUPS, needsMacPrompt() (+7 more)
 
-### Community 65 - "super"
-Cohesion: 0.18
+### Community 65 - "idle.rs"
+Cohesion: 0.20
 Nodes (3): source(), start(), step()
 
 ### Community 67 - "tray.rs"
-Cohesion: 0.24
+Cohesion: 0.27
 Nodes (5): refresh(), setup(), show(), tracking(), Tray
 
-### Community 68 - "path"
+### Community 68 - "super"
 Cohesion: 0.24
 Nodes (6): clean(), LINK, names_and_links(), normalize(), target(), unused()
 
@@ -302,25 +302,25 @@ Cohesion: 0.25
 Nodes (7): chat_http(), download(), download_resumes_and_checks(), download_stall_times_out(), part(), serve(), sha256_file()
 
 ### Community 73 - "load"
-Cohesion: 0.25
-Nodes (6): CANCELLED, load(), run(), RUNNING, TICKETS, whole()
+Cohesion: 0.20
+Nodes (8): cancel_draft(), cancel_hits_only_the_running_draft(), CANCELLED, load(), run(), RUNNING, TICKETS, whole()
 
 ### Community 74 - "remind.rs"
-Cohesion: 0.33
+Cohesion: 0.25
 Nodes (4): notify(), picks_due_reminders(), start(), tick()
 
 ## Knowledge Gaps
 - **246 isolated node(s):** `y`, `day`, `events`, `app`, `out` (+241 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 428 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **32 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 425 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **29 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `insertTable()` connect `curLine` to `editor.ts`, `+page.svelte`?**
-  _High betweenness centrality (0.106) - this node is a cross-community bridge._
+  _High betweenness centrality (0.112) - this node is a cross-community bridge._
 - **Why does `palette()` connect `setup.ts` to `+page.svelte`?**
-  _High betweenness centrality (0.057) - this node is a cross-community bridge._
+  _High betweenness centrality (0.056) - this node is a cross-community bridge._
 - **Why does `format()` connect `orgtable.ts` to `+page.svelte`?**
   _High betweenness centrality (0.026) - this node is a cross-community bridge._
 - **What connects `y`, `day`, `events` to the rest of the system?**
