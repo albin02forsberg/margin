@@ -17,7 +17,8 @@ gh pr list -R albin02forsberg/margin --state open --json number,title,headRefNam
   - If issue numbers were passed, use those.
   - Otherwise use issues labelled `approved` without `needs-decision`.
   - Also use issues the triager and reviewer agreed are ready: a comment starting `🤖 *Claude:* **triager + reviewer agree: ready**` (older ones say `small and clear` and imply size S) that names both agents, states the size and says why it is clear. Check that the comment really names both, the size is S or M (never L) and a reason is given; `needs-decision` still blocks. Issues from `scout` and `ideator` take this route like any other.
-  - With `--all-ready`, also take issues that have a `## Plan` comment and no `needs-decision`.
+  - **Owner-written issues** (body does not start with `🤖 *Claude:*`) never take the ready route or `--all-ready`: they need the `approved` label, an explicit approving comment by `albin02forsberg` after the plan ("go ahead", "approved", "start implement"), or being named in the arguments.
+  - With `--all-ready`, also take agent-filed issues that have a `## Plan` comment and no `needs-decision`.
   - Never build an issue outside these routes.
 - **Open PRs** with no agent working on them → queue a `pr-shepherd` for each.
 - Approved issues with no `## Plan` → run a `triager` pass on just those first.
@@ -28,6 +29,7 @@ Run at most `--max` agents at once (default 3) with `isolation: "worktree"` and 
 - **One agent per issue.** Prompt: `Implement issue #<n>.` plus anything specific — scope limits, the order of multi-part work, known conflicts with other running agents ("another agent is editing activity.rs — keep edits localized, expect to rebase").
 - **Issues touching the same files:** run them in sequence, not in parallel. For example, chain them in one agent ("#66, then #63, as two PRs").
 - **When an agent finishes,** start the next one from the queue.
+- **Never idle.** While you wait (CI, an agent, a limit reset, the owner's reply), fill free slots up to `--max` in this order: the next queue issue; a `pr-shepherd` for an open PR with no agent; a due `scout`/`ideator` (under `/autopilot`); a `triager` pass on unplanned issues; stale-worktree cleanup. Implementers wait for their own CI; you only use the free slots. Poll only when none of these applies.
 
 ## 3. Review each report
 - Skim the PR diff yourself (`gh pr diff`). Look for correctness problems, unrelated churn (whole-file reformatting), and changes to files the agent shouldn't touch.
