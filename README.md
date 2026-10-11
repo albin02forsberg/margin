@@ -304,6 +304,13 @@ the week's hours against expected, flex balance and per-project totals. Keys:
 `i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV (import template: `Project` = export code, `Duration` in decimal hours, `1,5`; zero-hour rows are left out),
 `E` export a report as HTML/PDF.
 Space t … has every timeclock command (same letters as the old Emacs menu).
+
+Time → Time off logs vacation, sick leave or anything else for a day or a range
+of days: a full day, a few hours a day, or (sick) the rest of the day after what
+you worked. It lowers those days' expected hours like a public holiday does, so
+work on a vacation day counts as flex; weekends and red days in a range are skipped.
+It's kept in `leave.jsonl` next to the time log, shows hatched in the week chart
+and in the day and week reports, and stays out of the CSV export.
 Time → Project settings (`Space t P`) opens a Projects page listing every project
 with its export code, billable-hour rounding, round-up and whether it's offered
 when you start tracking; change any of them and press Save (or Enter) on that row.

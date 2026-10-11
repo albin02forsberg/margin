@@ -72,6 +72,19 @@ describe("Margin", () => {
     await fileMatches(log, (s) => /"ev":"in".*"project":"Acme"/.test(s) && /"ev":"out".*"note":"e2e done"/.test(s), "no in/out entries in the time log");
   });
 
+  it("logs and removes time off in the Time view", async () => {
+    const file = join(data, "work", "leave.jsonl");
+    await browser.$(`input[aria-label="Time off note"]`).click();
+    await type("e2e trip"); // letters that are Time view keys go to the field
+    await browser.$(`select[aria-label="Hours off per day"]`).selectByVisibleText("Hours a day");
+    await (await find(".timeoff button", "Add")).click();
+    await fileMatches(file, (s) => /"kind":"vacation".*"hours":4\.0.*"note":"e2e trip"/.test(s), "time off not saved");
+    await find(".timeoff td", "4h 00m/day");
+    await (await browser.$(`.timeoff button[title="Remove time off"]`)).click();
+    await fileMatches(file, (s) => s === "", "time off not removed");
+    assert.ok(!(await browser.$(".time .status h2").getText()).includes("Acme"), "typing the note started the timer");
+  });
+
   it("edits a project's settings on the Projects page", async () => {
     await (await find(".time button", "Project settings")).click();
     await find(".projects td", "Acme");

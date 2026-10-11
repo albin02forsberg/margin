@@ -66,6 +66,21 @@ pub struct Session {
     pub line: Option<usize>,
 }
 
+/// Time off FROM..=TO (one line of leave.jsonl). It lowers each day's expected hours by
+/// HOURS (None: the whole day), or with REST by whatever is left of the day after work.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Leave {
+    pub from: NaiveDate,
+    pub to: NaiveDate,
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hours: Option<f64>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rest: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub note: String,
+}
+
 pub fn now() -> NaiveDateTime {
     chrono::Local::now().naive_local().with_nanosecond(0).unwrap()
 }
@@ -143,6 +158,47 @@ impl Tc {
 
     pub fn sessions(&self) -> Vec<Session> {
         sessions(&self.events(), now())
+    }
+
+    pub fn leave_path(&self) -> PathBuf {
+        self.dir.join("leave.jsonl")
+    }
+
+    /// Time off with its line index; malformed lines are skipped.
+    pub fn leave(&self) -> Vec<(usize, Leave)> {
+        let text = fs::read_to_string(self.leave_path()).unwrap_or_default();
+        text.lines().enumerate().filter_map(|(i, l)| serde_json::from_str(l).ok().map(|e| (i, e))).collect()
+    }
+
+    /// Add time off; refuses bad ranges and hours, and overlaps with time off of the same kind.
+    pub fn add_leave(&self, l: Leave) -> Result<(), String> {
+        let l = Leave { kind: l.kind.trim().to_lowercase(), note: l.note.trim().into(), ..l };
+        if l.from > l.to || l.kind.is_empty() {
+            return Err("Time off needs a kind and must end on or after its first day.".into());
+        }
+        if l.hours.is_some_and(|h| !(h > 0.0 && h <= self.expected)) || (l.rest && l.hours.is_some()) {
+            return Err(format!("Hours per day must be more than 0 and at most {}.", self.expected));
+        }
+        let text = read_or_empty(&self.leave_path())?;
+        let old: Vec<Leave> = text.lines().filter_map(|x| serde_json::from_str(x).ok()).collect();
+        if old.iter().any(|o| o.kind == l.kind && o.from <= l.to && l.from <= o.to) {
+            return Err(format!("That overlaps {} already logged.", l.kind));
+        }
+        let mut lines: Vec<String> = text.lines().map(String::from).collect();
+        lines.push(serde_json::to_string(&l).unwrap());
+        fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
+        crate::config::write_atomic(&self.leave_path(), lines.join("\n") + "\n").map_err(|e| e.to_string())
+    }
+
+    pub fn remove_leave(&self, line: usize) -> Result<(), String> {
+        let text = read_or_empty(&self.leave_path())?;
+        let mut lines: Vec<&str> = text.lines().collect();
+        if line >= lines.len() {
+            return Err("line not found".into());
+        }
+        lines.remove(line);
+        let out = if lines.is_empty() { String::new() } else { lines.join("\n") + "\n" };
+        crate::config::write_atomic(&self.leave_path(), out).map_err(|e| e.to_string())
     }
 
     /// The open `in` event, if clocked in.
@@ -532,15 +588,31 @@ pub fn expected_hours(date: NaiveDate, daily: f64) -> f64 {
     if weekend || swedish_red_days(date.year()).iter().any(|(d, _)| *d == date) { 0.0 } else { daily }
 }
 
-/// Port of `albin/calculate-flex`: (total, period, period_days). Only days with work count.
-pub fn flex(sessions: &[Session], projects: &Projects, daily: f64, range: Option<(NaiveDate, NaiveDate)>) -> (f64, f64, usize) {
+/// Time off covering DATE with the hours each credits, given EXPECTED (before leave) and WORKED.
+pub fn leave_on(leave: &[Leave], date: NaiveDate, expected: f64, worked: f64) -> Vec<(&Leave, f64)> {
+    if expected <= 0.0 {
+        return vec![]; // weekends and red days: nothing to take off
+    }
+    let hours = |l: &Leave| if l.rest { (expected - worked).max(0.0) } else { l.hours.unwrap_or(expected) };
+    leave.iter().filter(|l| l.from <= date && date <= l.to).map(|l| (l, hours(l))).collect()
+}
+
+/// Hours DATE's expected time drops by, at most EXPECTED.
+pub fn leave_credit(leave: &[Leave], date: NaiveDate, expected: f64, worked: f64) -> f64 {
+    leave_on(leave, date, expected, worked).iter().map(|x| x.1).sum::<f64>().min(expected)
+}
+
+/// Port of `albin/calculate-flex`: (total, period, period_days). Only days with work count;
+/// time off lowers that day's expected hours, so work on a vacation day is flex.
+pub fn flex(sessions: &[Session], projects: &Projects, leave: &[Leave], daily: f64, range: Option<(NaiveDate, NaiveDate)>) -> (f64, f64, usize) {
     let mut per_day: BTreeMap<NaiveDate, f64> = BTreeMap::new();
     for s in apply_carry(sessions, projects).0 {
         *per_day.entry(s.date).or_default() += s.hours;
     }
     let (mut total, mut period, mut n) = (0.0, 0.0, 0);
     for (date, h) in per_day {
-        let f = h - expected_hours(date, daily);
+        let e = expected_hours(date, daily);
+        let f = h - e + leave_credit(leave, date, e, h);
         total += f;
         if range.is_some_and(|(a, b)| a <= date && date <= b) {
             period += f;
@@ -579,14 +651,22 @@ fn session_line(s: &Session, indent: &str) -> String {
     format!("{indent}- [{} - {}] *{}* ({:.2} h) » {}\n", s.start.format("%H:%M:%S"), s.end.format("%H:%M:%S"), or_other(&s.project), s.hours, s.desc)
 }
 
-pub fn daily_report(sessions: &[Session], projects: &Projects, date: NaiveDate, profile: &str) -> String {
+/// "vacation 8.00 h (note)" for each time off on DATE.
+fn time_off(leave: &[Leave], date: NaiveDate, daily: f64, worked: f64) -> Vec<String> {
+    let note = |l: &Leave| if l.note.is_empty() { String::new() } else { format!(" ({})", l.note) };
+    leave_on(leave, date, expected_hours(date, daily), worked).iter().map(|(l, h)| format!("{} {h:.2} h{}", l.kind, note(l))).collect()
+}
+
+pub fn daily_report(sessions: &[Session], projects: &Projects, leave: &[Leave], daily: f64, date: NaiveDate, profile: &str) -> String {
     let merged = prepare_report_sessions(sessions);
     let rounded = apply_carry(&merged, projects).0;
     let raw: f64 = merged.iter().filter(|s| s.date == date).map(|s| s.hours).sum();
     let day: Vec<&Session> = rounded.iter().filter(|s| s.date == date).collect();
     let billable: f64 = day.iter().map(|s| s.hours).sum();
     let mut o = format!("#+TITLE: Daily Time Report ({profile})\n#+SUBTITLE: {date}\n\n* Summary\n");
-    o += &format!("  - Hours worked: {raw:.2} h\n  - Billable: {billable:.2} h\n  - Sessions: {}\n\n* Detailed Log\n", day.len());
+    o += &format!("  - Hours worked: {raw:.2} h\n  - Billable: {billable:.2} h\n  - Sessions: {}\n", day.len());
+    time_off(leave, date, daily, raw).iter().for_each(|t| o += &format!("  - Time off: {t}\n"));
+    o += "\n* Detailed Log\n";
     if day.is_empty() {
         o += "  - No sessions found for this date.\n";
     }
@@ -594,7 +674,7 @@ pub fn daily_report(sessions: &[Session], projects: &Projects, date: NaiveDate, 
     o
 }
 
-pub fn weekly_report(sessions: &[Session], projects: &Projects, start: NaiveDate, end: NaiveDate, profile: &str) -> String {
+pub fn weekly_report(sessions: &[Session], projects: &Projects, leave: &[Leave], daily: f64, start: NaiveDate, end: NaiveDate, profile: &str) -> String {
     let in_range = |s: &&Session| start <= s.date && s.date <= end;
     let merged = prepare_report_sessions(sessions);
     let rounded = apply_carry(&merged, projects).0;
@@ -621,6 +701,17 @@ pub fn weekly_report(sessions: &[Session], projects: &Projects, start: NaiveDate
         rows.push(vec![or_other(p).into(), export_code(p, projects), format!("{:.2} h", raw_by.get(p).unwrap_or(&0.0)), format!("{rnd:.2} h"), format!("{share}%")]);
     }
     o += &org_table(&rows);
+    let off: Vec<String> = start
+        .iter_days()
+        .take_while(|d| *d <= end)
+        .flat_map(|d| {
+            let worked = by_day.get(&d).map_or(0.0, |ss| ss.iter().map(|s| s.hours).sum());
+            time_off(leave, d, daily, worked).into_iter().map(move |t| format!("  - {d} {}: {t}\n", d.format("%a")))
+        })
+        .collect();
+    if !off.is_empty() {
+        o += &format!("\n* Time off\n{}", off.concat());
+    }
     o += "\n* Detailed Log\n";
     for (date, ss) in by_day {
         o += &format!("** {date} ({:.2} h)\n", ss.iter().map(|s| s.hours).sum::<f64>());
@@ -830,8 +921,52 @@ mod tests {
         assert_eq!(merged.len(), 2);
         assert_eq!(merged[1].hours, 2.0); // empty-desc session folded into "Review"
         // Mon 8h on an 8h day => 0, Fri 2h => -6
-        assert_eq!(flex(&s, &Projects::new(), 8.0, None).0, -6.0);
+        assert_eq!(flex(&s, &Projects::new(), &[], 8.0, None).0, -6.0);
         assert_eq!(task_suggestions(&s, Some("Acme"), d("2026-10-02")), vec!["Review", "Did stuff"]);
+    }
+
+    #[test]
+    fn leave_lowers_expected_hours() {
+        let l = |from: &str, to: &str, hours, rest| Leave { from: d(from), to: d(to), kind: "vacation".into(), hours, rest, note: String::new() };
+        let s = |date: &str, h| Session { date: d(date), project: "A".into(), desc: "x".into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None };
+        let p = Projects::new();
+        // Mon 2026-10-05 .. Sun 10-11: full days, none credited on the weekend.
+        let week = [l("2026-10-05", "2026-10-11", None, false)];
+        assert_eq!(leave_credit(&week, d("2026-10-06"), 8.0, 0.0), 8.0);
+        assert_eq!(leave_credit(&week, d("2026-10-10"), 0.0, 0.0), 0.0);
+        assert_eq!(flex(&[s("2026-10-06", 2.0)], &p, &week, 8.0, None).0, 2.0); // work on vacation is flex
+        assert_eq!(flex(&[s("2026-10-12", 8.0)], &p, &week, 8.0, None).0, 0.0); // after it, back to normal
+        // Half a day off plus 4 h worked is a full day; rest-of-day tops up to the target, never past it.
+        assert_eq!(flex(&[s("2026-10-06", 4.0)], &p, &[l("2026-10-06", "2026-10-06", Some(4.0), false)], 8.0, None).0, 0.0);
+        let sick = [Leave { kind: "sick".into(), ..l("2026-10-06", "2026-10-06", None, true) }];
+        assert_eq!(flex(&[s("2026-10-06", 3.0)], &p, &sick, 8.0, None).0, 0.0);
+        assert_eq!(flex(&[s("2026-10-06", 9.0)], &p, &sick, 8.0, None).0, 1.0);
+        // Overlapping entries never credit more than the day.
+        assert_eq!(leave_credit(&[week[0].clone(), sick[0].clone()], d("2026-10-06"), 8.0, 3.0), 8.0);
+        // Reports list it without counting it as worked.
+        let r = daily_report(&[], &p, &sick, 8.0, d("2026-10-06"), "Work");
+        assert!(r.contains("Sessions: 0\n  - Time off: sick 8.00 h\n"), "{r}");
+        let r = weekly_report(&[], &p, &week, 8.0, d("2026-10-09"), d("2026-10-12"), "Work");
+        assert!(r.contains("- 2026-10-09 Fri: vacation 8.00 h") && !r.contains("2026-10-10 Sat") && !r.contains("2026-10-12 Mon:"), "{r}");
+    }
+
+    #[test]
+    fn leave_on_disk() {
+        let dir = std::env::temp_dir().join(format!("tc-leave-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), expected: 8.0 };
+        let l = |from: &str, to: &str, kind: &str| Leave { from: d(from), to: d(to), kind: kind.into(), hours: None, rest: false, note: " trip ".into() };
+        tc.add_leave(l("2026-07-01", "2026-07-14", " Vacation")).unwrap();
+        tc.add_leave(l("2026-07-03", "2026-07-03", "sick")).unwrap(); // another kind may overlap
+        assert_eq!(tc.leave()[0], (0, Leave { kind: "vacation".into(), note: "trip".into(), ..l("2026-07-01", "2026-07-14", "") }));
+        assert!(tc.add_leave(l("2026-07-14", "2026-07-20", "vacation")).unwrap_err().contains("overlaps"));
+        assert!(tc.add_leave(l("2026-07-02", "2026-07-01", "other")).is_err());
+        assert!(tc.add_leave(Leave { hours: Some(9.0), ..l("2026-08-01", "2026-08-01", "other") }).is_err());
+        assert!(tc.add_leave(Leave { hours: Some(0.0), ..l("2026-08-01", "2026-08-01", "other") }).is_err());
+        tc.remove_leave(0).unwrap();
+        assert_eq!(tc.leave().iter().map(|x| (x.0, x.1.kind.as_str())).collect::<Vec<_>>(), vec![(0, "sick")]);
+        assert!(tc.remove_leave(5).is_err());
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
