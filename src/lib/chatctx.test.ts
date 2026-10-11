@@ -8,6 +8,15 @@ const doc = "intro\n* A\na1\na2\n** A1\nx\n* B\nb1\n";
 test("selection wins, even when the note fits", () => {
   assert.deepEqual(chatContext(doc, 2, 5, 2, "N"), { text: "tro", label: "selection" });
 });
+test("a selection over the limit is cut to it, on a code point", () => {
+  const sel = (s: string, limit: number) => chatContext(s, 0, s.length, 0, "N", limit);
+  assert.deepEqual(sel("abcd", 4), { text: "abcd", label: "selection" });
+  assert.equal(sel("abcde", 4).text, "abcd");
+  const r = chatContext("å".repeat(3000), 0, 3000, 0, "N");
+  assert.equal(r.label, "selection (first 4 KB)");
+  assert.equal(r.text, "å".repeat(2000));
+  assert.ok(!r.text.includes("�"));
+});
 test("short note is sent whole", () => {
   assert.deepEqual(chatContext(doc, 0, 0, 0, "N"), { text: doc, label: "N" });
 });

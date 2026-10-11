@@ -14,7 +14,16 @@ export const cleanChat = (s: string) =>
  * fits; else about LIMIT bytes of lines around the cursor. TITLE labels the whole note.
  */
 export function chatContext(doc: string, from: number, to: number, head: number, title: string, limit = LIMIT): { text: string; label: string } {
-  if (from !== to) return { text: doc.slice(Math.min(from, to), Math.max(from, to)), label: "selection" };
+  if (from !== to) {
+    const sel = doc.slice(Math.min(from, to), Math.max(from, to));
+    if (bytes(sel) <= limit) return { text: sel, label: "selection" };
+    let [text, size] = ["", 0]; // too long: its first LIMIT bytes, cut on a code point so Rust's cut is a no-op
+    for (const ch of sel) {
+      if ((size += bytes(ch)) > limit) break;
+      text += ch;
+    }
+    return { text, label: `selection (first ${+(limit / 1000).toFixed(1)} KB)` };
+  }
   if (bytes(doc) <= limit) return { text: doc, label: title };
   const lines = doc.split("\n");
   const cur = doc.slice(0, head).split("\n").length - 1;
