@@ -106,7 +106,6 @@ conflicts are flagged (`:w` keeps yours, `Space f r` reloads).
 New here? The first start asks for your notes folder, time-tracking folder and
 hands-on tutorial note (`Space ?` reopens it). Changing folders or dropping the current
 profile clocks out first, and warns where old files stay (nothing is moved).
-hands-on tutorial note (`Space ?` reopens it).
 
 - **Ctrl+K** — command palette: every action, with its shortcut.
 - **Space** (vim normal mode, or in any list view) — the same actions as a menu.
