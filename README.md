@@ -444,7 +444,7 @@ included, along with your messages; untick it to chat without it. The model
 gets about 4 KB: with a selection, the selection; with a longer note, the
 section around the cursor (or the lines around it if no section fits), and
 the checkbox says which. Long chats
-drop their oldest turns. **Insert** under an answer puts it at the cursor
+drop their oldest turns, and answers stop at about 512 tokens. **Insert** under an answer puts it at the cursor
 (replacing the selection) in the open note; **Copy** copies it. The chat lives only in memory: **Clear** empties it,
 and it's gone when Margin quits.
 
