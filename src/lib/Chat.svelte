@@ -6,7 +6,7 @@
   import { tick } from "svelte";
 
   /** Chat with the local model (#205). History lives here, in memory only; ASK sends it, with the open NOTE (its name) when ticked. INSERT (when a note is open) puts an answer at the cursor. */
-  let { ask, note, insert }: { ask: (msgs: ChatMsg[], withNote: boolean) => Promise<string>; note: string | null; insert?: (text: string) => void } = $props();
+  let { ask, note, noteLabel, insert }: { ask: (msgs: ChatMsg[], withNote: boolean) => Promise<string>; note: string | null; noteLabel?: () => string; insert?: (text: string) => void } = $props();
   let msgs = $state<ChatMsg[]>([]);
   let text = $state("");
   let withNote = $state(true);
@@ -14,6 +14,10 @@
   let error = $state("");
   let list = $state<HTMLElement>();
   let input = $state<HTMLTextAreaElement>();
+  /** What the checkbox says is sent: the selection, a section or the note; refreshed on focus and tab change, as the cursor isn't reactive. */
+  let label = $state("");
+  const refresh = () => (label = note && noteLabel ? noteLabel() : (note ?? ""));
+  $effect(() => { refresh(); });
 
   const scroll = async () => { await tick(); list?.scrollTo({ top: list.scrollHeight }); };
 
@@ -58,8 +62,8 @@
     {#if busy}<p class="dim">Thinking…</p>{/if}
     {#if error}<p class="err">⚠ {error}</p>{/if}
   </div>
-  {#if note}<label><input type="checkbox" bind:checked={withNote} /> Include {note}</label>{/if}
-  <textarea bind:this={input} bind:value={text} {onkeydown} rows="3" placeholder="Message (Enter sends, Shift+Enter new line)"></textarea>
+  {#if note}<label><input type="checkbox" bind:checked={withNote} /> Include {label || note}</label>{/if}
+  <textarea bind:this={input} bind:value={text} {onkeydown} onfocus={refresh} rows="3" placeholder="Message (Enter sends, Shift+Enter new line)"></textarea>
 </div>
 
 <style>

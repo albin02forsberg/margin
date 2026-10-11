@@ -21,6 +21,7 @@
   import Projects from "$lib/Projects.svelte";
   import Settings from "$lib/Settings.svelte";
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
+  import { chatContext } from "$lib/chatctx";
   import Chat, { type ChatMsg } from "$lib/Chat.svelte";
 
   type View = "agenda" | "todo" | "time" | "projects" | "settings";
@@ -720,11 +721,19 @@
     }
   }
 
-  /** The chat panel's answer to MESSAGES, about the open note when WITH_NOTE (unsaved edits included). */
+  /** The part of the open note the chat sends (#211): selection, enclosing section or the note. */
+  function chatPart() {
+    const { from, to, head } = view.state.selection.main;
+    return chatContext(view.state.doc.toString(), from, to, head, tab!.title);
+  }
+
+  const chatNote = () => { const c = chatPart(); return [c.label === tab!.title ? c.label : `${tab!.title}, ${c.label}`, c.text]; };
+
+  /** The chat panel's answer to MESSAGES, about the open note's chatPart when WITH_NOTE (unsaved edits included). */
   async function chatAsk(messages: ChatMsg[], withNote: boolean): Promise<string> {
     drafting++;
     try {
-      return await call<string>("ai_chat", { messages, note: withNote && tab?.kind === "file" ? [tab.title, view.state.doc.toString()] : null });
+      return await call<string>("ai_chat", { messages, note: withNote && tab?.kind === "file" ? chatNote() : null });
     } finally {
       drafting--;
     }
@@ -1550,7 +1559,7 @@
         </aside>
       {/if}
       <!-- hidden, not removed, so the chat survives closing the panel -->
-      <aside class="links chat" style:display={showChat ? null : "none"}><Chat bind:this={chat} ask={chatAsk} note={tab?.kind === "file" ? tab.title : null} insert={tab?.kind === "file" ? insertAtCursor : undefined} /></aside>
+      <aside class="links chat" style:display={showChat ? null : "none"}><Chat bind:this={chat} ask={chatAsk} note={tab?.kind === "file" ? tab.title : null} noteLabel={() => chatPart().label} insert={tab?.kind === "file" ? insertAtCursor : undefined} /></aside>
       {#if showBacklinks}
         <aside class="links">
           <h3>Linked from <small>{backlinks.length}</small></h3>
