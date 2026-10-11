@@ -77,12 +77,13 @@ CI/CD secrets needed: `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PA
 Parallel work runs through checked-in agents and skills (see `.claude/`):
 - `/triage [watch]` — the `triager` agent plans issues (`## Plan` comment), labels them, answers comments, closes exact duplicates, already-merged work and issues the owner explicitly says to close (unsure ones get a comment and stay open). Comments it posts start with "🤖 *Claude:*".
 - `/ship [issues…] [--max N]` — coordinator: runs `implementer` agents (one worktree per issue, PR → CI → squash-merge) and `pr-shepherd` agents for open PRs, files follow-ups, cleans up worktrees.
-- Models: `reviewer`, `scout`, `implementer` run on opus, `triager` and `pr-shepherd` on sonnet (agent frontmatter); `/ship` runs implementers for plain size-`S` plans on sonnet.
+- Models: `reviewer`, `scout`, `implementer`, `releaser` run on opus, `triager` and `pr-shepherd` on sonnet (agent frontmatter); `/ship` runs implementers for plain size-`S` plans on sonnet.
 - Implementers assign the issue to the owner (`albin02forsberg`) when they start, unless it is already assigned to someone else, and unassign it if they give up.
 - Approval gate: defined once in `.claude/skills/ship/SKILL.md` → Survey (owner's `approved` label, issues named explicitly, or a triager + reviewer "small and clear" comment; `needs-decision` always blocks).
 - Agents run `cargo test`/`clippy` with a shared `CARGO_TARGET_DIR=~/.cache/margin-agents-target` (safe to `rm -rf`) and skip local checks for docs-only changes (CI's rule).
 - `/autopilot [issues…] [--max N] [--hours H] [--all-ready] [--overnight]` — one command for continuous runs: triager in watch mode plus `/ship` rounds, until the queue is empty or time is up (`--overnight`: 12 h, idles on cheap `gh` polling instead of stopping). Same approval gate. On a usage limit it waits for the reset (30 min fallback) and resumes stalled agents; best effort, since the limit is account-wide and the coordinator's own turn may fail too.
-- Repeat with `/loop /ship`, or `/schedule` a cloud routine for unattended runs. The `scout` agent scans changed code every ~3 h for bugs, performance and missing features and files `scout` + `needs-decision` issues (no per-run cap). Releases stay manual (`/release`).
+- Repeat with `/loop /ship`, or `/schedule` a cloud routine for unattended runs. The `scout` agent scans changed code every ~3 h for bugs, performance and missing features and files `scout` + `needs-decision` issues (no per-run cap).
+- Releases: `/autopilot` runs the `releaser` agent after ship rounds. It cuts and publishes a stable release on its own (#218) only when CI is green, the nightly built clean for the same commit, the last release is ≥3 days old with ≥3 `feat`/`fix` commits since (or it is a bug hotfix), and no open issue/PR has the `no-release` label (the kill switch). Minor bump for `feat`, else patch, never major; it logs to the `Release log` issue. `/release <version>` stays the owner's manual path.
 
 ## Tools
 
@@ -91,4 +92,4 @@ Parallel work runs through checked-in agents and skills (see `.claude/`):
 
 ## Permission Mode
 
-Always run in auto mode: proceed without asking for confirmation on routine, reversible actions (edits, tests, `gh` reads, branches/PRs per the workflow above). Still confirm destructive or hard-to-reverse actions (force-push, deleting branches/data, releases) and anything outside the approval gate.
+Always run in auto mode: proceed without asking for confirmation on routine, reversible actions (edits, tests, `gh` reads, branches/PRs per the workflow above). Still confirm destructive or hard-to-reverse actions (force-push, deleting branches/data, releases outside the `releaser` gate) and anything outside the approval gate.

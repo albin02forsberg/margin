@@ -44,10 +44,10 @@ git worktree remove --force <path>; git branch -D <branch>; git worktree prune; 
 Remove only worktrees whose agent has finished.
 
 ## 5. Report to the owner
-Keep it short: what merged (PR links), what's still running, what wasn't verified, and decisions only the owner can make (signing, accounts, model choices, releases — never do those yourself).
+Keep it short: what merged (PR links), what's still running, what wasn't verified, and decisions only the owner can make (signing, accounts, model choices — never do those yourself).
 
 ## Rules
-- **Never:** cut a release (`/release` is the owner's), change repo settings or secrets, accept terms or create accounts, force-push `main`, or close issues by hand. Release, secrets and repo settings are never covered by any approval route. Issues close via `Closes #n`, or by the triager (duplicates, already-done work, or when the owner `albin02forsberg` explicitly says to close them in his own issue text or comment).
+- **Never:** cut a release yourself (only the `releaser` agent does, through `/autopilot`'s release gate; `/release` stays the owner's manual path), change repo settings or secrets, accept terms or create accounts, force-push `main`, or close issues by hand. Secrets, signing keys and repo settings are never covered by any approval route, and issues that change the release machinery itself still need the owner's `approved`. Issues close via `Closes #n`, or by the triager (duplicates, already-done work, or when the owner `albin02forsberg` explicitly says to close them in his own issue text or comment).
 - **Models:** defaults live in agent frontmatter: `reviewer`, `scout` and `implementer` on `opus`; `triager` and `pr-shepherd` on `sonnet`. Override per spawn with the Agent tool's `model`:
   - `implementer`: pass `model: "sonnet"` only when the plan's `**Size:**` line is exactly `S`. Ranges (`S–M`), M, L or no Size line keep `opus`.
   - `pr-shepherd`: if one comes back with CI still failing after two fix attempts, stop it and re-spawn it with `model: "opus"`.

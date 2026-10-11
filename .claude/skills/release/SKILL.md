@@ -28,6 +28,7 @@ Example: `/release 0.2.0`
 - Verify `npm run check && npm test && cargo test` pass before releasing
 - After push, check GitHub Actions to ensure builds complete
 - Publish the draft release manually when ready (auto-update will offer it to installed copies)
+- This is the owner's manual path; agents release only through `.claude/agents/releaser.md` (run by `/autopilot`), which bumps via a PR and publishes on its own
 
 ## Secrets required (in GitHub repo settings)
 
