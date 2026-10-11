@@ -228,6 +228,6 @@ describe("Features", () => {
     await type("iX");
     await browser.keys(Key.Escape);
     await browser.keys([Key.Ctrl, "s"]);
-    await fileMatches(join(d.notes, "beta.org"), (s) => s.includes("\nXWe discussed"), "reopened tab lost its line");
+    await fileMatches(join(d.notes, "beta.org"), (s) => s.endsWith("today.\nX"), "reopened tab lost its line");
   });
 });
