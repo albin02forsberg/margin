@@ -42,7 +42,11 @@ to them; unticking waits for the next stable release newer than your nightly.
 Release installers are built only by this repository's GitHub Actions
 ([release.yml](.github/workflows/release.yml)) from a tagged commit on `main`;
 nothing is built or signed on a personal machine. Releases are drafted by CI
-and published by the maintainer, Albin Forsberg, who approves every release.
+and published either by the maintainer, Albin Forsberg, or by the repository's
+release agent under a gate he set: CI green, the nightly built clean for the
+same commit, at most one release per 3 days, and a `no-release` label that
+stops it ([releaser.md](.claude/agents/releaser.md)).
+
 Opt-in nightly builds ([nightly.yml](.github/workflows/nightly.yml)) are built
 and published by CI from `main` without that per-build approval.
 Update bundles are signed with the project's updater key so installed copies
@@ -86,6 +90,8 @@ git push --tags`): installers for all three OSes land in a draft GitHub release.
 Publishing it makes installed copies offer the update on their next start
 (or `Space f u`). Release builds are signed for the updater with the
 `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repo secrets.
+`/autopilot` also releases on its own through the `releaser` agent when its gate
+passes (see above); add the `no-release` label to any open issue to pause that.
 
 ## Staying in sync
 
