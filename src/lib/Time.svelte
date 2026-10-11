@@ -76,6 +76,7 @@
   const recentOff = $derived(d ? d.leave.filter(([, l]: [number, any]) => l.to >= isoAgo(31)).sort((a: any, b: any) => (a[1].from < b[1].from ? -1 : 1)) : []);
   const addOff = () =>
     api.act(async () => {
+      if (off.mode === "hours" && !(off.hours > 0)) throw new Error("Enter the hours off per day"); // null would mean a full day
       const leave = { kind: off.kind, from: off.from, to: off.to || off.from, hours: off.mode === "hours" ? off.hours : null, rest: off.mode === "rest", note: off.note };
       await invoke("tc_leave_add", { leave });
       [off.to, off.note] = ["", ""];
@@ -239,7 +240,7 @@
           <option value="hours">Hours a day</option>
           {#if off.kind === "sick"}<option value="rest">Rest of the day</option>{/if}
         </select>
-        {#if off.mode === "hours"}<input type="number" bind:value={off.hours} min="0.25" step="0.25" aria-label="Hours a day" />{/if}
+        {#if off.mode === "hours"}<input type="number" bind:value={off.hours} min="0.25" step="0.25" aria-label="Hours a day" required />{/if}
         <input bind:value={off.note} placeholder="Note" aria-label="Time off note" />
         <button type="submit">Add</button>
       </form>

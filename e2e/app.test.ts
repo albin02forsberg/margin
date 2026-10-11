@@ -77,6 +77,16 @@ describe("Margin", () => {
     await browser.$(`input[aria-label="Time off note"]`).click();
     await type("e2e trip"); // letters that are Time view keys go to the field
     await browser.$(`select[aria-label="Hours off per day"]`).selectByVisibleText("Hours a day");
+    const hours = await browser.$(`input[aria-label="Hours a day"]`);
+    await hours.click();
+    await browser.keys([Key.Ctrl, "a"]);
+    await browser.keys(Key.Backspace);
+    await (await find(".timeoff button", "Add")).click(); // empty hours must not become a full day
+    await browser.pause(300);
+    assert.ok(!existsSync(file) || readFileSync(file, "utf8") === "", "empty hours added a time-off entry");
+    await hours.click();
+    await browser.keys([Key.Ctrl, "a"]);
+    await type("4");
     await (await find(".timeoff button", "Add")).click();
     await fileMatches(file, (s) => /"kind":"vacation".*"hours":4\.0.*"note":"e2e trip"/.test(s), "time off not saved");
     await find(".timeoff td", "4h 00m/day");
