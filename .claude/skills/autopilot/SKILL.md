@@ -1,22 +1,23 @@
 ---
 name: autopilot
-description: Run the Margin repo's whole agent workflow continuously — the triager in watch mode plus repeated /ship rounds — until the queue is empty or time runs out. Use when the owner invokes /autopilot or asks to "run everything" / "keep going on your own".
+description: Run the Margin repo's whole agent workflow continuously — the triager in watch mode plus repeated /ship rounds — until stopped (or `--hours` runs out). Use when the owner invokes /autopilot or asks to "run everything" / "keep going on your own".
 argument-hint: "[issue numbers…] [--max N] [--hours H] [--all-ready] [--overnight]"
 disable-model-invocation: true
 ---
 
-You are the coordinator from `.claude/skills/ship/SKILL.md`, running it in rounds with triage alongside. Read that file first: its survey, dispatch, review, cleanup and rules all apply here. Arguments: `$ARGUMENTS` (`--max` default 3, `--hours` default 4). `--overnight` = `--hours 12` with no early stop (see Idle).
+You are the coordinator from `.claude/skills/ship/SKILL.md`, running it in rounds with triage alongside. Read that file first: its survey, dispatch, review, cleanup and rules all apply here. Arguments: `$ARGUMENTS` (`--max` default 3). By default it runs until the owner stops it or a hard error, idling on cheap polling when there is nothing to do (see Idle); `--hours H` caps the run. `--overnight` is accepted as an alias for the default.
 
 ## Loop
 1. **Start triage:** run the `triager` agent in the background, no worktree, prompt "Do a pass, then watch mode".
 2. **Ship round:** run steps 1–4 of `/ship` with the same issue numbers, `--max` and `--all-ready` you were given. Work queue and approval gate: `/ship` → Survey.
-3. **Scout:** at start and then every ~3 hours, run the `scout` agent (`.claude/agents/scout.md`) in the background, no worktree, prompt "Do a scan". It skips itself when `origin/main` hasn't moved. It files at most 5 `scout` issues per run; they go through the triager like any other, and only ones the triager and reviewer agree are ready (S/M) enter the work queue. In `--overnight` idle, the 3 h timer counts as a wake-up. Skip the scout when `--max 0` or the owner said no scouting.
+3. **Scout:** at start and then every ~3 hours, run the `scout` agent (`.claude/agents/scout.md`) in the background, no worktree, prompt "Do a scan". It skips itself when `origin/main` hasn't moved. It files at most 5 `scout` issues per run; they go through the triager like any other, and only ones the triager and reviewer agree are ready (S/M) enter the work queue. In idle, the 3 h timer counts as a wake-up. Skip the scout when `--max 0` or the owner said no scouting.
    **Ideator:** when the work queue is empty and no implementer is running, run the `ideator` agent (`.claude/agents/ideator.md`) in the background, no worktree, prompt "Propose work". At most once per ~3 hours, and not while issues it filed earlier are still unplanned. Its `idea` issues (max 5 per run) go through the triager the same way. Skip it when `--max 0` or the owner said no ideas.
 4. **When the triager reports:** relay what `/triage` would (planned, closed as duplicate/done, decisions), then resume it with SendMessage. If it reports newly ready issues that are in the work queue, start another ship round as agents free up.
-5. **Release gate:** after a ship round finishes, if `git log --format=%s $(git describe --tags --abbrev=0 --match 'v[0-9]*' origin/main)..origin/main` has a `feat:`/`fix:` subject, no `releaser` is running, and none ran in the last 6 hours, run the `releaser` agent (`.claude/agents/releaser.md`) in the background, no worktree, prompt "Run the release gate". It checks the rest (CI, nightly for the same commit, cadence, the `no-release` kill switch) and usually just reports why not. Relay its report: a published release, or where it stopped. In `--overnight` idle, check this on each wake-up too. Skip it when `--max 0` or the owner said no releases.
-6. **Repeat** step 2 whenever a round finishes and the queue has work.
+5. **Release gate:** after a ship round finishes, if `git log --format=%s $(git describe --tags --abbrev=0 --match 'v[0-9]*' origin/main)..origin/main` has a `feat:`/`fix:` subject, no `releaser` is running, and none ran in the last 6 hours, run the `releaser` agent (`.claude/agents/releaser.md`) in the background, no worktree, prompt "Run the release gate". It checks the rest (CI, nightly for the same commit, cadence, the `no-release` kill switch) and usually just reports why not. Relay its report: a published release, or where it stopped. In idle, check this on each wake-up too. Skip it when `--max 0` or the owner said no releases.
+6. **Never idle:** while waiting on anything, fill free slots as `/ship` → Dispatch → Never idle says (next issue, `pr-shepherd`, due scout/ideator, triager pass, worktree cleanup) before falling back to Idle.
+7. **Repeat** step 2 whenever a round finishes and the queue has work.
 
-## Idle (`--overnight`)
+## Idle
 When the queue is empty and no agent is running, do no model work: sleep in one bash `until` loop (each call under ~9 minutes) on a plain-`gh` fingerprint, and wake only when it changes:
 ```bash
 gh api 'repos/albin02forsberg/margin/issues?state=all&sort=updated&per_page=30' --jq '[.[]|[.number,.updated_at,.comments]]|sort'; gh pr list -R albin02forsberg/margin --state open --json number,updatedAt; git ls-remote origin main
@@ -26,7 +27,7 @@ Poll every 3 minutes, every 10 after an hour with no change. A change (new issue
 **Usage limits:** on a rate-limit/session-limit error (yours or an agent's), wait it out instead of stopping: sleep in the same kind of bash `until` loop (each call under ~9 minutes, a plain `date` check, no `gh`; never a bare foreground `sleep`) for 30 minutes, or until the reset time if the error states one. Then resume every stalled agent with SendMessage ("check your branch/PR state and continue") and carry on with the loop. Stop and report only if the limit error comes back right after a wait 3 times in a row. The limit is account-wide, so when agents hit it your own next turn usually fails too and the session may not be re-invoked; don't rely on this overnight. If worktrees are found stalled the next morning, an external restart loop is the fix (#108 option B).
 
 ## Stop
-- After `--hours` (with `--overnight`: only then, never because the queue is empty), or when the queue is empty, no agents are running, and the triager has reported nothing new for ~30 minutes.
+- When the owner says to stop, after `--hours` if given, or on the usage-limit stop below. Never because the queue is empty; that is Idle.
 - Wrap up as `/ship` does: stop the triager (TaskStop), let implementers and a running `releaser` finish their current PR or release only, merge, clean up.
 - Post one summary to the owner: what merged (PR links), any release published, issues closed by triage, what wasn't verified, open owner decisions.
 
