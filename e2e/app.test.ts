@@ -72,6 +72,17 @@ describe("Margin", () => {
     await fileMatches(log, (s) => /"ev":"in".*"project":"Acme"/.test(s) && /"ev":"out".*"note":"e2e done"/.test(s), "no in/out entries in the time log");
   });
 
+  it("Space t l focuses the time-off form", async () => {
+    await browser.keys([Key.Ctrl, "1"]);
+    await find(".agenda h1", "Today");
+    await browser.keys(" ");
+    await type("tl");
+    await browser.waitUntil(async () => (await browser.execute(() => document.activeElement?.getAttribute("aria-label"))) === "Kind of time off", {
+      timeoutMsg: "time-off kind input not focused",
+    });
+    await browser.keys(Key.Escape);
+  });
+
   it("logs and removes time off in the Time view", async () => {
     const file = join(data, "work", "leave.jsonl");
     await browser.$(`input[aria-label="Time off note"]`).click();

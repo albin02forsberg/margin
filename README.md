@@ -319,7 +319,7 @@ the week's hours against expected, flex balance and per-project totals. Keys:
 `E` export a report as HTML/PDF.
 Space t … has every timeclock command (same letters as the old Emacs menu).
 
-Time → Time off logs vacation, sick leave or anything else for a day or a range
+Time → Time off (or `Space t l`, from anywhere) logs vacation, sick leave or anything else for a day or a range
 of days: a full day, a few hours a day, or (sick) the rest of the day after what
 you worked. It lowers those days' expected hours like a public holiday does, so
 work on a vacation day counts as flex; weekends and red days in a range are skipped.
