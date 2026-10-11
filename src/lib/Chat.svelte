@@ -6,11 +6,13 @@
   import { tick } from "svelte";
 
   /** Chat with the local model (#205). History lives here, in memory only; ASK sends it, with the open NOTE (its name) when ticked. INSERT (when a note is open) puts an answer at the cursor. */
-  let { ask, note, noteLabel, insert }: { ask: (msgs: ChatMsg[], withNote: boolean) => Promise<string>; note: string | null; noteLabel?: () => string; insert?: (text: string) => void } = $props();
+  let { ask, note, noteLabel, insert }: { ask: (msgs: ChatMsg[], withNote: boolean, onPiece: (piece: string) => void) => Promise<string>; note: string | null; noteLabel?: () => string; insert?: (text: string) => void } = $props();
   let msgs = $state<ChatMsg[]>([]);
   let text = $state("");
   let withNote = $state(true);
   let busy = $state(false);
+  /** The answer so far, while it streams in (#210). */
+  let partial = $state("");
   let error = $state("");
   let list = $state<HTMLElement>();
   let input = $state<HTMLTextAreaElement>();
@@ -27,13 +29,15 @@
     const q = text.trim();
     if (!q || busy) return;
     msgs.push({ role: "user", content: q });
-    [text, busy, error] = ["", true, ""];
+    [text, busy, error, partial] = ["", true, "", ""];
     await scroll();
     try {
-      msgs.push({ role: "assistant", content: await ask($state.snapshot(msgs), withNote && !!note) });
+      msgs.push({ role: "assistant", content: await ask($state.snapshot(msgs), withNote && !!note, (p) => { partial += p; scroll(); }) });
     } catch (e) {
-      msgs.pop(); // unanswered: back into the box, so the history stays question, answer, …
-      [text, error] = [q, String(e)];
+      // Cancelled or failed midway: keep what came. Unanswered: back into the box, so the history stays question, answer, …
+      if (partial) msgs.push({ role: "assistant", content: partial });
+      else { msgs.pop(); text = q; }
+      error = String(e);
     } finally {
       busy = false;
       await scroll();
@@ -59,7 +63,7 @@
     {:else}
       <p class="dim">Ask the local model anything{note ? ", say about the open note" : ""}. Nothing leaves this machine, and the chat isn't saved.</p>
     {/each}
-    {#if busy}<p class="dim">Thinking…</p>{/if}
+    {#if busy}<p class={partial ? "assistant" : "dim"}>{partial || "Thinking…"}</p>{/if}
     {#if error}<p class="err">⚠ {error}</p>{/if}
   </div>
   {#if note}<label><input type="checkbox" bind:checked={withNote} /> Include {label || note}</label>{/if}

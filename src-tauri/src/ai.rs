@@ -2,15 +2,17 @@
 // (https://ollama.com), or a pinned model run inside Margin (feature `embedded-ai`). Nothing is sent unless
 // `ai_model` is set, and only to localhost.
 
-use crate::activity::{request, Suggestion};
+use crate::activity::{read_err, request, send, Suggestion};
 use crate::timeclock::Session;
 use chrono::NaiveDate;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::io::{Seek, Write};
+use std::io::{BufRead, BufReader, Seek, Write};
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
 
 /// Where drafts come from (`ai_backend`).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
@@ -256,35 +258,84 @@ pub fn clean(text: &str, one_line: bool) -> String {
 pub fn generate(backend: Backend, url: &str, dir: &Path, model: &str, prompt: &str, one_line: bool) -> Result<String, String> {
     let raw = match backend {
         Backend::Ollama => ollama(url, model, "/api/generate", &body(model, prompt), WAIT)?,
-        Backend::Embedded => embedded(dir, model, &[Msg { role: "user".into(), content: prompt.into() }], if one_line { 48 } else { 320 })?,
+        Backend::Embedded => embedded(dir, model, &[Msg { role: "user".into(), content: prompt.into() }], if one_line { 48 } else { 320 }, &mut |_| {})?,
     };
     Ok(clean(&raw, one_line))
 }
 
 /// The answer to the chat MSGS (about NOTE, see chat_messages) from MODEL, through BACKEND as in generate.
-pub fn chat(backend: Backend, url: &str, dir: &Path, model: &str, note: Option<(&str, &str)>, msgs: &[Msg]) -> Result<String, String> {
+/// The raw answer streams to ON_PIECE as it comes (#210); `cancel_draft` stops it.
+pub fn chat(backend: Backend, url: &str, dir: &Path, model: &str, note: Option<(&str, &str)>, msgs: &[Msg], on_piece: &mut dyn FnMut(&str)) -> Result<String, String> {
     let msgs = chat_messages(note, msgs)?;
     let raw = match backend {
         // num_ctx: Ollama's default may be 2048 tokens, and it silently drops the start (our system turn).
-        // num_predict: the built-in model's cap, so an answer can't run past CHAT_WAIT (#210).
+        // num_predict: the built-in model's cap.
         Backend::Ollama => {
-            let body = serde_json::json!({ "model": model, "messages": msgs, "stream": false, "options": { "num_ctx": 4096, "num_predict": 512 } });
-            ollama(url, model, "/api/chat", &body.to_string(), CHAT_WAIT)?
+            let body = serde_json::json!({ "model": model, "messages": msgs, "stream": true, "options": { "num_ctx": 4096, "num_predict": 512 } });
+            ollama_chat(url, model, &body.to_string(), on_piece)?
         }
-        Backend::Embedded => embedded(dir, model, &msgs, 512)?,
+        Backend::Embedded => embedded(dir, model, &msgs, 512, on_piece)?,
     };
     Ok(clean(&raw, false))
+}
+
+/// The Ollama chat answer being streamed, so `cancel_draft` can close it.
+static STREAM: Mutex<Option<TcpStream>> = Mutex::new(None);
+
+/// MODEL's raw streamed chat answer from Ollama at URL for BODY; each line resets the CHAT_WAIT timeout.
+fn ollama_chat(url: &str, model: &str, body: &str, on_piece: &mut dyn FnMut(&str)) -> Result<String, String> {
+    let ticket = ticket();
+    RUNNING.store(ticket, Ordering::SeqCst);
+    let s = send("Ollama", "ai_url", url, "POST", "/api/chat", Some(body), CHAT_WAIT).map_err(|e| unreachable(url, e))?;
+    *STREAM.lock().unwrap_or_else(|e| e.into_inner()) = s.try_clone().ok();
+    let res = if cancelled(ticket) { Ok(String::new()) } else { read_chat(BufReader::new(s), url, model, on_piece) };
+    STREAM.lock().unwrap_or_else(|e| e.into_inner()).take();
+    if cancelled(ticket) { Err("Cancelled.".into()) } else { res }
+}
+
+/// Ollama's streamed chat response (HTTP head, then one JSON object per line) → the answer, each piece to ON_PIECE.
+fn read_chat(r: impl BufRead, url: &str, model: &str, on_piece: &mut dyn FnMut(&str)) -> Result<String, String> {
+    let mut lines = r.lines().map(|l| l.map_err(|e| read_err("Ollama", url, CHAT_WAIT, e)));
+    let status = lines.next().transpose()?.and_then(|l| l.split_whitespace().nth(1)?.parse().ok()).unwrap_or(0);
+    for l in lines.by_ref() {
+        if l?.trim().is_empty() {
+            break;
+        }
+    }
+    if status != 200 {
+        return parse(status, &lines.collect::<Result<Vec<_>, _>>()?.join("\n"), model);
+    }
+    let mut out = String::new();
+    for l in lines {
+        let l = l?;
+        if l.trim().is_empty() {
+            continue;
+        }
+        let v: serde_json::Value = serde_json::from_str(&l).map_err(|_| "Ollama sent a malformed response".to_string())?;
+        if let Some(e) = v["error"].as_str() {
+            return Err(format!("Ollama: {e}"));
+        }
+        let p = v["message"]["content"].as_str().unwrap_or("");
+        if !p.is_empty() {
+            out.push_str(p);
+            on_piece(p);
+        }
+        if v["done"] == true {
+            return Ok(out);
+        }
+    }
+    Err("Ollama stopped before finishing its answer.".into())
 }
 
 /// Whether this build can run built-in models (the `embedded-ai` cargo feature).
 pub const RUNS: bool = cfg!(feature = "embedded-ai");
 
-/// Built-in MODEL's raw answer (at most MAX_TOKENS long) to the chat MSGS; models live in DIR.
-fn embedded(dir: &Path, model: &str, msgs: &[Msg], max_tokens: i32) -> Result<String, String> {
+/// Built-in MODEL's raw answer (at most MAX_TOKENS long, streamed to ON_PIECE) to the chat MSGS; models live in DIR.
+fn embedded(dir: &Path, model: &str, msgs: &[Msg], max_tokens: i32, on_piece: &mut dyn FnMut(&str)) -> Result<String, String> {
     let m = MODELS.iter().find(|m| m.id == model).ok_or_else(|| format!("Unknown built-in model {model}. Pick one with AI drafts: choose model…"))?;
     #[cfg(not(feature = "embedded-ai"))]
     {
-        let _ = (dir, msgs, max_tokens);
+        let _ = (dir, msgs, max_tokens, on_piece);
         Err(format!("This build of Margin can't run {} itself. Use Ollama (AI drafts: choose model…).", m.name))
     }
     #[cfg(feature = "embedded-ai")]
@@ -293,26 +344,35 @@ fn embedded(dir: &Path, model: &str, msgs: &[Msg], max_tokens: i32) -> Result<St
         if !path.is_file() {
             return Err(format!("{} isn't downloaded. Download it with AI drafts: choose model…", m.name));
         }
-        llama::generate(m, &path, msgs, max_tokens)
+        llama::generate(m, &path, msgs, max_tokens, on_piece)
     }
 }
 
-/// Built-in drafts take a ticket before waiting for the model; `cancel_draft` stops only the one
-/// running then, never a queued or later one (#149).
+/// How much of BUF is whole UTF-8 chars: all of it but an unfinished char at the end.
 #[cfg(any(test, feature = "embedded-ai"))]
+fn whole(buf: &[u8]) -> usize {
+    match std::str::from_utf8(buf) {
+        Err(e) if e.error_len().is_none() => e.valid_up_to(),
+        _ => buf.len(),
+    }
+}
+
+/// Built-in drafts and Ollama chats take a ticket before waiting for the model; `cancel_draft` stops
+/// only the one running then, never a queued or later one (#149).
 static TICKETS: AtomicU64 = AtomicU64::new(0);
 static RUNNING: AtomicU64 = AtomicU64::new(0);
 static CANCELLED: AtomicU64 = AtomicU64::new(0);
 
-/// Stop the running built-in draft at its next token.
+/// Stop the running built-in draft at its next token, or the Ollama chat answer now.
 pub fn cancel_draft() {
     CANCELLED.store(RUNNING.load(Ordering::SeqCst), Ordering::SeqCst);
+    if let Some(s) = STREAM.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        let _ = s.shutdown(std::net::Shutdown::Both);
+    }
 }
-#[cfg(any(test, feature = "embedded-ai"))]
 fn ticket() -> u64 {
     TICKETS.fetch_add(1, Ordering::SeqCst) + 1
 }
-#[cfg(any(test, feature = "embedded-ai"))]
 fn cancelled(ticket: u64) -> bool {
     CANCELLED.load(Ordering::SeqCst) == ticket
 }
@@ -383,7 +443,7 @@ mod llama {
     }
 
     /// The model's answer to the chat MSGS, at most MAX_TOKENS long.
-    pub fn generate(m: &'static Model, path: &Path, msgs: &[Msg], max_tokens: i32) -> Result<String, String> {
+    pub fn generate(m: &'static Model, path: &Path, msgs: &[Msg], max_tokens: i32, on_piece: &mut dyn FnMut(&str)) -> Result<String, String> {
         // Release builds compile llama.cpp for AVX2 (release.yml); without it, it would crash.
         #[cfg(target_arch = "x86_64")]
         if !std::is_x86_feature_detected!("avx2") {
@@ -398,7 +458,7 @@ mod llama {
             *slot = Some((m.id, Instant::now(), load(backend, m, path)?));
         }
         let (_, used, model) = slot.as_mut().expect("loaded above");
-        let text = run(backend, model, msgs, max_tokens, ticket);
+        let text = run(backend, model, msgs, max_tokens, ticket, on_piece);
         *used = Instant::now();
         drop(slot);
         std::thread::spawn(|| {
@@ -411,7 +471,7 @@ mod llama {
         text
     }
 
-    fn run(backend: &LlamaBackend, model: &LlamaModel, msgs: &[Msg], max_tokens: i32, ticket: u64) -> Result<String, String> {
+    fn run(backend: &LlamaBackend, model: &LlamaModel, msgs: &[Msg], max_tokens: i32, ticket: u64, on_piece: &mut dyn FnMut(&str)) -> Result<String, String> {
         let e = |e: &dyn std::fmt::Display| format!("The built-in model failed: {e}");
         let chat = msgs.iter().map(|m| LlamaChatMessage::new(m.role.clone(), m.content.clone()).map_err(|x| e(&x))).collect::<Result<Vec<_>, _>>()?;
         let tmpl = model.chat_template(None).map_err(|x| e(&x))?;
@@ -432,7 +492,7 @@ mod llama {
         ctx.decode(&mut batch).map_err(|x| e(&x))?;
         let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_nanos());
         let mut sampler = LlamaSampler::chain_simple([LlamaSampler::top_k(40), LlamaSampler::top_p(0.9, 1), LlamaSampler::temp(0.7), LlamaSampler::dist(seed)]);
-        let (mut out, mut pos) = (Vec::new(), last + 1);
+        let (mut out, mut pos, mut sent) = (Vec::new(), last + 1, 0);
         for _ in 0..max_tokens {
             if super::cancelled(ticket) {
                 return Err("Draft cancelled.".into());
@@ -442,6 +502,11 @@ mod llama {
                 break;
             }
             out.extend(vocab.token_to_piece(t, false, None));
+            let n = super::whole(&out[sent..]); // a piece may end inside a char
+            if n > 0 {
+                on_piece(&String::from_utf8_lossy(&out[sent..sent + n]));
+                sent += n;
+            }
             batch.clear();
             batch.add(t, pos, &[0], true).map_err(|x| e(&x))?;
             pos += 1;
@@ -453,10 +518,13 @@ mod llama {
 
 /// MODEL's raw answer from Ollama at URL: BODY posted to PATH, waiting at most WAIT seconds.
 fn ollama(url: &str, model: &str, path: &str, body: &str, wait: u64) -> Result<String, String> {
-    let (status, resp) = request("Ollama", "ai_url", url, "POST", path, Some(body), wait).map_err(|e| {
-        if e.contains("isn't reachable") { format!("Ollama isn't running at {url}. Start it, or see ollama.com.") } else { e }
-    })?;
+    let (status, resp) = request("Ollama", "ai_url", url, "POST", path, Some(body), wait).map_err(|e| unreachable(url, e))?;
     parse(status, &resp, model)
+}
+
+/// Error E from Ollama at URL, friendlier when nothing listens there.
+fn unreachable(url: &str, e: String) -> String {
+    if e.contains("isn't reachable") { format!("Ollama isn't running at {url}. Start it, or see ollama.com.") } else { e }
 }
 
 #[cfg(test)]
@@ -520,23 +588,55 @@ mod tests {
 
     #[test]
     fn chat_http() {
-        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let base = format!("http://{}", l.local_addr().unwrap());
-        let srv = std::thread::spawn(move || {
-            let (mut c, _) = l.accept().unwrap();
-            let (mut req, mut buf) = (vec![], [0; 512]);
-            while !(req.ends_with(b"}") && req.windows(5).any(|w| w == b"Next?")) {
-                let n = c.read(&mut buf).unwrap();
-                req.extend_from_slice(&buf[..n]);
-            }
-            c.write_all(b"HTTP/1.1 200 OK\r\n\r\n{\"message\":{\"role\":\"assistant\",\"content\":\"<think>x</think>* Ship it\"},\"done\":true}").unwrap();
-            String::from_utf8_lossy(&req).into_owned()
-        });
+        let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        // Streams REPLY, ends it unless HOLD, then waits for the client to hang up; returns the request.
+        let serve = |reply: &'static str, hold: bool| {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let base = format!("http://{}", l.local_addr().unwrap());
+            (base, std::thread::spawn(move || {
+                let (mut c, _) = l.accept().unwrap();
+                let (mut req, mut buf) = (vec![], [0; 512]);
+                while !(req.ends_with(b"}") && req.windows(5).any(|w| w == b"Next?")) {
+                    let n = c.read(&mut buf).unwrap();
+                    req.extend_from_slice(&buf[..n]);
+                }
+                c.write_all(reply.as_bytes()).unwrap();
+                if !hold {
+                    c.shutdown(std::net::Shutdown::Write).unwrap();
+                }
+                while c.read(&mut buf).is_ok_and(|n| n > 0) {}
+                String::from_utf8_lossy(&req).into_owned()
+            }))
+        };
+        let piece = |c: &str| format!("{{\"message\":{{\"role\":\"assistant\",\"content\":{c:?}}},\"done\":false}}\n");
+        let reply = format!("HTTP/1.0 200 OK\r\nContent-Type: application/x-ndjson\r\n\r\n{}{}\n{}{{\"done\":true}}\n", piece("<think>x</think>* Ship"), piece(" it, "), piece("café"));
+        let (base, srv) = serve(reply.leak(), false);
         let q = [Msg { role: "user".into(), content: "Next?".into() }];
-        assert_eq!(chat(Backend::Ollama, &base, Path::new(""), "m", None, &q).unwrap(), "- Ship it");
+        let mut got = vec![];
+        assert_eq!(chat(Backend::Ollama, &base, Path::new(""), "m", None, &q, &mut |p| got.push(p.to_string())).unwrap(), "- Ship it, café");
+        assert_eq!(got, ["<think>x</think>* Ship", " it, ", "café"]);
         let req = srv.join().unwrap();
         assert!(req.starts_with("POST /api/chat ") && req.contains(r#""role":"system"},{"content":"Next?","role":"user"}],"model":"m""#), "{req}");
-        assert!(req.contains(r#""options":{"num_ctx":4096,"num_predict":512}"#), "{req}");
+        assert!(req.contains(r#""options":{"num_ctx":4096,"num_predict":512},"stream":true}"#), "{req}");
+        // An error mid-stream, and a missing model.
+        let (base, _) = serve("HTTP/1.0 200 OK\r\n\r\n{\"message\":{\"content\":\"Hi\"}}\n{\"error\":\"out of memory\"}\n", false);
+        assert_eq!(chat(Backend::Ollama, &base, Path::new(""), "m", None, &q, &mut |_| {}).unwrap_err(), "Ollama: out of memory");
+        let (base, _) = serve("HTTP/1.0 404 Not Found\r\n\r\n{\"error\":\"model \\\"m\\\" not found\"}", false);
+        assert!(chat(Backend::Ollama, &base, Path::new(""), "m", None, &q, &mut |_| {}).unwrap_err().contains("ollama pull m"));
+        // Cancel closes the socket at once, though Ollama hasn't finished.
+        let (base, srv) = serve("HTTP/1.0 200 OK\r\n\r\n{\"message\":{\"content\":\"Hi\"},\"done\":false}\n", true);
+        assert_eq!(chat(Backend::Ollama, &base, Path::new(""), "m", None, &q, &mut |_| cancel_draft()).unwrap_err(), "Cancelled.");
+        srv.join().unwrap();
+    }
+
+    /// Tests that use the cancel tickets run one at a time.
+    static SERIAL: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn whole_chars() {
+        let s = "aé€".as_bytes(); // 1 + 2 + 3 bytes
+        assert_eq!([0, 1, 2, 3, 4, 5, 6].map(|n| whole(&s[..n])), [0, 1, 1, 3, 3, 3, 6]);
+        assert_eq!(whole(b"a\xffb"), 3); // invalid bytes aren't held back forever
     }
 
     #[test]
@@ -560,6 +660,7 @@ mod tests {
 
     #[test]
     fn cancel_hits_only_the_running_draft() {
+        let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         let (a, b) = (ticket(), ticket()); // a runs, b waits for the model
         RUNNING.store(a, Ordering::SeqCst);
         cancel_draft();
