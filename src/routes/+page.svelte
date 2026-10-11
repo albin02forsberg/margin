@@ -730,6 +730,12 @@
     }
   }
 
+  /** Put a chat answer at the cursor (replacing the selection) in the open note. */
+  function insertAtCursor(text: string) {
+    view.dispatch(view.state.replaceSelection(text), { scrollIntoView: true });
+    view.focus();
+  }
+
   async function toggleChat() {
     showChat = !showChat;
     if (showChat) { await tick(); chat?.focus(); }
@@ -1544,7 +1550,7 @@
         </aside>
       {/if}
       <!-- hidden, not removed, so the chat survives closing the panel -->
-      <aside class="links chat" style:display={showChat ? null : "none"}><Chat bind:this={chat} ask={chatAsk} note={tab?.kind === "file" ? tab.title : null} /></aside>
+      <aside class="links chat" style:display={showChat ? null : "none"}><Chat bind:this={chat} ask={chatAsk} note={tab?.kind === "file" ? tab.title : null} insert={tab?.kind === "file" ? insertAtCursor : undefined} /></aside>
       {#if showBacklinks}
         <aside class="links">
           <h3>Linked from <small>{backlinks.length}</small></h3>

@@ -5,8 +5,8 @@
 <script lang="ts">
   import { tick } from "svelte";
 
-  /** Chat with the local model (#205). History lives here, in memory only; ASK sends it, with the open NOTE (its name) when ticked. */
-  let { ask, note }: { ask: (msgs: ChatMsg[], withNote: boolean) => Promise<string>; note: string | null } = $props();
+  /** Chat with the local model (#205). History lives here, in memory only; ASK sends it, with the open NOTE (its name) when ticked. INSERT (when a note is open) puts an answer at the cursor. */
+  let { ask, note, insert }: { ask: (msgs: ChatMsg[], withNote: boolean) => Promise<string>; note: string | null; insert?: (text: string) => void } = $props();
   let msgs = $state<ChatMsg[]>([]);
   let text = $state("");
   let withNote = $state(true);
@@ -46,6 +46,12 @@
   <div class="msgs" bind:this={list}>
     {#each msgs as m}
       <p class={m.role}>{m.content}</p>
+      {#if m.role === "assistant"}
+        <div class="acts">
+          <button disabled={!insert} onclick={() => insert?.(m.content)}>Insert</button>
+          <button onclick={() => navigator.clipboard.writeText(m.content).catch((e) => (error = String(e)))}>Copy</button>
+        </div>
+      {/if}
     {:else}
       <p class="dim">Ask the local model anything{note ? ", say about the open note" : ""}. Nothing leaves this machine, and the chat isn't saved.</p>
     {/each}
@@ -65,6 +71,9 @@
   p { margin: 0 0 var(--s2); padding: 6px var(--s2); border-radius: var(--radius); white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-md); user-select: text; }
   .user { background: var(--sel); margin-left: var(--s5); }
   .assistant { background: var(--active); margin-right: var(--s5); }
+  .acts { display: flex; gap: var(--s2); margin: calc(-1 * var(--s1)) var(--s5) var(--s2) 0; justify-content: flex-end; }
+  .acts button { background: none; border: 0; color: var(--link); font-size: var(--fs-sm); cursor: pointer; padding: 0; }
+  .acts button:disabled { color: var(--dim); cursor: default; }
   .dim { color: var(--dim); font-size: var(--fs-sm); }
   .err { color: var(--todo); font-size: var(--fs-sm); }
   label { color: var(--dim); font-size: var(--fs-sm); display: flex; gap: var(--s1); align-items: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

@@ -40,6 +40,8 @@ describe("AI chat", () => {
     await type("And then?");
     await browser.keys(Key.Enter);
     await find(".chat p.assistant", "Answer 2");
+    await (await find(".chat .acts button", "Insert")).click();
+    await find(".cm-content", "Answer 1");
     assert.equal(asked[0].path, "/api/chat");
     const [sys, ...rest] = asked[1].body.messages;
     assert.ok(sys.role === "system" && sys.content.includes("* TODO Ship the chat"), sys.content);

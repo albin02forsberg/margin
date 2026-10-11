@@ -441,7 +441,8 @@ Both show exactly what the model gets and send nothing until you confirm.
 **AI chat** (`Space n a`) opens a chat panel with the same model. With a note
 open, *Include <note>* (on by default) sends that note's text, unsaved edits
 included, along with your messages; untick it to chat without it. Long chats
-drop their oldest turns. The chat lives only in memory: **Clear** empties it,
+drop their oldest turns. **Insert** under an answer puts it at the cursor
+(replacing the selection) in the open note; **Copy** copies it. The chat lives only in memory: **Clear** empties it,
 and it's gone when Margin quits.
 
 ## Export
