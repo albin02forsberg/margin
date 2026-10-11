@@ -4,6 +4,7 @@
 
 <script lang="ts">
   import { tick } from "svelte";
+  import { cleanChat } from "./chatctx";
 
   /** Chat with the local model (#205). History lives here, in memory only; ASK sends it, with the open NOTE (its name) when ticked. INSERT (when a note is open) puts an answer at the cursor. */
   let { ask, note, noteLabel, insert }: { ask: (msgs: ChatMsg[], withNote: boolean, onPiece: (piece: string) => void) => Promise<string>; note: string | null; noteLabel?: () => string; insert?: (text: string) => void } = $props();
@@ -13,6 +14,7 @@
   let busy = $state(false);
   /** The answer so far, while it streams in (#210). */
   let partial = $state("");
+  const shown = $derived(cleanChat(partial));
   let error = $state("");
   let list = $state<HTMLElement>();
   let input = $state<HTMLTextAreaElement>();
@@ -35,7 +37,8 @@
       msgs.push({ role: "assistant", content: await ask($state.snapshot(msgs), withNote && !!note, (p) => { partial += p; scroll(); }) });
     } catch (e) {
       // Cancelled or failed midway: keep what came. Unanswered: back into the box, so the history stays question, answer, …
-      if (partial) msgs.push({ role: "assistant", content: partial });
+      const kept = cleanChat(partial);
+      if (kept) msgs.push({ role: "assistant", content: kept });
       else { msgs.pop(); text = q; }
       error = String(e);
     } finally {
@@ -63,7 +66,7 @@
     {:else}
       <p class="dim">Ask the local model anything{note ? ", say about the open note" : ""}. Nothing leaves this machine, and the chat isn't saved.</p>
     {/each}
-    {#if busy}<p class={partial ? "assistant" : "dim"}>{partial || "Thinking…"}</p>{/if}
+    {#if busy}<p class={shown ? "assistant" : "dim"}>{shown || "Thinking…"}</p>{/if}
     {#if error}<p class="err">⚠ {error}</p>{/if}
   </div>
   {#if note}<label><input type="checkbox" bind:checked={withNote} /> Include {label || note}</label>{/if}

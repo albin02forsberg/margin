@@ -1,7 +1,7 @@
 // Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chatContext } from "./chatctx.ts";
+import { chatContext, cleanChat } from "./chatctx.ts";
 
 const doc = "intro\n* A\na1\na2\n** A1\nx\n* B\nb1\n";
 
@@ -20,6 +20,11 @@ test("before the first heading, or no section fits: lines around the cursor", ()
   assert.deepEqual(chatContext(doc, 0, 0, 0, "N", 12), { text: "intro\n* A", label: "text around the cursor" });
   const head = doc.indexOf("a1");
   assert.deepEqual(chatContext(doc, head, head, head, "N", 7), { text: "* A\na1", label: "text around the cursor" });
+});
+test("cleanChat strips think blocks (closed or open) and turns * bullets into -", () => {
+  assert.equal(cleanChat("<think>hm</think>\n\n* a\n** b\n*bold* **b** x"), "- a\n- b\n*bold* **b** x");
+  assert.equal(cleanChat("hi <think>still going"), "hi");
+  assert.equal(cleanChat("<think>only"), "");
 });
 test("limit counts UTF-8 bytes", () => {
   const t = "ååå\nåå\n";

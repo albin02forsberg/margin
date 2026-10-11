@@ -4,6 +4,10 @@ const enc = new TextEncoder();
 const bytes = (s: string) => enc.encode(s).length;
 const level = (l: string) => /^(\*+) /.exec(l)?.[1].length ?? 0;
 
+/** A streamed or cut-off chat answer as ai.rs `clean(raw, false)` would leave it (keep the two in step), plus an unclosed trailing `<think>`. */
+export const cleanChat = (s: string) =>
+  s.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/<think>[\s\S]*$/, "").trim().replace(/^\s*\*+ /gm, "- ");
+
 /**
  * The part of DOC to send, for a selection FROM..TO and cursor HEAD (character offsets), with a LABEL for the UI:
  * a non-empty selection wins; else the whole note if it fits; else the largest section around the cursor that
