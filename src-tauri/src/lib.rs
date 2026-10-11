@@ -297,6 +297,25 @@ fn watch(app: &AppHandle) {
     *s.watcher.lock().unwrap() = Some(d);
 }
 
+/// Where nightly builds (nightly.yml) publish their update manifest.
+const NIGHTLY_UPDATES: &str = "https://github.com/albin02forsberg/margin/releases/download/nightly/latest.json";
+
+/// The updater plugin's `check`, on the nightly channel when config.toml asks for it (the JS `check`
+/// can't change endpoints); the frontend wraps the result in the plugin's `Update`.
+#[tauri::command]
+async fn update_check(webview: tauri::Webview, s: State<'_, App>) -> R<Option<Value>> {
+    use tauri_plugin_updater::UpdaterExt;
+    let e = |e: tauri_plugin_updater::Error| e.to_string();
+    let mut b = webview.updater_builder();
+    if s.cfg().nightly_updates {
+        b = b.endpoints(vec![NIGHTLY_UPDATES.parse().unwrap()]).map_err(e)?;
+    }
+    let Some(u) = b.build().map_err(e)?.check().await.map_err(e)? else { return Ok(None) };
+    let mut meta = json!({ "currentVersion": u.current_version, "version": u.version, "body": u.body, "rawJson": u.raw_json });
+    meta["rid"] = webview.resources_table().add(u).into();
+    Ok(Some(meta))
+}
+
 #[tauri::command]
 fn list_files(s: State<App>) -> Vec<PathBuf> {
     let mut v = org::org_paths(&s.cfg().notes());
@@ -1239,7 +1258,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             watcher::gnome_extension, watcher::screen_recording,
-            config, config_recreate, tutorial, reload_config, save_view, setup, save_config, list_files, read_file, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
+            config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
@@ -1286,6 +1305,15 @@ mod tests {
         // A symlinked config.toml: the target's events count too.
         let real = PathBuf::from("/dots/config.toml");
         assert_eq!(split_changes(p(&["/dots/config.toml"]), &cfg, &real, &roots), (true, vec![]));
+    }
+
+    #[test]
+    fn nightly_versions_order_between_releases() {
+        // nightly.yml names builds <next patch>-nightly.<yyyymmddhhmm>; the updater compares semver.
+        let v = |s: &str| semver::Version::parse(s).unwrap();
+        assert!(v("0.2.2") < v("0.2.3-nightly.202610110300"));
+        assert!(v("0.2.3-nightly.202610110300") < v("0.2.3-nightly.202610120300"));
+        assert!(v("0.2.3-nightly.202612312359") < v("0.2.3"));
     }
 
     fn cfg(notes: &Path, data: &Path, profiles: &str) -> Config {

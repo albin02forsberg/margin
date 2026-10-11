@@ -5,7 +5,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { getVersion } from "@tauri-apps/api/app";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { check } from "@tauri-apps/plugin-updater";
+  import { Update } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -1072,7 +1072,8 @@
   let version = $state("");
 
   async function checkUpdate(quiet = false) {
-    const u = await check();
+    const meta = await call<ConstructorParameters<typeof Update>[0] | null>("update_check"); // stable or nightly, per config.toml
+    const u = meta && new Update(meta);
     if (!u) return quiet || flash("Margin is up to date.");
     if (quiet) return flash(`Margin ${u.version} is available — Space f u to install.`);
     const yes = await pick({ prompt: `Install Margin ${u.version}${version ? ` (you have ${version})` : ""} and restart?`, items: [{ label: "Install and restart", value: true }, { label: "Not now", value: false }] });

@@ -55,6 +55,8 @@ pub struct Config {
     pub ai_model: String,
     /// The Ollama server; only local addresses are allowed.
     pub ai_url: String,
+    /// Update from the daily builds of main (the `nightly` prerelease) instead of stable releases.
+    pub nightly_updates: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -143,6 +145,7 @@ impl Default for Config {
             ai_backend: Default::default(),
             ai_model: String::new(),
             ai_url: "http://localhost:11434".into(),
+            nightly_updates: false,
         }
     }
 }
