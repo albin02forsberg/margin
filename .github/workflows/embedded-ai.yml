@@ -8,6 +8,7 @@ on:
       - src-tauri/Cargo.toml
       - src-tauri/Cargo.lock
       - src-tauri/src/ai.rs
+      - src-tauri/build.rs
       - src-tauri/tauri.conf.json
       - .github/workflows/embedded-ai.yml
       - .github/workflows/release.yml
@@ -40,7 +41,12 @@ jobs:
       - name: macOS deployment target (as tauri build)
         if: matrix.platform == 'macos-latest'
         run: echo "MACOSX_DEPLOYMENT_TARGET=$(jq -r .bundle.macOS.minimumSystemVersion src-tauri/tauri.conf.json)" >> "$GITHUB_ENV"
+      # Link the binary too (not just `--lib`): link-time failures, e.g. compiler-rt on macOS (#223),
+      # only show up there. `tauri::generate_context!` needs the frontend dir to exist.
+      - name: Stub frontend
+        shell: bash
+        run: mkdir -p build && touch build/index.html
       - name: Build
         shell: bash
         working-directory: src-tauri
-        run: for t in ${{ matrix.targets }}; do cargo build --lib --features embedded-ai --target "$t" || exit 1; done
+        run: for t in ${{ matrix.targets }}; do cargo build --features embedded-ai --target "$t" || exit 1; done
