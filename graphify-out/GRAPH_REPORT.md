@@ -1,17 +1,17 @@
 # Graph Report - margin  (2026-10-11)
 
 ## Corpus Check
-- 75 files · ~100,762 words
+- 75 files · ~100,904 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 6 file(s) not represented in the graph (top: (none) 2, .icns 1, .ico 1)
 
 ## Summary
-- 1260 nodes · 2829 edges · 68 communities (41 shown, 27 thin omitted)
-- Extraction: 98% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 36 edges (avg confidence: 0.86)
+- 1257 nodes · 2820 edges · 77 communities (45 shown, 32 thin omitted)
+- Extraction: 98% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 35 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `93909284`
+- Built from commit: `e85f9a2e`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -29,6 +29,7 @@
 - dependencies
 - Calendar
 - GitHub Releases
+- tray.rs
 - level
 - Notes
 - AppImage
@@ -43,7 +44,7 @@
 - +layout.ts
 - margin
 - ai.rs
-- devDependencies
+- path
 - lib/TaskDialog.svelte
 - generate
 - config.rs
@@ -74,9 +75,15 @@
 - curLine
 - gnome.rs
 - settings.ts
+- idle.rs
 - extension.js
-- lib/Chat.svelte
+- State
+- super
+- backup.rs
+- wayland_idle.rs
+- focus
 - download
+- .event
 
 ## God Nodes (most connected - your core abstractions)
 1. `App` - 87 edges
@@ -105,7 +112,7 @@
 ## Import Cycles
 - 1-file cycle: `src-tauri/src/ai.rs -> src-tauri/src/ai.rs`
 
-## Communities (68 total, 27 thin omitted)
+## Communities (77 total, 32 thin omitted)
 
 ### Community 0 - "org.rs"
 Cohesion: 0.07
@@ -148,12 +155,16 @@ Cohesion: 0.14
 Nodes (13): ./.svelte-kit/tsconfig.json, compilerOptions, allowImportingTsExtensions, allowJs, checkJs, esModuleInterop, forceConsistentCasingInFileNames, moduleResolution (+5 more)
 
 ### Community 10 - "dependencies"
-Cohesion: 0.07
-Nodes (26): dependencies, @codemirror/commands, @codemirror/language, @codemirror/language-data, @codemirror/search, @codemirror/state, @codemirror/view, @lezer/highlight (+18 more)
+Cohesion: 0.05
+Nodes (37): dependencies, @codemirror/commands, @codemirror/language, @codemirror/language-data, @codemirror/search, @codemirror/state, @codemirror/view, @lezer/highlight (+29 more)
 
 ### Community 11 - "Calendar"
 Cohesion: 0.67
 Nodes (3): Calendar, iCalendar, Tasks
+
+### Community 14 - "tray.rs"
+Cohesion: 0.22
+Nodes (5): refresh(), setup(), show(), tracking(), Tray
 
 ### Community 15 - "level"
 Cohesion: 0.41
@@ -162,6 +173,10 @@ Nodes (13): drawerRange(), headingAt(), headings(), level(), line(), moveSubtree
 ### Community 16 - "Notes"
 Cohesion: 0.29
 Nodes (7): Links and Backlinks, Notes, Org Format, Search, Syntax Highlighting, Table Formulas, Vim Keys
+
+### Community 18 - "svelte"
+Cohesion: 0.16
+Nodes (4): onkeydown(), send(), SvelteKit, Vite
 
 ### Community 20 - "default.json"
 Cohesion: 0.33
@@ -180,8 +195,8 @@ Cohesion: 0.09
 Nodes (46): BLOCK, Heading, List, Para, Pre, Quote, Rule, Table (+38 more)
 
 ### Community 24 - "notes.rs"
-Cohesion: 0.06
-Nodes (25): ANY_LINK, backlinks(), ensure_id(), ensures_ids(), files(), gen_id(), Graph, graph_neighbourhood() (+17 more)
+Cohesion: 0.12
+Nodes (22): ANY_LINK, backlinks(), ensure_id(), ensures_ids(), files(), gen_id(), Graph, graph_neighbourhood() (+14 more)
 
 ### Community 25 - "Sync"
 Cohesion: 0.67
@@ -191,9 +206,9 @@ Nodes (3): Emacs, Git, Sync
 Cohesion: 0.09
 Nodes (13): available_gb(), cancel_draft(), cancel_hits_only_the_running_draft(), CTX, IDLE, MAX_CHAT, MAX_PROMPT, parse() (+5 more)
 
-### Community 32 - "devDependencies"
-Cohesion: 0.18
-Nodes (11): devDependencies, svelte, svelte-check, @sveltejs/adapter-static, @sveltejs/kit, @sveltejs/vite-plugin-svelte, @tauri-apps/cli, @types/node (+3 more)
+### Community 32 - "path"
+Cohesion: 0.24
+Nodes (6): clean(), LINK, names_and_links(), normalize(), target(), unused()
 
 ### Community 33 - "lib/TaskDialog.svelte"
 Cohesion: 0.17
@@ -236,16 +251,16 @@ Cohesion: 0.50
 Nodes (3): Usage, What it does, When to use
 
 ### Community 52 - "wlr.rs"
-Cohesion: 0.13
-Nodes (12): active(), apply(), Ev, App, Closed, State, Title, focused() (+4 more)
+Cohesion: 0.17
+Nodes (11): active(), apply(), Ev, App, Closed, State, Title, focused() (+3 more)
 
 ### Community 57 - "load"
 Cohesion: 0.17
 Nodes (8): CANCELLED, free_gb(), load(), LOADED, Model, MODELS, RUNNING, TICKETS
 
 ### Community 60 - "ics.rs"
-Cohesion: 0.06
-Nodes (30): builds_feed(), CALENDAR, calendar_from_a_url(), CALENDAR_TTL, date(), event(), events_on(), feed() (+22 more)
+Cohesion: 0.16
+Nodes (18): builds_feed(), CALENDAR, calendar_from_a_url(), CALENDAR_TTL, date(), event(), events_on(), feed() (+10 more)
 
 ### Community 61 - "decorate"
 Cohesion: 0.13
@@ -256,37 +271,45 @@ Cohesion: 0.21
 Nodes (14): createState(), curLine(), expandTemplate(), insertBlock(), insertMode(), insertTable(), inTable(), newItem() (+6 more)
 
 ### Community 63 - "gnome.rs"
-Cohesion: 0.08
-Nodes (22): clean(), LINK, names_and_links(), normalize(), target(), unused(), backup(), fail() (+14 more)
+Cohesion: 0.20
+Nodes (10): active(), BUS, FILES, get(), install(), install_copies_the_extension(), parse(), session() (+2 more)
 
 ### Community 64 - "settings.ts"
 Cohesion: 0.21
 Nodes (15): changes(), checkTemplates(), checkViews(), Field, Form, fromForm(), GROUPS, needsMacPrompt() (+7 more)
 
-### Community 71 - "lib/Chat.svelte"
-Cohesion: 0.28
-Nodes (8): busy, error, focus(), onkeydown(), scroll(), send(), text, withNote
+### Community 65 - "idle.rs"
+Cohesion: 0.22
+Nodes (3): source(), start(), step()
+
+### Community 68 - "super"
+Cohesion: 0.29
+Nodes (4): notify(), picks_due_reminders(), start(), tick()
+
+### Community 69 - "backup.rs"
+Cohesion: 0.31
+Nodes (6): backup(), fail(), git(), LAST_FAILURE, LOG, ok()
 
 ### Community 72 - "download"
 Cohesion: 0.29
 Nodes (6): download(), download_resumes_and_checks(), download_stall_times_out(), part(), serve(), sha256_file()
 
 ## Knowledge Gaps
-- **238 isolated node(s):** `y`, `day`, `events`, `app`, `out` (+233 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 411 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **27 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **235 isolated node(s):** `y`, `day`, `events`, `app`, `out` (+230 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 410 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **32 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `insertTable()` connect `curLine` to `editor.ts`, `+page.svelte`?**
-  _High betweenness centrality (0.110) - this node is a cross-community bridge._
+  _High betweenness centrality (0.117) - this node is a cross-community bridge._
 - **Why does `palette()` connect `setup.ts` to `+page.svelte`?**
-  _High betweenness centrality (0.061) - this node is a cross-community bridge._
+  _High betweenness centrality (0.057) - this node is a cross-community bridge._
 - **Why does `format()` connect `orgtable.ts` to `+page.svelte`?**
-  _High betweenness centrality (0.053) - this node is a cross-community bridge._
+  _High betweenness centrality (0.052) - this node is a cross-community bridge._
 - **What connects `y`, `day`, `events` to the rest of the system?**
-  _238 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _235 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `org.rs` be split into smaller, more focused modules?**
   _Cohesion score 0.06545114539504442 - nodes in this community are weakly interconnected._
 - **Should `timeclock.rs` be split into smaller, more focused modules?**
