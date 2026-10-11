@@ -81,6 +81,15 @@ pub struct Leave {
     pub note: String,
 }
 
+/// Export settings of one kind of time off, in leave.toml keyed by the lowercased kind.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct LeaveKind {
+    #[serde(default)]
+    pub export_code: String,
+}
+
+pub type LeaveCodes = BTreeMap<String, LeaveKind>;
+
 pub fn now() -> NaiveDateTime {
     chrono::Local::now().naive_local().with_nanosecond(0).unwrap()
 }
@@ -148,7 +157,7 @@ impl Tc {
 
     /// Unreadable or malformed projects.toml / diary, which the lenient readers hide.
     pub fn file_issues(&self) -> Vec<String> {
-        [self.load_projects().err(), read_or_empty(&self.diary).err()].into_iter().flatten().collect()
+        [self.load_projects().err(), self.leave_codes().err(), read_or_empty(&self.diary).err()].into_iter().flatten().collect()
     }
 
     pub fn save_projects(&self, p: &Projects) -> Result<(), String> {
@@ -188,6 +197,19 @@ impl Tc {
         lines.push(serde_json::to_string(&l).unwrap());
         fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
         crate::config::write_atomic(&self.leave_path(), lines.join("\n") + "\n").map_err(|e| e.to_string())
+    }
+
+    /// Time off export codes (leave.toml): missing is empty, unreadable or malformed is an error.
+    pub fn leave_codes(&self) -> Result<LeaveCodes, String> {
+        let path = self.dir.join("leave.toml");
+        toml::from_str(&read_or_empty(&path)?).map_err(|e| format!("{}: {e}", path.display()))
+    }
+
+    pub fn save_leave_code(&self, kind: &str, code: &str) -> Result<(), String> {
+        let mut c = self.leave_codes()?;
+        c.insert(kind.trim().to_lowercase(), LeaveKind { export_code: code.trim().into() });
+        fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
+        crate::config::write_atomic(&self.dir.join("leave.toml"), toml::to_string(&c).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
     }
 
     pub fn remove_leave(&self, line: usize) -> Result<(), String> {
@@ -522,6 +544,14 @@ pub fn export_code(project: &str, projects: &Projects) -> String {
     }
 }
 
+/// KIND's export code, or the kind itself when it has none.
+pub fn leave_code(kind: &str, codes: &LeaveCodes) -> String {
+    match codes.get(kind).map(|c| c.export_code.trim()) {
+        Some(c) if !c.is_empty() => c.into(),
+        _ => kind.into(),
+    }
+}
+
 /// Recent unique task descriptions, today's first (`albin/timeclock-task-suggestions`).
 pub fn task_suggestions(sessions: &[Session], project: Option<&str>, today: NaiveDate) -> Vec<String> {
     let mut seen = HashSet::new();
@@ -651,13 +681,17 @@ fn session_line(s: &Session, indent: &str) -> String {
     format!("{indent}- [{} - {}] *{}* ({:.2} h) » {}\n", s.start.format("%H:%M:%S"), s.end.format("%H:%M:%S"), or_other(&s.project), s.hours, s.desc)
 }
 
-/// "vacation 8.00 h (note)" for each time off on DATE.
-fn time_off(leave: &[Leave], date: NaiveDate, daily: f64, worked: f64) -> Vec<String> {
+/// "vacation [VAC] 8.00 h (note)" for each time off on DATE; the code only when one is set.
+fn time_off((leave, codes): (&[Leave], &LeaveCodes), date: NaiveDate, daily: f64, worked: f64) -> Vec<String> {
     let note = |l: &Leave| if l.note.is_empty() { String::new() } else { format!(" ({})", l.note) };
-    leave_on(leave, date, expected_hours(date, daily), worked).iter().map(|(l, h)| format!("{} {h:.2} h{}", l.kind, note(l))).collect()
+    let code = |l: &Leave| match leave_code(&l.kind, codes) {
+        c if c == l.kind => String::new(),
+        c => format!(" [{c}]"),
+    };
+    leave_on(leave, date, expected_hours(date, daily), worked).iter().map(|(l, h)| format!("{}{} {h:.2} h{}", l.kind, code(l), note(l))).collect()
 }
 
-pub fn daily_report(sessions: &[Session], projects: &Projects, leave: &[Leave], daily: f64, date: NaiveDate, profile: &str) -> String {
+pub fn daily_report(sessions: &[Session], projects: &Projects, leave: (&[Leave], &LeaveCodes), daily: f64, date: NaiveDate, profile: &str) -> String {
     let merged = prepare_report_sessions(sessions);
     let rounded = apply_carry(&merged, projects).0;
     let raw: f64 = merged.iter().filter(|s| s.date == date).map(|s| s.hours).sum();
@@ -674,7 +708,7 @@ pub fn daily_report(sessions: &[Session], projects: &Projects, leave: &[Leave], 
     o
 }
 
-pub fn weekly_report(sessions: &[Session], projects: &Projects, leave: &[Leave], daily: f64, start: NaiveDate, end: NaiveDate, profile: &str) -> String {
+pub fn weekly_report(sessions: &[Session], projects: &Projects, leave: (&[Leave], &LeaveCodes), daily: f64, start: NaiveDate, end: NaiveDate, profile: &str) -> String {
     let in_range = |s: &&Session| start <= s.date && s.date <= end;
     let merged = prepare_report_sessions(sessions);
     let rounded = apply_carry(&merged, projects).0;
@@ -733,11 +767,26 @@ fn csv_field(v: &str) -> String {
 }
 
 /// Import-template columns; `Project` is the export code, hours use a decimal comma (`1,5`).
-pub fn csv(sessions: &[Session], projects: &Projects, start: NaiveDate, end: NaiveDate) -> String {
+/// Time off adds a row per kind and working day: its code, note (or kind) and credited hours.
+pub fn csv(sessions: &[Session], projects: &Projects, (leave, codes): (&[Leave], &LeaveCodes), daily: f64, start: NaiveDate, end: NaiveDate) -> String {
     let rounded = apply_carry(&prepare_report_sessions(sessions), projects).0;
+    let mut worked: HashMap<NaiveDate, f64> = HashMap::new();
+    rounded.iter().for_each(|s| *worked.entry(s.date).or_default() += s.hours);
+    let mut rows: Vec<(NaiveDate, String, String, f64)> =
+        rounded.iter().filter(|s| start <= s.date && s.date <= end).map(|s| (s.date, export_code(&s.project, projects), s.desc.clone(), s.hours)).collect();
+    for date in start.iter_days().take_while(|d| *d <= end) {
+        let e = expected_hours(date, daily);
+        let mut left = e; // overlapping time off credits at most the day, as in flex
+        for (l, h) in leave_on(leave, date, e, worked.get(&date).copied().unwrap_or(0.0)) {
+            let h = h.min(left);
+            left -= h;
+            rows.push((date, leave_code(&l.kind, codes), if l.note.is_empty() { l.kind.clone() } else { l.note.clone() }, h));
+        }
+    }
+    rows.sort_by_key(|r| r.0); // stable: a day's sessions, then its time off
     let mut out = String::from("Project,Description,Date,Duration\n");
-    for s in rounded.iter().filter(|s| start <= s.date && s.date <= end && (s.hours * 100.0).round() > 0.0) {
-        let f = [export_code(&s.project, projects), s.desc.clone(), s.date.to_string(), format!("{:.2}", s.hours).trim_end_matches('0').trim_end_matches('.').replace('.', ",")];
+    for (date, code, desc, h) in rows.into_iter().filter(|r| (r.3 * 100.0).round() > 0.0) {
+        let f = [code, desc, date.to_string(), format!("{h:.2}").trim_end_matches('0').trim_end_matches('.').replace('.', ",")];
         out += &(f.iter().map(|x| csv_field(x)).collect::<Vec<_>>().join(",") + "\n");
     }
     out
@@ -935,6 +984,7 @@ mod tests {
         assert_eq!(leave_credit(&week, d("2026-10-06"), 8.0, 0.0), 8.0);
         assert_eq!(leave_credit(&week, d("2026-10-10"), 0.0, 0.0), 0.0);
         assert_eq!(flex(&[s("2026-10-06", 2.0)], &p, &week, 8.0, None).0, 2.0); // work on vacation is flex
+        assert_eq!(flex(&[], &p, &week, 8.0, None).0, 0.0); // and a vacation day without work is even
         assert_eq!(flex(&[s("2026-10-12", 8.0)], &p, &week, 8.0, None).0, 0.0); // after it, back to normal
         // Half a day off plus 4 h worked is a full day; rest-of-day tops up to the target, never past it.
         assert_eq!(flex(&[s("2026-10-06", 4.0)], &p, &[l("2026-10-06", "2026-10-06", Some(4.0), false)], 8.0, None).0, 0.0);
@@ -944,10 +994,36 @@ mod tests {
         // Overlapping entries never credit more than the day.
         assert_eq!(leave_credit(&[week[0].clone(), sick[0].clone()], d("2026-10-06"), 8.0, 3.0), 8.0);
         // Reports list it without counting it as worked.
-        let r = daily_report(&[], &p, &sick, 8.0, d("2026-10-06"), "Work");
+        let codes = LeaveCodes::from([("vacation".into(), LeaveKind { export_code: "VAC".into() })]);
+        let r = daily_report(&[], &p, (&sick, &codes), 8.0, d("2026-10-06"), "Work");
         assert!(r.contains("Sessions: 0\n  - Time off: sick 8.00 h\n"), "{r}");
-        let r = weekly_report(&[], &p, &week, 8.0, d("2026-10-09"), d("2026-10-12"), "Work");
-        assert!(r.contains("- 2026-10-09 Fri: vacation 8.00 h") && !r.contains("2026-10-10 Sat") && !r.contains("2026-10-12 Mon:"), "{r}");
+        let r = weekly_report(&[], &p, (&week, &codes), 8.0, d("2026-10-09"), d("2026-10-12"), "Work");
+        assert!(r.contains("- 2026-10-09 Fri: vacation [VAC] 8.00 h") && !r.contains("2026-10-10 Sat") && !r.contains("2026-10-12 Mon:"), "{r}");
+    }
+
+    #[test]
+    fn csv_time_off_rows() {
+        let l = |kind: &str, from: &str, to: &str, hours, rest| Leave { from: d(from), to: d(to), kind: kind.into(), hours, rest, note: String::new() };
+        let s = |date: &str, h| Session { date: d(date), project: "A".into(), desc: "x".into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None };
+        let codes = LeaveCodes::from([("vacation".into(), LeaveKind { export_code: "VAC".into() })]);
+        // Fri 2026-10-09 .. Mon 10-12: no weekend rows; uncoded kinds fall back to the kind; work on the day stays its own row.
+        let leave = [Leave { note: "trip".into(), ..l("vacation", "2026-10-09", "2026-10-12", None, false) }, l("sick", "2026-10-13", "2026-10-13", None, true)];
+        let out = csv(&[s("2026-10-12", 1.0), s("2026-10-13", 2.5)], &Projects::new(), (&leave, &codes), 8.0, d("2026-10-01"), d("2026-10-13"));
+        assert_eq!(
+            out.lines().skip(1).collect::<Vec<_>>(),
+            [
+                r#""VAC","trip","2026-10-09","8""#,
+                r#""A","x","2026-10-12","1""#,
+                r#""VAC","trip","2026-10-12","8""#,
+                r#""A","x","2026-10-13","2,5""#,
+                r#""sick","sick","2026-10-13","5,5""#, // rest of the day after work
+            ]
+        );
+        // Out of range: nothing; overlapping kinds never credit more than the day; partial hours.
+        assert_eq!(csv(&[], &Projects::new(), (&leave, &codes), 8.0, d("2026-10-14"), d("2026-10-20")).lines().count(), 1);
+        let both = [l("vacation", "2026-10-06", "2026-10-06", Some(6.0), false), l("other", "2026-10-06", "2026-10-06", Some(4.5), false)];
+        let out = csv(&[], &Projects::new(), (&both, &codes), 8.0, d("2026-10-06"), d("2026-10-06"));
+        assert!(out.ends_with("\"VAC\",\"vacation\",\"2026-10-06\",\"6\"\n\"other\",\"other\",\"2026-10-06\",\"2\"\n"), "{out}");
     }
 
     #[test]
@@ -966,6 +1042,14 @@ mod tests {
         tc.remove_leave(0).unwrap();
         assert_eq!(tc.leave().iter().map(|x| (x.0, x.1.kind.as_str())).collect::<Vec<_>>(), vec![(0, "sick")]);
         assert!(tc.remove_leave(5).is_err());
+        // Export codes live apart in leave.toml, keyed like add_leave stores the kind.
+        assert_eq!(tc.leave_codes().unwrap(), LeaveCodes::new());
+        tc.save_leave_code(" Vacation ", " VAC ").unwrap();
+        tc.save_leave_code("sick", "SJK").unwrap();
+        assert_eq!(leave_code("vacation", &tc.leave_codes().unwrap()), "VAC");
+        assert_eq!(fs::read_to_string(tc.dir.join("leave.toml")).unwrap(), "[sick]\nexport_code = \"SJK\"\n\n[vacation]\nexport_code = \"VAC\"\n");
+        fs::write(tc.dir.join("leave.toml"), "[sick\n").unwrap();
+        assert!(tc.save_leave_code("sick", "X").is_err() && tc.file_issues().iter().any(|i| i.contains("leave.toml")));
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -1121,16 +1205,17 @@ mod tests {
     #[test]
     fn csv_quotes_and_comma() {
         let s = vec![Session { date: d("2026-10-01"), project: "A".into(), desc: "say \"hi\"".into(), hours: 1.5, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None }];
-        let out = csv(&s, &Projects::new(), d("2026-10-01"), d("2026-10-01"));
+        let none = (&[][..], &LeaveCodes::new());
+        let out = csv(&s, &Projects::new(), none, 8.0, d("2026-10-01"), d("2026-10-01"));
         assert_eq!(out.lines().nth(1).unwrap(), r#""A","say ""hi""","2026-10-01","1,5""#);
         let s = vec![Session { hours: 2.0, ..s[0].clone() }];
-        assert!(csv(&s, &Projects::new(), d("2026-10-01"), d("2026-10-01")).ends_with(",\"2\"\n"));
+        assert!(csv(&s, &Projects::new(), none, 8.0, d("2026-10-01"), d("2026-10-01")).ends_with(",\"2\"\n"));
     }
 
     #[test]
     fn csv_skips_zero_rows() {
         let s = |h| vec![Session { date: d("2026-10-01"), project: "A".into(), desc: "x".into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None }];
-        let rows = |h| csv(&s(h), &Projects::new(), d("2026-10-01"), d("2026-10-01")).lines().count();
+        let rows = |h| csv(&s(h), &Projects::new(), (&[], &LeaveCodes::new()), 8.0, d("2026-10-01"), d("2026-10-01")).lines().count();
         assert_eq!((rows(0.0), rows(0.2), rows(0.3)), (1, 1, 2)); // default rounding is 0.5 h
     }
 }

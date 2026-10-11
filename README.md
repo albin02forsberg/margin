@@ -323,10 +323,14 @@ of days: a full day, a few hours a day, or (sick) the rest of the day after what
 you worked. It lowers those days' expected hours like a public holiday does, so
 work on a vacation day counts as flex; weekends and red days in a range are skipped.
 It's kept in `leave.jsonl` next to the time log, shows hatched in the week chart
-and in the day and week reports, and stays out of the CSV export.
+and in the day and week reports, and goes into the CSV export as one row per kind
+and working day (its export code, the note or kind, the hours it credits).
 Time → Project settings (`Space t P`) opens a Projects page listing every project
 with its export code, billable-hour rounding, round-up and whether it's offered
 when you start tracking; change any of them and press Save (or Enter) on that row.
+Below it, Time off sets each kind's export code (kept in `leave.toml`, apart from
+the projects, so time off is never offered when you start tracking; no code means
+the kind's name is exported).
 If `projects.toml`, the time log or the diary can't be read or parsed (say, after
 a bad hand edit), commands that would rewrite it show an error and leave the
 file alone instead of starting over from empty. CSV and HTML/PDF exports fail with the

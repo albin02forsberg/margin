@@ -99,6 +99,11 @@ describe("Margin", () => {
     await palette("Time: project settings");
     await browser.waitUntil(async () => (await browser.$(`input[aria-label="Export code for Acme"]`).getValue()) === "ACME-2", { timeoutMsg: "reopened page doesn't show the saved code" });
     assert.equal(await browser.$(`select[aria-label="Rounding for Acme"]`).getValue(), "0.25");
+    await browser.$(`input[aria-label="Export code for time off vacation"]`).click();
+    await type("VAC-1");
+    await browser.keys(Key.Enter);
+    await fileMatches(join(data, "work", "leave.toml"), (s) => /\[vacation\]\nexport_code = "VAC-1"/.test(s), "time off code not saved");
+    assert.ok(!readFileSync(join(data, "work", "projects.toml"), "utf8").includes("vacation"), "time off leaked into projects.toml");
   });
 
   it("chooses the AI draft model in settings, keeping the rest of config.toml", async () => {
