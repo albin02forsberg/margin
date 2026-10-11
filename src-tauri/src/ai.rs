@@ -140,6 +140,8 @@ pub async fn download(url: &str, dest: &Path, size: u64, sha256: &str, cancel: &
 pub const MAX_PROMPT: usize = 4000;
 /// Seconds to wait for a draft; a 3B model on a laptop CPU takes a few.
 const WAIT: u64 = 60;
+/// Seconds to wait for a chat answer (up to 512 tokens, plus loading the model).
+const CHAT_WAIT: u64 = 300;
 
 /// HEAD followed by LINES, as many as fit in MAX_PROMPT.
 fn capped(head: &str, lines: impl IntoIterator<Item = String>) -> String {
@@ -253,7 +255,7 @@ pub fn clean(text: &str, one_line: bool) -> String {
 /// A draft for PROMPT from MODEL, through BACKEND (Ollama at URL, or a built-in model in DIR).
 pub fn generate(backend: Backend, url: &str, dir: &Path, model: &str, prompt: &str, one_line: bool) -> Result<String, String> {
     let raw = match backend {
-        Backend::Ollama => ollama(url, model, "/api/generate", &body(model, prompt))?,
+        Backend::Ollama => ollama(url, model, "/api/generate", &body(model, prompt), WAIT)?,
         Backend::Embedded => embedded(dir, model, &[Msg { role: "user".into(), content: prompt.into() }], if one_line { 48 } else { 320 })?,
     };
     Ok(clean(&raw, one_line))
@@ -264,7 +266,11 @@ pub fn chat(backend: Backend, url: &str, dir: &Path, model: &str, note: Option<(
     let msgs = chat_messages(note, msgs)?;
     let raw = match backend {
         // num_ctx: Ollama's default may be 2048 tokens, and it silently drops the start (our system turn).
-        Backend::Ollama => ollama(url, model, "/api/chat", &serde_json::json!({ "model": model, "messages": msgs, "stream": false, "options": { "num_ctx": 4096 } }).to_string())?,
+        // num_predict: the built-in model's cap, so an answer can't run past CHAT_WAIT (#210).
+        Backend::Ollama => {
+            let body = serde_json::json!({ "model": model, "messages": msgs, "stream": false, "options": { "num_ctx": 4096, "num_predict": 512 } });
+            ollama(url, model, "/api/chat", &body.to_string(), CHAT_WAIT)?
+        }
         Backend::Embedded => embedded(dir, model, &msgs, 512)?,
     };
     Ok(clean(&raw, false))
@@ -445,9 +451,9 @@ mod llama {
     }
 }
 
-/// MODEL's raw answer from Ollama at URL: BODY posted to PATH.
-fn ollama(url: &str, model: &str, path: &str, body: &str) -> Result<String, String> {
-    let (status, resp) = request("Ollama", "ai_url", url, "POST", path, Some(body), WAIT).map_err(|e| {
+/// MODEL's raw answer from Ollama at URL: BODY posted to PATH, waiting at most WAIT seconds.
+fn ollama(url: &str, model: &str, path: &str, body: &str, wait: u64) -> Result<String, String> {
+    let (status, resp) = request("Ollama", "ai_url", url, "POST", path, Some(body), wait).map_err(|e| {
         if e.contains("isn't reachable") { format!("Ollama isn't running at {url}. Start it, or see ollama.com.") } else { e }
     })?;
     parse(status, &resp, model)
@@ -530,6 +536,7 @@ mod tests {
         assert_eq!(chat(Backend::Ollama, &base, Path::new(""), "m", None, &q).unwrap(), "- Ship it");
         let req = srv.join().unwrap();
         assert!(req.starts_with("POST /api/chat ") && req.contains(r#""role":"system"},{"content":"Next?","role":"user"}],"model":"m""#), "{req}");
+        assert!(req.contains(r#""options":{"num_ctx":4096,"num_predict":512}"#), "{req}");
     }
 
     #[test]
