@@ -101,12 +101,17 @@ pub fn flush(dir: &Path) {
 }
 
 /// The active window's app and title: X11, Windows, macOS, KDE and Hyprland under Wayland, then
-/// GNOME (through its extension) or wlroots compositors (Sway, River, labwc).
+/// GNOME (through its extension) or wlroots compositors (Sway, River, labwc). GNOME Wayland asks
+/// only its extension: active-win-pos-rs would shell out to kdotool on every poll for nothing.
 #[cfg(desktop)]
 fn active() -> Option<(String, String)> {
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() && gnome::session() {
+        return gnome::active();
+    }
     let w = active_win_pos_rs::get_active_window().ok().map(|w| (w.app_name, w.title));
     #[cfg(target_os = "linux")]
-    let w = w.or_else(|| std::env::var_os("WAYLAND_DISPLAY").and_then(|_| if gnome::session() { gnome::active() } else { wlr::active() }));
+    let w = w.or_else(|| std::env::var_os("WAYLAND_DISPLAY").and_then(|_| wlr::active()));
     w
 }
 
