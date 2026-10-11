@@ -12,5 +12,5 @@ Run the `triager` agent (`.claude/agents/triager.md`) in the background, without
   - issues it closed as duplicates, already done or on the owner's instruction, and ones it flagged but left open for the owner to close;
   - the ready-to-build issues, with their sizes;
   - the decisions only the owner can make.
-- `/ship` builds ready issues only through its approval gate (`.claude/skills/ship/SKILL.md` → Survey). Mention the ones the triager and reviewer agreed are small and clear in your relay.
+- `/ship` builds ready issues only through its approval gate (`.claude/skills/ship/SKILL.md` → Survey). Mention the ones the triager and reviewer agreed are ready in your relay.
 - In watch mode, resume the triager with SendMessage after each report until the owner says stop. Stop it with TaskStop when wrapping up.

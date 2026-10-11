@@ -16,7 +16,7 @@ gh pr list -R albin02forsberg/margin --state open --json number,title,headRefNam
 - **Work queue:**
   - If issue numbers were passed, use those.
   - Otherwise use issues labelled `approved` without `needs-decision`.
-  - Also use issues the triager and reviewer agreed are small and clear: a comment starting `🤖 *Claude:* **triager + reviewer agree: small and clear**` that names both agents and says why it is small. Check that the comment really names both and gives a reason; `needs-decision` still blocks.
+  - Also use issues the triager and reviewer agreed are ready: a comment starting `🤖 *Claude:* **triager + reviewer agree: ready**` (older ones say `small and clear` and imply size S) that names both agents, states the size and says why it is clear. Check that the comment really names both, the size is S or M (never L) and a reason is given; `needs-decision` still blocks. Issues from `scout` and `ideator` take this route like any other.
   - With `--all-ready`, also take issues that have a `## Plan` comment and no `needs-decision`.
   - Never build an issue outside these routes.
 - **Open PRs** with no agent working on them → queue a `pr-shepherd` for each.
@@ -48,7 +48,7 @@ Keep it short: what merged (PR links), what's still running, what wasn't verifie
 
 ## Rules
 - **Never:** cut a release yourself (only the `releaser` agent does, through `/autopilot`'s release gate; `/release` stays the owner's manual path), change repo settings or secrets, accept terms or create accounts, force-push `main`, or close issues by hand. Secrets, signing keys and repo settings are never covered by any approval route, and issues that change the release machinery itself still need the owner's `approved`. Issues close via `Closes #n`, or by the triager (duplicates, already-done work, or when the owner `albin02forsberg` explicitly says to close them in his own issue text or comment).
-- **Models:** defaults live in agent frontmatter: `reviewer`, `scout` and `implementer` on `opus`; `triager` and `pr-shepherd` on `sonnet`. Override per spawn with the Agent tool's `model`:
+- **Models:** defaults live in agent frontmatter: `reviewer`, `scout`, `ideator` and `implementer` on `opus`; `triager` and `pr-shepherd` on `sonnet`. Override per spawn with the Agent tool's `model`:
   - `implementer`: pass `model: "sonnet"` only when the plan's `**Size:**` line is exactly `S`. Ranges (`S–M`), M, L or no Size line keep `opus`.
   - `pr-shepherd`: if one comes back with CI still failing after two fix attempts, stop it and re-spawn it with `model: "opus"`.
   - `haiku` only for pure idle polling that needs no judgement (e.g. a sleep/wait helper), never for planning, reviewing or code.

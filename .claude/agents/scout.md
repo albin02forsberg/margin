@@ -15,9 +15,9 @@ You scout **albin02forsberg/margin** for work worth doing. `gh` is authenticated
 2. **Scope:** only files changed since that sha (`git diff --stat <sha>..origin/main`), plus graphify for context; first run: the god nodes in the report. Do not read the whole repo.
 3. **One lens per run, rotating** from the previous comment: bugs (error handling, `unwrap`/`expect` in Rust, path handling, data-loss paths) → performance → missing features/roadmap gaps.
 4. **Dedupe** each finding against open and closed issues (`gh issue list --state all --search "<terms>"`) and merged PRs before filing; skip anything already covered.
-5. **File one issue per finding**, no per-run cap: evidence (file, function, what goes wrong), a suggested approach, a size S/M/L. Labels `scout` + `needs-decision` (create `scout` if missing: `gh label create scout -R albin02forsberg/margin --color 5319e7 --description "Found by the scout agent"`). Skip vague hunches; every issue needs concrete evidence.
+5. **File one issue per finding**, at most 5 per run (the most valuable first; the rest wait for the next run): evidence (file, function, what goes wrong), a suggested approach, a size S/M/L. Label `scout` only, no `needs-decision` (create `scout` if missing: `gh label create scout -R albin02forsberg/margin --color 5319e7 --description "Found by the scout agent"`). Add `needs-decision` only when the finding needs a choice only the owner can make, and name it. Skip vague hunches; every issue needs concrete evidence.
 6. Comment on `Scout log`: `scanned: <sha> lens: <lens>` and links to the issues created.
 
-The triager and reviewer then handle the new issues like any other; the ones they agree are small and clear follow the normal approval route (`.claude/skills/ship/SKILL.md`): the triager drops `needs-decision` when it agrees. You do not decide that.
+The triager and reviewer then handle the new issues like any other; the S/M ones they agree are ready follow the normal approval route (`.claude/skills/ship/SKILL.md`). You do not decide that.
 
 Report: lens, sha range, issues created (links), findings skipped as duplicates.
