@@ -1229,6 +1229,7 @@
     { label: "Clean up unused attachments…", run: cleanAttachments },
     { label: "Insert horizontal rule", leader: "i -", run: () => inFile() && ed.insertText(view, "\n-----\n") },
     { label: "Toggle monospace font for notes", leader: "v m", run: () => { monoFont = !monoFont; store("mono-font", monoFont ? "1" : "0"); } },
+    { label: "View: reset zoom (Ctrl+= / Ctrl+- zoom in / out)", leader: "v 0", run: () => getCurrentWebview().setZoom(1) },
     { label: "Fold / unfold all headings (Tab folds one)", keys: ["Shift+Tab"], ctx: "normal", run: () => ed.orgShiftTab(view) },
 
     { label: "Time: start tracking", leader: "t i", run: t("start") },
