@@ -5,11 +5,14 @@
   /** Project settings: every project's fields at once, saved per row. Reloads on RELOAD, keeping unsaved rows. */
   let { act, active, reload }: { act: (f: () => unknown) => void; active: boolean; reload: number } = $props();
   let rows = $state<Row[]>([]);
+  let off = $state<{ kind: string; code: string; dirty: boolean }[]>([]);
   let error = $state("");
 
   async function load() {
     try {
       rows = merge(rows, await invoke<Record<string, Project>>("tc_projects"));
+      const codes = await invoke<Record<string, { export_code: string }>>("tc_leave_codes");
+      off = Object.entries(codes).map(([kind, c]) => off.find((o) => o.kind === kind && o.dirty) ?? { kind, code: c.export_code, dirty: false });
       error = "";
     } catch (e) {
       error = String(e); // a malformed projects.toml: say so rather than show an empty list
@@ -24,7 +27,11 @@
     await invoke("tc_save_project", { name: r.name, project: toProject(r) });
     r.dirty = false;
   });
-  const options = (r: Row) => (ROUNDINGS.some(([v]) => v === r.rounding) ? ROUNDINGS : [...ROUNDINGS, [r.rounding, `${r.rounding} h`]]);
+  const saveOff = (o: { kind: string; code: string; dirty: boolean }) => act(async () => {
+    await invoke("tc_save_leave_code", { kind: o.kind, code: o.code });
+    o.dirty = false;
+  });
+  const options =(r: Row) => (ROUNDINGS.some(([v]) => v === r.rounding) ? ROUNDINGS : [...ROUNDINGS, [r.rounding, `${r.rounding} h`]]);
 </script>
 
 <div class="projects">
@@ -55,11 +62,28 @@
     </table>
     <p class="dim">Enter in an export code saves its row. Hidden projects keep their time; they just aren't offered when you start tracking.</p>
   {/if}
+  {#if !error}
+    <h2>Time off</h2>
+    <table>
+      <thead><tr><th>Kind</th><th>Export code</th><th></th></tr></thead>
+      <tbody>
+        {#each off as o, i (o.kind)}
+          <tr>
+            <td>{o.kind}</td>
+            <td><form id="o{i}" onsubmit={(e) => { e.preventDefault(); saveOff(o); }}><input aria-label="Export code for time off {o.kind}" bind:value={o.code} oninput={() => (o.dirty = true)} placeholder={o.kind} /></form></td>
+            <td><button form="o{i}" type="submit" disabled={!o.dirty}>Save</button></td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+    <p class="dim">Time off goes into the CSV export as its own rows under this code, kept apart from the time log.</p>
+  {/if}
 </div>
 
 <style>
   .projects { height: 100%; overflow-y: auto; padding: 20px 28px 40px; box-sizing: border-box; font-family: var(--sans); }
   h1 { margin: 0 0 18px; font-size: 22px; font-weight: 650; }
+  h2 { margin: 28px 0 12px; font-size: 17px; font-weight: 650; }
   table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
   td, th { padding: 6px var(--s2); border-bottom: 1px solid var(--border); text-align: left; }
   th { color: var(--dim); font-weight: 500; font-size: var(--fs-sm); }

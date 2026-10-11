@@ -703,6 +703,22 @@ fn tc_leave_remove(s: State<App>, line: usize) -> R<()> {
     Ok(())
 }
 
+/// Export codes of every kind of time off: saved ones, kinds in leave.jsonl and the defaults.
+#[tauri::command]
+fn tc_leave_codes(s: State<App>) -> R<timeclock::LeaveCodes> {
+    let tc = s.tc();
+    let mut c = tc.leave_codes()?;
+    for k in ["vacation", "sick", "other"].map(String::from).into_iter().chain(tc.leave().into_iter().map(|x| x.1.kind)) {
+        c.entry(k).or_default();
+    }
+    Ok(c)
+}
+
+#[tauri::command]
+fn tc_save_leave_code(s: State<App>, kind: String, code: String) -> R<()> {
+    s.tc().save_leave_code(&kind, &code)
+}
+
 #[tauri::command]
 fn tc_projects(s: State<App>) -> R<timeclock::Projects> {
     s.tc().load_projects()
@@ -1021,9 +1037,10 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
     let tc = s.tc();
     let profile = s.profile();
     let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
+    let codes = tc.leave_codes().unwrap_or_default();
     Ok(match kind.as_str() {
-        "daily" => timeclock::daily_report(&tc.sessions(), &tc.projects(), &leave, tc.expected, date(date_input.as_deref().unwrap_or(""))?, &profile),
-        "weekly" => timeclock::weekly_report(&tc.sessions(), &tc.projects(), &leave, tc.expected, today() - Duration::days(7), today(), &profile),
+        "daily" => timeclock::daily_report(&tc.sessions(), &tc.projects(), (&leave, &codes), tc.expected, date(date_input.as_deref().unwrap_or(""))?, &profile),
+        "weekly" => timeclock::weekly_report(&tc.sessions(), &tc.projects(), (&leave, &codes), tc.expected, today() - Duration::days(7), today(), &profile),
         "holidays" => timeclock::holidays_report(date(date_input.as_deref().unwrap_or(""))?.format("%Y").to_string().parse().unwrap()),
         "flex" => {
             let t = today();
@@ -1045,7 +1062,9 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
 #[tauri::command]
 fn tc_csv(s: State<App>, start: String, end: String, path: PathBuf) -> R<String> {
     let tc = s.tc();
-    std::fs::write(&path, timeclock::csv(&tc.sessions(), &tc.load_projects()?, date(&start)?, date(&end)?)).map_err(|e| e.to_string())?;
+    let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
+    let csv = timeclock::csv(&tc.sessions(), &tc.load_projects()?, (&leave, &tc.leave_codes()?), tc.expected, date(&start)?, date(&end)?);
+    std::fs::write(&path, csv).map_err(|e| e.to_string())?;
     Ok(format!("✅ CSV exported to {}", path.display()))
 }
 
@@ -1125,7 +1144,7 @@ fn export_report(s: State<App>, start: String, end: String, print: bool, overwri
     let tc = s.tc();
     let (start, end) = (date(&start)?, date(&end)?);
     let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
-    let org = timeclock::weekly_report(&tc.sessions(), &tc.load_projects()?, &leave, tc.expected, start, end, &s.profile());
+    let org = timeclock::weekly_report(&tc.sessions(), &tc.load_projects()?, (&leave, &tc.leave_codes()?), tc.expected, start, end, &s.profile());
     let html = export::html(&export::parse(&org, &s.kw()), "Time report", Path::new(""), &export::Ids::new(), print);
     write_export(&s, &format!("time_report_{}_{start}_{end}.html", s.profile().to_lowercase()), html, overwrite)
 }
@@ -1263,7 +1282,7 @@ pub fn run() {
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_linked, export_report, export_open
         ])
         .build(tauri::generate_context!())
