@@ -1119,6 +1119,16 @@
     weekly: () => report("weekly", "Week report"), doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
     backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), import: importEmacs, acceptSuggestion, editSuggestion,
     flex: async () => flash(await call("tc_report", { kind: "flex" })), diary: () => openFile(cfg.diary_path),
+    /** Open the Time view and focus its "Time off" form (the view may still be mounting, so retry briefly). */
+    timeOff: async () => {
+      await openView("time");
+      for (let n = 0; n < 10; n++) {
+        await tick();
+        const el = document.querySelector<HTMLInputElement>('input[aria-label="Kind of time off"]');
+        if (el) { el.scrollIntoView({ block: "center" }); return el.focus(); }
+        await new Promise((r) => setTimeout(r, 30));
+      }
+    },
   };
   const timeApi: TimeApi = { act, run: async (name, arg) => { await timeActions[name](arg); } };
   const agendaApi: AgendaApi = {
@@ -1240,6 +1250,7 @@
     { label: "Time: back up now", leader: "t B", run: t("backup") },
     { label: "Time: check log for problems", leader: "t D", run: t("doctor") },
     { label: "Time: backup log", leader: "t L", run: t("backupLog") },
+    { label: "Time: log time off…", leader: "t l", run: t("timeOff") },
     { label: "Time: import from Emacs…", leader: "t M", run: t("import") },
 
     { label: "Export: note as HTML", leader: "e h", run: () => exportNote("html") },
