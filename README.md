@@ -126,7 +126,7 @@ profile clocks out first, and warns where old files stay (nothing is moved).
 | Super+Shift+N | Quick capture from anywhere, even with the window hidden (`capture_shortcut` in settings) |
 | Ctrl+P | Open a note — or type a title to create one |
 | Ctrl+Shift+N | New note |
-| Ctrl+Shift+F | Search all notes as you type |
+| Ctrl+Shift+F | Search all notes as you type (lines with every word, in any order; `"quote"` a phrase) |
 | Ctrl+L | Insert a link to another note |
 | Ctrl+S / `:w` | Save (also saves automatically) |
 | Ctrl+Shift+T / `Space b u` | Reopen the last closed tab, at the line you left (up to 20) |

@@ -317,12 +317,32 @@ pub fn ensure_id(text: &str) -> (String, String) {
 
 /// Case-insensitive full-text search.
 // ponytail: linear scan of every file per query; add an inverted index if it gets slow past ~10k notes.
-pub fn search(files: &[Arc<OrgFile>], query: &str, limit: usize) -> Vec<Hit> {
-    let q = query.to_lowercase();
+/// Lowercased search terms: whitespace-separated words, a `"quoted phrase"` kept whole
+/// (an unbalanced quote takes the rest of the query).
+fn terms(query: &str) -> Vec<String> {
     let mut out = vec![];
+    for (i, part) in query.to_lowercase().split('"').enumerate() {
+        if i % 2 == 1 {
+            out.push(part.to_string());
+        } else {
+            out.extend(part.split_whitespace().map(str::to_string));
+        }
+    }
+    out.retain(|t| !t.trim().is_empty());
+    out
+}
+
+/// Lines containing every term of `query` (case-insensitive, any order); none for an empty query.
+pub fn search(files: &[Arc<OrgFile>], query: &str, limit: usize) -> Vec<Hit> {
+    let terms = terms(query);
+    let mut out = vec![];
+    if terms.is_empty() {
+        return out;
+    }
     for f in files {
         for (i, l) in f.text.lines().enumerate() {
-            if l.to_lowercase().contains(&q) {
+            let low = l.to_lowercase();
+            if terms.iter().all(|t| low.contains(t.as_str())) {
                 out.push(Hit { path: f.path.clone(), title: f.title.clone(), line: i, text: l.trim().to_string() });
                 if out.len() >= limit {
                     return out;
@@ -337,6 +357,23 @@ pub fn search(files: &[Arc<OrgFile>], query: &str, limit: usize) -> Vec<Hit> {
 mod tests {
     use super::*;
     use crate::org::{parse, Kw};
+
+    #[test]
+    fn search_matches_every_term() {
+        let kw = Kw { todo: vec![], done: vec![] };
+        let f = Arc::new(parse(Path::new("/n/a.org"), "#+title: A\nMeeting about Alpha\ndraft of the report\nreport draft\nalpha only\n", &kw));
+        let files = [f];
+        let lines = |q: &str, limit| search(&files, q, limit).iter().map(|h| h.line).collect::<Vec<_>>();
+        assert_eq!(lines("alpha meeting", 10), vec![1]);
+        assert_eq!(lines("ALPHA Meeting", 10), vec![1]);
+        assert_eq!(lines("report draft", 10), vec![2, 3]);
+        assert_eq!(lines("\"report draft\"", 10), vec![3]);
+        assert_eq!(lines("alpha budget", 10), Vec::<usize>::new());
+        assert_eq!(lines("only \"alpha ", 10), vec![4]);
+        assert_eq!(lines("  \t ", 10), Vec::<usize>::new());
+        assert_eq!(lines("\"\"", 10), Vec::<usize>::new());
+        assert_eq!(lines("report", 1), vec![2]);
+    }
 
     #[test]
     fn links_and_backlinks() {
