@@ -657,6 +657,7 @@
     }
     recent = recent.map((p) => (p === from ? to : p));
     store("recent", JSON.stringify(recent));
+    for (const c of closed) if ("path" in c && c.path === from) c.path = to; // so "Reopen closed tab" finds it
     syncFromDisk();
     const n = changed.filter((p) => p !== to).length;
     flash(`Renamed to ${base(to)}${n ? ` — updated links in ${n} note${n > 1 ? "s" : ""}` : ""}`);

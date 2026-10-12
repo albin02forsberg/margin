@@ -80,6 +80,7 @@ describe("Features", () => {
         writeFileSync(join(notes, "leaf.org"), ":PROPERTIES:\n:ID: leaf-id\n:END:\n#+title: Leaf\n\nA leaf.\n");
         writeFileSync(join(notes, "exportme.org"), "#+title: Export me\n\nSome *bold* text.\n\n* A heading\n- one item\n");
         writeFileSync(join(notes, "draft.org"), "#+title: Draft\n\nDraft text.\n");
+        writeFileSync(join(notes, "oldie.org"), "#+title: Oldie\n\nOld text.\n");
         writeFileSync(join(notes, "refs.org"), "#+title: Refs\n\nSee [[file:draft.org::*Top][the draft]] and [[file:drafts.org]].\n");
       },
     });
@@ -167,6 +168,30 @@ describe("Features", () => {
     assert.ok(existsSync(join(d.notes, "final.org")) && !existsSync(join(d.notes, "draft.org")), "not renamed");
     assert.equal(read(join(d.notes, "refs.org")), "#+title: Refs\n\nSee [[file:final.org::*Top][the draft]] and [[file:drafts.org]].\n");
     assert.equal(read(join(d.notes, "final.org")), "#+title: Draft\n\nDraft text.\n");
+  });
+
+  it("reopens a closed tab under the note's new name after a rename", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Oldie");
+    await find(".status .file", "oldie.org");
+    await browser.keys(Key.Escape);
+    await browser.keys(" ");
+    await type("bd");
+    await browser.waitUntil(async () => !(await texts(".tabs .tab button")).some((t) => t.includes("Oldie")), { timeoutMsg: "tab not closed" });
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Oldie");
+    await find(".status .file", "oldie.org");
+    await palette("Rename note");
+    await answer("Rename note to", "newbie");
+    await find(".status .file", "newbie.org");
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Alpha");
+    await find(".status .file", "alpha.org");
+    await browser.keys(Key.Escape);
+    await browser.keys(" ");
+    await type("bu");
+    await find(".status .file", "newbie.org");
+    assert.ok(!existsSync(join(d.notes, "oldie.org")), "old name recreated");
   });
 
   it("exports a note as Markdown", async () => {
