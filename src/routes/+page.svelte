@@ -78,6 +78,11 @@
   const niceName = (p: string) => base(p).replace(/\.org(_archive)?$/, "").replace(/^\d{14}-/, "").replace(/_/g, " ");
   const pad = (n: number) => String(n).padStart(2, "0");
   const kw = () => ({ todo: cfg.config.todo_keywords as string[], done: cfg.config.done_keywords as string[] });
+  /** Reset zoom. Tauri's hotkey script keeps its own zoom counter, so replay its Ctrl/Cmd+0 (resets counter and webview); setZoom covers Windows, which has no script. */
+  function resetZoom() {
+    setTimeout(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "0", ctrlKey: true, metaKey: true })), 0);
+    getCurrentWebview().setZoom(1);
+  }
   const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 
   let msgTimer: ReturnType<typeof setTimeout>;
@@ -1229,7 +1234,7 @@
     { label: "Clean up unused attachments…", run: cleanAttachments },
     { label: "Insert horizontal rule", leader: "i -", run: () => inFile() && ed.insertText(view, "\n-----\n") },
     { label: "Toggle monospace font for notes", leader: "v m", run: () => { monoFont = !monoFont; store("mono-font", monoFont ? "1" : "0"); } },
-    { label: "View: reset zoom (Ctrl+= / Ctrl+- zoom in / out)", leader: "v 0", run: () => getCurrentWebview().setZoom(1) },
+    { label: "View: reset zoom (Ctrl/Cmd+= / - / 0 zoom in / out / reset)", leader: "v 0", run: resetZoom },
     { label: "Fold / unfold all headings (Tab folds one)", keys: ["Shift+Tab"], ctx: "normal", run: () => ed.orgShiftTab(view) },
 
     { label: "Time: start tracking", leader: "t i", run: t("start") },
