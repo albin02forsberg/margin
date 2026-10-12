@@ -270,4 +270,21 @@ describe("Features", () => {
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(join(d.notes, "beta.org"), (s) => s.endsWith("today.\nX"), "reopened tab lost its line");
   });
+
+  it("closes other tabs and a middle-clicked tab; the tab tooltip is the path", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Beta");
+    await find(".status .file", "beta.org");
+    const tip = await browser.execute(() => [...document.querySelectorAll(".tabs .tab > button:not(.x)")].map((b) => b.getAttribute("title") ?? "").join("|"));
+    assert.ok(tip.includes("beta.org"), "tab has no path tooltip");
+    await browser.keys(Key.Escape);
+    await browser.keys(" ");
+    await type("bo");
+    await browser.waitUntil(async () => (await texts(".tabs .tab > button:not(.x)")).length === 1, { timeoutMsg: "other tabs not closed" });
+    await browser.keys([Key.Ctrl, Key.Shift, "t"]);
+    await browser.waitUntil(async () => (await texts(".tabs .tab > button:not(.x)")).length === 2, { timeoutMsg: "closed tab not reopened" });
+    // middle-click: auxclick on the first tab
+    await browser.execute(() => document.querySelector(".tabs .tab")?.dispatchEvent(new MouseEvent("auxclick", { button: 1, bubbles: true })));
+    await browser.waitUntil(async () => (await texts(".tabs .tab > button:not(.x)")).length === 1, { timeoutMsg: "middle-click didn't close the tab" });
+  });
 });
