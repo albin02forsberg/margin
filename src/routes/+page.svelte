@@ -29,7 +29,7 @@
    *  REPORT: how to regenerate a report tab when the data changes. */
   type Tab = {
     key: string; title: string; kind: "file" | "report" | View; path?: string; state?: EditorState; dirty: boolean;
-    saved?: string; report?: { kind: string; dateInput?: string | null }; conflict?: boolean; query?: string;
+    saved?: string; report?: { kind: string; dateInput?: string | null }; conflict?: boolean; missing?: boolean; query?: string;
   };
   type NoteNode = { id: string; title: string; path: string; line: number };
   type Hit = { path: string; title: string; line: number; text: string };
@@ -141,13 +141,13 @@
     refreshBacklinks();
   }
 
-  /** FORCE (from :w / Ctrl+S) also overwrites a file that changed on disk in a conflicting way.
+  /** FORCE (from :w / Ctrl+S) also overwrites a file that changed on disk in a conflicting way, or recreates a deleted one.
    *  Saves of one tab run one at a time, so `saved` is what the disk should hold when each starts. */
   const saveQueue = ed.perKey();
   const saveTab = (t?: Tab, force = false) => (t ? saveQueue(t.key, () => writeTab(t, force)) : Promise.resolve());
   async function writeTab(t: Tab, force: boolean): Promise<void> {
-    if (t.kind !== "file" || !t.dirty || (t.conflict && !force)) return;
-    t.conflict = false;
+    if (t.kind !== "file" || !(t.dirty || (t.missing && force)) || ((t.conflict || t.missing) && !force)) return;
+    t.conflict = t.missing = false;
     clearTimeout(saveTimers.get(t.key));
     const text = stateOf(t).doc.toString();
     let warn: string;
@@ -304,8 +304,8 @@
 
   /** Keep only the sidebar's recent notes and the closed tabs whose path passes KEEP (for trashed or vanished notes). */
   function pruneRecent(keep: (p: string) => boolean) {
-    recent = recent.filter(keep);
-    store("recent", JSON.stringify(recent));
+    const r = recent.filter(keep);
+    if (r.length < recent.length) store("recent", JSON.stringify((recent = r)));
     for (let i = closed.length; i--; ) {
       const c = closed[i];
       if ("path" in c && !keep(c.path)) closed.splice(i, 1);
@@ -329,11 +329,11 @@
     if (!t) return;
     if (i === cur && isText(t)) t.state = view.state;
     await saveTab(t);
-    // Unsaved edits that clash with the disk (flagged earlier or by that save): ask before dropping them.
-    if (t.kind === "file" && t.conflict && t.dirty) {
+    // Unsaved edits that clash with the disk or whose file is gone (flagged earlier or by that save): ask before dropping them.
+    if (t.kind === "file" && (t.conflict || t.missing) && t.dirty) {
       const c = await pick({
-        prompt: `“${t.title}” has unsaved edits and changed on disk`,
-        items: [{ label: "Keep editing", value: "keep" }, { label: "Save mine (overwrites the disk version)", value: "save" }, { label: "Discard mine", value: "discard" }],
+        prompt: `“${t.title}” has unsaved edits and ${t.missing ? "is gone from disk" : "changed on disk"}`,
+        items: [{ label: "Keep editing", value: "keep" }, { label: t.missing ? "Save mine (recreates the file)" : "Save mine (overwrites the disk version)", value: "save" }, { label: "Discard mine", value: "discard" }],
       });
       if (c === "save") await saveTab(t, true);
       else if (c !== "discard") return;
@@ -352,16 +352,16 @@
     await show(next);
   }
 
-  /** Close every tab but the current one (or ALL of them), highest first so each lands on the Reopen stack; conflict tabs stay open. */
+  /** Close every tab but the current one (or ALL of them), highest first so each lands on the Reopen stack; conflict and deleted-with-edits tabs stay open. */
   async function closeOthers(all = false) {
     const keep = all ? -1 : cur;
     let kept = 0;
     for (let i = tabs.length - 1; i >= 0; i--) {
       if (i === keep) continue;
-      if (tabs[i].conflict) kept++;
+      if (tabs[i].conflict || (tabs[i].missing && tabs[i].dirty)) kept++;
       else await closeTab(i);
     }
-    if (kept) flash(`Kept ${kept} tab${kept > 1 ? "s" : ""} with conflicts`);
+    if (kept) flash(`Kept ${kept} tab${kept > 1 ? "s" : ""} with conflicts or deleted files`);
   }
 
   const cycleTab = (d: number) => tabs.length && show((cur + d + tabs.length) % tabs.length);
@@ -693,7 +693,8 @@
     const [to, changed] = await call<[string, string[]]>("rename_note", { from, name });
     // Re-key the tab: a fresh editor state, since autosave looks tabs up by key.
     const old = stateOf(t), text = old.doc.toString();
-    Object.assign(t, { key: to, path: to, title: niceName(to), state: newState(to, text, to), saved: text, dirty: false });
+    // A sync during the move may have flagged the old path as missing; the trailing sync re-checks.
+    Object.assign(t, { key: to, path: to, title: niceName(to), state: newState(to, text, to), saved: text, dirty: false, conflict: false, missing: false });
     if (t === tabs[cur]) {
       view.setState(t.state!);
       view.dispatch({ selection: old.selection });
@@ -1445,15 +1446,24 @@
         replaceText(t, await call("tc_report", t.report));
       } else if (t.kind === "file") {
         const disk = ((await call("read_file", { path: t.path })) as string).replace(/\r\n?/g, "\n");
-        if (disk === t.saved || disk === stateOf(t).doc.toString()) continue;
+        // Deleted or moved away (reads as ""): keep the text and `saved`, flag it, don't autosave it back.
+        t.missing = disk === "" && !!t.saved && !(await call<boolean>("file_exists", { path: t.path }));
+        if (t.missing || disk === t.saved || disk === stateOf(t).doc.toString()) continue;
         if (t.dirty) mergeFromDisk(t, disk);
         else replaceText(t, disk);
         t.saved = disk;
       }
     }
+    await pruneMissing();
     reload++;
     await refreshTc();
     await refreshBacklinks();
+  }
+
+  /** Drop notes that no longer exist from the sidebar's recent list and the closed tabs (other files are kept). */
+  async function pruneMissing() {
+    const files = new Set(await call<string[]>("list_files"));
+    pruneRecent((p) => files.has(p) || !p.startsWith(cfg.notes) || !p.endsWith(".org"));
   }
 
   /** The file changed on disk while T has unsaved edits: apply the disk change too if the two
@@ -1479,6 +1489,7 @@
 
   async function reloadFromDisk() {
     if (!inFile()) return;
+    if (tab.missing) return flash(`“${tab.title}” is gone from disk; :w recreates it.`);
     const disk = ((await call("read_file", { path: tab.path })) as string).replace(/\r\n?/g, "\n");
     replaceText(tab, disk);
     Object.assign(tab, { saved: disk, dirty: false, conflict: false });
@@ -1545,6 +1556,7 @@
       ed.hooks.follow = (target) => act(() => followLink(target ?? ed.linkAtCursor(view)));
       ed.hooks.tab = (d) => act(() => cycleTab(d));
       await openView("agenda");
+      await pruneMissing();
       const [tut, first] = await call<[string, boolean]>("tutorial");
       if (first) {
         await setup().catch((e) => flash(`⚠ ${e}`));
@@ -1724,7 +1736,7 @@
 
     <footer class="status">
       {#if isText(tab)}<span class="mode">{mode.toUpperCase()}</span>{/if}
-      <span class="file">{tab?.path ? rel(tab.path) : ""}{tab?.conflict ? " • changed on disk (:w keeps yours, Space f r reloads)" : tab?.dirty ? " • unsaved" : ""}</span>
+      <span class="file">{tab?.path ? rel(tab.path) : ""}{tab?.missing ? " • deleted on disk (:w recreates it)" : tab?.conflict ? " • changed on disk (:w keeps yours, Space f r reloads)" : tab?.dirty ? " • unsaved" : ""}</span>
       <span class="msg">{message}</span>
       {#if download}<progress class="dl" max={download.size} value={download.have} title="Downloading the AI model ({Math.floor((download.have / download.size) * 100)}%); cancel it in AI drafts: choose model…"></progress>{/if}
       {#if drafting && (cfg.config.ai_backend === "embedded" || chatting)}<button class="hint cancel" onclick={() => act(() => call("ai_draft_cancel"))}>Drafting… cancel</button>{/if}
