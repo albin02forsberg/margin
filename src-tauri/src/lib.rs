@@ -513,19 +513,23 @@ fn org_heading(s: State<App>, text: String, line: usize) -> Option<org::Parts> {
 /// | priority-cycle (±1) | tags ("a:b") | shift ("SCHEDULED 1").
 #[tauri::command]
 fn org_edit(s: State<App>, text: String, line: usize, op: String, value: Option<String>) -> R<String> {
-    let kw = s.kw();
+    org_edit_op(&text, line, &op, value, &s.kw(), timeclock::now())
+}
+
+/// `org_edit` without app state or clock.
+fn org_edit_op(text: &str, line: usize, op: &str, value: Option<String>, kw: &org::Kw, now: NaiveDateTime) -> R<String> {
     let v = value.unwrap_or_default();
     let n = || v.trim().parse::<i32>().map_err(|_| format!("bad number: {v}"));
     let opt = || Some(v.trim()).filter(|x| !x.is_empty());
-    Ok(match op.as_str() {
-        "cycle" => org::cycle_todo(&text, line, &kw, n()?, timeclock::now()),
-        "keyword" => org::set_keyword(&text, line, &kw, opt(), timeclock::now()),
-        "priority" => org::set_priority(&text, line, &kw, opt()),
-        "priority-cycle" => org::cycle_priority(&text, line, &kw, n()?),
-        "tags" => org::set_tags(&text, line, &kw, v.split(':').map(|t| t.trim().to_string()).collect()),
+    Ok(match op {
+        "cycle" => org::cycle_todo(text, line, kw, n()?, now),
+        "keyword" => org::set_keyword(text, line, kw, opt(), now),
+        "priority" => org::set_priority(text, line, kw, opt()),
+        "priority-cycle" => org::cycle_priority(text, line, kw, n()?),
+        "tags" => org::set_tags(text, line, kw, v.split(':').map(|t| t.trim().to_string()).collect()),
         "shift" => {
             let (kind, days) = v.split_once(' ').ok_or("shift needs \"KIND DAYS\"")?;
-            org::shift_date(&text, line, kind, days.trim().parse().map_err(|_| "bad day count")?)
+            org::shift_date(text, line, kind, days.trim().parse().map_err(|_| "bad day count")?)
         }
         o => return Err(format!("unknown org op {o}")),
     })
@@ -660,7 +664,10 @@ fn read_date(input: String) -> R<String> {
 /// Category and title of the heading at LINE (for clock-in suggestions).
 #[tauri::command]
 fn org_context(s: State<App>, path: PathBuf, text: String, line: usize) -> Value {
-    let f = org::parse(&path, &text, &s.kw());
+    context_of(&org::parse(&path, &text, &s.kw()), line)
+}
+
+fn context_of(f: &org::OrgFile, line: usize) -> Value {
     match f.headlines.iter().rev().find(|h| h.line <= line) {
         Some(h) => json!({ "category": h.category, "title": h.title }),
         None => json!({ "category": f.category, "title": f.title }),
@@ -1494,6 +1501,76 @@ mod tests {
             }
             let _ = std::fs::remove_dir_all(&dir);
         }
+    }
+
+    fn kw() -> org::Kw {
+        org::Kw { todo: vec!["TODO".into()], done: vec!["DONE".into()] }
+    }
+
+    fn edit(text: &str, op: &str, v: Option<&str>) -> R<String> {
+        let now = "2026-01-08T09:00:00".parse::<NaiveDateTime>().unwrap();
+        org_edit_op(text, 0, op, v.map(String::from), &kw(), now)
+    }
+
+    #[test]
+    fn org_edit_ops() {
+        assert_eq!(edit("* Task\n", "cycle", Some("1")).unwrap(), "* TODO Task\n");
+        assert_eq!(edit("* TODO Task\n", "cycle", Some(" 1 ")).unwrap(), "* DONE Task\n");
+        assert_eq!(edit("* TODO Task\n", "cycle", Some("-1")).unwrap(), "* Task\n");
+        assert_eq!(edit("* Task\n", "keyword", Some("TODO")).unwrap(), "* TODO Task\n");
+        assert_eq!(edit("* TODO Task\n", "keyword", Some("")).unwrap(), "* Task\n");
+        assert_eq!(edit("* TODO Task\n", "keyword", None).unwrap(), "* Task\n");
+        assert_eq!(edit("* Task\n", "priority", Some("b")).unwrap(), "* [#B] Task\n");
+        assert_eq!(edit("* [#B] Task\n", "priority", None).unwrap(), "* Task\n");
+        assert_eq!(edit("* Task\n", "priority-cycle", Some("1")).unwrap(), "* [#C] Task\n"); // none -> C -> B -> A -> none
+        assert_eq!(edit("* [#B] Task\n", "priority-cycle", Some("1")).unwrap(), "* [#A] Task\n");
+        assert_eq!(edit("* [#A] Task\n", "priority-cycle", Some("1")).unwrap(), "* Task\n");
+        assert_eq!(edit("* [#A] Task\n", "priority-cycle", Some("-1")).unwrap(), "* [#B] Task\n");
+        assert_eq!(edit("* Task\n", "tags", Some("a:b")).unwrap(), "* Task :a:b:\n");
+        // An empty value reaches set_tags as one empty tag, which it drops: clears the tags.
+        assert_eq!(edit("* Task :a:\n", "tags", Some("")).unwrap(), "* Task\n");
+        assert_eq!(edit("* Task :a:\n", "tags", None).unwrap(), "* Task\n");
+        let sched = "* Task\nSCHEDULED: <2026-01-08 Thu>\n";
+        assert_eq!(edit(sched, "shift", Some("SCHEDULED 3")).unwrap(), "* Task\nSCHEDULED: <2026-01-11 Sun>\n");
+        assert_eq!(edit(sched, "shift", Some("SCHEDULED -1")).unwrap(), "* Task\nSCHEDULED: <2026-01-07 Wed>\n");
+        assert_eq!(edit(sched, "shift", Some("scheduled 3")).unwrap(), sched); // the kind is case-sensitive
+        assert_eq!(edit(sched, "shift", Some("DEADLINE 3")).unwrap(), sched); // no such date: untouched
+    }
+
+    #[test]
+    fn org_edit_errors() {
+        assert_eq!(edit("* T\n", "cycle", Some("x")).unwrap_err(), "bad number: x");
+        assert_eq!(edit("* T\n", "priority-cycle", None).unwrap_err(), "bad number: ");
+        assert_eq!(edit("* T\n", "shift", Some("scheduled")).unwrap_err(), "shift needs \"KIND DAYS\"");
+        assert_eq!(edit("* T\n", "shift", None).unwrap_err(), "shift needs \"KIND DAYS\"");
+        assert_eq!(edit("* T\n", "shift", Some("SCHEDULED two")).unwrap_err(), "bad day count");
+        assert_eq!(edit("* T\n", "nope", None).unwrap_err(), "unknown org op nope");
+    }
+
+    #[test]
+    fn org_context_falls_back_to_the_file() {
+        let text = "#+title: Doc\n#+category: Work\npreamble\n* A\n** B\ntext\n* C\n";
+        let f = org::parse(Path::new("doc.org"), text, &kw());
+        let c = |l| context_of(&f, l);
+        assert_eq!(c(2), json!({ "category": "Work", "title": "Doc" })); // before the first heading
+        assert_eq!(c(3), json!({ "category": "Work", "title": "A" }));
+        assert_eq!(c(5), json!({ "category": "Work", "title": "B" })); // under B
+        assert_eq!(c(6), json!({ "category": "Work", "title": "C" }));
+    }
+
+    #[test]
+    fn refile_and_archive_pass_errors_through() {
+        let src = "* A\n* B\n";
+        assert_eq!(org_refile(src.into(), 0, "* X\n".into(), None).unwrap(), ["* B\n".to_string(), "* X\n* A\n".to_string()]);
+        assert_eq!(org_refile("text\n".into(), 0, "".into(), None).unwrap_err(), "not on a heading");
+        assert_eq!(org_refile(src.into(), 0, "plain\n".into(), Some(0)).unwrap_err(), "refile target is not a heading");
+        assert_eq!(org_refile_same("* A\n** B\n".into(), 0, Some(1)).unwrap_err(), "can't refile a subtree under itself");
+        assert_eq!(org_refile_same("text\n".into(), 0, None).unwrap_err(), "not on a heading");
+        assert_eq!(org_refile_same(src.into(), 0, Some(1)).unwrap(), "* B\n** A\n");
+        assert!(org_archive("text\n".into(), 0, "".into(), "a.org".into()).is_err());
+        let [left, arch] = org_archive(src.into(), 1, "".into(), "a.org".into()).unwrap();
+        assert_eq!(left, "* A\n");
+        assert!(arch.contains("Archived entries from file a.org") && arch.contains(":ARCHIVE_FILE: a.org") && arch.contains("* B"), "{arch}");
     }
 
     #[test]
