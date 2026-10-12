@@ -789,6 +789,78 @@
       "source_location": "L125"
     },
     {
+      "id": "src_lib_chat_onkeydown",
+      "label": "onkeydown()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 21,
+      "community_name": "setup.ts",
+      "file_type": "code",
+      "norm_label": "onkeydown()",
+      "source_file": "src/lib/Chat.svelte",
+      "source_location": "L50"
+    },
+    {
+      "id": "src_lib_chat_send",
+      "label": "send()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 21,
+      "community_name": "setup.ts",
+      "file_type": "code",
+      "norm_label": "send()",
+      "source_file": "src/lib/Chat.svelte",
+      "source_location": "L30"
+    },
+    {
+      "id": "src_lib_chatctx_bytes",
+      "label": "bytes()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 21,
+      "community_name": "setup.ts",
+      "file_type": "code",
+      "norm_label": "bytes()",
+      "source_file": "src/lib/chatctx.ts",
+      "source_location": "L4"
+    },
+    {
+      "id": "src_lib_chatctx_chatcontext",
+      "label": "chatContext()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 21,
+      "community_name": "setup.ts",
+      "file_type": "code",
+      "norm_label": "chatcontext()",
+      "source_file": "src/lib/chatctx.ts",
+      "source_location": "L16"
+    },
+    {
+      "id": "src_lib_chatctx_cleanchat",
+      "label": "cleanChat()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 21,
+      "community_name": "setup.ts",
+      "file_type": "code",
+      "norm_label": "cleanchat()",
+      "source_file": "src/lib/chatctx.ts",
+      "source_location": "L8"
+    },
+    {
+      "id": "src_lib_chatctx_level",
+      "label": "level()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 21,
+      "community_name": "setup.ts",
+      "file_type": "code",
+      "norm_label": "level()",
+      "source_file": "src/lib/chatctx.ts",
+      "source_location": "L5"
+    },
+    {
       "id": "src_lib_graph_layout",
       "label": "layout()",
       "_callable": true,
@@ -1891,78 +1963,6 @@
       "norm_label": "toggleheading()",
       "source_file": "src/lib/editor.ts",
       "source_location": "L569"
-    },
-    {
-      "id": "src_lib_chat_onkeydown",
-      "label": "onkeydown()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 63,
-      "community_name": "chatctx.ts",
-      "file_type": "code",
-      "norm_label": "onkeydown()",
-      "source_file": "src/lib/Chat.svelte",
-      "source_location": "L50"
-    },
-    {
-      "id": "src_lib_chat_send",
-      "label": "send()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 63,
-      "community_name": "chatctx.ts",
-      "file_type": "code",
-      "norm_label": "send()",
-      "source_file": "src/lib/Chat.svelte",
-      "source_location": "L30"
-    },
-    {
-      "id": "src_lib_chatctx_bytes",
-      "label": "bytes()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 63,
-      "community_name": "chatctx.ts",
-      "file_type": "code",
-      "norm_label": "bytes()",
-      "source_file": "src/lib/chatctx.ts",
-      "source_location": "L4"
-    },
-    {
-      "id": "src_lib_chatctx_chatcontext",
-      "label": "chatContext()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 63,
-      "community_name": "chatctx.ts",
-      "file_type": "code",
-      "norm_label": "chatcontext()",
-      "source_file": "src/lib/chatctx.ts",
-      "source_location": "L16"
-    },
-    {
-      "id": "src_lib_chatctx_cleanchat",
-      "label": "cleanChat()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 63,
-      "community_name": "chatctx.ts",
-      "file_type": "code",
-      "norm_label": "cleanchat()",
-      "source_file": "src/lib/chatctx.ts",
-      "source_location": "L8"
-    },
-    {
-      "id": "src_lib_chatctx_level",
-      "label": "level()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 63,
-      "community_name": "chatctx.ts",
-      "file_type": "code",
-      "norm_label": "level()",
-      "source_file": "src/lib/chatctx.ts",
-      "source_location": "L5"
     },
     {
       "id": "src_lib_settings_changes",
@@ -3184,6 +3184,17 @@
       "source_location": "L1018"
     },
     {
+      "id": "src_tauri_src_org_parts_line",
+      "label": ".line()",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "org.rs",
+      "file_type": "code",
+      "norm_label": ".line()",
+      "source_file": "src-tauri/src/org.rs",
+      "source_location": "L554"
+    },
+    {
       "id": "src_tauri_src_org_parts_parse",
       "label": ".parse()",
       "_origin": "ast",
@@ -3512,6 +3523,17 @@
       "norm_label": "targets()",
       "source_file": "src-tauri/src/org.rs",
       "source_location": "L886"
+    },
+    {
+      "id": "src_tauri_src_org_task_entry",
+      "label": "task_entry()",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "org.rs",
+      "file_type": "code",
+      "norm_label": "task_entry()",
+      "source_file": "src-tauri/src/org.rs",
+      "source_location": "L861"
     },
     {
       "id": "src_tauri_src_org_template_prompts",
@@ -4062,6 +4084,17 @@
       "norm_label": "or_other()",
       "source_file": "src-tauri/src/timeclock.rs",
       "source_location": "L663"
+    },
+    {
+      "id": "src_tauri_src_timeclock_org_table",
+      "label": "org_table()",
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "timeclock.rs",
+      "file_type": "code",
+      "norm_label": "org_table()",
+      "source_file": "src-tauri/src/timeclock.rs",
+      "source_location": "L667"
     },
     {
       "id": "src_tauri_src_timeclock_parse_events",
@@ -4790,22 +4823,11 @@
       "source_location": "L36"
     },
     {
-      "id": "lib_graph_graph",
-      "label": "$lib/graph",
-      "_origin": "ast",
-      "community": 12,
-      "community_name": "$lib/graph",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "$lib/graph",
-      "source_file": "$lib/graph"
-    },
-    {
       "id": "src_lib_graph_svelte_src_lib_graph",
       "label": "lib/Graph.svelte",
       "_origin": "ast",
       "community": 12,
-      "community_name": "$lib/graph",
+      "community_name": "graph",
       "file_type": "code",
       "norm_label": "lib/graph.svelte",
       "source_file": "src/lib/Graph.svelte",
@@ -4975,17 +4997,6 @@
       "file_type": "code",
       "norm_label": "@tauri-apps/api/core",
       "source_file": "@tauri-apps/api/core"
-    },
-    {
-      "id": "lib_projects_projects",
-      "label": "$lib/projects",
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "svelte",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "$lib/projects",
-      "source_file": "$lib/projects"
     },
     {
       "id": "settings",
@@ -6924,6 +6935,50 @@
       "source_location": "L20"
     },
     {
+      "id": "src_lib_chat",
+      "label": "lib/Chat.svelte",
+      "_origin": "ast",
+      "community": 21,
+      "community_name": "setup.ts",
+      "file_type": "code",
+      "norm_label": "lib/chat.svelte",
+      "source_file": "src/lib/Chat.svelte",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_lib_chatctx",
+      "label": "chatctx.ts",
+      "_origin": "ast",
+      "community": 21,
+      "community_name": "setup.ts",
+      "file_type": "code",
+      "norm_label": "chatctx.ts",
+      "source_file": "src/lib/chatctx.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_lib_chatctx_enc",
+      "label": "enc",
+      "_origin": "ast",
+      "community": 21,
+      "community_name": "setup.ts",
+      "file_type": "code",
+      "norm_label": "enc",
+      "source_file": "src/lib/chatctx.ts",
+      "source_location": "L3"
+    },
+    {
+      "id": "src_lib_chatctx_test",
+      "label": "chatctx.test.ts",
+      "_origin": "ast",
+      "community": 21,
+      "community_name": "setup.ts",
+      "file_type": "code",
+      "norm_label": "chatctx.test.ts",
+      "source_file": "src/lib/chatctx.test.ts",
+      "source_location": "L1"
+    },
+    {
       "id": "src_lib_graph_test",
       "label": "graph.test.ts",
       "_origin": "ast",
@@ -7043,6 +7098,17 @@
       "norm_label": "webdriverio",
       "source_file": "package.json",
       "source_location": "L48"
+    },
+    {
+      "id": "calendarcache",
+      "label": "CalendarCache",
+      "_origin": "ast",
+      "community": 22,
+      "community_name": "activity.rs",
+      "file_type": "code",
+      "norm_label": "calendarcache",
+      "source_file": "",
+      "source_location": ""
     },
     {
       "id": "datetime",
@@ -7593,6 +7659,17 @@
       "norm_label": "words()",
       "source_file": "src-tauri/src/activity.rs",
       "source_location": "L272"
+    },
+    {
+      "id": "src_tauri_src_ics_calendar",
+      "label": "CALENDAR",
+      "_origin": "ast",
+      "community": 22,
+      "community_name": "activity.rs",
+      "file_type": "code",
+      "norm_label": "calendar",
+      "source_file": "src-tauri/src/ics.rs",
+      "source_location": "L225"
     },
     {
       "id": "src_tauri_src_watcher_exclusion_and_truncation_before_write",
@@ -8189,39 +8266,6 @@
       "source_location": "L632"
     },
     {
-      "id": "src_tauri_src_org_parts_line",
-      "label": ".line()",
-      "_origin": "ast",
-      "community": 23,
-      "community_name": "export.rs",
-      "file_type": "code",
-      "norm_label": ".line()",
-      "source_file": "src-tauri/src/org.rs",
-      "source_location": "L554"
-    },
-    {
-      "id": "src_tauri_src_org_task_entry",
-      "label": "task_entry()",
-      "_origin": "ast",
-      "community": 23,
-      "community_name": "export.rs",
-      "file_type": "code",
-      "norm_label": "task_entry()",
-      "source_file": "src-tauri/src/org.rs",
-      "source_location": "L861"
-    },
-    {
-      "id": "src_tauri_src_timeclock_org_table",
-      "label": "org_table()",
-      "_origin": "ast",
-      "community": 23,
-      "community_name": "export.rs",
-      "file_type": "code",
-      "norm_label": "org_table()",
-      "source_file": "src-tauri/src/timeclock.rs",
-      "source_location": "L667"
-    },
-    {
       "id": "src_tauri_src_notes",
       "label": "notes.rs",
       "_origin": "ast",
@@ -8629,6 +8673,17 @@
       "source_file": "$lib/chatctx"
     },
     {
+      "id": "codemirror_state_state",
+      "label": "@codemirror/state",
+      "_origin": "ast",
+      "community": 29,
+      "community_name": "+page.svelte",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "@codemirror/state",
+      "source_file": "@codemirror/state"
+    },
+    {
       "id": "editor",
       "label": "$lib/editor",
       "_origin": "ast",
@@ -8748,28 +8803,6 @@
       "file_type": "code",
       "norm_label": "$lib/taskdialog.svelte",
       "source_file": "$lib/TaskDialog.svelte"
-    },
-    {
-      "id": "tauri_apps_api_event_event",
-      "label": "@tauri-apps/api/event",
-      "_origin": "ast",
-      "community": 29,
-      "community_name": "+page.svelte",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "@tauri-apps/api/event",
-      "source_file": "@tauri-apps/api/event"
-    },
-    {
-      "id": "tauri_apps_api_webview_webview",
-      "label": "@tauri-apps/api/webview",
-      "_origin": "ast",
-      "community": 29,
-      "community_name": "+page.svelte",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "@tauri-apps/api/webview",
-      "source_file": "@tauri-apps/api/webview"
     },
     {
       "id": "theme_css",
@@ -11563,17 +11596,6 @@
       "source_location": "L34"
     },
     {
-      "id": "calendarcache",
-      "label": "CalendarCache",
-      "_origin": "ast",
-      "community": 60,
-      "community_name": "ics.rs",
-      "file_type": "code",
-      "norm_label": "calendarcache",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
       "id": "src_tauri_src_ics",
       "label": "ics.rs",
       "_origin": "ast",
@@ -11594,17 +11616,6 @@
       "norm_label": "builds_feed()",
       "source_file": "src-tauri/src/ics.rs",
       "source_location": "L325"
-    },
-    {
-      "id": "src_tauri_src_ics_calendar",
-      "label": "CALENDAR",
-      "_origin": "ast",
-      "community": 60,
-      "community_name": "ics.rs",
-      "file_type": "code",
-      "norm_label": "calendar",
-      "source_file": "src-tauri/src/ics.rs",
-      "source_location": "L225"
     },
     {
       "id": "src_tauri_src_ics_calendar_from_a_url",
@@ -11816,48 +11827,15 @@
       "source_location": ""
     },
     {
-      "id": "src_lib_chat",
-      "label": "lib/Chat.svelte",
+      "id": "lib_graph_graph",
+      "label": "$lib/graph",
       "_origin": "ast",
       "community": 63,
-      "community_name": "chatctx.ts",
+      "community_name": "$lib/graph",
+      "confidence": "EXTRACTED",
       "file_type": "code",
-      "norm_label": "lib/chat.svelte",
-      "source_file": "src/lib/Chat.svelte",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_lib_chatctx",
-      "label": "chatctx.ts",
-      "_origin": "ast",
-      "community": 63,
-      "community_name": "chatctx.ts",
-      "file_type": "code",
-      "norm_label": "chatctx.ts",
-      "source_file": "src/lib/chatctx.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_lib_chatctx_enc",
-      "label": "enc",
-      "_origin": "ast",
-      "community": 63,
-      "community_name": "chatctx.ts",
-      "file_type": "code",
-      "norm_label": "enc",
-      "source_file": "src/lib/chatctx.ts",
-      "source_location": "L3"
-    },
-    {
-      "id": "src_lib_chatctx_test",
-      "label": "chatctx.test.ts",
-      "_origin": "ast",
-      "community": 63,
-      "community_name": "chatctx.ts",
-      "file_type": "code",
-      "norm_label": "chatctx.test.ts",
-      "source_file": "src/lib/chatctx.test.ts",
-      "source_location": "L1"
+      "norm_label": "$lib/graph",
+      "source_file": "$lib/graph"
     },
     {
       "id": "src_lib_settings_groups",
@@ -13331,15 +13309,26 @@
       "source_location": ""
     },
     {
-      "id": "codemirror_state_state",
-      "label": "@codemirror/state",
+      "id": "lib_projects_projects",
+      "label": "$lib/projects",
       "_origin": "ast",
       "community": 78,
-      "community_name": "@codemirror/state",
+      "community_name": "$lib/projects",
       "confidence": "EXTRACTED",
       "file_type": "code",
-      "norm_label": "@codemirror/state",
-      "source_file": "@codemirror/state"
+      "norm_label": "$lib/projects",
+      "source_file": "$lib/projects"
+    },
+    {
+      "id": "tauri_apps_api_event_event",
+      "label": "@tauri-apps/api/event",
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "@tauri-apps/api/event",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "@tauri-apps/api/event",
+      "source_file": "@tauri-apps/api/event"
     },
     {
       "id": "kit",
@@ -13692,6 +13681,17 @@
       "norm_label": "vite",
       "source_file": "package.json",
       "source_location": "L47"
+    },
+    {
+      "id": "tauri_apps_api_webview_webview",
+      "label": "@tauri-apps/api/webview",
+      "_origin": "ast",
+      "community": 80,
+      "community_name": "@tauri-apps/api/webview",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "@tauri-apps/api/webview",
+      "source_file": "@tauri-apps/api/webview"
     },
     {
       "id": "tsconfig",
@@ -14388,18 +14388,6 @@
       "type": "external"
     },
     {
-      "id": "serde",
-      "label": "serde",
-      "_origin": "semantic",
-      "community": 35,
-      "community_name": "config.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "serde",
-      "source_file": "",
-      "type": "external"
-    },
-    {
       "id": "assets_icon",
       "label": "App Icon",
       "_origin": "semantic",
@@ -14446,6 +14434,18 @@
       "norm_label": "tauri global shortcut plugin",
       "source_file": "src-tauri/Cargo.toml",
       "type": "plugin"
+    },
+    {
+      "id": "serde",
+      "label": "serde",
+      "_origin": "semantic",
+      "community": 5,
+      "community_name": "watcher.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "serde",
+      "source_file": "",
+      "type": "external"
     },
     {
       "id": "installer",
@@ -14856,13 +14856,46 @@
       "type": "external"
     },
     {
-      "id": "state",
-      "label": "state",
+      "id": "graph",
+      "label": "graph",
+      "community": 12,
+      "community_name": "graph",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "graph",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "projects",
+      "label": "projects",
+      "community": 18,
+      "community_name": "svelte",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "projects",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "event",
+      "label": "event",
       "community": 29,
       "community_name": "+page.svelte",
       "external": true,
       "file_type": "concept",
-      "norm_label": "state",
+      "norm_label": "event",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "webview",
+      "label": "webview",
+      "community": 29,
+      "community_name": "+page.svelte",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "webview",
       "source_file": "",
       "type": "external"
     }
@@ -47442,7 +47475,7 @@
     },
     {
       "source": "src_lib_graph_svelte_src_lib_graph",
-      "target": "lib_graph_graph",
+      "target": "graph",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -47469,7 +47502,7 @@
     },
     {
       "source": "src_lib_projects_svelte_src_lib_projects",
-      "target": "lib_projects_projects",
+      "target": "projects",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -47577,6 +47610,15 @@
     },
     {
       "source": "src_routes_page",
+      "target": "codemirror_state_state",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/routes/+page.svelte"
+    },
+    {
+      "source": "src_routes_page",
       "target": "core",
       "relation": "imports_from",
       "_origin": "ast",
@@ -47587,6 +47629,15 @@
     {
       "source": "src_routes_page",
       "target": "editor",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/routes/+page.svelte"
+    },
+    {
+      "source": "src_routes_page",
+      "target": "event",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -47676,15 +47727,6 @@
     },
     {
       "source": "src_routes_page",
-      "target": "state",
-      "relation": "imports_from",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/routes/+page.svelte"
-    },
-    {
-      "source": "src_routes_page",
       "target": "svelte",
       "relation": "imports_from",
       "_origin": "ast",
@@ -47695,24 +47737,6 @@
     {
       "source": "src_routes_page",
       "target": "taskdialog_svelte",
-      "relation": "imports_from",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/routes/+page.svelte"
-    },
-    {
-      "source": "src_routes_page",
-      "target": "tauri_apps_api_event_event",
-      "relation": "imports_from",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/routes/+page.svelte"
-    },
-    {
-      "source": "src_routes_page",
-      "target": "tauri_apps_api_webview_webview",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -47740,6 +47764,15 @@
     {
       "source": "src_routes_page",
       "target": "view",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/routes/+page.svelte"
+    },
+    {
+      "source": "src_routes_page",
+      "target": "webview",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -48633,7 +48666,7 @@
       "confidence_score": 0.85,
       "context": "argument",
       "source_file": "src/routes/+page.svelte",
-      "source_location": "L1165",
+      "source_location": "L1166",
       "weight": 1.0
     },
     {
@@ -48645,7 +48678,7 @@
       "confidence_score": 0.85,
       "context": "argument",
       "source_file": "src/routes/+page.svelte",
-      "source_location": "L1528",
+      "source_location": "L1529",
       "weight": 1.0
     },
     {
@@ -48657,7 +48690,7 @@
       "confidence_score": 0.85,
       "context": "argument",
       "source_file": "src/routes/+page.svelte",
-      "source_location": "L1561",
+      "source_location": "L1562",
       "weight": 1.0
     },
     {
@@ -48878,18 +48911,6 @@
     },
     {
       "source": "src_routes_page",
-      "target": "src_lib_editor_inserttable",
-      "relation": "indirect_call",
-      "_origin": "ast",
-      "confidence": "INFERRED",
-      "confidence_score": 0.85,
-      "context": "collection",
-      "source_file": "src/routes/+page.svelte",
-      "source_location": "L1254",
-      "weight": 1.0
-    },
-    {
-      "source": "src_routes_page",
       "target": "src_lib_orgtable_format",
       "relation": "indirect_call",
       "_origin": "ast",
@@ -48897,7 +48918,19 @@
       "confidence_score": 0.85,
       "context": "collection",
       "source_file": "src/routes/+page.svelte",
-      "source_location": "L999",
+      "source_location": "L1000",
+      "weight": 1.0
+    },
+    {
+      "source": "src_routes_page",
+      "target": "src_lib_editor_inserttable",
+      "relation": "indirect_call",
+      "_origin": "ast",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "context": "collection",
+      "source_file": "src/routes/+page.svelte",
+      "source_location": "L1255",
       "weight": 1.0
     },
     {
@@ -49034,5 +49067,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "bbb01ffaf2420a81580820afd1784d863dadfe90"
+  "built_at_commit": "0290cdb600b401399feeaf4fa2821660f45d8aa2"
 }
