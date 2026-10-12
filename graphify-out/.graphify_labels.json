@@ -11,7 +11,7 @@
   "9": "compilerOptions",
   "10": "dependencies",
   "11": "Calendar",
-  "12": "$lib/graph",
+  "12": "graph",
   "13": "GitHub Releases",
   "14": "scripts",
   "15": "curLine",
@@ -73,11 +73,13 @@
   "71": "focus",
   "72": "download",
   "73": "load",
-  "74": "path",
+  "74": "attach.rs",
   "75": "ideator.md",
   "76": "remind.rs",
   "77": "merge.test.ts",
   "78": "backup.rs",
-  "79": "chatctx.ts",
-  "80": "@codemirror/state"
+  "79": "$lib/graph",
+  "80": "$lib/projects",
+  "81": "@tauri-apps/api/event",
+  "82": "@tauri-apps/api/webview"
 }
