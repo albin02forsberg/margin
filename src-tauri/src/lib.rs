@@ -705,11 +705,17 @@ fn notes_search(s: State<App>, query: String) -> Vec<notes::Hit> {
 
 #[tauri::command]
 fn tc_status(s: State<App>) -> Value {
-    let (cur, on_break, today) = s.tc().status();
+    status_json(&s.profile(), s.tc().status(), backup::last_failure())
+}
+
+type Status = (Option<(NaiveDateTime, String, String)>, Option<String>, f64);
+
+/// The sidebar clock: PROFILE, Tc::status and the last backup failure.
+fn status_json(profile: &str, (cur, on_break, today): Status, backup_error: Option<String>) -> Value {
     json!({
-        "profile": s.profile(),
+        "profile": profile,
         "project": cur.as_ref().map(|c| &c.1), "since": cur.as_ref().map(|c| c.0), "task": cur.as_ref().map(|c| &c.2),
-        "on_break": on_break, "today": format_hm(today), "backup_error": backup::last_failure(),
+        "on_break": on_break, "today": format_hm(today), "backup_error": backup_error,
     })
 }
 
@@ -729,13 +735,34 @@ fn tc_leave_time(s: State<App>) -> String {
 /// Everything the time dashboard shows, for the current week (Mon–Sun).
 #[tauri::command]
 fn tc_dashboard(s: State<App>) -> Value {
-    use chrono::Datelike;
     let tc = s.tc();
-    let t = today();
-    let sessions = tc.sessions();
-    let projects = tc.projects();
-    let (cur, on_break, today_h) = tc.status();
-    let leave = tc.leave();
+    let (cur, on_break, today_hours) = tc.status();
+    let leave_time = leave_time(&tc, cur.is_some(), on_break.is_some(), today_hours);
+    dashboard(DashIn {
+        today: today(), today_hours, sessions: tc.sessions(), projects: tc.projects(), leave: tc.leave(), expected: tc.expected,
+        status: (cur, on_break), profile: s.profile(), profiles: s.cfg().profiles, leave_time, backup_error: backup::last_failure(),
+    })
+}
+
+/// What `dashboard` is built from, gathered by `tc_dashboard`.
+struct DashIn {
+    today: NaiveDate,
+    today_hours: f64,
+    sessions: Vec<timeclock::Session>,
+    projects: timeclock::Projects,
+    leave: Vec<(usize, timeclock::Leave)>,
+    expected: f64,
+    status: (Option<(NaiveDateTime, String, String)>, Option<String>),
+    profile: String,
+    profiles: Vec<String>,
+    leave_time: String,
+    backup_error: Option<String>,
+}
+
+fn dashboard(inp: DashIn) -> Value {
+    use chrono::Datelike;
+    let DashIn { today: t, today_hours: today_h, sessions, projects, leave, expected, status: (cur, on_break), .. } = &inp;
+    let (t, today_h, expected) = (*t, *today_h, *expected);
     let leave_only: Vec<_> = leave.iter().map(|x| x.1.clone()).collect();
     let monday = t - Duration::days(t.weekday().num_days_from_monday() as i64);
     let sunday = monday + Duration::days(6);
@@ -744,29 +771,29 @@ fn tc_dashboard(s: State<App>) -> Value {
         .map(|i| {
             let d = monday + Duration::days(i);
             let h: f64 = if d == t { today_h } else { sessions.iter().filter(|x| x.date == d).map(|x| x.hours).sum() };
-            let e = timeclock::expected_hours(d, tc.expected);
+            let e = timeclock::expected_hours(d, expected);
             let off = timeclock::leave_on(&leave_only, d, e, h);
             let kinds: Vec<&str> = off.iter().map(|x| x.0.kind.as_str()).collect();
             json!({ "date": d, "hours": h, "expected": e - timeclock::leave_credit(&leave_only, d, e, h), "leave": kinds.join(", "), "leave_hours": off.iter().map(|x| x.1).sum::<f64>() })
         })
         .collect();
-    let merged = timeclock::prepare_report_sessions(&sessions);
-    let rounded = timeclock::apply_carry(&merged, &projects).0;
+    let merged = timeclock::prepare_report_sessions(sessions);
+    let rounded = timeclock::apply_carry(&merged, projects).0;
     let mut by: std::collections::BTreeMap<String, (f64, f64)> = Default::default();
     merged.iter().filter(|x| in_week(x.date)).for_each(|x| by.entry(x.project.clone()).or_default().0 += x.hours);
     rounded.iter().filter(|x| in_week(x.date)).for_each(|x| by.entry(x.project.clone()).or_default().1 += x.hours);
     let mut per_project: Vec<Value> = by
         .into_iter()
-        .map(|(p, (w, b))| json!({ "project": if p.is_empty() { "Other".to_string() } else { p.clone() }, "code": timeclock::export_code(&p, &projects), "worked": w, "billable": b }))
+        .map(|(p, (w, b))| json!({ "project": if p.is_empty() { "Other".to_string() } else { p.clone() }, "code": timeclock::export_code(&p, projects), "worked": w, "billable": b }))
         .collect();
     per_project.sort_by(|a, b| b["worked"].as_f64().unwrap_or(0.0).total_cmp(&a["worked"].as_f64().unwrap_or(0.0)));
-    let (flex_total, flex_week, _) = timeclock::flex(&sessions, &projects, &leave_only, tc.expected, Some((monday, t)));
+    let (flex_total, flex_week, _) = timeclock::flex(sessions, projects, &leave_only, expected, Some((monday, t)));
     json!({
-        "profile": s.profile(), "profiles": s.cfg().profiles,
+        "profile": inp.profile, "profiles": inp.profiles,
         "project": cur.as_ref().map(|c| &c.1), "since": cur.as_ref().map(|c| c.0), "task": cur.as_ref().map(|c| &c.2), "on_break": on_break,
         "today_hours": today_h, "today": sessions.iter().filter(|x| x.date == t).collect::<Vec<_>>(),
-        "week": week, "leave": leave, "projects": per_project, "flex_total": flex_total, "flex_week": flex_week, "backup_error": backup::last_failure(),
-        "leave_time": leave_time(&tc, cur.is_some(), on_break.is_some(), today_h),
+        "week": week, "leave": leave, "projects": per_project, "flex_total": flex_total, "flex_week": flex_week, "backup_error": inp.backup_error,
+        "leave_time": inp.leave_time,
     })
 }
 
@@ -1489,6 +1516,101 @@ mod tests {
         assert!(out.exists());
         let _ = std::fs::remove_file(out);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn keys(v: &Value) -> Vec<&str> {
+        let mut k: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        k.sort();
+        k
+    }
+
+    fn dash_fixture(today: &str, status: (Option<(NaiveDateTime, String, String)>, Option<String>)) -> DashIn {
+        use timeclock::{Leave, Session};
+        let d = |s: &str| s.parse::<NaiveDate>().unwrap();
+        let t = chrono::NaiveTime::from_hms_opt(9, 0, 0).unwrap();
+        let ses = |date, project: &str, desc: &str, hours| Session { date: d(date), project: project.into(), desc: desc.into(), hours, start: t, end: t, line: None };
+        let off = |date, kind: &str| Leave { from: d(date), to: d(date), kind: kind.into(), hours: None, rest: false, note: String::new() };
+        DashIn {
+            today: d(today),
+            today_hours: 1.5, // the running clock, more than the 1.0 the log holds for 01-08
+            sessions: vec![
+                ses("2025-12-29", "Acme", "old", 9.0), // last week: flex_total only
+                ses("2026-01-05", "Acme", "a", 3.2),
+                ses("2026-01-05", "", "x", 1.0),
+                ses("2026-01-06", "Acme", "red", 1.0), // Epiphany
+                ses("2026-01-07", "Beta", "b", 2.0),
+                ses("2026-01-08", "Acme", "c", 1.0),
+            ],
+            projects: [("Acme".to_string(), Project::new("A-1"))].into(),
+            leave: vec![(0, off("2026-01-09", "Vacation")), (1, off("2026-01-06", "Vab"))],
+            expected: 8.0,
+            status,
+            profile: "Work".into(),
+            profiles: vec!["Work".into(), "Home".into()],
+            leave_time: "7h 00m left today (not clocked in).".into(),
+            backup_error: Some("disk full".into()),
+        }
+    }
+
+    #[test]
+    fn dashboard_builds_the_week() {
+        let v = dashboard(dash_fixture("2026-01-08", (None, None)));
+        // The frontend contract (Time.svelte).
+        assert_eq!(keys(&v), ["backup_error", "flex_total", "flex_week", "leave", "leave_time", "on_break", "profile", "profiles", "project", "projects", "since", "task", "today", "today_hours", "week"]);
+        assert_eq!(keys(&v["week"][0]), ["date", "expected", "hours", "leave", "leave_hours"]);
+        assert_eq!(keys(&v["projects"][0]), ["billable", "code", "project", "worked"]);
+        let day = |i: usize, k: &str| v["week"][i][k].clone();
+        let dates: Vec<_> = (0..7).map(|i| day(i, "date")).collect();
+        assert_eq!(dates, (5..=11).map(|n| json!(format!("2026-01-{n:02}"))).collect::<Vec<_>>());
+        let f = |x: Value| x.as_f64().unwrap();
+        assert!((f(day(0, "hours")) - 4.2).abs() < 1e-9);
+        assert_eq!((f(day(1, "expected")), day(1, "leave"), f(day(1, "leave_hours"))), (0.0, json!(""), 0.0)); // red day: no leave taken
+        assert_eq!((f(day(3, "hours")), f(day(3, "expected"))), (1.5, 8.0)); // today: today_hours, not the log
+        assert_eq!((f(day(4, "expected")), day(4, "leave"), f(day(4, "leave_hours"))), (0.0, json!("Vacation"), 8.0));
+        assert_eq!((f(day(5, "expected")), f(day(6, "expected"))), (0.0, 0.0));
+        // Worked descending; billable rounds with the carry across sessions (3.2 → 3.0, then 1.2 → 1.0 twice).
+        let p: Vec<_> = v["projects"].as_array().unwrap().iter().map(|p| (p["project"].as_str().unwrap(), p["code"].as_str().unwrap(), f(p["worked"].clone()), f(p["billable"].clone()))).collect();
+        assert_eq!(p.iter().map(|x| (x.0, x.1)).collect::<Vec<_>>(), [("Acme", "A-1"), ("Beta", "Beta"), ("Other", "Other")]);
+        assert!((p[0].2 - 5.2).abs() < 1e-9 && p[0].3 == 5.0 && p[1].3 == 2.0 && p[2].3 == 1.0, "{p:?}");
+        // Flex by hand on the rounded days: 12-29 +1, 01-05 4-8, 01-06 +1 (red), 01-07 2-8, 01-08 1-8.
+        assert_eq!((v["flex_total"].clone(), v["flex_week"].clone()), (json!(-15.0), json!(-16.0)));
+        let fx = dash_fixture("2026-01-08", (None, None));
+        let leave: Vec<_> = fx.leave.iter().map(|x| x.1.clone()).collect();
+        let (total, week, _) = timeclock::flex(&fx.sessions, &fx.projects, &leave, 8.0, Some((fx.today - Duration::days(3), fx.today)));
+        assert_eq!((f(v["flex_total"].clone()), f(v["flex_week"].clone())), (total, week));
+        let today: Vec<_> = v["today"].as_array().unwrap().iter().map(|s| s["desc"].clone()).collect();
+        assert_eq!(today, [json!("c")]);
+        assert_eq!((v["profile"].clone(), v["profiles"].clone(), v["backup_error"].clone()), (json!("Work"), json!(["Work", "Home"]), json!("disk full")));
+        assert_eq!(v["leave_time"], json!("7h 00m left today (not clocked in)."));
+        assert_eq!(v["leave"][0], json!([0, { "from": "2026-01-09", "to": "2026-01-09", "kind": "Vacation" }]));
+        assert_eq!((v["project"].clone(), v["on_break"].clone()), (Value::Null, Value::Null));
+    }
+
+    #[test]
+    fn dashboard_week_runs_monday_to_sunday() {
+        for (t, today_col) in [("2026-01-05", 0), ("2026-01-11", 6)] {
+            let v = dashboard(dash_fixture(t, (None, None)));
+            assert_eq!((v["week"][0]["date"].clone(), v["week"][6]["date"].clone()), (json!("2026-01-05"), json!("2026-01-11")), "{t}");
+            assert_eq!(v["week"][today_col]["hours"], json!(1.5), "{t}");
+        }
+        // Monday: the week's flex is that one day; Sunday: the whole week.
+        assert_eq!(dashboard(dash_fixture("2026-01-05", (None, None)))["flex_week"], json!(-4.0));
+        assert_eq!(dashboard(dash_fixture("2026-01-11", (None, None)))["flex_week"], json!(-16.0));
+    }
+
+    #[test]
+    fn dashboard_and_status_show_the_clock() {
+        let since = "2026-01-08T09:00:00".parse::<NaiveDateTime>().unwrap();
+        let v = dashboard(dash_fixture("2026-01-08", (Some((since, "Acme".into(), "c".into())), None)));
+        assert_eq!((v["project"].clone(), v["since"].clone(), v["task"].clone(), v["on_break"].clone()), (json!("Acme"), json!("2026-01-08T09:00:00"), json!("c"), Value::Null));
+        let v = dashboard(dash_fixture("2026-01-08", (None, Some("Lunch".into()))));
+        assert_eq!((v["project"].clone(), v["since"].clone(), v["on_break"].clone()), (Value::Null, Value::Null, json!("Lunch")));
+
+        let v = status_json("Work", (Some((since, "Acme".into(), "c".into())), None, 1.5), None);
+        assert_eq!(keys(&v), ["backup_error", "on_break", "profile", "project", "since", "task", "today"]);
+        assert_eq!(v, json!({ "profile": "Work", "project": "Acme", "since": "2026-01-08T09:00:00", "task": "c", "on_break": null, "today": "1h 30m", "backup_error": null }));
+        let v = status_json("Home", (None, Some("Lunch".into()), 0.25), Some("disk full".into()));
+        assert_eq!(v, json!({ "profile": "Home", "project": null, "since": null, "task": null, "on_break": "Lunch", "today": "15m", "backup_error": "disk full" }));
     }
 
     fn cfg(notes: &Path, data: &Path, profiles: &str) -> Config {
