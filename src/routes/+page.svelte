@@ -319,6 +319,18 @@
     await show(next);
   }
 
+  /** Close every tab but the current one (or ALL of them), highest first so each lands on the Reopen stack; conflict tabs stay open. */
+  async function closeOthers(all = false) {
+    const keep = all ? -1 : cur;
+    let kept = 0;
+    for (let i = tabs.length - 1; i >= 0; i--) {
+      if (i === keep) continue;
+      if (tabs[i].conflict) kept++;
+      else await closeTab(i);
+    }
+    if (kept) flash(`Kept ${kept} tab${kept > 1 ? "s" : ""} with conflicts`);
+  }
+
   const cycleTab = (d: number) => tabs.length && show((cur + d + tabs.length) % tabs.length);
 
   async function switchTab() {
@@ -1215,6 +1227,8 @@
     { label: "Next tab (also gt)", keys: ["Ctrl+Tab"], leader: "b n", run: () => cycleTab(1) },
     { label: "Previous tab (also gT)", keys: ["Ctrl+Shift+Tab"], leader: "b p", run: () => cycleTab(-1) },
     { label: "Close tab (also :q)", leader: "b d", run: () => closeTab() },
+    { label: "Close other tabs", leader: "b o", run: () => closeOthers() },
+    { label: "Close all tabs", leader: "b D", run: () => closeOthers(true) },
     { label: "Reopen closed tab", keys: ["Ctrl+Shift+T"], leader: "b u", run: reopenTab },
 
     { label: "Task: mark done / reopen", leader: "x x", run: () => atCursor("done") },
@@ -1605,8 +1619,9 @@
   <div class="maincol">
     <nav class="tabs">
       {#each tabs as t, i (t.key)}
-        <div class="tab" class:cur={i === cur}>
-          <button onclick={() => act(() => show(i))}>{t.title}{t.dirty ? " •" : ""}</button>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="tab" class:cur={i === cur} onmousedown={(e) => e.button === 1 && e.preventDefault()} onauxclick={(e) => e.button === 1 && act(() => closeTab(i))}>
+          <button title={t.path ? rel(t.path) : t.title} onclick={() => act(() => show(i))}>{t.title}{t.dirty ? " •" : ""}</button>
           <button class="x" title="Close" onclick={() => act(() => closeTab(i))}>×</button>
         </div>
       {/each}
