@@ -61,6 +61,9 @@ if your time-data folder is a git repo with a remote, backup pushes to it).
 
 ## Build from source
 
+Needs Node 22.18 or newer (`.nvmrc` pins 24, as CI does; `npm test` runs
+TypeScript tests through Node's built-in type stripping) and a Rust toolchain.
+
 ```bash
 npm install
 npm run tauri dev      # run
