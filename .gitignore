@@ -11,3 +11,4 @@ vite.config.ts.timestamp-*
 CLAUDE.local.md
 .claude/settings.local.json
 .claude/worktrees/
+lcov-*.info

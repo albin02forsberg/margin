@@ -91,6 +91,15 @@ install cargo-llvm-cov`, `rustup component add llvm-tools-preview`) does the
 same for the Rust crate. CI's `coverage` job writes both tables to the job
 summary and uploads the lcov files as the `coverage-lcov` artifact.
 
+The same job runs a ratchet (`npm run coverage:ratchet`): it fails when total or
+per-file line coverage (and TS branch coverage) drops more than 0.5 points below
+`coverage-baseline.json`. Code with nothing to unit-test (tray, Wayland idle,
+entry point, editor DOM setup) is listed with a reason in
+`coverage-exclude.json`. To check locally, run `npm run coverage` and, in
+`src-tauri`, `cargo llvm-cov --lcov --output-path ../lcov-rust.info`; after
+adding tests, raise the baseline with `npm run coverage:ratchet -- --write`
+(or from the CI artifact, since the numbers differ slightly per OS).
+
 The README screenshots come from the same setup: `npm run screenshots` (same
 requirements) starts the app on a made-up demo dataset and writes
 `docs/screenshots/*.png`; or run the **Screenshots** workflow (Actions → Run

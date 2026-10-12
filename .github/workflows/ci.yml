@@ -96,8 +96,8 @@ jobs:
         name: Run e2e tests
         run: xvfb-run -a npm run e2e:run
 
-  # Coverage report (#252): per-file tables in the job summary, lcov files as an artifact.
-  # Not a required check and no threshold yet (the ratchet is a later step).
+  # Coverage report (#252): per-file tables in the job summary, lcov files as an artifact,
+  # and a ratchet that fails on a drop below coverage-baseline.json (not a required check).
   coverage:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -141,7 +141,8 @@ jobs:
       - if: steps.gate.outputs.run == 'true'
         name: TypeScript coverage
         run: |
-          npm run coverage -- --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=lcov-ts.info | tee ts.txt
+          set -o pipefail
+          npm run coverage | tee ts.txt # also writes lcov-ts.info
           {
             echo '## TypeScript coverage (`src/lib`, unit tests)'
             echo '```'
@@ -166,3 +167,12 @@ jobs:
         with:
           name: coverage-lcov
           path: lcov-*.info
+      # Last, so the artifact is uploaded even when coverage dropped.
+      - if: steps.gate.outputs.run == 'true'
+        name: Coverage ratchet
+        run: |
+          set -o pipefail
+          { echo '## Coverage ratchet (`coverage-baseline.json`)'; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          npm run --silent coverage:ratchet | tee -a "$GITHUB_STEP_SUMMARY" || failed=1
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          exit ${failed:-0}
