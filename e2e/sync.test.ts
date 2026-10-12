@@ -60,4 +60,14 @@ describe("Sync with the disk", () => {
     await browser.waitUntil(async () => !/unsaved|changed on disk/.test(await status()), { timeoutMsg: "tab still flagged after the disk change" });
     await fileMatches(file, (s) => s.startsWith("#+title: Sync\n") && s.endsWith("After undo.\n"), "disk change lost");
   });
+
+  it("keeps a disk change that lands just before a save (#276)", async () => {
+    // Edit and switch tabs (which saves) before the watcher reports the append: the save must not overwrite it.
+    // If the sync wins the race instead, doSync merges it and this still passes.
+    appendFileSync(file, "Just before the save.\n");
+    await type("ggA!");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "1"]);
+    await fileMatches(file, (s) => s.startsWith("#+title: Sync!\n") && s.endsWith("After undo.\nJust before the save.\n"), "an edit was lost");
+  });
 });

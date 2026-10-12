@@ -434,7 +434,7 @@ const curLine = (v: EditorView) => v.state.doc.lineAt(v.state.selection.main.hea
 export const onHeading = (v: EditorView) => !!level(curLine(v).text);
 
 import { diffChange } from "./merge";
-export { diffChange, mergeEdits } from "./merge";
+export { diffChange, mergeEdits, perKey } from "./merge";
 
 /** Replace the doc with TEXT as one minimal change, keeping cursor and undo sane. */
 export function applyText(view: EditorView, text: string) {

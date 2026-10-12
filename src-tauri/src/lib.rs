@@ -329,10 +329,22 @@ fn read_file(s: State<App>, path: PathBuf) -> R<String> {
     std::fs::read_to_string(&path).or_else(|e| if path.exists() { Err(e.to_string()) } else { Ok(String::new()) })
 }
 
-/// Returns reload_config's warning when PATH is config.toml, else "".
+/// Whether a save of TEXT may replace DISK (None: no file) when the caller last saw EXPECT
+/// (None: overwrite anyway): not if someone else changed the file since. CRLF counts as LF.
+fn may_overwrite(disk: Option<&str>, expect: Option<&str>, text: &str) -> bool {
+    let (Some(d), Some(e)) = (disk, expect) else { return true };
+    let d = d.replace("\r\n", "\n").replace('\r', "\n");
+    d == e || d == text
+}
+
+/// Returns reload_config's warning when PATH is config.toml, else "". With EXPECT (the text the
+/// frontend last saved or loaded), fails with "changed-on-disk" instead of overwriting another app's edit.
 #[tauri::command]
-fn write_file(app: AppHandle, s: State<App>, path: PathBuf, text: String) -> R<String> {
+fn write_file(app: AppHandle, s: State<App>, path: PathBuf, text: String, expect: Option<String>) -> R<String> {
     s.check(&path)?;
+    if expect.is_some() && !may_overwrite(std::fs::read_to_string(&path).ok().as_deref(), expect.as_deref(), &text) {
+        return Err("changed-on-disk".into());
+    }
     if let Some(d) = path.parent() {
         std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
     }
@@ -1337,6 +1349,16 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn save_refuses_to_overwrite_an_external_edit() {
+        assert!(may_overwrite(Some("a\n"), Some("a\n"), "b\n")); // unchanged since we saw it
+        assert!(!may_overwrite(Some("theirs\n"), Some("a\n"), "b\n"));
+        assert!(may_overwrite(Some("b\n"), Some("a\n"), "b\n")); // already holds our text
+        assert!(may_overwrite(Some("a\r\nb\r\n"), Some("a\nb\n"), "c\n")); // CRLF file
+        assert!(may_overwrite(None, Some("a\n"), "b\n")); // missing: a new note
+        assert!(may_overwrite(Some("theirs\n"), None, "b\n")); // :w forces
+    }
 
     #[test]
     fn bad_meeting_pattern_and_calendar_only_warn() {
