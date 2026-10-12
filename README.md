@@ -110,8 +110,8 @@ profile clocks out first, and warns where old files stay (nothing is moved).
 
 - **Ctrl+K** — command palette: every action, with its shortcut.
 - **Space** (vim normal mode, or in any list view) — the same actions as a menu.
-- **Ctrl+=** / **Ctrl+-** — zoom the whole UI in / out; reset with `Space v 0` (zoom
-  is not remembered across restarts).
+- **Ctrl+=** / **Ctrl+-** (**Cmd** on macOS), or **Ctrl+mouse wheel** — zoom the whole UI
+  in / out; reset with **Ctrl/Cmd+0** or `Space v 0` (zoom is not remembered across restarts).
 - Sidebar: **Today** (Ctrl+1), **Tasks** (Ctrl+2), **Inbox** (Ctrl+3),
   **Journal** (Ctrl+J), **Time** (Ctrl+4), your saved searches, recent notes.
   Toggle with Ctrl+\\. In a narrow window it shrinks to an icon rail (under 760 px)
