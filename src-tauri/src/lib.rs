@@ -74,12 +74,24 @@ impl App {
     /// Only let the frontend touch files under the notes, data or config dirs.
     fn check(&self, p: &Path) -> R<()> {
         let c = self.cfg();
-        let roots = [c.notes(), c.data(), self.cfg_path.parent().unwrap().to_path_buf()];
-        if p.components().any(|c| c == Component::ParentDir) || !roots.iter().any(|r| p.starts_with(r)) {
-            return Err(format!("{} is outside the notes/data/config dirs", p.display()));
-        }
-        Ok(())
+        check_in(&[c.notes(), c.data(), self.cfg_path.parent().unwrap().to_path_buf()], p)
     }
+}
+
+/// App::check's rule: P has no `..` and lies under one of ROOTS (compared as written, never resolved).
+fn check_in(roots: &[PathBuf], p: &Path) -> R<()> {
+    if p.components().any(|c| c == Component::ParentDir) || !roots.iter().any(|r| p.starts_with(r)) {
+        return Err(format!("{} is outside the notes/data/config dirs", p.display()));
+    }
+    Ok(())
+}
+
+/// P lies under NOTES (the stricter scope of note renames; check_in also allows data and config).
+fn in_notes(notes: &Path, p: &Path) -> R<()> {
+    if !p.starts_with(notes) {
+        return Err(format!("{} isn't in the notes folder", p.display()));
+    }
+    Ok(())
 }
 
 fn today() -> NaiveDate {
@@ -330,7 +342,12 @@ fn list_files(s: State<App>) -> Vec<PathBuf> {
 #[tauri::command]
 fn read_file(s: State<App>, path: PathBuf) -> R<String> {
     s.check(&path)?;
-    std::fs::read_to_string(&path).or_else(|e| if path.exists() { Err(e.to_string()) } else { Ok(String::new()) })
+    read_or_empty(&path)
+}
+
+/// PATH's text; a missing file reads as "", anything else unreadable (a folder) is an error.
+fn read_or_empty(path: &Path) -> R<String> {
+    std::fs::read_to_string(path).or_else(|e| if path.exists() { Err(e.to_string()) } else { Ok(String::new()) })
 }
 
 /// Whether a save of TEXT may replace DISK (None: no file) when the caller last saw EXPECT
@@ -681,9 +698,7 @@ fn rename_note(s: State<App>, from: PathBuf, name: String) -> R<(PathBuf, Vec<Pa
     let notes = s.cfg().notes();
     for p in [from.clone(), from.with_file_name(name.trim())] {
         s.check(&p)?;
-        if !p.starts_with(&notes) {
-            return Err(format!("{} isn't in the notes folder", p.display()));
-        }
+        in_notes(&notes, &p)?;
     }
     s.backup();
     let _lock = note_writes();
@@ -1679,6 +1694,56 @@ mod tests {
         assert_eq!(capture_file(n, "%a-%H%M.org", Some("fri"), now), Ok(PathBuf::from("/n/Fri-1430.org"))); // now's time kept
         assert_eq!(capture_file(n, "%Q.org", None, now), Err("bad date format in %Q.org".into()));
         assert_eq!(capture_file(n, "x.org", Some("soon"), now), Err("can't parse date: soon".into()));
+    }
+
+    #[test]
+    fn guard_keeps_paths_under_the_roots() {
+        let roots = [PathBuf::from("/n/notes"), PathBuf::from("/d"), PathBuf::from("/c")];
+        for ok in ["/n/notes/a.org", "/n/notes/sub/b.org", "/n/notes", "/d/work/timelog", "/c/config.toml"] {
+            assert_eq!(check_in(&roots, Path::new(ok)), Ok(()), "{ok}");
+        }
+        // `..` even when it would land inside; prefixes count per component (notes2 isn't notes); relative paths.
+        for bad in ["/etc/passwd", "/n/notes/../notes/a.org", "/n/notes/sub/../b.org", "/n/notes2/a.org", "/n/a.org", "n/notes/a.org", "a.org", ""] {
+            assert_eq!(check_in(&roots, Path::new(bad)), Err(format!("{bad} is outside the notes/data/config dirs")), "{bad}");
+        }
+        // Renames are scoped to the notes folder, though check_in allows data and config.
+        let notes = Path::new("/n/notes");
+        assert_eq!(in_notes(notes, Path::new("/n/notes/sub/a.org")), Ok(()));
+        for p in ["/d/work/timelog", "/c/config.toml", "/n/notes2/a.org"] {
+            assert_eq!(in_notes(notes, Path::new(p)), Err(format!("{p} isn't in the notes folder")));
+        }
+        assert!(check_in(&roots, Path::new("/d/work/timelog")).is_ok() && check_in(&roots, Path::new("/c/config.toml")).is_ok());
+    }
+
+    /// Pins today's behaviour: the paths are compared as written, symlinks are not resolved.
+    #[cfg(unix)]
+    #[test]
+    fn guard_compares_paths_as_written() {
+        let dir = std::env::temp_dir().join(format!("margin-guard-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (notes, outside) = (dir.join("notes"), dir.join("outside"));
+        std::fs::create_dir_all(&notes).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&notes, dir.join("link")).unwrap();
+        std::os::unix::fs::symlink(&outside, notes.join("out")).unwrap();
+        let roots = [notes.clone()];
+        assert!(check_in(&roots, &dir.join("link/a.org")).is_err()); // the notes folder by another name
+        assert!(check_in(&roots, &notes.join("out/a.org")).is_ok()); // a link inside pointing out
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_or_empty_and_ensure_id() {
+        let dir = std::env::temp_dir().join(format!("margin-read-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.org"), "x\n").unwrap();
+        assert_eq!(read_or_empty(&dir.join("a.org")), Ok("x\n".into()));
+        assert_eq!(read_or_empty(&dir.join("missing.org")), Ok(String::new()));
+        assert!(read_or_empty(&dir).is_err()); // a folder
+        let _ = std::fs::remove_dir_all(&dir);
+        let (text, id) = notes_ensure_id("* A\n".into());
+        assert!(text.contains(&id));
+        assert_eq!(notes_ensure_id(text.clone()), (text, id));
     }
 
     fn cfg(notes: &Path, data: &Path, profiles: &str) -> Config {
