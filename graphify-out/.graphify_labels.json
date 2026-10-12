@@ -11,9 +11,9 @@
   "9": "compilerOptions",
   "10": "dependencies",
   "11": "Calendar",
-  "12": "$lib/graph",
+  "12": "graph",
   "13": "GitHub Releases",
-  "14": "scripts",
+  "14": "chatctx.ts",
   "15": "curLine",
   "16": "Notes",
   "17": "AppImage",
@@ -60,7 +60,7 @@
   "58": "Time Tracking",
   "59": "TypeScript",
   "60": "ics.rs",
-  "61": "Glyph",
+  "61": "decorate",
   "62": "backup.rs",
   "63": "super",
   "64": "settings.ts",
@@ -79,7 +79,9 @@
   "77": "merge.test.ts",
   "78": "devDependencies",
   "79": "v0.3.0 - 2026-10-11",
-  "80": "Img",
+  "80": "$lib/graph",
   "81": "changelog.sh",
-  "82": "@codemirror/state"
+  "82": "$lib/projects",
+  "83": "@tauri-apps/api/event",
+  "84": "@tauri-apps/api/webview"
 }
