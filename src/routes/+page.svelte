@@ -328,9 +328,17 @@
     const t = tabs[i];
     if (!t) return;
     if (i === cur && isText(t)) t.state = view.state;
-    const was = t.conflict;
     await saveTab(t);
-    if (t.conflict && !was) return; // the save found an overlapping edit on disk: keep yours open
+    // Unsaved edits that clash with the disk (flagged earlier or by that save): ask before dropping them.
+    if (t.kind === "file" && t.conflict && t.dirty) {
+      const c = await pick({
+        prompt: `“${t.title}” has unsaved edits and changed on disk`,
+        items: [{ label: "Keep editing", value: "keep" }, { label: "Save mine (overwrites the disk version)", value: "save" }, { label: "Discard mine", value: "discard" }],
+      });
+      if (c === "save") await saveTab(t, true);
+      else if (c !== "discard") return;
+      if ((i = tabs.indexOf(t)) < 0) return;
+    }
     if (t.kind === "file" && t.path && t.state) closed.push({ path: t.path, line: t.state.doc.lineAt(t.state.selection.main.head).number - 1 });
     else if (t.kind !== "file" && t.kind !== "report") closed.push({ kind: t.kind, query: t.query, title: t.title });
     if (closed.length > 20) closed.shift();

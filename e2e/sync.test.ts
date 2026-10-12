@@ -70,4 +70,33 @@ describe("Sync with the disk", () => {
     await browser.keys([Key.Ctrl, "1"]);
     await fileMatches(file, (s) => s.startsWith("#+title: Sync!\n") && s.endsWith("After undo.\nJust before the save.\n"), "an edit was lost");
   });
+
+  it("asks before closing a tab whose edits clash with the disk (#273)", async () => {
+    const conflict = async (n: number) => {
+      await browser.keys([Key.Ctrl, "p"]);
+      await answer("Open a note", "sync");
+      await find(".status .file", "sync.org");
+      await type(`ggC#+title: Mine ${n}`);
+      await browser.keys(Key.Escape);
+      writeFileSync(file, readFileSync(file, "utf8").replace(/^.*\n/, `#+title: Theirs ${n}\n`));
+      await find(".status .file", "changed on disk");
+      await type(" bd");
+      await find(".picker label span", "changed on disk");
+    };
+    await conflict(1);
+    await browser.keys(Key.Escape); // keep editing
+    await browser.pause(300);
+    await find(".status .file", "changed on disk");
+    await find(".cm-content", "Mine 1");
+    await type(" bd");
+    await answer("changed on disk", "Save mine");
+    await fileMatches(file, (s) => s.startsWith("#+title: Mine 1\n"), "yours not saved");
+    await find(".agenda h1", "Today"); // the tab closed
+
+    await conflict(2);
+    await answer("changed on disk", "Discard mine");
+    await find(".agenda h1", "Today");
+    await browser.pause(1000); // a pending autosave must not write yours back
+    assert.match(readFileSync(file, "utf8"), /^#\+title: Theirs 2\n/);
+  });
 });

@@ -105,7 +105,8 @@ tool — refreshes open tabs, task lists, links, reports and the timer. If a fil
 changes underneath unsaved edits, non-overlapping changes are merged; real
 conflicts are flagged (`:w` keeps yours, `Space f r` reloads). A save never
 overwrites a change made elsewhere that the app hasn't seen yet: it is merged
-or flagged the same way first.
+or flagged the same way first. Closing a flagged tab asks whether to keep
+editing, save yours over the disk version, or discard yours.
 
 ## Getting around
 
