@@ -126,7 +126,7 @@ fn config_recreate(app: AppHandle, s: State<App>) -> R<String> {
 /// log it started in if the folders or profile change (whoever edited the file); afterwards the
 /// profile falls back to the first one if gone. Returns a warning (or "") for a shortcut that
 /// won't register and for files left behind in old folders. A broken or missing file keeps the current settings (and is reported via `cfg_error`).
-#[tauri::command]
+#[tauri::command(async)]
 fn reload_config(app: AppHandle, s: State<App>) -> R<String> {
     let new = Config::load(&s.cfg_path).inspect_err(|e| *s.cfg_error.lock().unwrap() = Some(e.clone()))?;
     let (old, profile) = (s.cfg(), s.profile());
@@ -337,6 +337,26 @@ fn may_overwrite(disk: Option<&str>, expect: Option<&str>, text: &str) -> bool {
     d == e || d == text
 }
 
+/// Held across a note save and a rename's or trash's file moves and link rewrites, so a rename can't
+/// write back a linking note over an autosave that landed after it read the note.
+static NOTE_WRITES: Mutex<()> = Mutex::new(());
+
+fn note_writes() -> std::sync::MutexGuard<'static, ()> {
+    NOTE_WRITES.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// write_file's save, under NOTE_WRITES so the disk check and the write are one step.
+fn write_checked(path: &Path, text: String, expect: Option<&str>) -> R<()> {
+    let _lock = note_writes();
+    if expect.is_some() && !may_overwrite(std::fs::read_to_string(path).ok().as_deref(), expect, &text) {
+        return Err("changed-on-disk".into());
+    }
+    if let Some(d) = path.parent() {
+        std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+    }
+    config::write_atomic(path, text).map_err(|e| e.to_string())
+}
+
 /// Whether PATH exists (read_file reads a missing file as "", which an emptied file also gives).
 #[tauri::command]
 fn file_exists(s: State<App>, path: PathBuf) -> R<bool> {
@@ -349,13 +369,7 @@ fn file_exists(s: State<App>, path: PathBuf) -> R<bool> {
 #[tauri::command]
 fn write_file(app: AppHandle, s: State<App>, path: PathBuf, text: String, expect: Option<String>) -> R<String> {
     s.check(&path)?;
-    if expect.is_some() && !may_overwrite(std::fs::read_to_string(&path).ok().as_deref(), expect.as_deref(), &text) {
-        return Err("changed-on-disk".into());
-    }
-    if let Some(d) = path.parent() {
-        std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
-    }
-    config::write_atomic(&path, text).map_err(|e| e.to_string())?;
+    write_checked(&path, text, expect.as_deref())?;
     if path == s.cfg_path {
         return reload_config(app, s);
     }
@@ -634,14 +648,14 @@ fn notes_nodes(s: State<App>) -> Vec<notes::Node> {
     notes::nodes(&s.files())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn notes_backlinks(s: State<App>, path: PathBuf) -> Vec<notes::Hit> {
     notes::backlinks(&s.files(), &path)
 }
 
 /// Rename note FROM to NAME in its folder and fix the `[[file:]]` links to it (see notes::rename),
 /// after a backup. Returns the new path and the notes whose links changed.
-#[tauri::command]
+#[tauri::command(async)]
 fn rename_note(s: State<App>, from: PathBuf, name: String) -> R<(PathBuf, Vec<PathBuf>)> {
     let notes = s.cfg().notes();
     for p in [from.clone(), from.with_file_name(name.trim())] {
@@ -651,26 +665,28 @@ fn rename_note(s: State<App>, from: PathBuf, name: String) -> R<(PathBuf, Vec<Pa
         }
     }
     s.backup();
+    let _lock = note_writes();
     notes::rename(&s.files(), &from, &name)
 }
 
 /// Move the note PATH to `<notes>/.trash/`, keeping its subpath (after a backup). Returns where it went.
-#[tauri::command]
+#[tauri::command(async)]
 fn trash_note(s: State<App>, path: PathBuf) -> R<PathBuf> {
     s.check(&path)?;
     if path.extension().and_then(|e| e.to_str()) != Some("org") {
         return Err(format!("{} isn't a note", path.display()));
     }
     s.backup();
+    let _lock = note_writes();
     trash_to(&s.cfg().notes(), &path)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn notes_graph(s: State<App>, path: PathBuf) -> notes::Graph {
     notes::graph(&s.files(), &path, 2)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn notes_unlinked(s: State<App>, path: PathBuf) -> Vec<notes::Mention> {
     notes::unlinked(&s.files(), &path)
 }
@@ -680,7 +696,7 @@ fn notes_ensure_id(text: String) -> (String, String) {
     notes::ensure_id(&text)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn notes_search(s: State<App>, query: String) -> Vec<notes::Hit> {
     notes::search(&s.files(), &query, 300)
 }
@@ -741,14 +757,14 @@ fn tc_dashboard(s: State<App>) -> Value {
 }
 
 /// Log time off (vacation, sick, …) FROM..=TO.
-#[tauri::command]
+#[tauri::command(async)]
 fn tc_leave_add(s: State<App>, leave: timeclock::Leave) -> R<()> {
     s.tc().add_leave(leave)?;
     s.backup();
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn tc_leave_remove(s: State<App>, line: usize) -> R<()> {
     s.tc().remove_leave(line)?;
     s.backup();
@@ -789,7 +805,7 @@ fn tc_suggestions(s: State<App>, project: Option<String>) -> Vec<String> {
     timeclock::task_suggestions(&s.tc().sessions(), project.as_deref(), today())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn tc_in(s: State<App>, project: String, task: String, export_code: Option<String>) -> R<String> {
     let switched = s.tc().clock_in(&project, &task, export_code.as_deref())?;
     if switched {
@@ -798,7 +814,7 @@ fn tc_in(s: State<App>, project: String, task: String, export_code: Option<Strin
     Ok(if project.trim().is_empty() { "⏱ Clocked in".into() } else { format!("⏱ Clocked in on: {project}") })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn tc_out(s: State<App>, note: String) -> R<String> {
     if !s.tc().clock_out(&note)? {
         return Ok("Not clocked in.".into());
@@ -808,7 +824,7 @@ fn tc_out(s: State<App>, note: String) -> R<String> {
 }
 
 /// Idle prompt: clock out at SINCE, and back in at BACK unless stopping.
-#[tauri::command]
+#[tauri::command(async)]
 fn tc_idle(s: State<App>, since: NaiveDateTime, back: Option<NaiveDateTime>, note: String) -> R<String> {
     if !s.tc().discard_idle(since, back, &note)? {
         return Ok("Not clocked in.".into());
@@ -851,7 +867,7 @@ fn tc_edit_session(s: State<App>, line: usize, note: String, old_hours: f64, new
 }
 
 /// Log a finished session after the fact (an accepted suggestion).
-#[tauri::command]
+#[tauri::command(async)]
 fn tc_add_session(s: State<App>, start: NaiveDateTime, end: NaiveDateTime, project: String, export_code: Option<String>, note: String) -> R<String> {
     s.tc().add_session(start, end, &project, export_code.as_deref(), &note)?;
     s.backup();
@@ -1213,7 +1229,7 @@ fn export_open(app: AppHandle, s: State<App>, path: PathBuf) -> R<()> {
     app.opener().open_path(path.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn tc_switch_profile(s: State<App>, name: String) -> R<String> {
     if !s.cfg().profiles.contains(&name) {
         return Err(format!("unknown profile {name}"));
@@ -1236,7 +1252,7 @@ fn tc_import(s: State<App>, dir: String) -> R<String> {
     Ok(format!("Imported {n} events into {}", s.profile()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn backup_now(s: State<App>) -> String {
     s.backup();
     backup::last_failure().map_or("☁ Backup done.".into(), |f| format!("⚠ Backup failed: {f}"))
@@ -1365,6 +1381,42 @@ mod tests {
         assert!(may_overwrite(Some("a\r\nb\r\n"), Some("a\nb\n"), "c\n")); // CRLF file
         assert!(may_overwrite(None, Some("a\n"), "b\n")); // missing: a new note
         assert!(may_overwrite(Some("theirs\n"), None, "b\n")); // :w forces
+    }
+
+    #[test]
+    fn rename_never_drops_a_concurrent_save() {
+        let kw = org::Kw { todo: vec![], done: vec![] };
+        for i in 0..20 {
+            let dir = std::env::temp_dir().join(format!("margin-race-{}-{i}", notes::gen_id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let (a, b) = (dir.join("a.org"), dir.join("b.org"));
+            let old = "see [[file:a.org][A]]\n";
+            std::fs::write(&a, "a\n").unwrap();
+            std::fs::write(&b, old).unwrap();
+            let files = vec![Arc::new(org::parse(&b, old, &kw))];
+            let go = std::sync::Barrier::new(2);
+            let (renamed, saved) = std::thread::scope(|t| {
+                let r = t.spawn(|| {
+                    go.wait();
+                    let _lock = note_writes();
+                    notes::rename(&files, &a, "c.org")
+                });
+                let w = t.spawn(|| {
+                    go.wait();
+                    write_checked(&b, format!("{old}typed\n"), Some(old))
+                });
+                (r.join().unwrap(), w.join().unwrap())
+            });
+            renamed.unwrap();
+            let disk = std::fs::read_to_string(&b).unwrap();
+            assert!(disk.contains("file:c.org"), "{disk}");
+            // The save either landed first (and the rename kept it) or was refused, never overwritten.
+            match saved {
+                Ok(()) => assert!(disk.contains("typed"), "{disk}"),
+                Err(e) => assert_eq!(e, "changed-on-disk"),
+            }
+            let _ = std::fs::remove_dir_all(&dir);
+        }
     }
 
     #[test]
