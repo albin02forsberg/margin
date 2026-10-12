@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { journalNeighbour, relativeTo } from "./paths.ts";
+import { changed, journalNeighbour, mergeChanged, relativeTo } from "./paths.ts";
 
 test("relativeTo", () => {
   assert.equal(relativeTo("/n/a.org", "/n/b.org"), "b.org");
@@ -19,4 +19,21 @@ test("journalNeighbour", () => {
   assert.equal(journalNeighbour(f, "daily", "2026-10-09", 1), undefined);
   assert.equal(journalNeighbour(["C:\\n\\a\\b\\2026-01-02.org", "C:\\n\\b\\2026-01-01.org"], "a/b", "2026-01-05", -1), "C:\\n\\a\\b\\2026-01-02.org");
   assert.equal(journalNeighbour([], "daily", "2026-10-01", 1), undefined);
+});
+
+test("mergeChanged", () => {
+  assert.deepEqual(mergeChanged(["/n/a.org"], ["/n/b.org", "/n/a.org"]), ["/n/a.org", "/n/b.org"]);
+  assert.equal(mergeChanged(undefined, ["/n/a.org"]), undefined);
+  assert.equal(mergeChanged(["/n/a.org"], undefined), undefined);
+  assert.deepEqual(mergeChanged([], []), []);
+});
+
+test("changed", () => {
+  assert.ok(changed("/n/a.org"));
+  assert.ok(changed("/n/a.org", ["/n/b.org", "/n/a.org"]));
+  assert.ok(!changed("/n/a.org", ["/n/b.org"]));
+  assert.ok(changed("/n/sub/a.org", ["/n/sub"]), "under a moved folder");
+  assert.ok(!changed("/n/subway.org", ["/n/sub"]));
+  assert.ok(changed("C:\\n\\sub\\a.org", ["C:\\n\\sub"]));
+  assert.ok(!changed("/n/a.org", []));
 });

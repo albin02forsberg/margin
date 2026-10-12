@@ -15,3 +15,9 @@ export function journalNeighbour(files: string[], daily: string, date: string, d
     .map(({ f, p }) => ({ f, n: p[p.length - 1].slice(0, 10) }));
   return days.filter((x) => (dir > 0 ? x.n > date : x.n < date)).sort((a, b) => dir * a.n.localeCompare(b.n))[0]?.f;
 }
+
+/** The changed paths of two coalesced syncs; undefined (check everything) wins. */
+export const mergeChanged = (a?: string[], b?: string[]) => (a && b ? [...new Set([...a, ...b])] : undefined);
+
+/** Whether FILE is one of the changed PATHS or under one (a moved or deleted folder); no PATHS means everything changed. */
+export const changed = (file: string, paths?: string[]) => !paths || paths.some((p) => file === p || (file.startsWith(p) && /[\\/]/.test(file[p.length])));
