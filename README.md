@@ -85,6 +85,12 @@ tauri-driver --locked`) and `WebKitWebDriver` (`webkit2gtk-driver` on
 Debian/Ubuntu); use `xvfb-run -a npm run test:e2e` without a display. CI runs it
 in the `e2e` job.
 
+Coverage: `npm run coverage` prints a per-file table for `src/lib` (unit tests
+only; Svelte components are covered by e2e), and `cargo llvm-cov` (`cargo
+install cargo-llvm-cov`, `rustup component add llvm-tools-preview`) does the
+same for the Rust crate. CI's `coverage` job writes both tables to the job
+summary and uploads the lcov files as the `coverage-lcov` artifact.
+
 The README screenshots come from the same setup: `npm run screenshots` (same
 requirements) starts the app on a made-up demo dataset and writes
 `docs/screenshots/*.png`; or run the **Screenshots** workflow (Actions → Run

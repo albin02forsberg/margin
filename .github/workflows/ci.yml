@@ -95,3 +95,74 @@ jobs:
       - if: steps.gate.outputs.run == 'true'
         name: Run e2e tests
         run: xvfb-run -a npm run e2e:run
+
+  # Coverage report (#252): per-file tables in the job summary, lcov files as an artifact.
+  # Not a required check and no threshold yet (the ratchet is a later step).
+  coverage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Docs-only change?
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=true
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            files=$(gh pr diff ${{ github.event.pull_request.number }} -R ${{ github.repository }} --name-only) # errors abort the step: never skip CI on a failed lookup
+            if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qvE '^(\.claude/|docs/|README\.md$|CLAUDE\.md$)'; then run=false; fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@v5
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - if: steps.gate.outputs.run == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - if: steps.gate.outputs.run == 'true'
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - if: steps.gate.outputs.run == 'true'
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: coverage # instrumented artifacts differ from the test job's
+      - if: steps.gate.outputs.run == 'true'
+        name: System deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf
+      - if: steps.gate.outputs.run == 'true'
+        run: npm ci
+      - if: steps.gate.outputs.run == 'true'
+        name: TypeScript coverage
+        run: |
+          npm run coverage -- --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=lcov-ts.info | tee ts.txt
+          {
+            echo '## TypeScript coverage (`src/lib`, unit tests)'
+            echo '```'
+            sed -n '/start of coverage report/,/end of coverage report/p' ts.txt | sed 's/^ℹ //'
+            echo '```'
+            # node only reports files a test imports; list the rest so they don't look covered.
+            missing=$(for f in src/lib/*.ts; do case $f in *.test.ts) ;; *) grep -qx "SF:$f" lcov-ts.info || echo "$f";; esac; done)
+            if [ -n "$missing" ]; then printf 'Not imported by any unit test (0%%): %s\n\n' "$(echo $missing)"; fi
+            echo 'Svelte components (`src/routes`, `src/lib/*.svelte`) are covered by e2e only.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      # Default features only (the test job builds embedded-ai) to keep the instrumented build short.
+      - if: steps.gate.outputs.run == 'true'
+        name: Rust coverage
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report
+          cargo llvm-cov report --lcov --output-path ../lcov-rust.info
+          cargo llvm-cov report | tee ../rust.txt
+          { echo '## Rust coverage (`cargo test`)'; echo '```'; cat ../rust.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: lcov-*.info
