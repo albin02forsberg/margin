@@ -12,7 +12,7 @@
   import { EditorView } from "@codemirror/view";
   import type { EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
-  import { journalNeighbour, relativeTo } from "$lib/paths";
+  import { changed, journalNeighbour, mergeChanged, relativeTo } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
@@ -1458,31 +1458,36 @@
     }
   }
 
-  /** Bring every open tab, view, backlink list and the timer up to date with the disk. */
-  async function doSync() {
+  /** Bring open tabs, views, backlink lists and the timer up to date with the disk; PATHS (the watcher's changed paths) limits the re-reads.
+   *  If every changed path is an open tab holding what it last saved (our own save coming back), skip the views, timer and backlinks: writeTab refreshed them. */
+  async function doSync(paths?: string[]) {
+    const echo = new Set<string>();
     for (const t of tabs) {
-      if (t.kind === "report" && t.report) {
-        replaceText(t, await call("tc_report", t.report));
-      } else if (t.kind === "file") {
-        const disk = ((await call("read_file", { path: t.path })) as string).replace(/\r\n?/g, "\n");
-        // Deleted or moved away (reads as ""): keep the text and `saved`, flag it, don't autosave it back.
-        t.missing = disk === "" && !!t.saved && !(await call<boolean>("file_exists", { path: t.path }));
-        if (t.missing || disk === t.saved || disk === stateOf(t).doc.toString()) continue;
-        if (t.dirty) mergeFromDisk(t, disk);
-        else replaceText(t, disk);
-        t.saved = disk;
-      }
+      if (t.kind !== "file" || !changed(t.path!, paths)) continue;
+      const disk = ((await call("read_file", { path: t.path })) as string).replace(/\r\n?/g, "\n");
+      // Deleted or moved away (reads as ""): keep the text and `saved`, flag it, don't autosave it back.
+      t.missing = disk === "" && !!t.saved && !(await call<boolean>("file_exists", { path: t.path }));
+      if (!t.missing && disk === t.saved) echo.add(t.path!);
+      if (t.missing || disk === t.saved || disk === stateOf(t).doc.toString()) continue;
+      if (t.dirty) mergeFromDisk(t, disk);
+      else replaceText(t, disk);
+      t.saved = disk;
     }
-    await pruneMissing();
+    // Reports even then: writeTab doesn't regenerate them after a save of the time log or the diary.
+    for (const t of tabs) if (t.kind === "report" && t.report) replaceText(t, await call("tc_report", t.report));
+    if (paths?.every((p) => echo.has(p))) return;
+    await pruneMissing(paths);
     reload++;
     await refreshTc();
     await refreshBacklinks();
   }
 
-  /** Drop notes that no longer exist from the sidebar's recent list and the closed tabs (other files are kept). */
-  async function pruneMissing() {
-    const files = new Set(await call<string[]>("list_files"));
-    pruneRecent((p) => files.has(p) || !p.startsWith(cfg.notes) || !p.endsWith(".org"));
+  /** Drop notes that no longer exist from the sidebar's recent list and the closed tabs (other files are kept); with PATHS, only checks those. */
+  async function pruneMissing(paths?: string[]) {
+    const ps = [...new Set([...recent, ...closed.flatMap((c) => ("path" in c ? [c.path] : []))])].filter((p) => p.startsWith(cfg.notes) && p.endsWith(".org") && changed(p, paths));
+    const have = await Promise.all(ps.map((p) => call<boolean>("file_exists", { path: p })));
+    const gone = new Set(ps.filter((_, i) => !have[i]));
+    if (gone.size) pruneRecent((p) => !gone.has(p));
   }
 
   /** The file changed on disk while T has unsaved edits: apply the disk change too if the two
@@ -1518,12 +1523,15 @@
   // Coalesce bursts of change events into one sync at a time.
   let syncChain = Promise.resolve();
   let syncQueued = false;
-  function syncFromDisk() {
-    if (syncQueued) return;
+  let syncPaths: string[] | undefined;
+  /** Sync with the disk; PATHS (the watcher's changed paths) narrows it, none checks everything. */
+  function syncFromDisk(paths?: string[]) {
+    if (syncQueued) return void (syncPaths = mergeChanged(syncPaths, paths));
     syncQueued = true;
+    syncPaths = paths;
     syncChain = syncChain.then(async () => {
       syncQueued = false;
-      await doSync().catch((e) => flash(`⚠ ${e}`));
+      await doSync(syncPaths).catch((e) => flash(`⚠ ${e}`));
     });
   }
 
@@ -1588,7 +1596,7 @@
     const timer = setInterval(() => act(refreshTc), 60_000);
     const blur = () => act(saveAll);
     const focus = () => syncFromDisk();
-    const unlisten = listen("fs-changed", () => syncFromDisk());
+    const unlisten = listen<string[]>("fs-changed", (e) => syncFromDisk(e.payload));
     // config.toml edited outside the app: apply it (a broken file keeps the current settings).
     const unlistenCfg = listen("config-changed", () => act(async () => {
       let warn = "";

@@ -2,9 +2,9 @@
 // External writes happen right after Esc, inside the 700 ms autosave delay, so the sync sees an unsaved tab.
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { answer, browser, close, fileMatches, find, Key, launch, palette, type } from "./setup.ts";
+import { answer, browser, close, fileMatches, find, Key, launch, palette, today, type, type Dirs } from "./setup.ts";
 
 let file: string;
 // textContent: getText is "" for the status bar's ellipsis span (see texts() in setup.ts).
@@ -116,5 +116,48 @@ describe("Sync with the disk", () => {
     assert.ok(!existsSync(join(dirname(file), "renamed.org")) && !existsSync(join(dirname(file), ".trash", "sync.org")), "note moved");
     await find(".cm-content", "Mine 3");
     await find(".status .file", "changed on disk");
+  });
+});
+
+// The watcher's event names the changed files; the sync re-reads only those tabs (#286).
+describe("Sync only what changed", () => {
+  let d: Dirs;
+  before(async () => {
+    d = await launch({ files: ({ notes }) => {
+      mkdirSync(join(notes, "sub"));
+      writeFileSync(join(notes, "sub", "deep.org"), "#+title: Deep\n\nDeep text.\n");
+      writeFileSync(join(notes, "back.org"), "#+title: Back\n\nBack text.\n");
+      writeFileSync(join(notes, "plain.org"), "#+title: Plain\n\nNo tasks yet.\n");
+    } });
+  });
+  after(close, { timeout: 30_000 });
+
+  it("shows a TODO added outside the app to a note that isn't open in the open Agenda", async () => {
+    await find(".agenda h1", "Today");
+    appendFileSync(join(d.notes, "plain.org"), `* TODO Added outside\nSCHEDULED: ${today}\n`);
+    await find(".agenda .row .title", "Added outside");
+  });
+
+  it("re-reads a background tab and a note in a subfolder", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Back");
+    await find(".status .file", "back.org");
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Deep");
+    await find(".status .file", "deep.org");
+    appendFileSync(join(d.notes, "back.org"), "Back appended.\n");
+    appendFileSync(join(d.notes, "sub", "deep.org"), "Deep appended.\n");
+    await find(".cm-content", "Deep appended.");
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Back");
+    await find(".status .file", "back.org");
+    await find(".cm-content", "Back appended.");
+    assert.doesNotMatch(await status(), /unsaved|changed on disk/);
+  });
+
+  it("flags an open note deleted outside the app", async () => {
+    rmSync(join(d.notes, "back.org"));
+    await find(".status .file", "deleted on disk");
+    await find(".cm-content", "Back appended.");
   });
 });
