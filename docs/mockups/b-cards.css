@@ -1,0 +1,59 @@
+/* B. Cards: soft cards with subtle shadows on a tinted canvas, sidebar for views (Things/Linear). */
+:root { --card: var(--bg); --canvas: var(--panel); --soft: 0 1px 2px rgb(0 0 0 / .06), 0 4px 16px rgb(0 0 0 / .06); --r: 12px; }
+@media (prefers-color-scheme: dark) { :root { --card: var(--panel); --canvas: var(--bg); --soft: 0 1px 2px rgb(0 0 0 / .3), 0 6px 20px rgb(0 0 0 / .25); } }
+body { background: var(--canvas); }
+.side { padding: var(--s4) var(--s3); }
+.cmdk { background: var(--card); border-radius: 10px; box-shadow: var(--soft); }
+nav a { padding: 7px var(--s3); border-radius: 8px; }
+nav a.on { background: var(--card); box-shadow: var(--soft); font-weight: 500; }
+nav a.on .ico { color: var(--link); }
+.side kbd { border: 0; }
+.timer { background: var(--card); border-radius: var(--r); box-shadow: var(--soft); padding: var(--s3); }
+.tbtns button { flex: 1; border-radius: 8px; padding: 4px; background: var(--active); font-size: var(--fs-sm); }
+
+main { padding: var(--s2) var(--s2) 0 0; }
+.tabs { gap: var(--s1); padding: 0 var(--s2) var(--s2); }
+.tabs span { border-radius: 8px; padding: 4px var(--s3); }
+.tabs .on { background: var(--card); box-shadow: var(--soft); }
+.view { background: var(--canvas); padding: var(--s4) var(--s4) var(--s3); }
+.view h1 { font-weight: 700; }
+.controls button, .seg, .filter { background: var(--card); border-radius: 8px; box-shadow: var(--soft); }
+.seg { padding: 2px; gap: 0; }
+.seg > * { padding: 2px 10px; border-radius: 6px; }
+.seg b { background: var(--sel); font-weight: 500; }
+.controls .primary { background: var(--accent); color: var(--bg); }
+
+.group { background: var(--card); border-radius: var(--r); box-shadow: var(--soft); padding: var(--s3) var(--s2) var(--s2); }
+.group h2 { padding: 0 var(--s2) var(--s2); font-size: var(--fs-md); color: var(--fg); }
+.count { background: var(--active); color: var(--dim); border-radius: 10px; padding: 0 7px; font-size: var(--fs-xs); font-weight: 500; }
+.task { padding: 8px var(--s2); border-radius: 8px; }
+.task.sel { background: var(--active); }
+.box { border-radius: 50%; width: 17px; height: 17px; }
+.kw { background: color-mix(in srgb, var(--link) 15%, transparent); padding: 0 6px; border-radius: 10px; }
+.pri { border-radius: 10px; padding: 0 6px; }
+.tag { background: var(--active); border-radius: 10px; padding: 0 8px; }
+.meta .file { background: var(--active); border-radius: 6px; padding: 0 6px; min-width: 0; }
+.meta .late { background: color-mix(in srgb, var(--todo) 12%, transparent); border-radius: 6px; padding: 0 6px; }
+.now { padding: 0 var(--s2); }
+.hints { margin: 0 var(--s2); background: var(--card); border-radius: var(--r) var(--r) 0 0; box-shadow: var(--soft); }
+.hints kbd { background: var(--active); border: 0; }
+.status { padding-right: var(--s3); }
+
+.running, .panel { background: var(--card); border-radius: var(--r); box-shadow: var(--soft); padding: var(--s4); }
+.running { background: linear-gradient(135deg, color-mix(in srgb, var(--done) 10%, var(--card)), var(--card) 60%); }
+.running .dot { box-shadow: 0 0 0 4px color-mix(in srgb, var(--done) 25%, transparent); }
+.acts button, .more-acts button { background: var(--active); border-radius: 8px; }
+.acts .primary { background: var(--accent); color: var(--bg); }
+.acts .primary kbd { color: var(--bg); border-color: var(--bg); }
+.more-acts button { background: var(--card); box-shadow: var(--soft); }
+.cols { gap: var(--s4); }
+.view.time { gap: var(--s3); }
+.panel h2 { font-size: var(--fs-md); }
+td { padding: 7px var(--s2); }
+tr + tr td { border-top: 1px solid var(--active); }
+.bar { height: 92px; }
+.bar i { width: 60%; border-radius: 6px; background: color-mix(in srgb, var(--link) 70%, var(--card)); }
+.day.cur .bar i { background: var(--accent); }
+.flex > div { background: var(--active); border-radius: 8px; padding: 6px var(--s3); }
+.projects td:first-child { position: relative; }
+.share { display: block; position: absolute; left: var(--s2); bottom: 2px; height: 3px; border-radius: 2px; background: var(--link); opacity: .5; max-width: 60%; }
