@@ -613,6 +613,21 @@ fn notes_backlinks(s: State<App>, path: PathBuf) -> Vec<notes::Hit> {
     notes::backlinks(&s.files(), &path)
 }
 
+/// Rename note FROM to NAME in its folder and fix the `[[file:]]` links to it (see notes::rename),
+/// after a backup. Returns the new path and the notes whose links changed.
+#[tauri::command]
+fn rename_note(s: State<App>, from: PathBuf, name: String) -> R<(PathBuf, Vec<PathBuf>)> {
+    let notes = s.cfg().notes();
+    for p in [from.clone(), from.with_file_name(name.trim())] {
+        s.check(&p)?;
+        if !p.starts_with(&notes) {
+            return Err(format!("{} isn't in the notes folder", p.display()));
+        }
+    }
+    s.backup();
+    notes::rename(&s.files(), &from, &name)
+}
+
 #[tauri::command]
 fn notes_graph(s: State<App>, path: PathBuf) -> notes::Graph {
     notes::graph(&s.files(), &path, 2)
@@ -1280,7 +1295,7 @@ pub fn run() {
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
-            notes_new, note_titles, notes_nodes, notes_backlinks, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
+            notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_linked, export_report, export_open

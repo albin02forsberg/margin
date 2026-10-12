@@ -115,6 +115,83 @@ fn points_to(from: &OrgFile, l: &Link, to: &OrgFile) -> bool {
     }
 }
 
+/// TEXT (the note at NOTE) with every one-line `[[file:…]]` link that resolves to OLD renamed to
+/// NAME in the same folder, keeping its path style, `::search` and description; None if none did.
+pub fn relink(text: &str, note: &Path, old: &Path, name: &str) -> Option<String> {
+    let old_name = old.file_name()?.to_str()?;
+    let mut changed = false;
+    let out = crate::org::LINK.replace_all(text, |c: &regex::Captures| {
+        let (all, t) = (c.get(0).unwrap(), c.get(2).unwrap());
+        let p = t.as_str().split("::").next().unwrap_or("");
+        let cut = p.rfind(['/', '\\']).map_or(0, |i| i + 1);
+        if &c[1] != "file" || all.as_str().contains('\n') || &p[cut..] != old_name || resolve(note, t.as_str()) != old {
+            return all.as_str().to_string();
+        }
+        changed = true;
+        let (a, b) = (t.start() - all.start() + cut, t.start() - all.start() + p.len());
+        format!("{}{name}{}", &all.as_str()[..a], &all.as_str()[b..])
+    });
+    changed.then(|| out.into_owned())
+}
+
+/// Do A and B name the same existing file (e.g. differing only in case on a case-insensitive disk)?
+fn same_file(a: &Path, b: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        matches!((std::fs::metadata(a), std::fs::metadata(b)), (Ok(x), Ok(y)) if (x.dev(), x.ino()) == (y.dev(), y.ino()))
+    }
+    #[cfg(not(unix))]
+    {
+        matches!((std::fs::canonicalize(a), std::fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
+    }
+}
+
+/// Rename note FROM to NAME in the same folder, first pointing the `[[file:]]` links in FILES at it.
+/// All or nothing: if a write or the rename fails, the notes already rewritten are put back.
+/// Returns the new path and the notes whose links changed.
+pub fn rename(files: &[Arc<OrgFile>], from: &Path, name: &str) -> Result<(PathBuf, Vec<PathBuf>), String> {
+    let name = name.trim();
+    if name.is_empty() || name.starts_with('.') || name.contains(['/', '\\', '[', ']', ':']) {
+        return Err(format!("“{name}” isn't a plain file name"));
+    }
+    let to = from.with_file_name(name);
+    if !from.is_file() {
+        return Err(format!("{} doesn't exist", from.display()));
+    }
+    if to == from {
+        return Err("That's already its name.".into());
+    }
+    if to.exists() && !same_file(from, &to) {
+        return Err(format!("{name} already exists"));
+    }
+    let mut edits = vec![];
+    for f in files.iter().filter(|f| f.links.iter().any(|l| l.file && resolve(&f.path, &l.target) == from)) {
+        let text = std::fs::read_to_string(&f.path).map_err(|e| format!("{}: {e}", f.path.display()))?;
+        if let Some(new) = relink(&text, &f.path, from, name) {
+            edits.push((f.path.clone(), text, new));
+        }
+    }
+    let mut done = 0;
+    let res = edits
+        .iter()
+        .try_for_each(|(p, _, new)| {
+            crate::config::write_atomic(p, new).map_err(|e| format!("{}: {e}", p.display()))?;
+            done += 1;
+            Ok::<_, String>(())
+        })
+        .and_then(|_| std::fs::rename(from, &to).map_err(|e| e.to_string()));
+    if let Err(e) = res {
+        for (p, old, _) in &edits[..done] {
+            let _ = crate::config::write_atomic(p, old);
+        }
+        return Err(format!("Nothing renamed: {e}"));
+    }
+    // The renamed note's own links now live at TO.
+    let changed = edits.into_iter().map(|(p, ..)| if p == from { to.clone() } else { p }).collect();
+    Ok((to, changed))
+}
+
 #[derive(Serialize, Debug, PartialEq)]
 pub struct GraphNode {
     pub path: PathBuf,
@@ -326,6 +403,68 @@ mod tests {
         assert_eq!(f[0].aliases, ["slip box", "ZK"]);
         let got: Vec<_> = unlinked(&f, Path::new("/n/zk.org")).into_iter().map(|m| (m.col, m.len)).collect();
         assert_eq!(got, vec![(3, 8), (17, 2), (30, 12)]);
+    }
+
+    #[test]
+    fn relinks_file_links() {
+        let old = Path::new("/n/sub/c.org");
+        let r = |note: &str, text: &str| relink(text, Path::new(note), old, "d.org");
+        assert_eq!(r("/n/sub/x.org", "see [[file:c.org]] and [[file:c.org::*H][C]]!").as_deref(), Some("see [[file:d.org]] and [[file:d.org::*H][C]]!"));
+        assert_eq!(r("/n/a.org", "[[file:sub/c.org][c.org]] [[file:./sub/../sub/c.org::12]]").as_deref(), Some("[[file:sub/d.org][c.org]] [[file:./sub/../sub/d.org::12]]"));
+        assert_eq!(r("/n/sub/deep/y.org", "[[file:../c.org]]").as_deref(), Some("[[file:../d.org]]"));
+        assert_eq!(r("/z.org", "[[file:/n/sub/c.org]]").as_deref(), Some("[[file:/n/sub/d.org]]"));
+        // Other targets, id links, look-alikes and links split over lines stay as they are.
+        assert_eq!(r("/n/a.org", "[[file:c.org]] [[id:c.org]] [[file:sub/c.orgx]] [[file:sub/xc.org]] file:sub/c.org [[file:sub/\nc.org]]"), None);
+        if let Some(home) = std::env::home_dir() {
+            let old = home.join("n/c.org");
+            assert_eq!(relink("[[file:~/n/c.org]]", Path::new("/x/a.org"), &old, "d.org").as_deref(), Some("[[file:~/n/d.org]]"));
+        }
+    }
+
+    #[test]
+    fn renames_notes() {
+        let dir = std::env::temp_dir().join(format!("margin-rename-{}", gen_id()));
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        let (a, c, x, y) = (dir.join("a.org"), dir.join("sub/c.org"), dir.join("sub/x.org"), dir.join("y.org"));
+        let docs = [(&a, "[[file:sub/c.org][C]]\n"), (&c, "self [[file:c.org::*H]]\n"), (&x, "[[file:c.org]] [[file:a.org]]\n"), (&y, "[[file:a.org]]\n")];
+        for (p, t) in docs {
+            std::fs::write(p, t).unwrap();
+        }
+        let kw = Kw { todo: vec![], done: vec![] };
+        let fs: Vec<_> = docs.iter().map(|(p, t)| Arc::new(parse(p, t, &kw))).collect();
+        assert!(rename(&fs, &c, "x.org").unwrap_err().contains("already exists"));
+        assert!(rename(&fs, &c, "../d.org").is_err() && rename(&fs, &c, "a]b.org").is_err() && rename(&fs, &c, "c.org").is_err());
+        assert!(rename(&fs, &dir.join("none.org"), "e.org").is_err());
+
+        #[cfg(unix)]
+        {
+            // A write that fails puts back the notes already rewritten and renames nothing.
+            use std::os::unix::fs::PermissionsExt;
+            let ro = dir.join("ro");
+            std::fs::create_dir(&ro).unwrap();
+            let z = ro.join("z.org");
+            std::fs::write(&z, "[[file:../sub/c.org]]\n").unwrap();
+            std::fs::set_permissions(&ro, std::fs::Permissions::from_mode(0o555)).unwrap();
+            let mut fs2 = fs.clone();
+            fs2.push(Arc::new(parse(&z, "[[file:../sub/c.org]]\n", &kw)));
+            let e = rename(&fs2, &c, "d.org");
+            std::fs::set_permissions(&ro, std::fs::Permissions::from_mode(0o755)).unwrap();
+            assert!(e.unwrap_err().starts_with("Nothing renamed"));
+            assert!(c.exists() && !dir.join("sub/d.org").exists());
+            for (p, t) in docs {
+                assert_eq!(std::fs::read_to_string(p).unwrap(), t);
+            }
+        }
+
+        let (to, changed) = rename(&fs, &c, " d.org ").unwrap();
+        let d = dir.join("sub/d.org");
+        assert_eq!((to, changed), (d.clone(), vec![a.clone(), d.clone(), x.clone()]));
+        assert!(!c.exists());
+        assert_eq!(std::fs::read_to_string(&a).unwrap(), "[[file:sub/d.org][C]]\n");
+        assert_eq!(std::fs::read_to_string(&d).unwrap(), "self [[file:d.org::*H]]\n");
+        assert_eq!(std::fs::read_to_string(&x).unwrap(), "[[file:d.org]] [[file:a.org]]\n");
+        assert_eq!(std::fs::read_to_string(&y).unwrap(), "[[file:a.org]]\n");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

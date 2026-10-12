@@ -79,6 +79,8 @@ describe("Features", () => {
         writeFileSync(join(notes, "hub.org"), "#+title: Hub\n\nSee [[id:leaf-id][the leaf]].\n");
         writeFileSync(join(notes, "leaf.org"), ":PROPERTIES:\n:ID: leaf-id\n:END:\n#+title: Leaf\n\nA leaf.\n");
         writeFileSync(join(notes, "exportme.org"), "#+title: Export me\n\nSome *bold* text.\n\n* A heading\n- one item\n");
+        writeFileSync(join(notes, "draft.org"), "#+title: Draft\n\nDraft text.\n");
+        writeFileSync(join(notes, "refs.org"), "#+title: Refs\n\nSee [[file:draft.org::*Top][the draft]] and [[file:drafts.org]].\n");
       },
     });
   });
@@ -152,6 +154,19 @@ describe("Features", () => {
     await browser.keys(" ");
     await type("ng");
     await find(".links h3", "Graph 2");
+  });
+
+  it("renames a note and updates the file: links to it", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Draft");
+    await find(".status .file", "draft.org");
+    await palette("Rename note");
+    await answer("Rename note to", "final");
+    await find(".status .file", "final.org");
+    await find(".status .msg", "updated links in 1 note");
+    assert.ok(existsSync(join(d.notes, "final.org")) && !existsSync(join(d.notes, "draft.org")), "not renamed");
+    assert.equal(read(join(d.notes, "refs.org")), "#+title: Refs\n\nSee [[file:final.org::*Top][the draft]] and [[file:drafts.org]].\n");
+    assert.equal(read(join(d.notes, "final.org")), "#+title: Draft\n\nDraft text.\n");
   });
 
   it("exports a note as Markdown", async () => {
