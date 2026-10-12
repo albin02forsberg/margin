@@ -3,7 +3,7 @@ import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { answer, browser, close, fileMatches, find, Key, launch, palette, today, type, type Dirs } from "./setup.ts";
+import { answer, browser, close, fileMatches, find, Key, launch, palette, texts, today, type, type Dirs } from "./setup.ts";
 
 let notes: string, data: string, cfgDir: string;
 
@@ -41,6 +41,20 @@ describe("Margin", () => {
     await browser.keys(Key.Escape);
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(join(notes, "scratch.org"), (s) => /First line\.\n\s*Typed by e2e/.test(s), "note wasn't saved");
+  });
+
+  it("keeps a note deleted outside the app on screen, flagged, and drops it from Notes", async () => {
+    const file = join(notes, "scratch.org");
+    await find(".notes button", "scratch");
+    unlinkSync(file);
+    await find(".status .file", "deleted on disk");
+    await find(".cm-content", "Typed by e2e");
+    await browser.waitUntil(async () => !(await texts(".notes button")).some((t) => t.includes("scratch")), { timeoutMsg: "still under Notes" });
+    await browser.pause(500);
+    assert.ok(!existsSync(file), "recreated without :w");
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(file, (s) => /First line\.\n\s*Typed by e2e/.test(s), ":w didn't recreate it");
+    await browser.waitUntil(async () => !(await browser.$(".status .file").getText()).includes("deleted on disk"), { timeoutMsg: "still flagged" });
   });
 
   it("creates a task with Ctrl+N that shows in Today and the inbox", async () => {
