@@ -1,7 +1,8 @@
 // Round 3 of #251: five layouts of direction B (cards). ?b=1..5 & v=today|time.
 // Same demo data as mock.js; b-variants.css does the styling, colours only from theme.css.
 const q = new URLSearchParams(location.search);
-const b = q.get("b") ?? "1", v = q.get("v") ?? "today";
+const b = q.get("b") ?? "1";
+let v = q.get("v") ?? "today"; // r4.js switches it to reuse the views below
 document.documentElement.dataset.b = b;
 
 const kbd = (k) => `<kbd>${k}</kbd>`;
@@ -164,4 +165,4 @@ function b5() {
   return `<div class="b5">${strip}${v === "time" ? `<div class="subhead">${head("Time", "Week 40 · sessions by project", profile)}</div>` : `<div class="subhead">${head("Tasks", "Today's board · drag or press a column key", `${pills}<button class="primary">+ New task</button>`)}</div>`}<main class="board v-${v}">${board}</main></div>`;
 }
 
-document.body.innerHTML = { 1: b1, 2: b2, 3: b3, 4: b4, 5: b5 }[b]();
+if (!window.R4) document.body.innerHTML = { 1: b1, 2: b2, 3: b3, 4: b4, 5: b5 }[b]();
