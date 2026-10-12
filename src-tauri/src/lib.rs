@@ -87,7 +87,11 @@ fn today() -> NaiveDate {
 }
 
 fn date(input: &str) -> R<NaiveDate> {
-    org::read_date(input, today()).map(|d| d.0).ok_or_else(|| format!("can't parse date: {input}"))
+    date_at(input, today())
+}
+
+fn date_at(input: &str, today: NaiveDate) -> R<NaiveDate> {
+    org::read_date(input, today).map(|d| d.0).ok_or_else(|| format!("can't parse date: {input}"))
 }
 
 // ---------------------------------------------------------------- config & files
@@ -537,26 +541,34 @@ fn org_archive(src: String, line: usize, dst: String, src_path: String) -> R<[St
 }
 
 /// Date input → Some(date), "" → None, unreadable → error.
-fn opt_date(input: &str) -> R<Option<(NaiveDate, Option<String>)>> {
+fn opt_date_at(input: &str, today: NaiveDate) -> R<Option<(NaiveDate, Option<String>)>> {
     if input.trim().is_empty() {
         return Ok(None);
     }
-    org::read_date(input, today()).map(Some).ok_or_else(|| format!("can't read date \"{input}\""))
+    org::read_date(input, today).map(Some).ok_or_else(|| format!("can't read date \"{input}\""))
 }
 
 #[tauri::command]
 fn task_entry(s: State<App>, title: String, priority: Option<String>, tags: Vec<String>, scheduled: String, deadline: String) -> R<String> {
+    task_text(&s.cfg().todo_keywords, &title, priority.as_deref(), tags, &scheduled, &deadline, today())
+}
+
+/// The heading `task_entry` files: the first TODO keyword, dates read relative to TODAY.
+fn task_text(todo: &[String], title: &str, priority: Option<&str>, tags: Vec<String>, scheduled: &str, deadline: &str, today: NaiveDate) -> R<String> {
     if title.trim().is_empty() {
         return Err("the task needs a title".into());
     }
-    let kw = s.cfg().todo_keywords.first().cloned();
-    Ok(org::task_entry(&title, kw.as_deref(), priority.as_deref().filter(|p| !p.is_empty()), tags, opt_date(&scheduled)?, opt_date(&deadline)?))
+    Ok(org::task_entry(title, todo.first().map(String::as_str), priority.filter(|p| !p.is_empty()), tags, opt_date_at(scheduled, today)?, opt_date_at(deadline, today)?))
 }
 
 /// Human preview of a date input, for live feedback while typing.
 #[tauri::command]
 fn date_preview(input: String) -> String {
-    match opt_date(&input) {
+    date_preview_at(&input, today())
+}
+
+fn date_preview_at(input: &str, today: NaiveDate) -> String {
+    match opt_date_at(input, today) {
         Ok(None) => String::new(),
         Ok(Some((d, t))) => format!("{}{}", d.format("%A %-d %B %Y"), t.map(|t| format!(", {t}")).unwrap_or_default()),
         Err(_) => "✗ can't read this date".into(),
@@ -594,11 +606,7 @@ fn capture_template(s: State<App>, text: String, heading: Option<String>, body: 
 /// now), creating it as an org-roam note titled after its name if missing.
 #[tauri::command]
 fn capture_path(s: State<App>, file: String, date_input: Option<String>) -> R<PathBuf> {
-    let t = match date_input {
-        Some(i) => date(&i)?.and_time(timeclock::now().time()),
-        None => timeclock::now(),
-    };
-    let p = s.cfg().notes().join(org::fmt_time(t, &file).ok_or_else(|| format!("bad date format in {file}"))?);
+    let p = capture_file(&s.cfg().notes(), &file, date_input.as_deref(), timeclock::now())?;
     s.check(&p)?;
     if !p.exists() {
         let title = p.file_stem().map(|x| x.to_string_lossy().to_string()).unwrap_or_default();
@@ -607,11 +615,24 @@ fn capture_path(s: State<App>, file: String, date_input: Option<String>) -> R<Pa
     Ok(p)
 }
 
+/// FILE (a strftime pattern) under NOTES for DATE_INPUT at NOW's time, or for NOW.
+fn capture_file(notes: &Path, file: &str, date_input: Option<&str>, now: NaiveDateTime) -> R<PathBuf> {
+    let t = match date_input {
+        Some(i) => date_at(i, now.date())?.and_time(now.time()),
+        None => now,
+    };
+    Ok(notes.join(org::fmt_time(t, file).ok_or_else(|| format!("bad date format in {file}"))?))
+}
+
 /// INPUT is org-read-date style; "rm" removes the entry.
 #[tauri::command]
 fn org_planning(text: String, line: usize, kind: String, input: String) -> R<String> {
-    let d = if input.trim() == "rm" { None } else { Some(org::read_date(&input, today()).ok_or("can't parse date")?) };
-    Ok(org::set_planning(&text, line, &kind, d))
+    planning_at(&text, line, &kind, &input, today())
+}
+
+fn planning_at(text: &str, line: usize, kind: &str, input: &str, today: NaiveDate) -> R<String> {
+    let d = if input.trim() == "rm" { None } else { Some(org::read_date(input, today).ok_or("can't parse date")?) };
+    Ok(org::set_planning(text, line, kind, d))
 }
 
 #[tauri::command]
@@ -1611,6 +1632,53 @@ mod tests {
         assert_eq!(v, json!({ "profile": "Work", "project": "Acme", "since": "2026-01-08T09:00:00", "task": "c", "on_break": null, "today": "1h 30m", "backup_error": null }));
         let v = status_json("Home", (None, Some("Lunch".into()), 0.25), Some("disk full".into()));
         assert_eq!(v, json!({ "profile": "Home", "project": null, "since": null, "task": null, "on_break": "Lunch", "today": "15m", "backup_error": "disk full" }));
+    }
+
+    fn iso(s: &str) -> NaiveDate {
+        s.parse().unwrap()
+    }
+    fn mon() -> NaiveDate {
+        iso("2026-10-12")
+    }
+
+    #[test]
+    fn dates_read_relative_to_a_given_today() {
+        let t = mon();
+        assert_eq!(date_at("+1d", t), Ok(iso("2026-10-13")));
+        assert_eq!(date_at("fri", t), Ok(iso("2026-10-16")));
+        assert_eq!(date_at("2026-12-24", t), Ok(iso("2026-12-24")));
+        assert_eq!(date_at("", t), Ok(t)); // blank is today here, unlike opt_date_at
+        assert_eq!(date_at("soon", t), Err("can't parse date: soon".into()));
+        assert_eq!((opt_date_at("", t), opt_date_at("  ", t)), (Ok(None), Ok(None)));
+        assert_eq!(opt_date_at("+1d 14:00", t), Ok(Some((iso("2026-10-13"), Some("14:00".into())))));
+        assert_eq!(opt_date_at("soon", t), Err("can't read date \"soon\"".into()));
+        assert_eq!(date_preview_at(" ", t), "");
+        assert_eq!(date_preview_at("fri", t), "Friday 16 October 2026");
+        assert_eq!(date_preview_at("fri 14:00", t), "Friday 16 October 2026, 14:00");
+        assert_eq!(date_preview_at("soon", t), "✗ can't read this date");
+    }
+
+    #[test]
+    fn task_text_and_planning() {
+        let (t, todo) = (mon(), vec!["NEXT".to_string(), "TODO".into()]);
+        assert_eq!(task_text(&todo, "  ", None, vec![], "", "", t), Err("the task needs a title".into()));
+        assert_eq!(task_text(&todo, "Call", Some(""), vec![], "", "", t), Ok("* NEXT Call\n".into())); // first keyword, empty priority dropped
+        assert_eq!(task_text(&[], "Call", Some("A"), vec!["home".into()], "+1d", "fri 09:00", t), Ok("* [#A] Call :home:\nSCHEDULED: <2026-10-13 Tue> DEADLINE: <2026-10-16 Fri 09:00>\n".into()));
+        assert_eq!(task_text(&todo, "Call", None, vec![], "", "soon", t), Err("can't read date \"soon\"".into()));
+        let set = "* TODO A\nDEADLINE: <2026-10-13 Tue>\n";
+        assert_eq!(planning_at("* TODO A\n", 0, "DEADLINE", "+1d", t), Ok(set.into()));
+        assert_eq!(planning_at(set, 0, "DEADLINE", " rm ", t), Ok("* TODO A\n".into()));
+        assert_eq!(planning_at(set, 0, "DEADLINE", "soon", t), Err("can't parse date".into()));
+    }
+
+    #[test]
+    fn capture_file_fills_the_pattern_under_notes() {
+        let (n, now) = (Path::new("/n"), mon().and_hms_opt(14, 30, 0).unwrap());
+        assert_eq!(capture_file(n, "daily/%Y-%m-%d.org", None, now), Ok(PathBuf::from("/n/daily/2026-10-12.org")));
+        assert_eq!(capture_file(n, "daily/%Y-%m-%d.org", Some("+1d"), now), Ok(PathBuf::from("/n/daily/2026-10-13.org")));
+        assert_eq!(capture_file(n, "%a-%H%M.org", Some("fri"), now), Ok(PathBuf::from("/n/Fri-1430.org"))); // now's time kept
+        assert_eq!(capture_file(n, "%Q.org", None, now), Err("bad date format in %Q.org".into()));
+        assert_eq!(capture_file(n, "x.org", Some("soon"), now), Err("can't parse date: soon".into()));
     }
 
     fn cfg(notes: &Path, data: &Path, profiles: &str) -> Config {
