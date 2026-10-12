@@ -319,7 +319,7 @@ describe("Features", () => {
     await browser.keys(" "); // straight away, before the autosave
     await type("bo");
     await browser.waitUntil(async () => (await texts(".tabs .tab > button:not(.x)")).length === 1, { timeoutMsg: "other tabs not closed" });
-    await find(".tabs .tab.cur button", "Alpha");
+    await find(".tabs .tab.cur button", "alpha");
     await find(".status .file", "alpha.org");
     await fileMatches(join(d.notes, "alpha.org"), (s) => s.includes("\nZZ"), "the kept tab lost its edit");
     assert.ok((await texts(".cm-content")).some((t) => t.includes("ZZ")), "the editor lost the kept tab's edit");
