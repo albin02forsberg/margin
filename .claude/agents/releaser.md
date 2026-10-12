@@ -38,7 +38,7 @@ Before merging, fetch again: if `origin/main` is no longer `SHA`, close the PR, 
 1. `git tag v<version> M && git push origin v<version>`. This starts `release.yml`, which makes a draft release.
 2. Find that run (`gh run list -w release.yml -e push --json databaseId,headBranch` with `headBranch == v<version>`) and `gh run watch <id> --exit-status`. Every job must succeed. On any failure: leave the draft and the tag as they are, log the failed job and its `gh run view <id> --log-failed` tail, and stop. The owner decides what to do with it.
 3. Check the draft: `latest.json` is attached, its `version` is `<version>` and its `platforms` include `linux-x86_64`, `windows-x86_64` and a `darwin-*` entry. If not, log and stop.
-4. Notes: `git log --format='- %s' PREV..M`, minus graphify refreshes and the release commit itself.
+4. Notes: `bash .github/scripts/changelog.sh PREV M > <notes>`, the same generator `release.yml` used for the draft body and `latest.json` (#254); it already drops graphify refreshes, `docs:` and the release commit. Don't write your own list.
 5. `gh release edit v<version> --draft=false --latest --title "Margin v<version>" --notes-file <notes>`.
 
 ## Report

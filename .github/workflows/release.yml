@@ -8,7 +8,23 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Release notes since the previous stable tag (#254), made once on Linux so every matrix leg sends the
+  # same body. HEAD^ also covers runs without a tag: the notes then reach back to the latest stable tag.
+  notes:
+    runs-on: ubuntu-latest
+    outputs:
+      body: ${{ steps.n.outputs.body }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: n
+        run: |
+          prev=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^ 2>/dev/null || true)
+          { echo 'body<<EOF_NOTES'; bash .github/scripts/changelog.sh "$prev" HEAD; echo EOF_NOTES; } >> "$GITHUB_OUTPUT"
+
   build:
+    needs: notes
     permissions:
       contents: write
     strategy:
@@ -55,5 +71,7 @@ jobs:
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseName: Margin ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
+          # Also becomes `notes` in latest.json.
+          releaseBody: ${{ needs.notes.outputs.body }}
           releaseDraft: true
           args: ${{ matrix.args }}

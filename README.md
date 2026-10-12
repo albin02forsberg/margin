@@ -38,6 +38,9 @@ prerelease is rebuilt from `main` once a day when it has changed (AppImage/.deb,
 `-setup.exe`). Untested. Tick **Settings → Nightly updates** to have an installed copy update
 to them; unticking waits for the next stable release newer than your nightly.
 
+**What changed:** every release lists its features and fixes since the previous release in its
+notes; the nightly lists what is new since the previous nightly.
+
 ## Code signing policy
 
 Release installers are built only by this repository's GitHub Actions
