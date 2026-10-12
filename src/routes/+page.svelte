@@ -1229,7 +1229,7 @@
     profile: (n) => switchProfile(n), holidays: () => report("holidays", "Holidays"), daily: dailyReport,
     weekly: () => report("weekly", "Week report"), doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
     backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), import: importEmacs, acceptSuggestion, editSuggestion,
-    flex: async () => flash(await call("tc_report", { kind: "flex" })), diary: () => openFile(cfg.diary_path),
+    flex: async () => flash(await call("tc_report", { kind: "flex" })), leave: async () => flash(await call("tc_leave_time")), diary: () => openFile(cfg.diary_path),
     /** Open the Time view and focus its "Time off" form (the view may still be mounting, so retry briefly). */
     timeOff: async () => {
       await openView("time");
@@ -1356,6 +1356,7 @@
     { label: "Time: day report", leader: "t t", run: t("daily") },
     { label: "Time: week report", leader: "t s", run: t("weekly") },
     { label: "Time: show flex balance", leader: "t f", run: t("flex") },
+    { label: "Time: when to leave today", leader: "t w", run: t("leave") },
     { label: "Time: public holidays", leader: "t h", run: t("holidays") },
     { label: "Time: export CSV…", leader: "t e", run: t("export") },
     { label: "Time: switch profile…", leader: "t p", run: () => switchProfile() },

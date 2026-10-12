@@ -331,6 +331,9 @@ the week's hours against expected, flex balance and per-project totals. Keys:
 `i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV (import template: `Project` = export code, `Duration` in decimal hours, `1,5`; zero-hour rows are left out),
 `E` export a report as HTML/PDF.
 Space t … has every timeclock command (same letters as the old Emacs menu).
+`Space t w` says when to leave today: the time today's expected hours (less time
+off, flex ignored) are reached at the current pace, e.g. `Leave at 16:42 (2h 18m left)`.
+The Time view shows the same line under today's total.
 
 Time → Time off (or `Space t l`, from anywhere) logs vacation, sick leave or anything else for a day or a range
 of days: a full day, a few hours a day, or (sick) the rest of the day after what

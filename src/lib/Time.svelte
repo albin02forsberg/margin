@@ -124,7 +124,7 @@
           <div><small>Not tracking</small><h2>Ready when you are</h2></div>
         {/if}
       </div>
-      <div class="total"><strong>{hm(d.today_hours)}</strong><small>today</small></div>
+      <div class="total"><strong>{hm(d.today_hours)}</strong><small>today</small><small class="leave">{d.leave_time}</small></div>
       <div class="buttons">
         {#if d.project != null}
           <button onclick={() => run("pause")}><kbd>p</kbd>Pause</button>
