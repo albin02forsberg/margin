@@ -53,13 +53,11 @@ describe("Sync with the disk", () => {
 
   it("takes a disk change into a note whose edits were undone (#277)", async () => {
     await browser.waitUntil(async () => !/unsaved/.test(await status()), { timeoutMsg: "previous save pending" });
-    await type("ggo");
-    await type("Undone line");
-    await browser.keys(Key.Escape);
+    await type("ggx"); // one edit, so a single u undoes it (o + typing can be two undo steps)
     await type("u");
     appendFileSync(file, "After undo.\n");
     await find(".cm-content", "After undo.");
-    assert.doesNotMatch(await status(), /unsaved|changed on disk/);
-    assert.doesNotMatch(String(await browser.$(".cm-content").getText()), /Undone line/);
+    await browser.waitUntil(async () => !/unsaved|changed on disk/.test(await status()), { timeoutMsg: "tab still flagged after the disk change" });
+    await fileMatches(file, (s) => s.startsWith("#+title: Sync\n") && s.endsWith("After undo.\n"), "disk change lost");
   });
 });
