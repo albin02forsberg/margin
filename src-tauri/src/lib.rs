@@ -398,27 +398,34 @@ fn unused_attachments(s: State<App>) -> Vec<PathBuf> {
     v
 }
 
+/// Move FILE (a file under ROOT, outside `ROOT/.trash`) to `ROOT/.trash/<subpath>`, adding `.1`, `.2`… on a
+/// name clash. Returns where it went.
+fn trash_to(root: &Path, f: &Path) -> R<PathBuf> {
+    let rel = f
+        .strip_prefix(root)
+        .ok()
+        .filter(|r| f.is_file() && !r.starts_with(".trash") && r.components().all(|c| matches!(c, Component::Normal(_))))
+        .ok_or_else(|| format!("{} can't be moved to {}", f.display(), root.join(".trash").display()))?;
+    let trash = root.join(".trash");
+    let mut dst = trash.join(rel);
+    for i in 1.. {
+        if !dst.exists() {
+            break;
+        }
+        dst = trash.join(format!("{}.{i}", rel.display()));
+    }
+    std::fs::create_dir_all(dst.parent().unwrap()).map_err(|e| e.to_string())?;
+    std::fs::rename(f, &dst).map_err(|e| format!("{}: {e}", f.display()))?;
+    Ok(dst)
+}
+
 /// Move attachment FILES to `<attachments_dir>/.trash/`, keeping their subpaths.
 #[tauri::command]
 fn trash_attachments(s: State<App>, files: Vec<PathBuf>) -> R<()> {
     let c = s.cfg();
     let root = c.notes().join(&c.attachments_dir);
-    let trash = root.join(".trash");
     for f in files {
-        let bad = || format!("{} is not an attachment", f.display());
-        let rel = f.strip_prefix(&root).map_err(|_| bad())?;
-        if rel.starts_with(".trash") || rel.components().any(|c| !matches!(c, Component::Normal(_))) {
-            return Err(bad());
-        }
-        let mut dst = trash.join(rel);
-        for i in 1.. {
-            if !dst.exists() {
-                break;
-            }
-            dst = trash.join(format!("{}.{i}", rel.display()));
-        }
-        std::fs::create_dir_all(dst.parent().unwrap()).map_err(|e| e.to_string())?;
-        std::fs::rename(&f, &dst).map_err(|e| format!("{}: {e}", f.display()))?;
+        trash_to(&root, &f)?;
     }
     Ok(())
 }
@@ -626,6 +633,17 @@ fn rename_note(s: State<App>, from: PathBuf, name: String) -> R<(PathBuf, Vec<Pa
     }
     s.backup();
     notes::rename(&s.files(), &from, &name)
+}
+
+/// Move the note PATH to `<notes>/.trash/`, keeping its subpath (after a backup). Returns where it went.
+#[tauri::command]
+fn trash_note(s: State<App>, path: PathBuf) -> R<PathBuf> {
+    s.check(&path)?;
+    if path.extension().and_then(|e| e.to_str()) != Some("org") {
+        return Err(format!("{} isn't a note", path.display()));
+    }
+    s.backup();
+    trash_to(&s.cfg().notes(), &path)
 }
 
 #[tauri::command]
@@ -1295,7 +1313,7 @@ pub fn run() {
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
-            notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
+            notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, trash_note, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
             tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_linked, export_report, export_open
@@ -1348,6 +1366,34 @@ mod tests {
         assert!(v("0.2.2") < v("0.2.3-nightly.202610110300"));
         assert!(v("0.2.3-nightly.202610110300") < v("0.2.3-nightly.202610120300"));
         assert!(v("0.2.3-nightly.202612312359") < v("0.2.3"));
+    }
+
+    #[test]
+    fn trash_to_keeps_subpath_and_numbers_clashes() {
+        let root = std::env::temp_dir().join(format!("margin-trash-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let put = |p: &str| {
+            let p = root.join(p);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, p.to_str().unwrap()).unwrap();
+            p
+        };
+        let a = put("sub/a.org");
+        assert_eq!(trash_to(&root, &a).unwrap(), root.join(".trash/sub/a.org"));
+        assert!(!a.exists());
+        let a = put("sub/a.org");
+        assert_eq!(trash_to(&root, &a).unwrap(), root.join(".trash/sub/a.org.1"));
+        assert_eq!(std::fs::read_to_string(root.join(".trash/sub/a.org.1")).unwrap(), a.to_str().unwrap());
+        // Outside ROOT, already in .trash, `..` in the path, a folder, a missing file: refused.
+        let out = std::env::temp_dir().join(format!("margin-trash-out-{}.org", std::process::id()));
+        std::fs::write(&out, "").unwrap();
+        put("x.org");
+        for bad in [out.clone(), root.join(".trash/sub/a.org"), root.join("sub/../x.org"), root.join("sub"), root.join("nope.org")] {
+            assert!(trash_to(&root, &bad).is_err(), "{}", bad.display());
+        }
+        assert!(out.exists());
+        let _ = std::fs::remove_file(out);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     fn cfg(notes: &Path, data: &Path, profiles: &str) -> Config {

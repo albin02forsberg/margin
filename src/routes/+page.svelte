@@ -289,6 +289,16 @@
   /** Recently closed tabs (newest last) for "Reopen closed tab": a file with its line, or a view / task search. */
   const closed: ({ path: string; line: number } | { kind: View; query?: string; title: string })[] = [];
 
+  /** Keep only the sidebar's recent notes and the closed tabs whose path passes KEEP (for trashed or vanished notes). */
+  function pruneRecent(keep: (p: string) => boolean) {
+    recent = recent.filter(keep);
+    store("recent", JSON.stringify(recent));
+    for (let i = closed.length; i--; ) {
+      const c = closed[i];
+      if ("path" in c && !keep(c.path)) closed.splice(i, 1);
+    }
+  }
+
   async function reopenTab() {
     for (let c; (c = closed.pop()); ) {
       try {
@@ -673,6 +683,22 @@
     syncFromDisk();
     const n = changed.filter((p) => p !== to).length;
     flash(`Renamed to ${base(to)}${n ? ` — updated links in ${n} note${n > 1 ? "s" : ""}` : ""}`);
+  }
+
+  /** Move the open note to <notes>/.trash/ after a confirm naming how many notes link to it (links are left as they are). */
+  async function trashNote() {
+    if (!inFile() || !tab.path!.startsWith(cfg.notes)) return flash("Open a note first.");
+    const t = tab, path = t.path!;
+    const n = new Set((await call<Hit[]>("notes_backlinks", { path })).map((h) => h.path)).size;
+    const links = n ? ` ${n} note${n > 1 ? "s link" : " links"} to it; those links will break.` : "";
+    const ok = await pick({ prompt: `Move “${t.title}” to the notes .trash folder?${links}`, items: [{ label: "Cancel", value: false }, { label: "Move to .trash", value: true }] });
+    if (!ok) return;
+    await saveTab(t);
+    const to = await call<string>("trash_note", { path });
+    t.dirty = false; // nothing left to save: closing must not recreate it
+    await closeTab(tabs.indexOf(t));
+    pruneRecent((p) => p !== path);
+    flash(`🗑 Moved to ${rel(to)}`);
   }
 
   async function insertLink() {
@@ -1192,6 +1218,7 @@
     { label: "Capture with template…", leader: "c", run: captureTemplate },
     { label: "New note", keys: ["Ctrl+Shift+N"], leader: "n n", run: newNote },
     { label: "Rename note…", leader: "n r", run: renameNote },
+    { label: "Delete note… (move to .trash)", leader: "n D", run: trashNote },
     { label: "Today's journal", keys: ["Ctrl+J"], leader: "j", run: () => journal() },
     { label: "Journal for another day…", leader: "n J", run: journalPick },
     { label: "Journal: previous entry", leader: "n [", run: () => journalStep(-1) },

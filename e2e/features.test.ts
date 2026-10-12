@@ -82,6 +82,8 @@ describe("Features", () => {
         writeFileSync(join(notes, "draft.org"), "#+title: Draft\n\nDraft text.\n");
         writeFileSync(join(notes, "oldie.org"), "#+title: Oldie\n\nOld text.\n");
         writeFileSync(join(notes, "refs.org"), "#+title: Refs\n\nSee [[file:draft.org::*Top][the draft]] and [[file:drafts.org]].\n");
+        writeFileSync(join(notes, "doomed.org"), ":PROPERTIES:\n:ID: doomed-id\n:END:\n#+title: Doomed\n\nDoomed text.\n");
+        writeFileSync(join(notes, "fan.org"), "#+title: Fan\n\nSee [[id:doomed-id][the doomed note]].\n");
       },
     });
   });
@@ -192,6 +194,20 @@ describe("Features", () => {
     await type("bu");
     await find(".status .file", "newbie.org");
     assert.ok(!existsSync(join(d.notes, "oldie.org")), "old name recreated");
+  });
+
+  it("moves a note to .trash after a confirm naming its backlinks", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Doomed");
+    await find(".status .file", "doomed.org");
+    await find(".notes button", "doomed");
+    await palette("Delete note");
+    await answer("1 note links to it", "Move");
+    await find(".status .msg", "Moved to .trash");
+    assert.ok(!existsSync(join(d.notes, "doomed.org")), "note not moved");
+    assert.equal(read(join(d.notes, ".trash", "doomed.org")), ":PROPERTIES:\n:ID: doomed-id\n:END:\n#+title: Doomed\n\nDoomed text.\n");
+    await browser.waitUntil(async () => !(await texts(".notes button")).some((t) => t.includes("doomed")), { timeoutMsg: "still under Notes" });
+    assert.ok(!(await texts(".tabs .tab button")).some((t) => t.includes("doomed")), "tab still open");
   });
 
   it("exports a note as Markdown", async () => {
