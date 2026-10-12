@@ -7,6 +7,8 @@ use std::sync::Mutex;
 
 static LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
 static LAST_FAILURE: Mutex<Option<String>> = Mutex::new(None);
+/// Held for a whole backup: commands run on a thread pool, and two `git add` in one repo clash on `index.lock`.
+static BACKUP: Mutex<()> = Mutex::new(());
 
 fn log(msg: String) {
     let mut l = LOG.lock().unwrap();
@@ -85,6 +87,7 @@ fn git(dir: &Path, args: &[&str]) -> (bool, String) {
 /// Commit everything in DIR; push in the background if a remote exists.
 /// INIT creates the repo if missing (only for dirs this app owns).
 pub fn backup(dir: &Path, init: bool) {
+    let _lock = BACKUP.lock().unwrap_or_else(|e| e.into_inner());
     let name = dir.display();
     if !dir.join(".git").exists() {
         if !init {
@@ -125,6 +128,26 @@ mod tests {
 
     fn v(k: &'static str, s: &str) -> (&'static str, String) {
         (k, s.to_string())
+    }
+
+    #[test]
+    fn concurrent_backups_both_succeed() {
+        let dir = std::env::temp_dir().join(format!("margin-backup-{}", crate::notes::gen_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for args in [&["init"][..], &["config", "user.email", "t@example.com"], &["config", "user.name", "t"], &["config", "commit.gpgsign", "false"]] {
+            assert!(git(&dir, args).0);
+        }
+        for n in 0..50 {
+            std::fs::write(dir.join(format!("{n}.org")), "x\n").unwrap();
+        }
+        std::thread::scope(|t| {
+            for _ in 0..2 {
+                t.spawn(|| backup(&dir, false));
+            }
+        });
+        assert_eq!(last_failure(), None, "{}", log_text());
+        assert_eq!(git(&dir, &["status", "--porcelain"]).1, "");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
