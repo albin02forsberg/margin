@@ -86,6 +86,23 @@ describe("Margin", () => {
     await fileMatches(log, (s) => /"ev":"in".*"project":"Acme"/.test(s) && /"ev":"out".*"note":"e2e done"/.test(s), "no in/out entries in the time log");
   });
 
+  it("Space t w says when to leave, and the Time view shows it", async () => {
+    const said = /Leave at \d\d:\d\d \(.+ left\)|No expected hours today|Done for today/; // weekends and red days have no target
+    await (await find(".time button", "Start tracking")).click();
+    await answer("Track time on project", "Acme");
+    await answer("What are you working on?", "leave check");
+    await find(".time .status h2", "Acme");
+    await browser.waitUntil(async () => (await texts(".time .total .leave")).some((t) => said.test(t)), { timeoutMsg: "no leave time in the Time view" });
+    await browser.keys([Key.Ctrl, "1"]);
+    await find(".agenda h1", "Today");
+    await browser.keys(" ");
+    await type("tw");
+    await browser.waitUntil(async () => (await texts(".status .msg")).some((t) => said.test(t)), { timeoutMsg: "Space t w flashed no leave time" });
+    await browser.keys([Key.Ctrl, "4"]);
+    await (await find(".time .buttons button", "Stop")).click();
+    await answer("What did you do?", "leave checked");
+  });
+
   it("Space t l focuses the time-off form", async () => {
     await browser.keys([Key.Ctrl, "1"]);
     await find(".agenda h1", "Today");

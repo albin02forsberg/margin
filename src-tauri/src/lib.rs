@@ -713,6 +713,19 @@ fn tc_status(s: State<App>) -> Value {
     })
 }
 
+/// When to leave today (see timeclock::leave_time), for the open clock and today's hours.
+fn leave_time(tc: &Tc, running: bool, on_break: bool, today_h: f64) -> String {
+    let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
+    timeclock::leave_time(timeclock::now(), today_h, tc.expected, &leave, running, on_break)
+}
+
+#[tauri::command]
+fn tc_leave_time(s: State<App>) -> String {
+    let tc = s.tc();
+    let (cur, on_break, today_h) = tc.status();
+    leave_time(&tc, cur.is_some(), on_break.is_some(), today_h)
+}
+
 /// Everything the time dashboard shows, for the current week (Mon–Sun).
 #[tauri::command]
 fn tc_dashboard(s: State<App>) -> Value {
@@ -753,6 +766,7 @@ fn tc_dashboard(s: State<App>) -> Value {
         "project": cur.as_ref().map(|c| &c.1), "since": cur.as_ref().map(|c| c.0), "task": cur.as_ref().map(|c| &c.2), "on_break": on_break,
         "today_hours": today_h, "today": sessions.iter().filter(|x| x.date == t).collect::<Vec<_>>(),
         "week": week, "leave": leave, "projects": per_project, "flex_total": flex_total, "flex_week": flex_week, "backup_error": backup::last_failure(),
+        "leave_time": leave_time(&tc, cur.is_some(), on_break.is_some(), today_h),
     })
 }
 
@@ -1349,7 +1363,7 @@ pub fn run() {
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, trash_note, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
-            tc_status, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
+            tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_linked, export_report, export_open
         ])

@@ -632,6 +632,28 @@ pub fn leave_credit(leave: &[Leave], date: NaiveDate, expected: f64, worked: f64
     leave_on(leave, date, expected, worked).iter().map(|x| x.1).sum::<f64>().min(expected)
 }
 
+/// When to leave today, flex ignored: what is left of NOW's expected hours (DAILY, less LEAVE) after
+/// WORKED, rounded up to whole minutes; with the clock RUNNING, the time it runs out.
+pub fn leave_time(now: NaiveDateTime, worked: f64, daily: f64, leave: &[Leave], running: bool, on_break: bool) -> String {
+    let (day, hm) = (now.date(), |m: i64| if m >= 60 { format!("{}h {:02}m", m / 60, m % 60) } else { format!("{m}m") });
+    let e = expected_hours(day, daily);
+    if e <= 0.0 {
+        return "No expected hours today.".into();
+    }
+    let secs = ((e - leave_credit(leave, day, e, worked) - worked) * 3600.0).round() as i64;
+    if secs <= 0 {
+        return if secs <= -60 { format!("Done for today, {} over.", hm(-secs / 60)) } else { "Done for today.".into() };
+    }
+    let left = (secs as f64 / 60.0).ceil() as i64;
+    if running {
+        format!("Leave at {} ({} left).", (now + Duration::minutes(left)).format("%H:%M"), hm(left))
+    } else if on_break {
+        format!("On a break: {} left; the leave time starts when you resume.", hm(left))
+    } else {
+        format!("{} left today (not clocked in).", hm(left))
+    }
+}
+
 /// Port of `albin/calculate-flex`: (total, period, period_days). Only days with work count;
 /// time off lowers that day's expected hours, so work on a vacation day is flex.
 pub fn flex(sessions: &[Session], projects: &Projects, leave: &[Leave], daily: f64, range: Option<(NaiveDate, NaiveDate)>) -> (f64, f64, usize) {
@@ -972,6 +994,23 @@ mod tests {
         // Mon 8h on an 8h day => 0, Fri 2h => -6
         assert_eq!(flex(&s, &Projects::new(), &[], 8.0, None).0, -6.0);
         assert_eq!(task_suggestions(&s, Some("Acme"), d("2026-10-02")), vec!["Review", "Did stuff"]);
+    }
+
+    #[test]
+    fn when_to_leave() {
+        let l = |hours, rest| Leave { from: d("2026-10-12"), to: d("2026-10-12"), kind: "vacation".into(), hours, rest, note: String::new() };
+        let mon = dt("2026-10-12 14:24");
+        assert_eq!(leave_time(mon, 5.7, 8.0, &[], true, false), "Leave at 16:42 (2h 18m left).");
+        assert_eq!(leave_time(mon, 5.7, 8.0, &[], false, true), "On a break: 2h 18m left; the leave time starts when you resume.");
+        assert_eq!(leave_time(mon, 7.5, 8.0, &[], false, false), "30m left today (not clocked in).");
+        assert_eq!(leave_time(mon, 7.99, 8.0, &[], true, false), "Leave at 14:25 (1m left)."); // rounded up
+        assert_eq!(leave_time(mon, 8.5, 8.0, &[], true, false), "Done for today, 30m over.");
+        assert_eq!(leave_time(mon, 8.0, 8.0, &[], true, false), "Done for today.");
+        assert_eq!(leave_time(dt("2026-10-10 10:00"), 1.0, 8.0, &[], true, false), "No expected hours today."); // Saturday
+        assert_eq!(leave_time(dt("2026-12-25 10:00"), 0.0, 8.0, &[], true, false), "No expected hours today."); // red day
+        assert_eq!(leave_time(mon, 2.0, 8.0, &[l(Some(4.0), false)], true, false), "Leave at 16:24 (2h 00m left)."); // half day off
+        assert_eq!(leave_time(mon, 3.0, 8.0, &[l(None, true)], true, false), "Done for today."); // rest of the day off
+        assert_eq!(leave_time(mon, 0.0, 8.0, &[l(None, false)], false, false), "Done for today."); // whole day off
     }
 
     #[test]
