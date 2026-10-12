@@ -141,13 +141,26 @@
     refreshBacklinks();
   }
 
-  /** FORCE (from :w / Ctrl+S) also overwrites a file that changed on disk in a conflicting way. */
-  async function saveTab(t?: Tab, force = false) {
-    if (!t || t.kind !== "file" || !t.dirty || (t.conflict && !force)) return;
+  /** FORCE (from :w / Ctrl+S) also overwrites a file that changed on disk in a conflicting way.
+   *  Saves of one tab run one at a time, so `saved` is what the disk should hold when each starts. */
+  const saveQueue = ed.perKey();
+  const saveTab = (t?: Tab, force = false) => (t ? saveQueue(t.key, () => writeTab(t, force)) : Promise.resolve());
+  async function writeTab(t: Tab, force: boolean): Promise<void> {
+    if (t.kind !== "file" || !t.dirty || (t.conflict && !force)) return;
     t.conflict = false;
     clearTimeout(saveTimers.get(t.key));
     const text = stateOf(t).doc.toString();
-    const warn: string = await call("write_file", { path: t.path, text });
+    let warn: string;
+    try {
+      warn = await call("write_file", { path: t.path, text, expect: force ? undefined : t.saved });
+    } catch (e) {
+      if (e !== "changed-on-disk") throw e;
+      // Edited elsewhere since the last sync (the watcher hasn't caught up): merge or flag it, then save the result.
+      const disk = ((await call("read_file", { path: t.path })) as string).replace(/\r\n?/g, "\n");
+      if (disk !== t.saved) mergeFromDisk(t, disk);
+      t.saved = disk;
+      return writeTab(t, false);
+    }
     t.saved = text;
     // Keystrokes typed while the write was in flight keep the tab dirty.
     if (stateOf(t).doc.toString() === text) t.dirty = false;
@@ -315,7 +328,9 @@
     const t = tabs[i];
     if (!t) return;
     if (i === cur && isText(t)) t.state = view.state;
+    const was = t.conflict;
     await saveTab(t);
+    if (t.conflict && !was) return; // the save found an overlapping edit on disk: keep yours open
     if (t.kind === "file" && t.path && t.state) closed.push({ path: t.path, line: t.state.doc.lineAt(t.state.selection.main.head).number - 1 });
     else if (t.kind !== "file" && t.kind !== "report") closed.push({ kind: t.kind, query: t.query, title: t.title });
     if (closed.length > 20) closed.shift();

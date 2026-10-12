@@ -103,7 +103,9 @@ Everything stays in sync on its own: notes save shortly after you stop typing,
 and any change to the notes or time folders — from the app, Emacs or a sync
 tool — refreshes open tabs, task lists, links, reports and the timer. If a file
 changes underneath unsaved edits, non-overlapping changes are merged; real
-conflicts are flagged (`:w` keeps yours, `Space f r` reloads).
+conflicts are flagged (`:w` keeps yours, `Space f r` reloads). A save never
+overwrites a change made elsewhere that the app hasn't seen yet: it is merged
+or flagged the same way first.
 
 ## Getting around
 

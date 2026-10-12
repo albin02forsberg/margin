@@ -22,3 +22,14 @@ export function mergeEdits(saved: string, mine: string, disk: string): Change | 
   if (t.to < m.from) return t;
   return null;
 }
+
+/** A runner that starts each F only after every earlier F with the same KEY has settled
+ *  (one save per tab at a time, so each save's expected disk text is the previous save's). */
+export function perKey() {
+  const last = new Map<string, Promise<unknown>>();
+  return <T>(key: string, f: () => Promise<T>): Promise<T> => {
+    const p = (last.get(key) ?? Promise.resolve()).then(f);
+    last.set(key, p.catch(() => {}));
+    return p;
+  };
+}

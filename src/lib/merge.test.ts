@@ -1,7 +1,7 @@
 // Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { diffChange, mergeEdits, type Change } from "./merge.ts";
+import { diffChange, mergeEdits, perKey, type Change } from "./merge.ts";
 
 const apply = (s: string, c: Change) => s.slice(0, c.from) + c.insert + s.slice(c.to);
 const saved = "one\ntwo\nthree\n";
@@ -39,4 +39,14 @@ test("mergeEdits takes any disk edit when yours is empty (typed then undone)", (
   assert.equal(merged(saved, "zero\n" + saved), "zero\n" + saved); // prepended
   assert.equal(merged(saved, "one\nTWO\nthree\n"), "one\nTWO\nthree\n");
   assert.equal(mergeEdits("", "", "new\n")?.insert, "new\n");
+});
+
+test("perKey runs calls with the same key one after another, others in parallel, past errors", async () => {
+  const run = perKey(), log: string[] = [];
+  const step = (s: string, ms: number, fail = false) => () =>
+    new Promise<void>((ok, no) => setTimeout(() => (log.push(s), fail ? no(new Error(s)) : ok()), ms));
+  const a = run("t", step("a1", 30, true)), b = run("t", step("a2", 1)), c = run("u", step("b", 10));
+  await assert.rejects(a);
+  await Promise.all([b, c]);
+  assert.deepEqual(log, ["b", "a1", "a2"]);
 });
