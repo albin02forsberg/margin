@@ -2,7 +2,7 @@
   "tolerance": 0.5,
   "suites": {
     "rust": {
-      "lines": 77.37,
+      "lines": 78.42,
       "files": {
         "src-tauri/src/activity.rs": 94.04,
         "src-tauri/src/ai.rs": 95.65,
@@ -12,11 +12,11 @@
         "src-tauri/src/export.rs": 98.14,
         "src-tauri/src/ics.rs": 91.69,
         "src-tauri/src/idle.rs": 36.67,
-        "src-tauri/src/lib.rs": 17.46,
+        "src-tauri/src/lib.rs": 27.04,
         "src-tauri/src/notes.rs": 95.12,
         "src-tauri/src/org.rs": 92.23,
         "src-tauri/src/remind.rs": 47.66,
-        "src-tauri/src/timeclock.rs": 89.77,
+        "src-tauri/src/timeclock.rs": 90.35,
         "src-tauri/src/watcher.rs": 66.49,
         "src-tauri/src/watcher/gnome.rs": 58.18,
         "src-tauri/src/watcher/wlr.rs": 61.67
