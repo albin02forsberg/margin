@@ -35,9 +35,42 @@ pub fn last_failure() -> Option<String> {
     LAST_FAILURE.lock().unwrap().clone()
 }
 
+/// Env changes that keep a child process off the AppImage's bundled libs:
+/// `(key, Some(new))` sets, `(key, None)` removes. Only entries under APPDIR go.
+fn clean_env(vars: &[(&str, String)], appdir: &str) -> Vec<(String, Option<String>)> {
+    let under = |p: &str| !appdir.is_empty() && Path::new(p).starts_with(appdir);
+    let mut out = Vec::new();
+    for (k, v) in vars {
+        match *k {
+            "LD_LIBRARY_PATH" => {
+                let all: Vec<&str> = v.split(':').filter(|p| !p.is_empty()).collect();
+                let kept: Vec<&str> = all.iter().copied().filter(|p| !under(*p)).collect();
+                if kept.len() != all.len() {
+                    out.push((k.to_string(), (!kept.is_empty()).then(|| kept.join(":"))));
+                }
+            }
+            "GIT_EXEC_PATH" | "GIT_SSL_CAINFO" | "GIT_TEMPLATE_DIR" | "PERLLIB" if under(v.as_str()) => out.push((k.to_string(), None)),
+            _ => {}
+        }
+    }
+    out
+}
+
 fn git(dir: &Path, args: &[&str]) -> (bool, String) {
     let mut c = Command::new("git");
     c.args(args).current_dir(dir);
+    if let Ok(appdir) = std::env::var("APPDIR") {
+        let vars: Vec<(&str, String)> = ["LD_LIBRARY_PATH", "GIT_EXEC_PATH", "GIT_SSL_CAINFO", "GIT_TEMPLATE_DIR", "PERLLIB"]
+            .into_iter()
+            .filter_map(|k| std::env::var(k).ok().map(|v| (k, v)))
+            .collect();
+        for (k, v) in clean_env(&vars, &appdir) {
+            match v {
+                Some(v) => c.env(k, v),
+                None => c.env_remove(k),
+            };
+        }
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -84,4 +117,37 @@ pub fn backup(dir: &Path, init: bool) {
         (true, _) => ok(format!("{}: push succeeded.", dir.display())),
         (false, out) => fail(format!("{}: git push: {out}", dir.display())),
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn v(k: &'static str, s: &str) -> (&'static str, String) {
+        (k, s.to_string())
+    }
+
+    #[test]
+    fn strips_appdir_lib_entries() {
+        let r = clean_env(&[v("LD_LIBRARY_PATH", "/tmp/.mount_X/usr/lib:/opt/lib::/tmp/.mount_X/lib64")], "/tmp/.mount_X");
+        assert_eq!(r, vec![("LD_LIBRARY_PATH".to_string(), Some("/opt/lib".to_string()))]);
+    }
+
+    #[test]
+    fn removes_var_when_only_appdir_entries() {
+        let r = clean_env(&[v("LD_LIBRARY_PATH", "/tmp/.mount_X/usr/lib")], "/tmp/.mount_X");
+        assert_eq!(r, vec![("LD_LIBRARY_PATH".to_string(), None)]);
+    }
+
+    #[test]
+    fn leaves_foreign_values_and_prefix_lookalikes() {
+        let r = clean_env(&[v("LD_LIBRARY_PATH", "/opt/lib:/tmp/.mount_XY/lib"), v("GIT_EXEC_PATH", "/usr/lib/git-core")], "/tmp/.mount_X");
+        assert!(r.is_empty());
+    }
+
+    #[test]
+    fn removes_git_vars_under_appdir() {
+        let r = clean_env(&[v("GIT_EXEC_PATH", "/tmp/.mount_X/usr/libexec/git-core"), v("PERLLIB", "/usr/share/perl")], "/tmp/.mount_X");
+        assert_eq!(r, vec![("GIT_EXEC_PATH".to_string(), None)]);
+    }
 }
