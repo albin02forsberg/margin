@@ -23,6 +23,8 @@ jobs:
       GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - id: v
         run: |
           last=$(gh release view nightly --json body -q .body 2>/dev/null | grep -o '[0-9a-f]\{40\}' | head -1 || true)
@@ -31,10 +33,15 @@ jobs:
           fi
           version=$(STAMP=$(date -u +%Y%m%d%H%M) node -p "const [a, b, c] = require('./src-tauri/tauri.conf.json').version.split('-')[0].split('.').map(Number); [a, b, c + 1].join('.') + '-nightly.' + process.env.STAMP")
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Changes since the previous nightly, else since the latest stable tag (#254). The first line must
+          # stay the body's first 40-hex string (`last` above reads it); changelog.sh prints subjects only.
+          git cat-file -e "$last^{commit}" 2>/dev/null || last=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)
+          { echo "Untested build of main at $GITHUB_SHA. Turn on Settings → Nightly updates to get these."; echo
+            bash .github/scripts/changelog.sh "$last" "$GITHUB_SHA"; } > "$RUNNER_TEMP/notes.md"
           # A fresh release each time, so old nightlies' assets don't pile up.
           gh release delete nightly --cleanup-tag -y || true
           gh release create nightly --target "$GITHUB_SHA" --prerelease --title "Margin nightly $version" \
-            --notes "Untested build of main at $GITHUB_SHA. Turn on Settings → Nightly updates to get these."
+            --notes-file "$RUNNER_TEMP/notes.md"
 
   build:
     needs: prepare
