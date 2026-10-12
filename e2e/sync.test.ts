@@ -50,4 +50,16 @@ describe("Sync with the disk", () => {
     await fileMatches(file, (s) => s.includes("Mine wins.\nSecond line.") && !s.includes("Theirs."), "your version not saved");
     await browser.waitUntil(async () => !/changed on disk/.test(await status()), { timeoutMsg: "conflict flag not cleared" });
   });
+
+  it("takes a disk change into a note whose edits were undone (#277)", async () => {
+    await browser.waitUntil(async () => !/unsaved/.test(await status()), { timeoutMsg: "previous save pending" });
+    await type("ggo");
+    await type("Undone line");
+    await browser.keys(Key.Escape);
+    await type("u");
+    appendFileSync(file, "After undo.\n");
+    await find(".cm-content", "After undo.");
+    assert.doesNotMatch(await status(), /unsaved|changed on disk/);
+    assert.doesNotMatch(String(await browser.$(".cm-content").getText()), /Undone line/);
+  });
 });

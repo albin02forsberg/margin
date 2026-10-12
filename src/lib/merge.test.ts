@@ -33,3 +33,10 @@ test("mergeEdits flags overlapping edits as a conflict", () => {
   assert.equal(merged(saved + "mine\n", saved + "disk\n"), null); // both insert at the same point
   assert.equal(mergeEdits("", "mine\n", "theirs\n"), null); // empty file
 });
+
+test("mergeEdits takes any disk edit when yours is empty (typed then undone)", () => {
+  assert.equal(merged(saved, saved + "four\n"), saved + "four\n"); // appended
+  assert.equal(merged(saved, "zero\n" + saved), "zero\n" + saved); // prepended
+  assert.equal(merged(saved, "one\nTWO\nthree\n"), "one\nTWO\nthree\n");
+  assert.equal(mergeEdits("", "", "new\n")?.insert, "new\n");
+});
