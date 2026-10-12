@@ -1410,18 +1410,12 @@
    *  edits don't overlap (e.g. a diary line appended while you edit above it); otherwise flag it. */
   function mergeFromDisk(t: Tab, disk: string) {
     const st = stateOf(t);
-    const mine = ed.diffChange(t.saved!, st.doc.toString());
-    const theirs = ed.diffChange(t.saved!, disk);
-    const shift = mine.insert.length - (mine.to - mine.from);
-    let at: { from: number; to: number } | null = null;
-    if (theirs.from > mine.to) at = { from: theirs.from + shift, to: theirs.to + shift };
-    else if (theirs.to < mine.from) at = { from: theirs.from, to: theirs.to };
-    if (!at) {
+    const change = ed.mergeEdits(t.saved!, st.doc.toString(), disk);
+    if (!change) {
       t.conflict = true;
       flash(`⚠ “${t.title}” was changed elsewhere while you edited it. :w keeps yours, Space f r loads theirs.`);
       return;
     }
-    const change = { ...at, insert: theirs.insert };
     syncing = true;
     try {
       if (t === tabs[cur]) view.dispatch({ changes: change });

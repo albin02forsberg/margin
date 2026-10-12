@@ -433,14 +433,8 @@ const clicks = EditorView.domEventHandlers({
 const curLine = (v: EditorView) => v.state.doc.lineAt(v.state.selection.main.head);
 export const onHeading = (v: EditorView) => !!level(curLine(v).text);
 
-/** The single change turning OLD into TEXT (common prefix/suffix kept). */
-export function diffChange(old: string, text: string) {
-  let a = 0;
-  while (a < old.length && a < text.length && old[a] === text[a]) a++;
-  let b = 0;
-  while (b < old.length - a && b < text.length - a && old[old.length - 1 - b] === text[text.length - 1 - b]) b++;
-  return { from: a, to: old.length - b, insert: text.slice(a, text.length - b) };
-}
+import { diffChange } from "./merge";
+export { diffChange, mergeEdits } from "./merge";
 
 /** Replace the doc with TEXT as one minimal change, keeping cursor and undo sane. */
 export function applyText(view: EditorView, text: string) {
