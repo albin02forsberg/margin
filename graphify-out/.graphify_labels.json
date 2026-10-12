@@ -11,7 +11,7 @@
   "9": "compilerOptions",
   "10": "dependencies",
   "11": "Calendar",
-  "12": "graph",
+  "12": "$lib/graph",
   "13": "GitHub Releases",
   "14": "scripts",
   "15": "level",
@@ -60,7 +60,7 @@
   "58": "Time Tracking",
   "59": "TypeScript",
   "60": "ics.rs",
-  "61": "decorate",
+  "61": "Glyph",
   "62": "super",
   "63": "remind.rs",
   "64": "settings.ts",
@@ -78,8 +78,6 @@
   "76": "backup.rs",
   "77": "merge.test.ts",
   "78": "CALENDAR",
-  "79": "$lib/graph",
-  "80": "$lib/projects",
-  "81": "@tauri-apps/api/event",
-  "82": "@tauri-apps/api/webview"
+  "79": "chatctx.ts",
+  "80": "@codemirror/state"
 }
