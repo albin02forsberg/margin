@@ -12,10 +12,11 @@ export function diffChange(old: string, text: string): Change {
 }
 
 /** The disk's change to SAVED, positioned for MINE (SAVED plus your unsaved edit), or null when
- *  the two edits overlap or touch, i.e. a conflict. */
+ *  the two edits overlap or touch, i.e. a conflict. No edit of yours (e.g. typed then undone) never conflicts. */
 export function mergeEdits(saved: string, mine: string, disk: string): Change | null {
   const m = diffChange(saved, mine);
   const t = diffChange(saved, disk);
+  if (m.from === m.to && !m.insert) return t;
   const shift = m.insert.length - (m.to - m.from);
   if (t.from > m.to) return { from: t.from + shift, to: t.to + shift, insert: t.insert };
   if (t.to < m.from) return t;

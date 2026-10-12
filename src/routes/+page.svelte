@@ -1450,6 +1450,8 @@
     } finally {
       syncing = false;
     }
+    // Your edits were undone back to the saved text: the tab now matches the disk.
+    if (stateOf(t).doc.toString() === disk) Object.assign(t, { dirty: false, conflict: false });
   }
 
   async function reloadFromDisk() {
