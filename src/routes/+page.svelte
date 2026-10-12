@@ -682,6 +682,13 @@
     if (title) await createNote(title);
   }
 
+  /** Flash and return true when the tab's unsaved edits clash with the disk copy (rename/trash would lose them). */
+  function refuseConflict(t: { conflict?: boolean; dirty?: boolean }): boolean {
+    if (!(t.conflict && t.dirty)) return false;
+    flash("Resolve the conflict first: :w keeps yours, Space f r loads theirs");
+    return true;
+  }
+
   /** Rename the open note in its folder; the backend fixes the [[file:]] links to it. */
   async function renameNote() {
     if (!inFile() || !tab.path!.startsWith(cfg.notes)) return flash("Open a note first.");
@@ -690,6 +697,7 @@
     if (!name || name === base(from)) return;
     if (!/\.org(_archive)?$/.test(name)) name += ".org";
     await saveAll(); // links are rewritten on disk
+    if (refuseConflict(t)) return; // saveAll skips conflict tabs, so the buffer is not what the disk holds
     const [to, changed] = await call<[string, string[]]>("rename_note", { from, name });
     // Re-key the tab: a fresh editor state, since autosave looks tabs up by key.
     const old = stateOf(t), text = old.doc.toString();
@@ -718,6 +726,7 @@
     const ok = await pick({ prompt: `Move “${t.title}” to the notes .trash folder?${links}`, items: [{ label: "Cancel", value: false }, { label: "Move to .trash", value: true }] });
     if (!ok) return;
     await saveTab(t);
+    if (refuseConflict(t)) return; // the save can itself raise the conflict; trashing would drop the edits
     const to = await call<string>("trash_note", { path });
     t.dirty = false; // nothing left to save: closing must not recreate it
     await closeTab(tabs.indexOf(t));

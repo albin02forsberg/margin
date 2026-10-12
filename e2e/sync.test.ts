@@ -2,13 +2,24 @@
 // External writes happen right after Esc, inside the 700 ms autosave delay, so the sync sees an unsaved tab.
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { answer, browser, close, fileMatches, find, Key, launch, type } from "./setup.ts";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { answer, browser, close, fileMatches, find, Key, launch, palette, type } from "./setup.ts";
 
 let file: string;
 // textContent: getText is "" for the status bar's ellipsis span (see texts() in setup.ts).
 const status = async () => String(await browser.$(".status .file").getProperty("textContent"));
+
+// Opens sync.org, edits its title, then rewrites the title on disk: the tab ends up flagged as a conflict.
+const conflict = async (n: number) => {
+  await browser.keys([Key.Ctrl, "p"]);
+  await answer("Open a note", "sync");
+  await find(".status .file", "sync.org");
+  await type(`ggC#+title: Mine ${n}`);
+  await browser.keys(Key.Escape);
+  writeFileSync(file, readFileSync(file, "utf8").replace(/^.*\n/, `#+title: Theirs ${n}\n`));
+  await find(".status .file", "changed on disk");
+};
 
 describe("Sync with the disk", () => {
   before(async () => {
@@ -72,18 +83,9 @@ describe("Sync with the disk", () => {
   });
 
   it("asks before closing a tab whose edits clash with the disk (#273)", async () => {
-    const conflict = async (n: number) => {
-      await browser.keys([Key.Ctrl, "p"]);
-      await answer("Open a note", "sync");
-      await find(".status .file", "sync.org");
-      await type(`ggC#+title: Mine ${n}`);
-      await browser.keys(Key.Escape);
-      writeFileSync(file, readFileSync(file, "utf8").replace(/^.*\n/, `#+title: Theirs ${n}\n`));
-      await find(".status .file", "changed on disk");
-      await type(" bd");
-      await find(".picker label span", "changed on disk");
-    };
     await conflict(1);
+    await type(" bd");
+    await find(".picker label span", "changed on disk");
     await browser.keys(Key.Escape); // keep editing
     await browser.pause(300);
     await find(".status .file", "changed on disk");
@@ -94,9 +96,25 @@ describe("Sync with the disk", () => {
     await find(".agenda h1", "Today"); // the tab closed
 
     await conflict(2);
+    await type(" bd");
+    await find(".picker label span", "changed on disk");
     await answer("changed on disk", "Discard mine");
     await find(".agenda h1", "Today");
     await browser.pause(1000); // a pending autosave must not write yours back
     assert.match(readFileSync(file, "utf8"), /^#\+title: Theirs 2\n/);
+  });
+
+  it("refuses to rename or trash a note whose edits clash with the disk (#281)", async () => {
+    await conflict(3);
+    await palette("Rename note");
+    await answer("Rename note to", "renamed");
+    await find(".status .msg", "Resolve the conflict first");
+    await palette("Delete note");
+    await answer("Move “", "Move to");
+    await browser.pause(500);
+    assert.match(readFileSync(file, "utf8"), /^#\+title: Theirs 3\n/);
+    assert.ok(!existsSync(join(dirname(file), "renamed.org")) && !existsSync(join(dirname(file), ".trash", "sync.org")), "note moved");
+    await find(".cm-content", "Mine 3");
+    await find(".status .file", "changed on disk");
   });
 });
