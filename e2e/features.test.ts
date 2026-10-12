@@ -303,4 +303,28 @@ describe("Features", () => {
     await browser.execute(() => document.querySelector(".tabs .tab")?.dispatchEvent(new MouseEvent("auxclick", { button: 1, bubbles: true })));
     await browser.waitUntil(async () => (await texts(".tabs .tab > button:not(.x)")).length === 1, { timeoutMsg: "middle-click didn't close the tab" });
   });
+
+  it("closes the tabs around a middle tab without touching their files or the kept tab's fresh edits", async () => {
+    const files = ["hub.org", "leaf.org"].map((f) => join(d.notes, f));
+    const before = files.map(read);
+    for (const n of ["Hub", "Alpha", "Leaf", "Alpha"]) {
+      await browser.keys([Key.Ctrl, "p"]);
+      await answer("Open a note", n);
+    }
+    await find(".status .file", "alpha.org");
+    await browser.keys(Key.Escape);
+    await browser.keys("G");
+    await type("oZZ");
+    await browser.keys(Key.Escape);
+    await browser.keys(" "); // straight away, before the autosave
+    await type("bo");
+    await browser.waitUntil(async () => (await texts(".tabs .tab > button:not(.x)")).length === 1, { timeoutMsg: "other tabs not closed" });
+    await find(".tabs .tab.cur button", "alpha");
+    await find(".status .file", "alpha.org");
+    await fileMatches(join(d.notes, "alpha.org"), (s) => s.includes("\nZZ"), "the kept tab lost its edit");
+    assert.ok((await texts(".cm-content")).some((t) => t.includes("ZZ")), "the editor lost the kept tab's edit");
+    assert.deepEqual(files.map(read), before, "a closed note's file changed");
+    await browser.keys([Key.Ctrl, Key.Shift, "t"]);
+    await browser.waitUntil(async () => (await texts(".tabs .tab > button:not(.x)")).length === 2, { timeoutMsg: "closed tab not reopened" });
+  });
 });

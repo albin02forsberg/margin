@@ -324,10 +324,9 @@
     flash("No closed tabs");
   }
 
-  async function closeTab(i = cur) {
-    const t = tabs[i];
-    if (!t) return;
-    if (i === cur && isText(t)) t.state = view.state;
+  /** Save tab T, ask before dropping unsaved edits that clash with the disk, put it on the Reopen stack and remove it.
+   *  `cur` stays on the same tab (-1 if T was current); the caller shows a tab afterwards. Returns T's old index, or -1 if it stays. */
+  async function detachTab(t: Tab) {
     await saveTab(t);
     // Unsaved edits that clash with the disk or whose file is gone (flagged earlier or by that save): ask before dropping them.
     if (t.kind === "file" && (t.conflict || t.missing) && t.dirty) {
@@ -336,32 +335,42 @@
         items: [{ label: "Keep editing", value: "keep" }, { label: t.missing ? "Save mine (recreates the file)" : "Save mine (overwrites the disk version)", value: "save" }, { label: "Discard mine", value: "discard" }],
       });
       if (c === "save") await saveTab(t, true);
-      else if (c !== "discard") return;
-      if ((i = tabs.indexOf(t)) < 0) return;
+      else if (c !== "discard") return -1;
     }
-    if (t.kind === "file" && t.path && t.state) closed.push({ path: t.path, line: t.state.doc.lineAt(t.state.selection.main.head).number - 1 });
-    else if (t.kind !== "file" && t.kind !== "report") closed.push({ kind: t.kind, query: t.query, title: t.title });
+    const i = tabs.indexOf(t);
+    if (i < 0) return -1;
+    if (t.kind === "file" && t.path) {
+      const st = stateOf(t);
+      closed.push({ path: t.path, line: st.doc.lineAt(st.selection.main.head).number - 1 });
+    } else if (t.kind !== "file" && t.kind !== "report") closed.push({ kind: t.kind, query: t.query, title: t.title });
     if (closed.length > 20) closed.shift();
+    const c = tabs[cur];
     tabs.splice(i, 1);
-    if (!tabs.length) {
-      cur = -1;
-      return openView("agenda");
-    }
-    const next = Math.min(i <= cur ? Math.max(cur - 1, 0) : cur, tabs.length - 1);
-    cur = -1;
-    await show(next);
+    cur = c === t ? -1 : tabs.indexOf(c);
+    return i;
   }
 
-  /** Close every tab but the current one (or ALL of them), highest first so each lands on the Reopen stack; conflict and deleted-with-edits tabs stay open. */
+  /** After closing tabs: show the current tab if it's still open, else the one before index I, else Agenda. */
+  const showAfterClose = (i: number) => (!tabs.length ? openView("agenda") : show(cur >= 0 ? cur : Math.min(Math.max(i - 1, 0), tabs.length - 1)));
+
+  async function closeTab(i = cur) {
+    const t = tabs[i];
+    if (t && (i = await detachTab(t)) >= 0) await showAfterClose(i);
+  }
+
+  /** Close every tab but the current one (or ALL of them), highest first so each lands on the Reopen stack; conflict and deleted-with-edits tabs stay open.
+   *  Shows a tab once at the end, so the editor and the backlinks update once. */
   async function closeOthers(all = false) {
-    const keep = all ? -1 : cur;
+    const keep = all ? undefined : tabs[cur];
+    const at = cur;
     let kept = 0;
-    for (let i = tabs.length - 1; i >= 0; i--) {
-      if (i === keep) continue;
-      if (tabs[i].conflict || (tabs[i].missing && tabs[i].dirty)) kept++;
-      else await closeTab(i);
+    for (const t of [...tabs].reverse()) {
+      if (t === keep) continue;
+      if (t.conflict || (t.missing && t.dirty)) kept++;
+      else await detachTab(t);
     }
     if (kept) flash(`Kept ${kept} tab${kept > 1 ? "s" : ""} with conflicts or deleted files`);
+    await showAfterClose(at + 1);
   }
 
   const cycleTab = (d: number) => tabs.length && show((cur + d + tabs.length) % tabs.length);
