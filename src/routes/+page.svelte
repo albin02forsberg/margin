@@ -632,6 +632,31 @@
     if (title) await createNote(title);
   }
 
+  /** Rename the open note in its folder; the backend fixes the [[file:]] links to it. */
+  async function renameNote() {
+    if (!inFile() || !tab.path!.startsWith(cfg.notes)) return flash("Open a note first.");
+    const t = tab, from = t.path!;
+    let name = (await ask("Rename note to", base(from)))?.trim();
+    if (!name || name === base(from)) return;
+    if (!/\.org(_archive)?$/.test(name)) name += ".org";
+    await saveAll(); // links are rewritten on disk
+    const [to, changed] = await call<[string, string[]]>("rename_note", { from, name });
+    // Re-key the tab: a fresh editor state, since autosave looks tabs up by key.
+    const old = stateOf(t), text = old.doc.toString();
+    Object.assign(t, { key: to, path: to, title: niceName(to), state: newState(to, text, to), saved: text, dirty: false });
+    if (t === tabs[cur]) {
+      view.setState(t.state!);
+      view.dispatch({ selection: old.selection });
+      ed.onModeChange(view, (m) => (mode = m));
+      mode = "normal";
+    }
+    recent = recent.map((p) => (p === from ? to : p));
+    store("recent", JSON.stringify(recent));
+    syncFromDisk();
+    const n = changed.filter((p) => p !== to).length;
+    flash(`Renamed to ${base(to)}${n ? ` — updated links in ${n} note${n > 1 ? "s" : ""}` : ""}`);
+  }
+
   async function insertLink() {
     if (!inFile()) return flash("Open a note first.");
     const loc = { path: tab.path!, pos: view.state.selection.main.head };
@@ -1148,6 +1173,7 @@
     { label: "New task", keys: ["Ctrl+N"], leader: "a", run: () => newTask() },
     { label: "Capture with template…", leader: "c", run: captureTemplate },
     { label: "New note", keys: ["Ctrl+Shift+N"], leader: "n n", run: newNote },
+    { label: "Rename note…", leader: "n r", run: renameNote },
     { label: "Today's journal", keys: ["Ctrl+J"], leader: "j", run: () => journal() },
     { label: "Journal for another day…", leader: "n J", run: journalPick },
     { label: "Journal: previous entry", leader: "n [", run: () => journalStep(-1) },
