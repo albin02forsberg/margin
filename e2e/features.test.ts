@@ -221,6 +221,22 @@ describe("Features", () => {
     await find(".status .file", "doomed.org");
   });
 
+  it("copies the open file's path to the clipboard from the palette", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Export me");
+    await find(".status .file", "exportme.org");
+    // Stub the clipboard: WebKitWebDriver may refuse readText() without a user gesture.
+    await browser.execute(() => {
+      const w = window as unknown as { __copied: string[] };
+      w.__copied = [];
+      Object.defineProperty(navigator.clipboard, "writeText", { configurable: true, value: async (s: string) => { w.__copied.push(s); } });
+    });
+    await palette("Note: copy file path");
+    await find(".status .msg", "Copied");
+    const copied = await browser.execute(() => (window as unknown as { __copied: string[] }).__copied);
+    assert.deepEqual(copied, [join(d.notes, "exportme.org")]);
+  });
+
   it("exports a note as Markdown", async () => {
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "Export me");
