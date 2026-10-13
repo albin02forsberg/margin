@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bugReportUrl, ISSUES, osName } from "./bugreport.ts";
+import { bugReportUrl, ISSUES, isError, osName } from "./bugreport.ts";
+
+test("isError flags only ⚠ messages", () => {
+  assert.ok(isError("⚠ save failed"));
+  assert.ok(!isError("Renamed to a.org"));
+  assert.ok(!isError(" ⚠ not at start"));
+});
 
 test("bug report URL carries version, OS, channel and the last error", () => {
   const u = new URL(bugReportUrl({ version: "0.3.1", os: "Linux", nightly: true, error: "⚠ save failed & retried" }));
