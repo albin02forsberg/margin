@@ -532,6 +532,10 @@ once a day from the day before. Clicking one opens the task (Linux; elsewhere
 notifications are display-only for now). Settings: `reminders`, `remind_before_minutes`,
 `deadline_warning_days`.
 
+With the clock running, one more notification says "Today's hours are done." when
+the day's expected hours are worked (not on a break, a day off or a rest-of-day leave);
+it follows the `reminders` setting.
+
 ## Calendar
 
 Set `calendar_file` (e.g. `"~/Sync/margin.ics"`) and Margin keeps an iCalendar

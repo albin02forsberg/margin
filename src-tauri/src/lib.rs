@@ -782,6 +782,14 @@ fn leave_time(tc: &Tc, running: bool, on_break: bool, today_h: f64) -> String {
     timeclock::leave_time(timeclock::now(), today_h, tc.expected, &leave, running, on_break)
 }
 
+/// Whether the clock runs and today's hours are worked (timeclock::day_done), for the reminder thread.
+pub(crate) fn day_done_now(s: &App) -> bool {
+    let tc = s.tc();
+    let (cur, on_break, today_h) = tc.status();
+    let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
+    timeclock::day_done(timeclock::now(), today_h, tc.expected, &leave, cur.is_some(), on_break.is_some())
+}
+
 #[tauri::command]
 fn tc_leave_time(s: State<App>) -> String {
     let tc = s.tc();

@@ -79,6 +79,12 @@ fn tick(app: &AppHandle) {
     let before = sent.len();
     sent.retain(|k| k.get(..10).and_then(|d| d.parse::<chrono::NaiveDate>().ok()).is_some_and(|d| d >= today));
     let mut changed = sent.len() != before;
+    let key = format!("{today} day-done");
+    if !sent.contains(&key) && crate::day_done_now(&s) {
+        sent.insert(key);
+        changed = true;
+        let _ = app.notification().builder().title("Margin").body("Today's hours are done.").show();
+    }
     for d in due {
         if sent.insert(d.key.clone()) {
             changed = true;
