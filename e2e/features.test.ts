@@ -212,6 +212,13 @@ describe("Features", () => {
     assert.equal(read(join(d.notes, ".trash", "doomed.org")), ":PROPERTIES:\n:ID: doomed-id\n:END:\n#+title: Doomed\n\nDoomed text.\n");
     await browser.waitUntil(async () => !(await texts(".notes button")).some((t) => t.includes("doomed")), { timeoutMsg: "still under Notes" });
     assert.ok(!(await texts(".tabs .tab button")).some((t) => t.includes("doomed")), "tab still open");
+    // ...and back again.
+    await palette("Restore note from .trash");
+    await answer("Restore note from .trash", "doomed");
+    await find(".status .msg", "Restored doomed.org");
+    assert.ok(!existsSync(join(d.notes, ".trash", "doomed.org")), "still in .trash");
+    assert.ok(existsSync(join(d.notes, "doomed.org")), "note not restored");
+    await find(".status .file", "doomed.org");
   });
 
   it("exports a note as Markdown", async () => {

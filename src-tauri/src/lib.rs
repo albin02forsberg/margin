@@ -487,6 +487,61 @@ fn trash_to(root: &Path, f: &Path) -> R<PathBuf> {
     Ok(dst)
 }
 
+/// Where the trashed note TRASHED (under `ROOT/.trash`) goes back to: its subpath under ROOT, minus the
+/// `.N` that `trash_to` appended on a name clash.
+fn restore_target(root: &Path, trashed: &Path) -> R<PathBuf> {
+    let bad = || format!("{} isn't a note in {}", trashed.display(), root.join(".trash").display());
+    let rel = trashed
+        .strip_prefix(root.join(".trash"))
+        .ok()
+        .filter(|r| r.components().all(|c| matches!(c, Component::Normal(_))))
+        .ok_or_else(bad)?;
+    let name = rel.file_name().and_then(|n| n.to_str()).ok_or_else(bad)?;
+    let base = match name.rsplit_once('.') {
+        Some((b, n)) if !n.is_empty() && n.bytes().all(|c| c.is_ascii_digit()) && b.ends_with(".org") => b,
+        _ => name,
+    };
+    if !base.ends_with(".org") {
+        return Err(bad());
+    }
+    Ok(root.join(rel.with_file_name(base)))
+}
+
+/// Move the trashed note TRASHED back to its original place under ROOT; refuses to replace a file.
+fn restore_to(root: &Path, trashed: &Path) -> R<PathBuf> {
+    let to = restore_target(root, trashed)?;
+    if !trashed.is_file() {
+        return Err(format!("{} is gone", trashed.display()));
+    }
+    if to.exists() {
+        return Err(format!("{} already exists; rename it first", to.strip_prefix(root).unwrap_or(&to).display()));
+    }
+    std::fs::create_dir_all(to.parent().unwrap()).map_err(|e| e.to_string())?;
+    std::fs::rename(trashed, &to).map_err(|e| format!("{}: {e}", trashed.display()))?;
+    Ok(to)
+}
+
+/// The notes in `ROOT/.trash` (recursively) with their modification time (unix seconds), newest first.
+fn trashed_in(root: &Path) -> Vec<(PathBuf, u64)> {
+    fn walk(dir: &Path, out: &mut Vec<(PathBuf, u64)>) {
+        for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let p = e.path();
+            let Ok(m) = e.metadata() else { continue };
+            if m.is_dir() {
+                walk(&p, out);
+            } else {
+                let t = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok());
+                out.push((p, t.map_or(0, |d| d.as_secs())));
+            }
+        }
+    }
+    let mut v = Vec::new();
+    walk(&root.join(".trash"), &mut v);
+    v.retain(|(p, _)| restore_target(root, p).is_ok());
+    v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    v
+}
+
 /// Move attachment FILES to `<attachments_dir>/.trash/`, keeping their subpaths.
 #[tauri::command]
 fn trash_attachments(s: State<App>, files: Vec<PathBuf>) -> R<()> {
@@ -736,6 +791,21 @@ fn trash_note(s: State<App>, path: PathBuf) -> R<PathBuf> {
     s.backup();
     let _lock = note_writes();
     trash_to(&s.cfg().notes(), &path)
+}
+
+/// The notes in `<notes>/.trash`, newest first, as (path, trashed unix seconds).
+#[tauri::command(async)]
+fn trashed_notes(s: State<App>) -> Vec<(PathBuf, u64)> {
+    trashed_in(&s.cfg().notes())
+}
+
+/// Move the trashed note PATH back to where it came from (after a backup). Returns the restored path.
+#[tauri::command(async)]
+fn restore_note(s: State<App>, path: PathBuf) -> R<PathBuf> {
+    s.check(&path)?;
+    s.backup();
+    let _lock = note_writes();
+    restore_to(&s.cfg().notes(), &path)
 }
 
 #[tauri::command(async)]
@@ -1459,7 +1529,7 @@ pub fn run() {
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
-            notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, trash_note, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
+            notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_linked, export_report, export_open
@@ -1655,6 +1725,42 @@ mod tests {
         }
         assert!(out.exists());
         let _ = std::fs::remove_file(out);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn restore_puts_a_trashed_note_back() {
+        let root = std::env::temp_dir().join(format!("margin-restore-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let put = |p: &str| {
+            let p = root.join(p);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, p.to_str().unwrap()).unwrap();
+            p
+        };
+        let t = |p: &str| root.join(".trash").join(p);
+        assert_eq!(restore_target(&root, &t("sub/a.org")).unwrap(), root.join("sub/a.org"));
+        assert_eq!(restore_target(&root, &t("sub/a.org.12")).unwrap(), root.join("sub/a.org"));
+        assert_eq!(restore_target(&root, &t("v1.2.org")).unwrap(), root.join("v1.2.org"));
+        for bad in [root.join("sub/a.org"), t("../a.org"), t("a.txt"), t("a.org.x"), root.join(".trash")] {
+            assert!(restore_target(&root, &bad).is_err(), "{}", bad.display());
+        }
+        // Trash twice, list, restore the numbered copy; restoring over an existing note is refused.
+        let a = put("sub/a.org");
+        let one = trash_to(&root, &a).unwrap();
+        let a = put("sub/a.org");
+        let two = trash_to(&root, &a).unwrap();
+        put(".trash/readme.txt");
+        let listed: Vec<PathBuf> = trashed_in(&root).into_iter().map(|(p, _)| p).collect();
+        assert_eq!(listed.len(), 2);
+        assert!(listed.contains(&one) && listed.contains(&two));
+        assert_eq!(restore_to(&root, &two).unwrap(), root.join("sub/a.org"));
+        assert!(!two.exists());
+        assert!(restore_to(&root, &one).unwrap_err().contains("already exists"));
+        assert!(one.exists());
+        std::fs::remove_file(root.join("sub/a.org")).unwrap();
+        assert_eq!(restore_to(&root, &one).unwrap(), root.join("sub/a.org"));
+        assert!(restore_to(&root, &one).is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 

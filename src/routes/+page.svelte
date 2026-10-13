@@ -758,6 +758,21 @@
     flash(`🗑 Moved to ${rel(to)}`);
   }
 
+  /** Pick a note from <notes>/.trash (newest first) and move it back to where it came from. */
+  async function restoreNote() {
+    const items = (await call<[string, number][]>("trashed_notes")).map(([p, secs]) => ({
+      label: rel(p).replace(/^\.trash[\\/]/, "").replace(/\.org(\.\d+)?$/, ".org"),
+      detail: `trashed ${new Date(secs * 1000).toLocaleString()}`,
+      value: p,
+    }));
+    if (!items.length) return flash("Nothing in .trash");
+    const from = await pick({ prompt: "Restore note from .trash", items });
+    if (!from) return;
+    const to = await call<string>("restore_note", { path: from });
+    await openFile(to);
+    flash(`Restored ${rel(to)}`);
+  }
+
   async function insertLink() {
     if (!inFile()) return flash("Open a note first.");
     const loc = { path: tab.path!, pos: view.state.selection.main.head };
@@ -1276,6 +1291,7 @@
     { label: "New note", keys: ["Ctrl+Shift+N"], leader: "n n", run: newNote },
     { label: "Rename note…", leader: "n r", run: renameNote },
     { label: "Delete note… (move to .trash)", leader: "n D", run: trashNote },
+    { label: "Restore note from .trash…", leader: "n R", run: restoreNote },
     { label: "Today's journal", keys: ["Ctrl+J"], leader: "j", run: () => journal() },
     { label: "Journal for another day…", leader: "n J", run: journalPick },
     { label: "Journal: previous entry", leader: "n [", run: () => journalStep(-1) },
