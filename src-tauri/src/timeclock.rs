@@ -163,13 +163,12 @@ impl Tc {
 
     /// Rewrite the log via `normalize_log` (after a pull); true if it changed. Hold `locked`.
     pub fn normalize_log(&self) -> Result<bool, String> {
-        let text = self.try_read_log()?;
-        let out = normalize_log(&text);
-        if out == text {
-            return Ok(false);
-        }
-        crate::config::write_atomic(&self.log_path(), out).map_err(|e| e.to_string())?;
-        Ok(true)
+        rewrite_with(&self.log_path(), normalize_log)
+    }
+
+    /// Drop duplicate time off lines via `dedupe_lines` (after a pull); true if it changed.
+    pub fn dedupe_leave(&self) -> Result<bool, String> {
+        rewrite_with(&self.leave_path(), dedupe_lines)
     }
 
     /// Projects for display; unreadable or malformed is empty.
@@ -447,10 +446,9 @@ pub fn parse_events(text: &str) -> Vec<(usize, Event)> {
 /// pull two machines' appends sit one after the other, but `sessions` pairs in file order.
 /// The sort is stable (same-time events keep their order); an unparsable line keeps the time before it.
 pub fn normalize_log(text: &str) -> String {
-    let (mut seen, mut last) = (HashSet::new(), NaiveDateTime::MIN);
+    let (text, mut last) = (dedupe_lines(text), NaiveDateTime::MIN);
     let mut lines: Vec<(NaiveDateTime, &str)> = text
         .lines()
-        .filter(|l| !l.trim().is_empty() && seen.insert(*l))
         .map(|l| {
             if let Ok(ev) = serde_json::from_str::<Event>(l) {
                 last = ev.t();
@@ -460,6 +458,13 @@ pub fn normalize_log(text: &str) -> String {
         .collect();
     lines.sort_by_key(|x| x.0);
     lines.iter().map(|(_, l)| format!("{l}\n")).collect()
+}
+
+/// TEXT without blank or exact duplicate lines (first copy kept): a union merge of the same
+/// append on two machines (`leave.jsonl`) keeps both copies.
+pub fn dedupe_lines(text: &str) -> String {
+    let mut seen = HashSet::new();
+    text.lines().filter(|l| !l.trim().is_empty() && seen.insert(*l)).map(|l| format!("{l}\n")).collect()
 }
 
 // ---------------------------------------------------------------- sessions
@@ -870,10 +875,14 @@ pub fn csv(sessions: &[Session], projects: &Projects, (leave, codes): (&[Leave],
     out
 }
 
-/// Port of `albin/timeclock--find-log-issues`.
+/// Port of `albin/timeclock--find-log-issues`, plus overlapping sessions: two machines clocked
+/// in at once read `in, in, out, out` after a sync (both kept, decision on #307).
 pub fn doctor(text: &str, now: NaiveDateTime) -> Vec<String> {
     let mut issues = vec![];
-    let mut open: Option<NaiveDateTime> = None;
+    let mut open: Option<(usize, NaiveDateTime)> = None;
+    // Line of the overlapped clock-in whose clock-out is still to come, and the latest clock-out
+    // so far (not breaks: `adjust_start` after a resume may move it before the break).
+    let (mut overlapped, mut ended): (Option<usize>, Option<NaiveDateTime>) = (None, None);
     for (i, line) in text.lines().enumerate() {
         let n = i + 1;
         if line.trim().is_empty() {
@@ -886,27 +895,50 @@ pub fn doctor(text: &str, now: NaiveDateTime) -> Vec<String> {
                 continue;
             }
         };
+        let is_out = matches!(ev, Event::Out { .. });
         match ev {
             Event::In { t, .. } => {
-                if let Some(o) = open {
-                    issues.push(format!("Line {n}: clocked in again while session started {o} was still open (its time is dropped)"));
+                if let Some((m, o)) = open {
+                    issues.push(format!("Line {n}: overlapping clock-ins (two machines?): clocked in at {t} while the session started {o} (line {m}) was still open; only the later one is counted"));
+                    overlapped = Some(m);
+                } else if let Some(e) = ended.filter(|e| t < *e) {
+                    issues.push(format!("Line {n}: overlapping sessions: starts at {t}, before the previous session ended at {e}"));
                 }
-                open = Some(t);
+                open = Some((n, t));
             }
-            Event::Out { t, .. } | Event::Break { t } => match open.take() {
-                None => issues.push(format!("Line {n}: clock-out with no matching clock-in")),
-                Some(o) if t < o => issues.push(format!("Line {n}: session ends before it starts ({o} -> {t})")),
-                _ => {}
-            },
+            Event::Out { t, .. } | Event::Break { t } => {
+                match open.take() {
+                    None => match overlapped.take() {
+                        Some(m) => issues.push(format!("Line {n}: clock-out of the overlapped session started on line {m}")),
+                        None => issues.push(format!("Line {n}: clock-out with no matching clock-in")),
+                    },
+                    Some((_, o)) if t < o => issues.push(format!("Line {n}: session ends before it starts ({o} -> {t})")),
+                    _ => {}
+                }
+                if is_out {
+                    ended = ended.max(Some(t));
+                }
+            }
         }
     }
-    if let Some(o) = open {
+    if let Some((_, o)) = open {
         let days = (now - o).num_seconds() as f64 / 86400.0;
         if days > 1.0 {
             issues.push(format!("Still clocked in since {o} ({days:.1} days ago) — did you forget to clock out?"));
         }
     }
     issues
+}
+
+/// Replace PATH's text with F(text) when that differs; true if it was written (missing: no-op).
+fn rewrite_with(path: &Path, f: fn(&str) -> String) -> Result<bool, String> {
+    let text = read_or_empty(path)?;
+    let out = f(&text);
+    if out == text {
+        return Ok(false);
+    }
+    crate::config::write_atomic(path, out).map_err(|e| e.to_string())?;
+    Ok(true)
 }
 
 /// PATH's text; missing is empty, any other read error is an error naming PATH.
@@ -1174,6 +1206,21 @@ mod tests {
     }
 
     #[test]
+    fn doctor_flags_overlapping_sessions() {
+        let ev = |e: &str, t: &str| format!("{{\"ev\":\"{e}\",\"t\":\"2026-10-01T{t}:00\",\"project\":\"A\"}}");
+        // Two machines clocked in at once, after a union merge and normalize_log.
+        let log = [ev("in", "09:00"), ev("in", "10:00"), ev("out", "11:00"), ev("out", "12:00"), ev("in", "12:00"), ev("out", "13:00")].join("\n");
+        let i = doctor(&normalize_log(&log), dt("2026-10-01 14:00"));
+        assert_eq!(i.len(), 2, "{i:?}");
+        assert!(i[0].starts_with("Line 2: overlapping clock-ins") && i[0].contains("(line 1)"), "{i:?}");
+        assert_eq!(i[1], "Line 4: clock-out of the overlapped session started on line 1");
+        // Unsorted, the overlap hides behind clean pairs; back-to-back sessions are fine.
+        let i = doctor(&[ev("in", "09:00"), ev("out", "12:00"), ev("in", "10:00"), ev("out", "11:00")].join("\n"), dt("2026-10-01 14:00"));
+        assert_eq!(i, ["Line 3: overlapping sessions: starts at 2026-10-01 10:00:00, before the previous session ended at 2026-10-01 12:00:00"]);
+        assert!(doctor(&[ev("in", "09:00"), ev("break", "10:00"), ev("in", "10:00"), ev("out", "11:00")].join("\n"), dt("2026-10-01 14:00")).is_empty());
+    }
+
+    #[test]
     fn clock_flow_on_disk() {
         let dir = std::env::temp_dir().join(format!("tc-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
@@ -1386,6 +1433,13 @@ mod tests {
         fs::write(tc.log_path(), &text).unwrap();
         assert_eq!((tc.normalize_log(), tc.normalize_log()), (Ok(true), Ok(false)));
         assert_eq!(tc.read_log(), normalize_log(&text));
+        // Time off: the same entry added on both machines is kept once, order untouched.
+        let (v, s) = (r#"{"from":"2026-07-01","to":"2026-07-14","kind":"vacation"}"#, r#"{"from":"2026-06-01","to":"2026-06-01","kind":"sick"}"#);
+        assert_eq!(tc.dedupe_leave(), Ok(false));
+        fs::write(tc.leave_path(), format!("{v}\n{s}\n\n{v}\n")).unwrap();
+        assert_eq!((tc.dedupe_leave(), tc.dedupe_leave()), (Ok(true), Ok(false)));
+        assert_eq!(fs::read_to_string(tc.leave_path()).unwrap(), format!("{v}\n{s}\n"));
+        assert_eq!(tc.leave().len(), 2);
         let _ = fs::remove_dir_all(&dir);
     }
 }

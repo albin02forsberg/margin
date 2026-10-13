@@ -134,7 +134,9 @@ repo) after each change. With a remote, the time-data repo also pulls
 gets focus, so two machines sharing one remote see each other's time. The
 time log and time off merge by keeping both machines' lines (a `.gitattributes`
 with `merge=union`, added to the time-data repo if it has none), and after a
-pull the time log is put back in time order with exact duplicates dropped. A
+pull the time log is put back in time order and both files drop exact duplicate
+lines. If both machines were clocked in at once, both clock-ins are kept and
+Time → Check log (`Space t D`) flags the overlapping sessions so you can fix one. A
 conflict elsewhere (e.g. `projects.toml`) is never left half-merged: the rebase is aborted, your local commits
 stay unpushed, and the sidebar's backup warning names the conflicting files.
 The notes repo is only pushed, never pulled.

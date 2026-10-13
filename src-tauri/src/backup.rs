@@ -144,16 +144,20 @@ fn ensure_attributes(dir: &Path) {
 }
 
 /// After a pull: put each profile's (`<data>/<profile>/timelog.jsonl`) unioned log back in
-/// time order; returns the changed files (relative to DIR). Outside the backup lock, since a
-/// backup may run under the time-log lock.
+/// time order and drop duplicate time off lines; returns the changed files (relative to DIR).
+/// Outside the backup lock, since a backup may run under the time-log lock.
 fn normalize_logs(dir: &Path) -> Vec<String> {
+    use crate::timeclock::Tc;
     let mut changed = vec![];
-    for e in std::fs::read_dir(dir).into_iter().flatten().flatten().filter(|e| e.path().join("timelog.jsonl").is_file()) {
-        let tc = crate::timeclock::Tc { dir: e.path(), diary: PathBuf::new(), expected: 0.0 };
-        match crate::timeclock::locked(|| tc.normalize_log()) {
-            Ok(true) => changed.push(format!("{}/timelog.jsonl", e.file_name().to_string_lossy())),
-            Ok(false) => {}
-            Err(e) => log(format!("FAILED: {}: sorting the time log: {e}", tc.dir.display())), // the sync's result stays the warning
+    for e in std::fs::read_dir(dir).into_iter().flatten().flatten().filter(|e| e.path().is_dir()) {
+        let tc = Tc { dir: e.path(), diary: PathBuf::new(), expected: 0.0 };
+        let fixes: [(&str, fn(&Tc) -> Result<bool, String>); 2] = [("timelog.jsonl", Tc::normalize_log), ("leave.jsonl", Tc::dedupe_leave)];
+        for (file, fix) in fixes.into_iter().filter(|(f, _)| e.path().join(f).is_file()) {
+            match crate::timeclock::locked(|| fix(&tc)) {
+                Ok(true) => changed.push(format!("{}/{file}", e.file_name().to_string_lossy())),
+                Ok(false) => {}
+                Err(e) => log(format!("FAILED: {}: tidying {file}: {e}", tc.dir.display())), // the sync's result stays the warning
+            }
         }
     }
     changed
