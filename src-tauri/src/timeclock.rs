@@ -161,6 +161,17 @@ impl Tc {
         crate::config::write_atomic(&self.log_path(), lines.join("\n") + "\n").map_err(|e| e.to_string())
     }
 
+    /// Rewrite the log via `normalize_log` (after a pull); true if it changed. Hold `locked`.
+    pub fn normalize_log(&self) -> Result<bool, String> {
+        let text = self.try_read_log()?;
+        let out = normalize_log(&text);
+        if out == text {
+            return Ok(false);
+        }
+        crate::config::write_atomic(&self.log_path(), out).map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+
     /// Projects for display; unreadable or malformed is empty.
     pub fn projects(&self) -> Projects {
         self.load_projects().unwrap_or_default()
@@ -430,6 +441,25 @@ pub fn spans(events: &[(usize, Event)], now: NaiveDateTime) -> Vec<(NaiveDateTim
 
 pub fn parse_events(text: &str) -> Vec<(usize, Event)> {
     text.lines().enumerate().filter_map(|(i, l)| serde_json::from_str(l).ok().map(|e| (i, e))).collect()
+}
+
+/// The log in event-time order without blank or exact duplicate lines: after a `merge=union`
+/// pull two machines' appends sit one after the other, but `sessions` pairs in file order.
+/// The sort is stable (same-time events keep their order); an unparsable line keeps the time before it.
+pub fn normalize_log(text: &str) -> String {
+    let (mut seen, mut last) = (HashSet::new(), NaiveDateTime::MIN);
+    let mut lines: Vec<(NaiveDateTime, &str)> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty() && seen.insert(*l))
+        .map(|l| {
+            if let Ok(ev) = serde_json::from_str::<Event>(l) {
+                last = ev.t();
+            }
+            (last, l)
+        })
+        .collect();
+    lines.sort_by_key(|x| x.0);
+    lines.iter().map(|(_, l)| format!("{l}\n")).collect()
 }
 
 // ---------------------------------------------------------------- sessions
@@ -1313,5 +1343,28 @@ mod tests {
         let s = |h| vec![Session { date: d("2026-10-01"), project: "A".into(), desc: "x".into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None }];
         let rows = |h| csv(&s(h), &Projects::new(), (&[], &LeaveCodes::new()), 8.0, d("2026-10-01"), d("2026-10-01")).lines().count();
         assert_eq!((rows(0.0), rows(0.2), rows(0.3)), (1, 1, 2)); // default rounding is 0.5 h
+    }
+
+    #[test]
+    fn normalize_log_sorts_and_dedupes() {
+        let (a, b) = (r#"{"ev":"in","t":"2026-10-01T10:00:00","project":"A"}"#, r#"{"ev":"out","t":"2026-10-01T11:00:00"}"#);
+        let (c, d_) = (r#"{"ev":"in","t":"2026-10-01T08:00:00","project":"B"}"#, r#"{"ev":"out","t":"2026-10-01T09:00:00"}"#);
+        // Machine A's lines, then B's earlier ones and a duplicate (union merge), a junk line after B's in.
+        let text = format!("{a}\n{b}\n{c}\njunk\n\n{d_}\n{a}\n");
+        assert_eq!(normalize_log(&text), format!("{c}\njunk\n{d_}\n{a}\n{b}\n"));
+        let s = sessions(&parse_events(&normalize_log(&text)), dt("2026-10-02 00:00"));
+        assert_eq!(s.iter().map(|s| (s.project.as_str(), s.hours)).collect::<Vec<_>>(), [("B", 1.0), ("A", 1.0)]);
+        // Same-time events keep their order (a project switch is `out` then `in` at one second).
+        let sw = format!("{b}\n{}\n", r#"{"ev":"in","t":"2026-10-01T11:00:00","project":"C"}"#);
+        assert_eq!(normalize_log(&sw), sw);
+        let dir = std::env::temp_dir().join(format!("tc-norm-{}", std::process::id()));
+        let tc = Tc { dir: dir.clone(), diary: dir.join("d.org"), expected: 8.0 };
+        assert_eq!(tc.normalize_log(), Ok(false)); // no log: nothing written
+        assert!(!tc.log_path().exists());
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(tc.log_path(), &text).unwrap();
+        assert_eq!((tc.normalize_log(), tc.normalize_log()), (Ok(true), Ok(false)));
+        assert_eq!(tc.read_log(), normalize_log(&text));
+        let _ = fs::remove_dir_all(&dir);
     }
 }

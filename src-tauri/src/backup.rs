@@ -104,6 +104,9 @@ pub fn backup(dir: &Path, own: bool) {
             return fail(format!("{name}: git init: {out}"));
         }
     }
+    if own {
+        ensure_attributes(dir);
+    }
     let (ok_, out) = git(dir, &["add", "-A"]);
     if !ok_ {
         return fail(format!("{name}: git add: {out}"));
@@ -128,6 +131,32 @@ pub fn backup(dir: &Path, own: bool) {
             (false, out) => fail(format!("{}: git push: {out}", dir.display())),
         },
     });
+}
+
+/// Append-only logs merge by keeping both sides' lines, so two machines' clock events never
+/// conflict (`normalize_logs` restores time order). Written only if absent, and from a backup
+/// (committed right away): an untracked copy would block a rebase bringing the other machine's.
+fn ensure_attributes(dir: &Path) {
+    let f = std::fs::OpenOptions::new().write(true).create_new(true).open(dir.join(".gitattributes"));
+    if let Ok(mut f) = f {
+        let _ = std::io::Write::write_all(&mut f, b"timelog.jsonl merge=union\nleave.jsonl merge=union\n");
+    }
+}
+
+/// After a pull: put each profile's (`<data>/<profile>/timelog.jsonl`) unioned log back in
+/// time order; returns the changed files (relative to DIR). Outside the backup lock, since a
+/// backup may run under the time-log lock.
+fn normalize_logs(dir: &Path) -> Vec<String> {
+    let mut changed = vec![];
+    for e in std::fs::read_dir(dir).into_iter().flatten().flatten().filter(|e| e.path().join("timelog.jsonl").is_file()) {
+        let tc = crate::timeclock::Tc { dir: e.path(), diary: PathBuf::new(), expected: 0.0 };
+        match crate::timeclock::locked(|| tc.normalize_log()) {
+            Ok(true) => changed.push(format!("{}/timelog.jsonl", e.file_name().to_string_lossy())),
+            Ok(false) => {}
+            Err(e) => log(format!("FAILED: {}: sorting the time log: {e}", tc.dir.display())), // the sync's result stays the warning
+        }
+    }
+    changed
 }
 
 /// One sync at a time: `sync_soon` and the timer skip while one runs, a backup's sync waits.
@@ -188,6 +217,16 @@ fn sync_repo(dir: &Path) -> Result<Option<String>, String> {
             git(dir, &["rebase", "--abort"]);
             let what = if files.is_empty() { out } else { files.lines().collect::<Vec<_>>().join(", ") };
             return Err(format!("sync conflict, local changes not pushed: {what}"));
+        }
+    }
+    // Commit the sorted logs right away (pushed below), so the tree isn't left dirty for the next rebase.
+    let sorted = if incoming == "0" { vec![] } else { normalize_logs(dir) };
+    if !sorted.is_empty() {
+        let _lock = BACKUP.lock().unwrap_or_else(|e| e.into_inner());
+        let mut args = vec!["commit", "-q", "-m", "⏱ Time log sorted after sync", "--"];
+        args.extend(sorted.iter().map(String::as_str));
+        if let (false, out) = git(dir, &args) {
+            log(format!("FAILED: {}: committing the sorted time log: {out}", dir.display()));
         }
     }
     let pulled = if incoming == "0" { String::new() } else { format!("pulled {incoming} commit(s); ") };
@@ -299,6 +338,31 @@ mod tests {
             assert!(t.elapsed() < std::time::Duration::from_secs(20), "{}", log_text());
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn union_merge_keeps_both_machines_time_in_order() {
+        let (root, a, b) = two_clones();
+        let base = r#"{"ev":"out","t":"2026-09-30T17:00:00"}"#;
+        let (ev_a, ev_b) = (r#"{"ev":"in","t":"2026-10-01T10:00:00","project":"A"}"#, r#"{"ev":"in","t":"2026-10-01T08:00:00","project":"B"}"#);
+        ensure_attributes(&a);
+        std::fs::create_dir_all(a.join("work")).unwrap();
+        commit(&a, "work/timelog.jsonl", &format!("{base}\n"));
+        assert!(git(&a, &["push"]).0);
+        assert_eq!(sync_repo(&b), Ok(Some("pulled 1 commit(s).".into())));
+        // Both machines append after the same line: a plain merge would conflict.
+        commit(&a, "work/timelog.jsonl", &format!("{base}\n{ev_a}\n"));
+        assert!(git(&a, &["push"]).0);
+        commit(&b, "work/timelog.jsonl", &format!("{base}\n{ev_b}\n"));
+        assert_eq!(sync_repo(&b), Ok(Some("pulled 1 commit(s); push succeeded.".into())));
+        let sorted = format!("{base}\n{ev_b}\n{ev_a}\n");
+        for d in [&b, &a] {
+            assert!(sync_repo(d).is_ok());
+            assert_eq!(std::fs::read_to_string(d.join("work/timelog.jsonl")).unwrap(), sorted);
+            assert_eq!(git(d, &["status", "--porcelain"]).1, ""); // the sort is committed
+        }
+        assert_eq!(git(&a, &["rev-parse", "HEAD"]).1, git(&b, &["rev-parse", "HEAD"]).1);
         let _ = std::fs::remove_dir_all(&root);
     }
 
