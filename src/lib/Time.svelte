@@ -304,10 +304,10 @@
   .lane > h2 { margin: 0; padding: 0 var(--s1); font-size: var(--fs-md); font-weight: 600; }
   .card { padding: var(--s4); }
   h3 { font-size: var(--fs-md); font-weight: 600; margin: 0 0 var(--s3); display: flex; flex-wrap: wrap; gap: 0 10px; align-items: baseline; }
-  .status { display: grid; grid-template-columns: 1fr auto; gap: 14px; }
+  .status { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; }
   .status.on { background: linear-gradient(160deg, color-mix(in srgb, var(--done) 12%, var(--card)), var(--card) 60%); }
   .status.paused { background: linear-gradient(160deg, color-mix(in srgb, var(--h5) 12%, var(--card)), var(--card) 60%); }
-  .state { display: flex; gap: var(--s3); align-items: flex-start; }
+  .state { display: flex; gap: var(--s3); align-items: flex-start; min-width: 0; }
   .state small, .total small, .flex small { color: var(--dim); font-size: var(--fs-sm); display: block; }
   .state > div { min-width: 0; }
   .state small { white-space: nowrap; }
