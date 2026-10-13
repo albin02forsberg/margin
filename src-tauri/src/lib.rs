@@ -865,14 +865,14 @@ fn dashboard(inp: DashIn) -> Value {
 /// Log time off (vacation, sick, …) FROM..=TO.
 #[tauri::command(async)]
 fn tc_leave_add(s: State<App>, leave: timeclock::Leave) -> R<()> {
-    s.tc().add_leave(leave)?;
+    timeclock::locked(|| s.tc().add_leave(leave))?;
     s.backup();
     Ok(())
 }
 
 #[tauri::command(async)]
 fn tc_leave_remove(s: State<App>, line: usize) -> R<()> {
-    s.tc().remove_leave(line)?;
+    timeclock::locked(|| s.tc().remove_leave(line))?;
     s.backup();
     Ok(())
 }

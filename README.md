@@ -139,7 +139,8 @@ lines. If both machines were clocked in at once, both clock-ins are kept and
 Time → Check log (`Space t D`) flags the overlapping sessions so you can fix one. A
 conflict elsewhere (e.g. `projects.toml`) is never left half-merged: the rebase is aborted, your local commits
 stay unpushed, and the sidebar's backup warning names the conflicting files.
-The notes repo is only pushed, never pulled.
+The notes repo is only pushed, never pulled. The sidebar's backup warning tracks each repo
+separately, so one repo succeeding never hides the other's failure.
 
 ## Getting around
 

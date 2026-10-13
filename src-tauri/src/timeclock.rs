@@ -1286,6 +1286,31 @@ mod tests {
     }
 
     #[test]
+    fn locked_keeps_leave_added_during_a_dedupe() {
+        let dir = std::env::temp_dir().join(format!("tc-leave-race-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("d.org"), expected: 8.0 };
+        let go = std::sync::Barrier::new(2);
+        std::thread::scope(|t| {
+            t.spawn(|| {
+                go.wait();
+                for d in 1..=20 {
+                    let day = NaiveDate::from_ymd_opt(2026, 7, d).unwrap();
+                    locked(|| tc.add_leave(Leave { from: day, to: day, kind: "vacation".into(), note: String::new(), hours: None, rest: false })).unwrap();
+                }
+            });
+            t.spawn(|| {
+                go.wait();
+                for _ in 0..20 {
+                    locked(|| tc.dedupe_leave()).unwrap();
+                }
+            });
+        });
+        assert_eq!(tc.leave().len(), 20);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn malformed_projects_are_reported() {
         let dir = std::env::temp_dir().join(format!("tc-proj-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
