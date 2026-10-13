@@ -131,8 +131,11 @@ disk" and not autosaved (`:w` recreates it), and drops out of the sidebar's Note
 Backups commit the time-data folder (and the notes folder, if it is a git
 repo) after each change. With a remote, the time-data repo also pulls
 (`git fetch` + rebase) before it pushes, every 5 minutes and when the window
-gets focus, so two machines sharing one remote see each other's time. A
-conflict is never left half-merged: the rebase is aborted, your local commits
+gets focus, so two machines sharing one remote see each other's time. The
+time log and time off merge by keeping both machines' lines (a `.gitattributes`
+with `merge=union`, added to the time-data repo if it has none), and after a
+pull the time log is put back in time order with exact duplicates dropped. A
+conflict elsewhere (e.g. `projects.toml`) is never left half-merged: the rebase is aborted, your local commits
 stay unpushed, and the sidebar's backup warning names the conflicting files.
 The notes repo is only pushed, never pulled.
 
