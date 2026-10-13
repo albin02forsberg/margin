@@ -124,12 +124,17 @@
 {/if}
 
 <style>
-  .backdrop { position: fixed; inset: 0; z-index: 499; background: rgb(0 0 0 / 0.35); }
+  .backdrop { position: fixed; inset: 0; z-index: 499; background: var(--scrim); }
   .dialog {
     position: fixed; top: 10%; left: 50%; transform: translateX(-50%); z-index: 500;
-    width: min(560px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--border);
-    border-radius: 12px; box-shadow: var(--shadow); padding: 18px 20px; outline: none;
+    width: min(560px, calc(100vw - 32px)); background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--r); box-shadow: var(--pshadow); padding: 18px 20px; outline: none;
+    animation: pop-in 160ms var(--ease) both;
   }
+  /* opening only, no outro */
+  @keyframes pop-in { from { opacity: 0.4; transform: translateX(-50%) scale(0.98); } }
+  @media (prefers-reduced-motion: reduce) { .dialog { animation: none; } }
+
   h2 { margin: 0 0 var(--s3); font-size: var(--fs-md); color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
   input, select { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg); font: var(--fs-base) var(--sans); padding: 7px 9px; width: 100%; box-sizing: border-box; }
   input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
