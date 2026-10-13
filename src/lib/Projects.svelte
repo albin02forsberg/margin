@@ -34,14 +34,14 @@
   const options =(r: Row) => (ROUNDINGS.some(([v]) => v === r.rounding) ? ROUNDINGS : [...ROUNDINGS, [r.rounding, `${r.rounding} h`]]);
 </script>
 
-<div class="projects">
+<div class="projects view-in">
   <h1>Projects</h1>
   {#if error}
     <p class="error">⚠ {error}. Fix the file (Time → Check log), then come back.</p>
   {:else if !rows.length}
     <p class="dim">No projects yet: they're added the first time you track time on one.</p>
   {:else}
-    <table>
+    <div class="card form"><table>
       <thead><tr><th>Project</th><th>Export code</th><th>Round billable hours to</th><th>Always round up</th><th>Show in project list</th><th></th></tr></thead>
       <tbody>
         {#each rows as r, i (r.name)}
@@ -59,12 +59,12 @@
           </tr>
         {/each}
       </tbody>
-    </table>
+    </table></div>
     <p class="dim">Enter in an export code saves its row. Hidden projects keep their time; they just aren't offered when you start tracking.</p>
   {/if}
   {#if !error}
     <h2>Time off</h2>
-    <table>
+    <div class="card form"><table>
       <thead><tr><th>Kind</th><th>Export code</th><th></th></tr></thead>
       <tbody>
         {#each off as o, i (o.kind)}
@@ -75,23 +75,26 @@
           </tr>
         {/each}
       </tbody>
-    </table>
+    </table></div>
     <p class="dim">Time off goes into the CSV export as its own rows under this code, kept apart from the time log.</p>
   {/if}
 </div>
 
 <style>
-  .projects { height: 100%; overflow-y: auto; padding: 20px 28px 40px; box-sizing: border-box; font-family: var(--sans); }
+  .projects { height: 100%; overflow-y: auto; background: var(--canvas); padding: 20px 28px 40px; box-sizing: border-box; font-family: var(--sans); }
   h1 { margin: 0 0 18px; font-size: 22px; font-weight: 650; }
   h2 { margin: 28px 0 12px; font-size: 17px; font-weight: 650; }
+  .form:hover { transform: none; box-shadow: var(--soft); } /* inputs inside: no hover lift */
+  .form { padding: var(--s2) var(--s4); }
+  tr:last-child td { border-bottom: 0; }
   table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
   td, th { padding: 6px var(--s2); border-bottom: 1px solid var(--border); text-align: left; }
   th { color: var(--dim); font-weight: 500; font-size: var(--fs-sm); }
   form { margin: 0; }
-  input:not([type]), select { background: var(--panel); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s1) var(--s2); font: var(--fs-md) var(--sans); }
+  input:not([type]), select { background: var(--canvas); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s1) var(--s2); font: var(--fs-md) var(--sans); }
   input:not([type]) { width: 100%; box-sizing: border-box; font-family: var(--mono); }
   button { background: var(--accent); border: 1px solid var(--accent); color: var(--bg); border-radius: var(--radius); padding: var(--s1) var(--s3); font: 600 var(--fs-md) var(--sans); cursor: pointer; }
-  button:disabled { background: var(--bg); border-color: var(--border); color: var(--dim); cursor: default; font-weight: 400; }
+  button:disabled { background: var(--canvas); border-color: var(--border); color: var(--dim); cursor: default; font-weight: 400; }
   .inactive td:first-child { color: var(--dim); }
   .dim { color: var(--dim); font-size: var(--fs-md); }
   .error { color: var(--todo); }
