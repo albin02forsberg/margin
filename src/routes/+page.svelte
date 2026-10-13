@@ -250,7 +250,7 @@
     if (rename === null) return;
     const name = await ask(rename === "rename" ? `Rename “${old}” to` : "Save this search as a view named", tab.title === query ? "" : tab.title, query);
     if (!name?.trim()) return;
-    const warn: string = await call("save_view", { name: name.trim(), query, rename: rename === "rename" });
+    const warn: string = await ownCfg(() => call("save_view", { name: name.trim(), query, rename: rename === "rename" }));
     cfg = await call("config");
     flash(warn ? `⚠ Saved “${name.trim()}” to the sidebar. ${warn}` : `Saved “${name.trim()}” to the sidebar.`);
   }
@@ -263,7 +263,7 @@
     const dataDir = notesDir == null ? null : await ask("Setup: time-tracking folder", c.data_dir, hint);
     const profiles = dataDir == null ? null : await ask("Setup: profiles, comma-separated", c.profiles.join(", "), hint);
     if (profiles == null) return;
-    const warn: string = await call("setup", { notesDir, dataDir, profiles });
+    const warn: string = await ownCfg(() => call("setup", { notesDir, dataDir, profiles }));
     cfg = await call("config");
     reload++;
     await refreshTc();
@@ -272,7 +272,7 @@
 
   /** The settings page's changed VALUES (and saved views or templates: TABLES); errors go back to the page. */
   async function saveSettings(values: Record<string, unknown>, reset: string[] = [], tables: Record<string, unknown> = {}) {
-    const warn: string = await call("save_config", { values, reset, ...tables });
+    const warn: string = await ownCfg(() => call("save_config", { values, reset, ...tables }));
     cfg = await call("config");
     reload++;
     await refreshTc();
@@ -281,9 +281,13 @@
 
   /** Write a missing config.toml from the current settings (Settings' button); errors go back to the page. */
   let ownCfgWrite = 0; // when we last wrote config.toml ourselves: its watcher event needn't be announced
+  /** Stamp ownCfgWrite before and after a config-writing command (the debounced event can land in flight or just after). */
+  async function ownCfg<T>(p: () => Promise<T>): Promise<T> {
+    ownCfgWrite = Date.now();
+    try { return await p(); } finally { ownCfgWrite = Date.now(); }
+  }
   async function recreateConfig() {
-    ownCfgWrite = Date.now(); // before the call: the debounced event can land while it is in flight
-    const warn: string = await call("config_recreate");
+    const warn: string = await ownCfg(() => call("config_recreate"));
     cfg = await call("config");
     reload++;
     await refreshTc();
@@ -939,7 +943,7 @@
     const on = (b: string, m = "") => c.ai_model && c.ai_backend === b && (!m || c.ai_model === m) ? "✓ " : "";
     /** Save the choice, then flash MSG (plus the reload's warning, if any). */
     const set = async (backend: string, model: string, msg: string) => {
-      const warn: string = await call("ai_set", { backend, model });
+      const warn: string = await ownCfg(() => call("ai_set", { backend, model }));
       cfg = await call("config");
       flash(warn ? `⚠ ${msg} ${warn}` : msg);
     };
