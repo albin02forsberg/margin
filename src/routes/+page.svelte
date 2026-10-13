@@ -701,6 +701,9 @@
     return true;
   }
 
+  /** Path of a note being renamed right now; `pruneMissing` skips it. */
+  let renaming = "";
+
   /** Rename the open note in its folder; the backend fixes the [[file:]] links to it. */
   async function renameNote() {
     if (!inFile() || !tab.path!.startsWith(cfg.notes)) return flash("Open a note first.");
@@ -710,7 +713,13 @@
     if (!/\.org(_archive)?$/.test(name)) name += ".org";
     await saveAll(); // links are rewritten on disk
     if (refuseConflict(t)) return; // saveAll skips conflict tabs, so the buffer is not what the disk holds
-    const [to, changed] = await call<[string, string[]]>("rename_note", { from, name });
+    renaming = from; // the watcher's sync must not prune FROM before the remaps below
+    let to: string, changed: string[];
+    try {
+      [to, changed] = await call<[string, string[]]>("rename_note", { from, name });
+    } finally {
+      renaming = "";
+    }
     // Re-key the tab: a fresh editor state, since autosave looks tabs up by key.
     const old = stateOf(t), text = old.doc.toString();
     // A sync during the move may have flagged the old path as missing; the trailing sync re-checks.
@@ -1488,7 +1497,7 @@
 
   /** Drop notes that no longer exist from the sidebar's recent list and the closed tabs (other files are kept); with PATHS, only checks those. */
   async function pruneMissing(paths?: string[]) {
-    const ps = [...new Set([...recent, ...closed.flatMap((c) => ("path" in c ? [c.path] : []))])].filter((p) => p.startsWith(cfg.notes) && p.endsWith(".org") && changed(p, paths));
+    const ps = [...new Set([...recent, ...closed.flatMap((c) => ("path" in c ? [c.path] : []))])].filter((p) => p.startsWith(cfg.notes) && p.endsWith(".org") && p !== renaming && changed(p, paths));
     const have = await Promise.all(ps.map((p) => call<boolean>("file_exists", { path: p })));
     const gone = new Set(ps.filter((_, i) => !have[i]));
     if (gone.size) pruneRecent((p) => !gone.has(p));
