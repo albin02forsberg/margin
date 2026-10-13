@@ -262,16 +262,20 @@
 
   <div class="list">
     {#each groups as g (g.key)}
-      {#if mode === "todo" || span === 7}
-        <h2 class:today={g.today}>{g.title} <small>{g.sub}</small>{#if mode === "todo"}<small>{g.rows.length}</small>{/if}</h2>
-      {/if}
       {@const ni = g.today ? nowIndex(g.rows) : -1}
-      {#each g.rows as { it, i }, j (i)}
-        {#if j === ni}<div class="now"><span>now {String(now.getHours()).padStart(2, "0")}:{String(now.getMinutes()).padStart(2, "0")}</span></div>{/if}
-        {@render row(it, i)}
-      {/each}
-      {#if ni === g.rows.length}<div class="now"><span>now</span></div>{/if}
-      {#if span === 7 && mode === "agenda" && !g.rows.length}<p class="none">—</p>{/if}
+      {#if g.rows.length || (span === 7 && mode === "agenda")}
+        <section class="card" class:today={g.today}>
+          {#if mode === "todo" || span === 7}
+            <h2 class:today={g.today}>{g.title} <small>{g.sub}</small>{#if g.rows.length}<small class="n">{g.rows.length}</small>{/if}</h2>
+          {/if}
+          {#each g.rows as { it, i }, j (i)}
+            {#if j === ni}<div class="now"><span>now {String(now.getHours()).padStart(2, "0")}:{String(now.getMinutes()).padStart(2, "0")}</span></div>{/if}
+            {@render row(it, i)}
+          {/each}
+          {#if ni === g.rows.length}<div class="now"><span>now</span></div>{/if}
+          {#if !g.rows.length}<p class="none">—</p>{/if}
+        </section>
+      {/if}
     {/each}
     {#if !shown.length}
       <div class="empty">
@@ -303,28 +307,35 @@
 </div>
 
 <style>
-  .agenda { height: 100%; display: flex; flex-direction: column; outline: none; font-family: var(--sans); position: relative; }
-  header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: var(--s3); padding: 20px 28px var(--s3); }
-  .titles h1 { margin: 0; font-size: 22px; font-weight: 650; }
+  .agenda { height: 100%; display: flex; flex-direction: column; outline: none; font-family: var(--sans); position: relative; background: var(--canvas); }
+  header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: var(--s3); padding: 20px var(--s5) var(--s4); }
+  .titles h1 { margin: 0; font-size: var(--fs-h1); font-weight: 700; letter-spacing: -0.01em; }
   .titles span { color: var(--dim); font-size: var(--fs-md); }
-  .controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-  .controls button, .seg button { background: var(--panel); border: 1px solid var(--border); color: var(--fg); border-radius: var(--radius); padding: 5px 10px; font: var(--fs-md) var(--sans); cursor: pointer; }
-  .controls .primary { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
-  .seg { display: flex; }
-  .seg button { border-radius: 0; }
-  .seg button:first-child { border-radius: var(--radius) 0 0 6px; }
-  .seg button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
-  .seg button.on { background: var(--sel); }
-  .controls input { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg); padding: 5px 9px; font: var(--fs-md) var(--sans); width: 140px; }
-  .list { flex: 1; overflow-y: auto; padding: 0 28px var(--s5); }
-  h2 { font-size: var(--fs-md); font-weight: 650; margin: var(--s4) 0 var(--s1); color: var(--h2); display: flex; gap: var(--s2); align-items: baseline; }
+  .controls { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
+  /* chip-style controls: card surface, soft shadow, no border */
+  .controls button, .controls input { background: var(--card); border: 0; box-shadow: var(--soft); color: var(--fg); border-radius: 8px; padding: 6px 12px; font: var(--fs-md) var(--sans); cursor: pointer;
+    transition: transform 140ms var(--ease), box-shadow 140ms var(--ease), background-color 120ms var(--ease); }
+  .controls button:hover { transform: translateY(-1px); box-shadow: var(--lift); }
+  .controls button:focus-visible, .controls input:focus { outline: none; box-shadow: var(--soft), var(--ring); }
+  .controls .primary { background: var(--accent); color: var(--bg); font-weight: 600; }
+  .seg { display: flex; gap: 2px; padding: 2px; background: var(--card); border-radius: 10px; box-shadow: var(--soft); }
+  .controls .seg button { background: none; box-shadow: none; color: var(--dim); }
+  .controls .seg button:hover { transform: none; color: var(--fg); }
+  .controls .seg button.on { background: var(--sel); color: var(--fg); font-weight: 500; }
+  .controls input { cursor: text; width: 140px; }
+  .list { flex: 1; overflow-y: auto; padding: 2px var(--s5) var(--s5); display: flex; flex-direction: column; gap: var(--s3); }
+  .list > .card { flex: none; padding: var(--s3); }
+  .list > .card.today { box-shadow: var(--soft), inset 3px 0 0 var(--accent); }
+  .list > .card.today:hover { box-shadow: var(--lift), inset 3px 0 0 var(--accent); }
+  h2 { font-size: var(--fs-md); font-weight: 650; margin: 0 0 var(--s2); padding: 0 var(--s2); color: var(--fg); display: flex; gap: var(--s2); align-items: baseline; }
   h2.today { color: var(--accent); }
   h2 small { color: var(--dim); font-weight: 400; }
-  .row { display: flex; align-items: center; gap: var(--s2); padding: 5px var(--s2); border-radius: var(--radius); cursor: default; font-size: var(--fs-base); min-height: 22px; }
+  h2 .n { font-size: var(--fs-xs); background: var(--active); border-radius: 999px; padding: 0 7px; }
+  .row { display: flex; align-items: center; gap: var(--s2); padding: 6px var(--s2); border-radius: 8px; cursor: default; font-size: var(--fs-base); min-height: 22px; transition: background-color 120ms var(--ease); }
   .row:hover { background: var(--active); }
   .row.sel { background: var(--sel); }
   .row.done .title { text-decoration: line-through; color: var(--dim); }
-  .check { width: 15px; height: 15px; border: 1.5px solid var(--dim); border-radius: var(--radius-sm); flex: none; display: grid; place-items: center; font-size: var(--fs-xs); color: var(--done); cursor: pointer; }
+  .check { width: 15px; height: 15px; border: 1.5px solid var(--dim); border-radius: 50%; flex: none; display: grid; place-items: center; font-size: var(--fs-xs); color: var(--done); cursor: pointer; transition: border-color 120ms var(--ease); }
   .row.done .check { border-color: var(--done); }
   .check:hover { border-color: var(--accent); }
   .prio { font-size: var(--fs-xs); font-weight: 700; border-radius: var(--radius-sm); padding: 0 5px; background: var(--active); color: var(--dim); }
@@ -341,18 +352,25 @@
   .habit i.due { background: var(--todo); }
   .time { font: var(--fs-sm) var(--mono); color: var(--date); }
   .meta { font-size: var(--fs-sm); color: var(--dim); white-space: nowrap; }
-  .meta.warn { color: var(--todo); }
+  .meta.warn { color: var(--todo); background: color-mix(in srgb, var(--todo) 14%, transparent); border-radius: var(--radius-sm); padding: 0 6px; }
   .cat { font-size: var(--fs-sm); color: var(--dim); max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .now { display: flex; align-items: center; gap: var(--s2); color: var(--accent); font-size: var(--fs-xs); margin: 2px 0; }
   .now::after { content: ""; flex: 1; border-top: 1px dashed var(--accent); }
   .none { color: var(--dim); margin: 0 0 0 var(--s2); font-size: var(--fs-sm); }
   .empty { color: var(--dim); text-align: center; margin-top: 15vh; }
   kbd { font: var(--fs-xs) var(--mono); background: var(--active); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--s1); margin-right: 5px; color: var(--fg); }
-  .actions { display: flex; flex-wrap: wrap; gap: var(--s1); padding: var(--s2) 20px; border-top: 1px solid var(--border); background: var(--panel); }
-  .actions button { background: none; border: 0; color: var(--fg); font: var(--fs-sm) var(--sans); padding: 3px 6px; border-radius: var(--radius-sm); cursor: pointer; }
+  /* key-hint pill: in flow (never covers rows), centred, wraps on narrow windows */
+  .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; align-self: center; max-width: calc(100% - 2 * var(--s4)); margin: 0 var(--s4) var(--s3); padding: var(--s1) var(--s3); background: var(--card); border-radius: 20px; box-shadow: var(--lift); }
+  .actions .spacer { flex: 0 0 var(--s2); }
+  .actions button { background: none; border: 0; color: var(--fg); font: var(--fs-sm) var(--sans); padding: 3px 6px; border-radius: 8px; cursor: pointer; transition: background-color 120ms var(--ease); }
   .actions button:hover { background: var(--active); }
-  .help { position: absolute; right: 20px; bottom: 52px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; box-shadow: var(--shadow); }
+  .actions button:focus-visible { outline: none; box-shadow: var(--ring); }
+  .help { position: absolute; right: var(--s5); bottom: 88px; background: var(--card); border-radius: var(--r); padding: 14px 18px; box-shadow: var(--pshadow); z-index: 1; }
   .help h3 { margin: 0 0 var(--s2); font-size: var(--fs-md); }
   .help h3 small { color: var(--dim); font-weight: 400; }
+  @media (prefers-reduced-motion: reduce) {
+    .controls button, .controls input, .row, .check, .actions button { transition: none; }
+    .controls button:hover { transform: none; }
+  }
   .keys { display: grid; grid-template-columns: repeat(2, minmax(200px, auto)); gap: var(--s1) 20px; font-size: var(--fs-md); }
 </style>
