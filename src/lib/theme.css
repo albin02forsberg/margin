@@ -48,8 +48,8 @@
 .card:hover { transform: translateY(-2px); box-shadow: var(--lift); }
 .card:focus-visible, .chip:focus-visible, .pill:focus-visible { outline: none; box-shadow: var(--soft), var(--ring); }
 /* view enter (fade + 4px rise), for the containers views opt into */
-.view-in { animation: view-in 180ms var(--ease) both; }
-@keyframes view-in { from { opacity: 0; transform: translateY(4px); } }
+.view-in { animation: view-in 180ms var(--ease) backwards; } /* no fill after: a lingering transform would anchor fixed tooltips */
+@keyframes view-in { from { opacity: .01; transform: translateY(4px); } } /* not 0: WebDriver counts opacity 0 as hidden */
 @media (prefers-reduced-motion: reduce) {
   .card, .chip, .pill { transition: none; }
   .card:hover { transform: none; }

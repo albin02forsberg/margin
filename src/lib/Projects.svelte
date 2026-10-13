@@ -34,7 +34,7 @@
   const options =(r: Row) => (ROUNDINGS.some(([v]) => v === r.rounding) ? ROUNDINGS : [...ROUNDINGS, [r.rounding, `${r.rounding} h`]]);
 </script>
 
-<div class="projects view-in">
+<div class="projects">
   <h1>Projects</h1>
   {#if error}
     <p class="error">⚠ {error}. Fix the file (Time → Check log), then come back.</p>

@@ -64,6 +64,7 @@
   let reload = $state(0);
   const stored = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
   const store = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch {} };
+  let motion = $state(false); // view-change motion, on after the first load
   let topbar = $state(stored("sidebar", "1") === "1"); // key kept from the old sidebar toggle
   let recent = $state<string[]>(JSON.parse(stored("recent", "[]")));
 
@@ -135,6 +136,7 @@
     }
     cur = i;
     const t = tabs[i];
+    if (motion) tick().then(() => replay(isText(t) ? editorEl : document.querySelector(`.pane > .view[data-key="${CSS.escape(t?.key ?? "")}"]`)));
     if (t?.state) {
       view.setState(t.state);
       ed.onModeChange(view, (m) => (mode = m));
@@ -143,6 +145,14 @@
       view.focus();
     }
     refreshBacklinks();
+  }
+
+  /** Restart the view-enter animation on EL (it only replays on its own when display toggles, not note to note). */
+  function replay(el?: Element | null) {
+    if (!el) return;
+    el.classList.remove("view-in");
+    void (el as HTMLElement).offsetWidth;
+    el.classList.add("view-in");
   }
 
   /** FORCE (from :w / Ctrl+S) also overwrites a file that changed on disk in a conflicting way, or recreates a deleted one.
@@ -232,7 +242,7 @@
   /** Fit saved views into the room the bar has (the views row plus the spacer after it), keeping room for More. */
   function fitViews() {
     if (!viewsEl) return;
-    const btns = [...viewsEl.children] as HTMLElement[];
+    const btns = [...viewsEl.querySelectorAll<HTMLElement>(":scope > button")];
     const saved = btns.filter((b) => b.classList.contains("saved"));
     const more = btns.find((b) => b.classList.contains("more"))!;
     const gap = parseFloat(getComputedStyle(viewsEl).columnGap) || 0;
@@ -242,6 +252,13 @@
     let n = 0;
     for (; n < saved.length; n++) if ((room -= w(saved[n])) < (n < saved.length - 1 ? w(more) : 0)) break;
     fit = n;
+    tick().then(placeInd);
+  }
+  // The open view's card in the bar: one indicator that slides to the `.on` button (More when the open view is folded).
+  let ind = $state({ x: 0, y: 0, w: 0, h: 0, on: false });
+  function placeInd() {
+    const on = viewsEl?.querySelector<HTMLElement>(":scope > button.on:not(.fold)");
+    ind = on ? { x: on.offsetLeft, y: on.offsetTop, w: on.offsetWidth, h: on.offsetHeight, on: true } : { ...ind, on: false };
   }
   $effect(() => {
     const nav = viewsEl;
@@ -1656,6 +1673,7 @@
       ed.hooks.follow = (target) => act(() => followLink(target ?? ed.linkAtCursor(view)));
       ed.hooks.tab = (d) => act(() => cycleTab(d));
       await openView("agenda");
+      requestAnimationFrame(() => (motion = true)); // nothing animates on first load
       await pruneMissing();
       const [tut, first] = await call<[string, boolean]>("tutorial");
       if (first) {
@@ -1733,7 +1751,8 @@
   {#if topbar && cfg}
     <header class="topnav">
       <span class="logo" aria-hidden="true">m</span>
-      <nav class="views" bind:this={viewsEl}>
+      <nav class="views" class:has-ind={ind.on} bind:this={viewsEl}>
+        <span class="ind" class:slide={motion} class:on={ind.on} style:transform="translate({ind.x}px, {ind.y}px)" style:width="{ind.w}px" style:height="{ind.h}px" aria-hidden="true"></span>
         {#each NAV as n}
           <button class:on={n.on(tab)} title="{n.label} ({pretty('Ctrl')}+{n.keys})" onclick={() => act(n.run)}><span class="ico">{n.icon}</span><span class="lbl">{n.label}</span><kbd>{n.keys}</kbd></button>
         {/each}
@@ -1783,7 +1802,7 @@
         {#if dropCue}<div class="drop-cue">Drop to attach to {tab.title}</div>{/if}
         {#if cfg}
           {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo" || t.kind === "time" || t.kind === "projects" || t.kind === "settings") as v (v.key)}
-            <div class="view" style:display={v === tab ? "block" : "none"}>
+            <div class="view" data-key={v.key} style:display={v === tab ? "block" : "none"}>
               {#if v.kind === "time"}
                 <Time api={timeApi} active={v === tab} {reload} />
               {:else if v.kind === "projects"}
@@ -1855,8 +1874,14 @@
   .topnav button:hover { color: var(--fg); }
   .topnav button:focus-visible { outline: none; box-shadow: var(--ring); }
   .logo { width: 28px; height: 28px; border-radius: 9px; background: var(--accent); color: var(--bg); font: 700 15px/28px var(--sans); text-align: center; margin-right: var(--s2); flex: none; }
-  .views { display: flex; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-  .views .fold { position: absolute; visibility: hidden; pointer-events: none; }
+  .views { display: flex; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; position: relative; }
+  .views button { position: relative; } /* above the indicator */
+  .views .fold { position: absolute; left: 0; top: 0; visibility: hidden; pointer-events: none; }
+  .ind { position: absolute; left: 0; top: 0; border-radius: 10px; background: var(--card); box-shadow: var(--soft); opacity: 0; pointer-events: none; }
+  .ind.on { opacity: 1; }
+  .ind.slide { transition: transform 180ms var(--ease), width 180ms var(--ease), opacity 120ms var(--ease); }
+  .views.has-ind button.on { background: none; box-shadow: none; }
+  @media (prefers-reduced-motion: reduce) { .ind.slide { transition: none; } }
   .views button.on, .set.on { background: var(--card); color: var(--fg); box-shadow: var(--soft); font-weight: 500; }
   .views button.on .ico, .set.on .ico { color: var(--link); }
   .views button.on kbd { display: none; }

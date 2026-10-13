@@ -160,6 +160,8 @@ profile clocks out first, and warns where old files stay (nothing is moved).
   searches, the Ctrl+K search, Settings and the running clock (Pause / Stop / Start).
   Toggle it with Ctrl+\\ or `Space v s`. In a narrow window it keeps only the icons (under 760 px)
   and the links/graph panel opens over the note (under 1000 px; Esc or a click on the note closes it).
+  Switching views fades the new one in and slides the bar's highlight; the system's
+  "reduce motion" setting turns both off.
 
 | | |
 |---|---|
