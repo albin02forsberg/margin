@@ -128,6 +128,14 @@ editing, save yours over the disk version, or discard yours. A note deleted or
 moved away outside the app keeps its text in the open tab, flagged "deleted on
 disk" and not autosaved (`:w` recreates it), and drops out of the sidebar's Notes.
 
+Backups commit the time-data folder (and the notes folder, if it is a git
+repo) after each change. With a remote, the time-data repo also pulls
+(`git fetch` + rebase) before it pushes, every 5 minutes and when the window
+gets focus, so two machines sharing one remote see each other's time. A
+conflict is never left half-merged: the rebase is aborted, your local commits
+stay unpushed, and the sidebar's backup warning names the conflicting files.
+The notes repo is only pushed, never pulled.
+
 ## Getting around
 
 New here? The first start asks for your notes folder, time-tracking folder and
