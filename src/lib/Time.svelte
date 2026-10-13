@@ -118,7 +118,7 @@
               <div>
                 <small>Tracking since {clock(d.since)}</small>
                 <h2>{d.project || "No project"}</h2>
-                {#if d.task}<p>{d.task}</p>{/if}
+                {#if d.task}<p title={d.task}>{d.task}</p>{/if}
               </div>
             {:else if d.on_break != null}
               <span class="dot"></span>
@@ -312,7 +312,7 @@
   .state > div { min-width: 0; }
   .state small { white-space: nowrap; }
   .state h2 { margin: 2px 0; font-size: 20px; overflow-wrap: anywhere; }
-  .state p { margin: 0; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .state p { margin: 0; color: var(--dim); overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--done); box-shadow: 0 0 0 3px color-mix(in srgb, var(--done) 25%, transparent); margin-top: 6px; animation: pulse 2s infinite; flex: none; }
   .paused .dot { background: var(--h5); box-shadow: 0 0 0 3px color-mix(in srgb, var(--h5) 25%, transparent); animation: none; }
   @keyframes pulse { 50% { opacity: 0.35; } }
