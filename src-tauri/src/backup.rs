@@ -283,6 +283,26 @@ mod tests {
     }
 
     #[test]
+    fn backup_syncs_the_data_repo() {
+        let (root, a, b) = two_clones();
+        commit(&a, "a.txt", "from a\n");
+        assert!(git(&a, &["push"]).0);
+        sync(&b, true);
+        assert!(b.join("a.txt").exists());
+        assert!(log_text().contains("pulled 1 commit(s)."), "{}", log_text());
+        sync_soon(b.clone()); // throttled: one just ran
+        std::fs::write(b.join("b.txt"), "from b\n").unwrap();
+        backup(&b, true);
+        // The commit goes out on a background sync: wait for it.
+        let t = std::time::Instant::now();
+        while git(&b, &["rev-list", "--count", "@{u}..HEAD"]).1 != "0" {
+            assert!(t.elapsed() < std::time::Duration::from_secs(20), "{}", log_text());
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn sync_conflict_is_aborted_and_named() {
         let (root, a, b) = two_clones();
         commit(&a, "p.toml", "name = \"a\"\n");
