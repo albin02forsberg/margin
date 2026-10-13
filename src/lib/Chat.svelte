@@ -88,6 +88,6 @@
   .dim { color: var(--dim); font-size: var(--fs-sm); }
   .err { color: var(--todo); font-size: var(--fs-sm); }
   label { color: var(--dim); font-size: var(--fs-sm); display: flex; gap: var(--s1); align-items: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  textarea { resize: none; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px var(--s2); font: var(--fs-md) var(--sans); }
+  textarea { resize: none; background: var(--canvas); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px var(--s2); font: var(--fs-md) var(--sans); }
   textarea:focus { outline: none; border-color: var(--accent); }
 </style>

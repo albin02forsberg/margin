@@ -1810,7 +1810,7 @@
   .app { display: flex; flex-direction: column; height: 100vh; }
   .app.mono { --editor-font: var(--mono); }
   :global(.cm-plain) { font-family: var(--mono); }
-  .maincol { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .maincol { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--canvas); }
 
   /* top bar (round-5 mockups, #251): logo, views (the open one a raised card), search, settings, clock chip */
   .topnav { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s4); background: var(--canvas); flex: none; min-width: 0; }
@@ -1837,19 +1837,25 @@
   .clockchip.on .dot { background: var(--done); }
   .warn { color: var(--todo); font-size: var(--fs-xs); padding-right: var(--s2); white-space: nowrap; }
 
-  .tabs { display: flex; background: var(--panel); border-bottom: 1px solid var(--border); overflow-x: auto; flex: none; min-height: 33px; }
-  .tab { display: flex; align-items: center; border-right: 1px solid var(--border); }
-  .tab button { background: none; border: 0; color: var(--dim); padding: var(--s2) var(--s1) var(--s2) 14px; font-size: var(--fs-sm); cursor: pointer; white-space: nowrap; display: flex; align-items: center; width: 100%; }
-  .tab button:hover { background: var(--active); }
-  .tab .x { padding: var(--s1) var(--s2); opacity: 0; font-size: var(--fs-base); }
+  /* open tabs as pills on the canvas, the current one a raised card (round-5 mockups, #251) */
+  .tabs { display: flex; gap: var(--s1); padding: var(--s1) var(--s4) var(--s2); overflow-x: auto; scrollbar-width: none; flex: none; min-height: 26px; }
+  .tab { display: flex; align-items: center; border-radius: 20px; flex: none; transition: background-color 120ms var(--ease), box-shadow 120ms var(--ease); }
+  .tab:hover { background: var(--active); }
+  .tab button { background: none; border: 0; color: var(--dim); padding: var(--s1) 2px var(--s1) var(--s3); font-size: var(--fs-sm); cursor: pointer; white-space: nowrap; display: flex; align-items: center; width: 100%; border-radius: 20px; }
+  .tab button:focus-visible { outline: none; box-shadow: var(--ring); }
+  .tab .x { padding: 2px var(--s2) 2px var(--s1); opacity: 0; font-size: var(--fs-base); }
   .tab:hover .x, .tab.cur .x { opacity: 0.7; }
-  .tab.cur { background: var(--bg); }
-  .tab.cur button { color: var(--fg); }
+  .tab.cur { background: var(--card); box-shadow: var(--soft); }
+  .tab.cur button { color: var(--fg); font-weight: 500; }
   main { flex: 1; display: flex; min-height: 0; }
   .pane { flex: 1; min-width: 0; position: relative; }
   .drop-cue { position: absolute; inset: 6px; border: 2px dashed var(--accent); border-radius: 8px; pointer-events: none; display: flex; align-items: flex-end; justify-content: center; padding-bottom: var(--s5); color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--accent) 6%, transparent); }
   .editor, .view { height: 100%; }
-  .links { width: min(280px, 35vw); border-left: 1px solid var(--border); background: var(--panel); overflow-y: auto; padding: 10px var(--s2); flex: none; }
+  /* the editor as a card on the canvas: border-box keeps CodeMirror (own scroller, Vim ex-line) inside the padding */
+  .editor { box-sizing: border-box; padding: 0 var(--s4) var(--s3); }
+  .editor :global(.cm-editor) { background: var(--card); border-radius: var(--r); box-shadow: var(--soft); overflow: hidden; }
+  /* Graph, Chat and Linked from: each panel its own card */
+  .links { width: min(280px, 35vw); background: var(--card); border-radius: var(--r); box-shadow: var(--soft); margin: 0 var(--s4) var(--s3) 0; overflow-y: auto; padding: 10px var(--s2); flex: none; }
   .links h3 { margin: var(--s1) 6px var(--s2); font-size: var(--fs-sm); color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; }
   .links button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--fg); padding: 6px; border-radius: var(--radius); cursor: pointer; }
   .links button:hover { background: var(--active); }
@@ -1859,16 +1865,16 @@
   .mention { display: flex; align-items: center; }
   .mention button:first-child { min-width: 0; }
   .links .link-it { width: auto; flex: none; color: var(--link); font-size: var(--fs-sm); }
-  .status { display: flex; gap: var(--s3); align-items: center; padding: 3px 10px; background: var(--panel); border-top: 1px solid var(--border); font: var(--fs-xs) var(--mono); flex: none; min-height: 20px; }
+  .status { display: flex; gap: var(--s3); align-items: center; padding: 0 var(--s4) var(--s2); color: var(--dim); font: var(--fs-xs) var(--mono); flex: none; min-height: 20px; }
   .mode { color: var(--bg); background: var(--accent); padding: 0 6px; border-radius: var(--radius-sm); font-weight: 700; }
   .file { color: var(--dim); }
-  .msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .msg { color: var(--fg); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dl { width: 120px; height: 8px; accent-color: var(--accent); }
   .hint { background: none; border: 0; color: var(--dim); font: var(--fs-xs) var(--sans); cursor: pointer; }
   /* narrow windows: compact top bar < 1200, links drawer < 1000, icon-only top bar < 760, short status bar < 560 */
   @media (max-width: 999px) {
     main { position: relative; }
-    .links { position: absolute; right: 0; top: 0; bottom: 0; width: min(320px, 85vw); z-index: 10; box-shadow: var(--shadow); box-sizing: border-box; }
+    .links { position: absolute; right: 0; top: 0; bottom: 0; width: min(320px, 85vw); z-index: 10; box-shadow: var(--shadow); box-sizing: border-box; margin: 0; border-radius: var(--r) 0 0 var(--r); }
   }
   @media (max-width: 1199px) {
     .views kbd, .cmdk .lbl, .clockchip .warn span { display: none; }

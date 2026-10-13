@@ -35,7 +35,7 @@
 <style>
   svg { width: 100%; height: min(60vh, 420px); display: block; font: var(--fs-xs) var(--sans); }
   line { stroke: var(--border); stroke-width: 1.5; }
-  circle { fill: var(--link); stroke: var(--panel); stroke-width: 2; }
+  circle { fill: var(--link); stroke: var(--card); stroke-width: 2; }
   text { fill: var(--fg); text-anchor: middle; }
   .h0 circle { fill: var(--accent); }
   .h2 circle { fill: var(--dim); }
