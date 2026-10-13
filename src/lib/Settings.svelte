@@ -6,7 +6,7 @@
   type List = "views" | "templates";
   /** The config.toml settings as a form, saved per group; unsaved fields survive a reload of CONFIG. */
   /** ERROR: why config.toml couldn't be loaded; MISSING: it's gone, so RECREATE can write it from the current settings. */
-  let { config, defaults, error, missing, save, edit, recreate, active, reload }: { config: Record<string, unknown>; defaults: Record<string, unknown>; error: string | null; missing: boolean; save: (values: Record<string, unknown>, reset?: string[], tables?: Partial<Record<List, Row[]>>) => Promise<void>; edit: () => void; recreate: () => Promise<void>; active: boolean; reload: number } = $props();
+  let { version, config, defaults, error, missing, save, edit, recreate, active, reload }: { version: string; config: Record<string, unknown>; defaults: Record<string, unknown>; error: string | null; missing: boolean; save: (values: Record<string, unknown>, reset?: string[], tables?: Partial<Record<List, Row[]>>) => Promise<void>; edit: () => void; recreate: () => Promise<void>; active: boolean; reload: number } = $props();
   let form = $state<Form>({});
   let base = $state<Form>({});
   let errors = $state<Record<string, string>>({});
@@ -216,7 +216,7 @@
   <form class="card wide" onsubmit={(e) => { e.preventDefault(); saveRows("views"); }}>
     <fieldset disabled={!!error} class="list">
       <legend>Saved views</legend>
-      <small>Task searches in the sidebar. Saving rewrites the [[views]] tables of config.toml; comments inside them are not kept.</small>
+      <small>Task searches in the top bar. Saving rewrites the [[views]] tables of config.toml; comments inside them are not kept.</small>
       {#each rows.views as v, i}
         <div class="row">
           <input aria-label="View name" placeholder="Name" bind:value={v.name} />
@@ -251,6 +251,10 @@
       {@render foot("templates", "templates")}
     </fieldset>
   </form>
+  <section class="card wide about">
+    <h2>About</h2>
+    <p>Margin {version ? `v${version}` : ""}</p>
+  </section>
 </div>
 
 <style>
@@ -260,6 +264,8 @@
   .card.wide, .rules { grid-column: 1 / -1; }
   .card:hover { transform: none; box-shadow: var(--soft); }
   @media (max-width: 700px) { .settings { grid-template-columns: minmax(0, 1fr); } }
+  .about h2 { margin: 0 0 var(--s1); color: var(--dim); font-size: var(--fs-sm); font-weight: 400; }
+  .about p { margin: 0; }
   h1 { margin: 0 0 8px; font-size: 22px; font-weight: 650; }
   form > fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
   .rules { border: 0; margin: 0; min-width: 0; }

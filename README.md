@@ -16,7 +16,7 @@ the editor has vim keys.
   the window or the tray.
 - **Stays in sync** with Emacs, git or any sync tool editing the same files,
   and updates itself from GitHub releases.
-  The running version shows at the bottom of the sidebar (and under "About Margin" in the palette).
+  The running version shows in Settings under About (and under "About Margin" in the palette).
 
 ![Today: scheduled tasks, deadlines, a habit and the running timer](docs/screenshots/today.png)
 
@@ -126,7 +126,7 @@ overwrites a change made elsewhere that the app hasn't seen yet: it is merged
 or flagged the same way first. Closing a flagged tab asks whether to keep
 editing, save yours over the disk version, or discard yours. A note deleted or
 moved away outside the app keeps its text in the open tab, flagged "deleted on
-disk" and not autosaved (`:w` recreates it), and drops out of the sidebar's Notes.
+disk" and not autosaved (`:w` recreates it), and drops out of the recent notes.
 
 Backups commit the time-data folder (and the notes folder, if it is a git
 repo) after each change. With a remote, the time-data repo also pulls
@@ -141,8 +141,8 @@ lines. If both machines were clocked in at once, both clock-ins are kept and
 Time → Check log (`Space t D`) flags the overlapping sessions so you can fix one. A
 conflict elsewhere (e.g. `projects.toml`) is never left half-merged (local changes are committed before the
 pull, never stashed): the rebase is aborted, your local commits
-stay unpushed, and the sidebar's backup warning names the conflicting files.
-The notes repo is only pushed, never pulled. The sidebar's backup warning tracks each repo
+stay unpushed, and the top bar's backup warning names the conflicting files.
+The notes repo is only pushed, never pulled. The top bar's backup warning tracks each repo
 separately, so one repo succeeding never hides the other's failure.
 
 ## Getting around
@@ -155,9 +155,10 @@ profile clocks out first, and warns where old files stay (nothing is moved).
 - **Space** (vim normal mode, or in any list view) — the same actions as a menu.
 - **Ctrl+=** / **Ctrl+-** (**Cmd** on macOS), or **Ctrl+mouse wheel** — zoom the whole UI
   in / out; reset with **Ctrl/Cmd+0** or `Space v 0` (zoom is not remembered across restarts).
-- Sidebar: **Today** (Ctrl+1), **Tasks** (Ctrl+2), **Inbox** (Ctrl+3),
-  **Journal** (Ctrl+J), **Time** (Ctrl+4), your saved searches, recent notes.
-  Toggle with Ctrl+\\. In a narrow window it shrinks to an icon rail (under 760 px)
+- Top bar: **Today** (Ctrl+1), **Tasks** (Ctrl+2), **Inbox** (Ctrl+3),
+  **Journal** (Ctrl+J), **Time** (Ctrl+4), **Notes** (Ctrl+P, recent notes first), your saved
+  searches, the Ctrl+K search, Settings and the running clock (Pause / Stop / Start).
+  Toggle it with Ctrl+\\ or `Space v s`. In a narrow window it keeps only the icons (under 760 px)
   and the links/graph panel opens over the note (under 1000 px; Esc or a click on the note closes it).
 
 | | |
@@ -223,7 +224,7 @@ Values can be quoted too: `file:"my notes"`, `-tag:"x y"`.
 you want.
 
 "Save this search as a view…" (`Space v v`, from a search tab) adds it to the
-sidebar; it's kept in `config.toml`. The settings page's "Saved views" group adds,
+top bar; it's kept in `config.toml`. The settings page's "Saved views" group adds,
 renames, edits, reorders and removes them (saving rewrites the `[[views]]` tables,
 so comments inside them aren't kept); or edit the file:
 

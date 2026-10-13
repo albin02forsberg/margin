@@ -27,9 +27,11 @@ describe("Margin", () => {
     await find(".agenda .row .title", "Fixture task");
   });
 
-  it("shows the app version in the sidebar", async () => {
+  it("shows the app version in Settings > About", async () => {
     const { version } = JSON.parse(readFileSync(join(import.meta.dirname, "../src-tauri/tauri.conf.json"), "utf8"));
-    await find(".side .version", "v" + version);
+    await (await browser.$(".topnav .set")).click();
+    await find(".settings .about", "v" + version);
+    await (await browser.$(".tabs .tab.cur .x")).click();
   });
 
   it("opens a note with Ctrl+P, edits and saves it", async () => {
@@ -43,13 +45,11 @@ describe("Margin", () => {
     await fileMatches(join(notes, "scratch.org"), (s) => /First line\.\n\s*Typed by e2e/.test(s), "note wasn't saved");
   });
 
-  it("keeps a note deleted outside the app on screen, flagged, and drops it from Notes", async () => {
+  it("keeps a note deleted outside the app on screen, flagged", async () => {
     const file = join(notes, "scratch.org");
-    await find(".notes button", "scratch");
     unlinkSync(file);
     await find(".status .file", "deleted on disk");
     await find(".cm-content", "Typed by e2e");
-    await browser.waitUntil(async () => !(await texts(".notes button")).some((t) => t.includes("scratch")), { timeoutMsg: "still under Notes" });
     await browser.pause(500);
     assert.ok(!existsSync(file), "recreated without :w");
     await browser.keys([Key.Ctrl, "s"]);
@@ -257,7 +257,7 @@ describe("Margin", () => {
     await (await browser.$$(".settings .row button[title='Move up']"))[1].click();
     await (await find(".settings button", "Save views")).click();
     await fileMatches(cfg, (s) => /\[\[views\]\]\nname = "Next up"\nquery = "todo:NEXT"\n\n\[\[views\]\]\nname = "Work"/.test(s) && /^templates = \[\]$/m.test(s), "views not saved");
-    await find(".side nav button", "Next up");
+    await find(".topnav .views button", "Next up");
     await (await browser.$$(".settings .row button[title='Remove']"))[0].click();
     await (await find(".settings button", "Save views")).click();
     await fileMatches(cfg, (s) => !s.includes("Next up") && s.includes(`name = "Work"`), "view not removed");

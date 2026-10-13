@@ -64,7 +64,7 @@
   let reload = $state(0);
   const stored = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
   const store = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch {} };
-  let sidebar = $state(stored("sidebar", "1") === "1");
+  let topbar = $state(stored("sidebar", "1") === "1"); // key kept from the old sidebar toggle
   let recent = $state<string[]>(JSON.parse(stored("recent", "[]")));
 
   const tab = $derived(tabs[cur]);
@@ -252,7 +252,7 @@
     if (!name?.trim()) return;
     const warn: string = await ownCfg(() => call("save_view", { name: name.trim(), query, rename: rename === "rename" }));
     cfg = await call("config");
-    flash(warn ? `⚠ Saved “${name.trim()}” to the sidebar. ${warn}` : `Saved “${name.trim()}” to the sidebar.`);
+    flash(warn ? `⚠ Saved “${name.trim()}” to the top bar. ${warn}` : `Saved “${name.trim()}” to the top bar.`);
   }
 
   /** Setup prompts (first run, or from the palette); Esc at any step changes nothing. */
@@ -312,7 +312,7 @@
   /** Recently closed tabs (newest last) for "Reopen closed tab": a file with its line, or a view / task search. */
   const closed: ({ path: string; line: number } | { kind: View; query?: string; title: string })[] = [];
 
-  /** Keep only the sidebar's recent notes and the closed tabs whose path passes KEEP (for trashed or vanished notes). */
+  /** Keep only the recent notes (Ctrl P's order) and the closed tabs whose path passes KEEP (for trashed or vanished notes). */
   function pruneRecent(keep: (p: string) => boolean) {
     const r = recent.filter(keep);
     if (r.length < recent.length) store("recent", JSON.stringify((recent = r)));
@@ -1318,7 +1318,7 @@
     { label: "Go to Time tracking", keys: ["Ctrl+4"], leader: "v c", run: () => openView("time") },
     { label: "Search tasks…", leader: "v f", run: searchTasks },
     { label: "Save this search as a view…", leader: "v v", run: saveView },
-    { label: "Toggle sidebar", keys: ["Ctrl+\\"], leader: "v s", run: () => { sidebar = !sidebar; store("sidebar", sidebar ? "1" : "0"); } },
+    { label: "Toggle top bar", keys: ["Ctrl+\\"], leader: "v s", run: () => { topbar = !topbar; store("sidebar", topbar ? "1" : "0"); } },
     { label: "Settings", keys: ["Ctrl+,"], leader: "f c", run: () => openView("settings") },
     { label: "Settings: edit config.toml", leader: "f C", run: editConfig },
     { label: "AI drafts: choose model…", leader: "f a", run: aiChoose },
@@ -1520,7 +1520,7 @@
     await refreshBacklinks();
   }
 
-  /** Drop notes that no longer exist from the sidebar's recent list and the closed tabs (other files are kept); with PATHS, only checks those. */
+  /** Drop notes that no longer exist from the recent list and the closed tabs (other files are kept); with PATHS, only checks those. */
   async function pruneMissing(paths?: string[]) {
     const ps = [...new Set([...recent, ...closed.flatMap((c) => ("path" in c ? [c.path] : []))])].filter((p) => p.startsWith(cfg.notes) && p.endsWith(".org") && p !== renaming && changed(p, paths));
     const have = await Promise.all(ps.map((p) => call<boolean>("file_exists", { path: p })));
@@ -1695,49 +1695,38 @@
 </script>
 
 <div class="app" class:mono={monoFont}>
-  {#if sidebar && cfg}
-    <aside class="side">
-      <button class="cmdk" title="Search or run a command" onclick={() => act(palette)}><span class="ico">⌕</span><span>Search or run a command…</span><kbd>{pretty("Ctrl")} K</kbd></button>
-      <nav>
+  {#if topbar && cfg}
+    <header class="topnav">
+      <span class="logo" aria-hidden="true">m</span>
+      <nav class="views">
         {#each NAV as n}
-          <button class:on={n.on(tab)} title={n.label} onclick={() => act(n.run)}><span class="ico">{n.icon}</span><span class="lbl">{n.label}</span><kbd>{pretty("Ctrl")} {n.keys}</kbd></button>
+          <button class:on={n.on(tab)} title="{n.label} ({pretty('Ctrl')}+{n.keys})" onclick={() => act(n.run)}><span class="ico">{n.icon}</span><span class="lbl">{n.label}</span><kbd>{n.keys}</kbd></button>
         {/each}
+        <button class:on={tab?.kind === "file" && !NAV.some((n) => n.on(tab))} title="Open a note ({pretty('Ctrl')}+P)" onclick={() => act(quickOpen)}><span class="ico">▤</span><span class="lbl">Notes</span><kbd>P</kbd></button>
         {#each cfg.config.views ?? [] as v}
           <button class:on={tab?.key === `search:${v.query}`} onclick={() => act(() => openSearch(v.name, v.query))} title={v.query}><span class="ico">⌕</span><span class="lbl">{v.name}</span></button>
         {/each}
       </nav>
-      <div class="sec">
-        <span>Notes</span>
-        <button title="Open note ({pretty('Ctrl')}+P)" onclick={() => act(quickOpen)}>⌕</button>
-        <button title="New note" onclick={() => act(newNote)}>+</button>
-      </div>
-      <div class="notes">
-        {#each recent as p (p)}
-          <button class:on={tab?.path === p} onclick={() => act(() => openFile(p))} title={rel(p)}>{niceName(p)}</button>
-        {:else}
-          <p>No notes opened yet. Press {pretty("Ctrl")}+P to find or create one.</p>
-        {/each}
-      </div>
-      <div class="timer" class:on={tc.project != null}>
-        <button class="what" onclick={() => act(() => openView("time"))}>
+      <span class="grow"></span>
+      <button class="cmdk" title="Search or run a command ({pretty('Ctrl')}+K)" onclick={() => act(palette)}><span class="ico">⌕</span><span class="lbl">Search or run a command…</span><kbd>{pretty("Ctrl")} K</kbd></button>
+      <button class="set" class:on={tab?.kind === "settings"} title="Settings ({pretty('Ctrl')}+,)" onclick={() => act(() => openView("settings"))}><span class="ico">⚙</span></button>
+      <div class="clockchip" class:on={tc.project != null}>
+        <button class="what" title="Time tracking ({pretty('Ctrl')}+4)" onclick={() => act(() => openView("time"))}>
           <span class="dot"></span>
-          <span>{tc.project != null ? tc.project || "No project" : tc.on_break != null ? `Break · ${tc.on_break}` : "Not tracking"}</span>
-          <small>{tc.today} today</small>
+          <b>{tc.project != null ? tc.project || "No project" : tc.on_break != null ? `Break · ${tc.on_break}` : "Not tracking"}</b>
+          <span class="today">{tc.today}</span>
         </button>
-        <div class="tbtns">
-          {#if tc.project != null}
-            <button onclick={() => act(t("pause"))} title="Take a break">Pause</button>
-            <button onclick={() => act(t("stop"))} title="Stop tracking">Stop</button>
-          {:else if tc.on_break != null}
-            <button onclick={() => act(t("resume"))}>Resume</button>
-          {:else}
-            <button onclick={() => act(t("start"))}>Start</button>
-          {/if}
-        </div>
-        {#if tc.backup_error}<p class="warn" title={tc.backup_error}>⚠ Backup failed</p>{/if}
+        {#if tc.project != null}
+          <button onclick={() => act(t("pause"))} title="Take a break">Pause</button>
+          <button onclick={() => act(t("stop"))} title="Stop tracking">Stop</button>
+        {:else if tc.on_break != null}
+          <button onclick={() => act(t("resume"))}>Resume</button>
+        {:else}
+          <button onclick={() => act(t("start"))}>Start</button>
+        {/if}
+        {#if tc.backup_error}<span class="warn" title={tc.backup_error}>⚠ <span>Backup failed</span></span>{/if}
       </div>
-      {#if version}<div class="version">v{version}</div>{/if}
-    </aside>
+    </header>
   {/if}
 
   <div class="maincol">
@@ -1763,7 +1752,7 @@
               {:else if v.kind === "projects"}
                 <Projects {act} active={v === tab} {reload} />
               {:else if v.kind === "settings"}
-                <Settings active={v === tab} {reload} config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} missing={cfg.config_missing} save={saveSettings} recreate={recreateConfig} edit={() => act(editConfig)} />
+                <Settings {version} active={v === tab} {reload} config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} missing={cfg.config_missing} save={saveSettings} recreate={recreateConfig} edit={() => act(editConfig)} />
               {:else}
                 <Agenda mode={v.kind as "agenda" | "todo"} api={agendaApi} active={v === tab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} />
               {/if}
@@ -1818,41 +1807,40 @@
 <style>
   :global(html, body) { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: var(--fs-base) var(--sans); overflow: hidden; }
   :global(button) { font-family: inherit; }
-  .app { display: flex; height: 100vh; }
+  .app { display: flex; flex-direction: column; height: 100vh; }
   .app.mono { --editor-font: var(--mono); }
   :global(.cm-plain) { font-family: var(--mono); }
-  .maincol { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .maincol { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
-  .side { width: 232px; flex: none; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 10px var(--s2); gap: var(--s1); box-sizing: border-box; }
-  .side button { background: none; border: 0; color: var(--fg); text-align: left; cursor: pointer; border-radius: var(--radius); font-size: var(--fs-md); }
-  .cmdk { white-space: nowrap; overflow: hidden; display: flex; gap: 6px; justify-content: space-between; align-items: center; border: 1px solid var(--border) !important; padding: 7px 9px; color: var(--dim) !important; margin-bottom: var(--s2); }
-  nav button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 6px 9px; }
-  nav button:hover, .notes button:hover { background: var(--active); }
-  nav button.on, .notes button.on { background: var(--sel); }
-  nav button kbd { margin-left: auto; }
-  .cmdk .ico { display: none; }
-  .ico { width: 16px; text-align: center; color: var(--dim); }
+  /* top bar (round-5 mockups, #251): logo, views (the open one a raised card), search, settings, clock chip */
+  .topnav { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s4); background: var(--canvas); flex: none; min-width: 0; }
+  .topnav button { background: none; border: 0; color: var(--dim); cursor: pointer; font-size: var(--fs-md); display: flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: 10px; white-space: nowrap; transition: background-color 120ms var(--ease), color 120ms var(--ease), box-shadow 120ms var(--ease); }
+  .topnav button:hover { color: var(--fg); }
+  .topnav button:focus-visible { outline: none; box-shadow: var(--ring); }
+  .logo { width: 28px; height: 28px; border-radius: 9px; background: var(--accent); color: var(--bg); font: 700 15px/28px var(--sans); text-align: center; margin-right: var(--s2); flex: none; }
+  .views { display: flex; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .views button.on, .set.on { background: var(--card); color: var(--fg); box-shadow: var(--soft); font-weight: 500; }
+  .views button.on .ico, .set.on .ico { color: var(--link); }
+  .views button.on kbd { display: none; }
+  .grow { flex: 1; }
+  .ico { width: 16px; text-align: center; line-height: 1; font-size: var(--fs-lg); }
+  .topnav .cmdk { width: 250px; flex: 0 1000 250px; min-width: 100px; background: var(--card); box-shadow: var(--soft); padding: 6px var(--s3); }
+  .cmdk .lbl { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; }
   kbd { font: 10px var(--mono); color: var(--dim); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--s1); background: var(--bg); }
-  .sec { display: flex; align-items: center; gap: 2px; margin: 14px var(--s1) 2px 9px; color: var(--dim); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.05em; }
-  .sec span { flex: 1; }
-  .sec button { color: var(--dim); font-size: var(--fs-lg); padding: 0 6px; }
-  .notes { flex: 1; overflow-y: auto; min-height: 0; }
-  .notes button { display: block; width: 100%; padding: var(--s1) 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .notes p { color: var(--dim); font-size: var(--fs-sm); margin: var(--s1) 9px; }
-  .timer { border-top: 1px solid var(--border); padding-top: var(--s2); }
-  .timer .what { display: grid; grid-template-columns: auto 1fr; gap: 0 var(--s2); width: 100%; padding: 6px 9px; align-items: center; }
-  .timer .what small { grid-column: 2; color: var(--dim); font-size: var(--fs-xs); }
-  .timer .what span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
-  .version { color: var(--dim); font-size: var(--fs-xs); padding: 0 9px; }
-  .timer.on .dot { background: var(--done); }
-  .tbtns { display: flex; gap: 6px; padding: var(--s1) 9px; }
-  .tbtns button { border: 1px solid var(--border) !important; padding: 3px 10px; font-size: var(--fs-sm); }
-  .warn { color: var(--todo); font-size: var(--fs-xs); margin: var(--s1) 9px; }
+  .clockchip { display: flex; align-items: center; gap: 2px; background: var(--card); box-shadow: var(--soft); border-radius: 20px; padding: 2px var(--s1); flex: none; }
+  .clockchip button { padding: 3px var(--s2); border-radius: 16px; font-size: var(--fs-sm); }
+  .clockchip button:not(.what):hover { background: var(--active); }
+  .clockchip .what b { color: var(--fg); font-weight: 600; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+  .clockchip .today { font-family: var(--mono); }
+  .clockchip.on .today { color: var(--done); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; }
+  .clockchip.on .dot { background: var(--done); }
+  .warn { color: var(--todo); font-size: var(--fs-xs); padding-right: var(--s2); white-space: nowrap; }
 
   .tabs { display: flex; background: var(--panel); border-bottom: 1px solid var(--border); overflow-x: auto; flex: none; min-height: 33px; }
   .tab { display: flex; align-items: center; border-right: 1px solid var(--border); }
-  .tab button { background: none; border: 0; color: var(--dim); padding: var(--s2) var(--s1) var(--s2) 14px; font-size: var(--fs-sm); cursor: pointer; white-space: nowrap; }
+  .tab button { background: none; border: 0; color: var(--dim); padding: var(--s2) var(--s1) var(--s2) 14px; font-size: var(--fs-sm); cursor: pointer; white-space: nowrap; display: flex; align-items: center; width: 100%; }
+  .tab button:hover { background: var(--active); }
   .tab .x { padding: var(--s1) var(--s2); opacity: 0; font-size: var(--fs-base); }
   .tab:hover .x, .tab.cur .x { opacity: 0.7; }
   .tab.cur { background: var(--bg); }
@@ -1877,18 +1865,20 @@
   .msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dl { width: 120px; height: 8px; accent-color: var(--accent); }
   .hint { background: none; border: 0; color: var(--dim); font: var(--fs-xs) var(--sans); cursor: pointer; }
-  /* narrow windows: links drawer < 1000, sidebar icon rail < 760, short status bar < 560 */
+  /* narrow windows: compact top bar < 1200, links drawer < 1000, icon-only top bar < 760, short status bar < 560 */
   @media (max-width: 999px) {
     main { position: relative; }
     .links { position: absolute; right: 0; top: 0; bottom: 0; width: min(320px, 85vw); z-index: 10; box-shadow: var(--shadow); box-sizing: border-box; }
   }
+  @media (max-width: 1199px) {
+    .views kbd, .cmdk .lbl, .clockchip .warn span { display: none; }
+    .topnav .cmdk { width: auto; flex: none; min-width: 0; }
+  }
   @media (max-width: 759px) {
-    .side { width: 44px; padding: 10px var(--s1); align-items: stretch; }
-    .side .lbl, .side kbd, .side .sec, .side .notes, .side .tbtns, .side .warn, .version, .timer small, .timer .what span:nth-child(2), .cmdk > span:not(.ico) { display: none; }
-    .cmdk .ico { display: block; }
-    .cmdk, nav button, .timer .what { justify-content: center; padding-left: 0; padding-right: 0; }
-    .cmdk { margin-bottom: var(--s2); }
-    .timer .what { grid-template-columns: auto; }
+    .topnav { gap: 2px; padding: var(--s1) var(--s2); }
+    .logo { margin-right: var(--s1); }
+    .views button, .topnav .cmdk { padding: 6px 8px; }
+    .topnav .lbl, .topnav kbd, .clockchip b, .clockchip .warn, .clockchip button:not(.what) { display: none; }
   }
   @media (max-width: 559px) {
     .status .file, .hint:not(.cancel) { display: none; }
