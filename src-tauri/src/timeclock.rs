@@ -98,6 +98,22 @@ fn hours(d: Duration) -> f64 {
     d.num_seconds() as f64 / 3600.0
 }
 
+/// Hours worked on NOW's day: SESSIONS dated today plus the open clock since CUR, counted
+/// from midnight if it started yesterday. A closed session crossing midnight stays dated by its start.
+pub fn today_hours(sessions: &[Session], cur: Option<NaiveDateTime>, now: NaiveDateTime) -> f64 {
+    let open = cur.map_or(0.0, |t| hours(now - t.max(now.date().and_time(NaiveTime::MIN))));
+    sessions.iter().filter(|s| s.date == now.date()).map(|s| s.hours).sum::<f64>() + open
+}
+
+/// Held by the `tc_*` commands that write the time log, so an append can't land between
+/// a rewrite's read and write (`adjust_start`, `edit_session`, `add_session`) and be lost.
+/// Taken in the commands, not in `Tc`, since `clock_in` calls `clock_out`.
+static TC_WRITES: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+pub fn tc_writes() -> std::sync::MutexGuard<'static, ()> {
+    TC_WRITES.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 // ---------------------------------------------------------------- storage
 
 pub struct Tc {
@@ -245,11 +261,8 @@ impl Tc {
 
     pub fn status(&self) -> (Option<(NaiveDateTime, String, String)>, Option<String>, f64) {
         let now = now();
-        let mut today: f64 = self.sessions().iter().filter(|s| s.date == now.date()).map(|s| s.hours).sum();
         let cur = self.current();
-        if let Some((t, _, _)) = &cur {
-            today += hours(now - *t);
-        }
+        let today = today_hours(&self.sessions(), cur.as_ref().map(|c| c.0), now);
         (cur, self.on_break(), today)
     }
 
@@ -1128,6 +1141,51 @@ mod tests {
         assert!(diary.contains("*Other* (0m): done"));
         assert!(doctor(&tc.read_log(), now()).is_empty());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn today_counts_an_open_clock_from_midnight() {
+        let now = dt("2026-10-02 01:00");
+        let done = Session { date: d("2026-10-02"), project: "A".into(), desc: String::new(), hours: 0.5, start: NaiveTime::MIN, end: NaiveTime::MIN, line: Some(1) };
+        let yday = Session { date: d("2026-10-01"), ..done.clone() };
+        let sessions = [done, yday];
+        assert_eq!(today_hours(&sessions, Some(dt("2026-10-01 22:00")), now), 1.5); // not 3.5
+        assert_eq!(today_hours(&sessions, Some(dt("2026-10-02 00:15")), now), 1.25);
+        assert_eq!(today_hours(&sessions, None, now), 0.5);
+        // 1.5 h done at 01:00 of an 8 h day: 6.5 h left.
+        assert_eq!(leave_time(now, today_hours(&sessions, Some(dt("2026-10-01 22:00")), now), 8.0, &[], true, false), "Leave at 07:30 (6h 30m left).");
+    }
+
+    #[test]
+    fn tc_writes_keeps_appends_during_a_rewrite() {
+        for i in 0..20 {
+            let dir = std::env::temp_dir().join(format!("tc-race-{}-{i}", std::process::id()));
+            let _ = fs::remove_dir_all(&dir);
+            let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), expected: 8.0 };
+            tc.clock_in("Acme", "", None).unwrap();
+            let go = std::sync::Barrier::new(2);
+            std::thread::scope(|t| {
+                t.spawn(|| {
+                    go.wait();
+                    for _ in 0..5 {
+                        let _lock = tc_writes();
+                        tc.adjust_start(1).unwrap();
+                    }
+                });
+                t.spawn(|| {
+                    go.wait();
+                    for _ in 0..5 {
+                        let _lock = tc_writes();
+                        tc.take_break().unwrap();
+                        tc.resume().unwrap();
+                    }
+                });
+            });
+            let ev = tc.events();
+            assert_eq!(ev.len(), 11, "{ev:?}"); // in + 5 × (break, in)
+            assert!(doctor(&tc.read_log(), now() + Duration::minutes(10)).is_empty());
+            let _ = fs::remove_dir_all(&dir);
+        }
     }
 
     #[test]
