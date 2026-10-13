@@ -225,6 +225,41 @@
     await show(i);
   }
 
+  // Saved views that don't fit in the top bar fold into its More button: FIT of them stay in the bar.
+  let viewsEl = $state<HTMLElement>();
+  let fit = $state(Infinity);
+  const folded = $derived<{ name: string; query: string }[]>((cfg?.config.views ?? []).slice(fit));
+  /** Fit saved views into the room the bar has (the views row plus the spacer after it), keeping room for More. */
+  function fitViews() {
+    if (!viewsEl) return;
+    const btns = [...viewsEl.children] as HTMLElement[];
+    const saved = btns.filter((b) => b.classList.contains("saved"));
+    const more = btns.find((b) => b.classList.contains("more"))!;
+    const gap = parseFloat(getComputedStyle(viewsEl).columnGap) || 0;
+    const w = (b: HTMLElement) => b.offsetWidth + gap;
+    let room = viewsEl.clientWidth + (viewsEl.nextElementSibling as HTMLElement).offsetWidth;
+    for (const b of btns) if (b !== more && !saved.includes(b)) room -= w(b);
+    let n = 0;
+    for (; n < saved.length; n++) if ((room -= w(saved[n])) < (n < saved.length - 1 ? w(more) : 0)) break;
+    fit = n;
+  }
+  $effect(() => {
+    const nav = viewsEl;
+    if (!nav) return;
+    const ro = new ResizeObserver(fitViews);
+    ro.observe(nav);
+    ro.observe(nav.parentElement!);
+    return () => ro.disconnect();
+  });
+  $effect(() => {
+    void [JSON.stringify(cfg?.config.views), tab?.key]; // labels and the open view's weight change widths
+    tick().then(fitViews);
+  });
+  async function moreViews() {
+    const v = await pick({ prompt: "Saved views", items: folded.map((v) => ({ label: v.name, detail: v.query, value: v })) });
+    if (v) await openSearch(v.name, v.query);
+  }
+
   /** A task list filtered by QUERY (a saved view, or an ad-hoc search). */
   async function openSearch(title: string, query: string) {
     await call("search_todos", { query }); // report a bad query here rather than in an empty tab
@@ -1325,7 +1360,7 @@
     { label: "Save", keys: ["Ctrl+S"], leader: "f s", run: () => saveTab(tab, true) },
     { label: "Reload from disk (discard unsaved changes)", leader: "f r", run: reloadFromDisk },
     { label: "Save all", leader: "f S", run: saveAll },
-    { label: "About Margin", run: () => flash(`Margin ${version}`) },
+    { label: "About Margin", run: async () => { await openView("settings"); await tick(); document.querySelector(".settings .about")?.scrollIntoView({ block: "nearest" }); } },
     { label: "Check for updates", leader: "f u", run: () => checkUpdate() },
     { label: "Report a bug (opens a prefilled GitHub issue)", run: () => openUrl(bugReportUrl({ version, os: osName(navigator.userAgent), nightly: !!cfg?.config?.nightly_updates, error: lastError })) },
     { label: "Run setup again…", run: setup },
@@ -1698,14 +1733,16 @@
   {#if topbar && cfg}
     <header class="topnav">
       <span class="logo" aria-hidden="true">m</span>
-      <nav class="views">
+      <nav class="views" bind:this={viewsEl}>
         {#each NAV as n}
           <button class:on={n.on(tab)} title="{n.label} ({pretty('Ctrl')}+{n.keys})" onclick={() => act(n.run)}><span class="ico">{n.icon}</span><span class="lbl">{n.label}</span><kbd>{n.keys}</kbd></button>
         {/each}
         <button class:on={tab?.kind === "file" && !NAV.some((n) => n.on(tab))} title="Open a note ({pretty('Ctrl')}+P)" onclick={() => act(quickOpen)}><span class="ico">▤</span><span class="lbl">Notes</span><kbd>P</kbd></button>
-        {#each cfg.config.views ?? [] as v}
-          <button class:on={tab?.key === `search:${v.query}`} onclick={() => act(() => openSearch(v.name, v.query))} title={v.query}><span class="ico">⌕</span><span class="lbl">{v.name}</span></button>
+        {#each cfg.config.views ?? [] as v, i}
+          <button class="saved" class:fold={i >= fit} class:on={tab?.key === `search:${v.query}`} onclick={() => act(() => openSearch(v.name, v.query))} title={v.query}><span class="ico">⌕</span><span class="lbl">{v.name}</span></button>
         {/each}
+        <!-- always rendered, so fitViews can measure it -->
+        <button class="more" class:fold={!folded.length} class:on={folded.some((v) => tab?.key === `search:${v.query}`)} title="More saved views" onclick={() => act(moreViews)}><span class="ico">⋯</span><span class="lbl">More</span></button>
       </nav>
       <span class="grow"></span>
       <button class="cmdk" title="Search or run a command ({pretty('Ctrl')}+K)" onclick={() => act(palette)}><span class="ico">⌕</span><span class="lbl">Search or run a command…</span><kbd>{pretty("Ctrl")} K</kbd></button>
@@ -1819,6 +1856,7 @@
   .topnav button:focus-visible { outline: none; box-shadow: var(--ring); }
   .logo { width: 28px; height: 28px; border-radius: 9px; background: var(--accent); color: var(--bg); font: 700 15px/28px var(--sans); text-align: center; margin-right: var(--s2); flex: none; }
   .views { display: flex; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .views .fold { position: absolute; visibility: hidden; pointer-events: none; }
   .views button.on, .set.on { background: var(--card); color: var(--fg); box-shadow: var(--soft); font-weight: 500; }
   .views button.on .ico, .set.on .ico { color: var(--link); }
   .views button.on kbd { display: none; }

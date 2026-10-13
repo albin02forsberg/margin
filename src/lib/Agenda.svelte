@@ -365,7 +365,8 @@
   .actions button { background: none; border: 0; color: var(--fg); font: var(--fs-sm) var(--sans); padding: 3px 6px; border-radius: 8px; cursor: pointer; transition: background-color 120ms var(--ease); }
   .actions button:hover { background: var(--active); }
   .actions button:focus-visible { outline: none; box-shadow: var(--ring); }
-  .help { position: absolute; right: var(--s5); bottom: 88px; background: var(--card); border-radius: var(--r); padding: 14px 18px; box-shadow: var(--pshadow); z-index: 1; }
+  /* in flow above the action pill, so a pill wrapped to two lines on a narrow window never hides under it */
+  .help { align-self: flex-end; flex: none; max-width: calc(100% - 2 * var(--s5)); max-height: 50%; overflow-y: auto; box-sizing: border-box; margin: 0 var(--s5) var(--s2); background: var(--card); border-radius: var(--r); padding: 14px 18px; box-shadow: var(--pshadow); z-index: 1; }
   .help h3 { margin: 0 0 var(--s2); font-size: var(--fs-md); }
   .help h3 small { color: var(--dim); font-weight: 400; }
   @media (prefers-reduced-motion: reduce) {
@@ -373,4 +374,5 @@
     .controls button:hover { transform: none; }
   }
   .keys { display: grid; grid-template-columns: repeat(2, minmax(200px, auto)); gap: var(--s1) 20px; font-size: var(--fs-md); }
+  @media (max-width: 559px) { .keys { grid-template-columns: 1fr; } }
 </style>

@@ -16,7 +16,7 @@ the editor has vim keys.
   the window or the tray.
 - **Stays in sync** with Emacs, git or any sync tool editing the same files,
   and updates itself from GitHub releases.
-  The running version shows in Settings under About (and under "About Margin" in the palette).
+  The running version shows in Settings under About ("About Margin" in the palette opens it there).
 
 ![Today: scheduled tasks, deadlines, a habit and the running timer](docs/screenshots/today.png)
 
@@ -224,7 +224,7 @@ Values can be quoted too: `file:"my notes"`, `-tag:"x y"`.
 you want.
 
 "Save this search as a view…" (`Space v v`, from a search tab) adds it to the
-top bar; it's kept in `config.toml`. The settings page's "Saved views" group adds,
+top bar (views that don't fit fold into its **More** button); it's kept in `config.toml`. The settings page's "Saved views" group adds,
 renames, edits, reorders and removes them (saving rewrites the `[[views]]` tables,
 so comments inside them aren't kept); or edit the file:
 
