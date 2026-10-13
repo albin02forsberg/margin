@@ -401,7 +401,8 @@ fn write_file(app: AppHandle, s: State<App>, path: PathBuf, text: String, expect
 #[tauri::command]
 fn attach_file(s: State<App>, note: PathBuf, src: PathBuf) -> R<String> {
     let name = src.file_name().ok_or("not a file")?.to_string_lossy().to_string();
-    attach(&s, &note, &name, |dst| std::fs::copy(&src, dst).map(|_| ()))
+    let c = s.cfg();
+    attach_in(&c.notes(), &c.attachments_dir, &note, &name, |p| p.exists(), |dst| std::fs::copy(&src, dst).map(|_| ()))
 }
 
 /// Save the pasted bytes (raw body) as header `name` in header `note`'s attachment
@@ -413,14 +414,22 @@ fn attach_bytes(s: State<App>, request: tauri::ipc::Request) -> R<String> {
         let v = request.headers().get(k).ok_or(format!("missing {k}"))?.to_str().map_err(|e| e.to_string())?;
         Ok(percent_encoding::percent_decode_str(v).decode_utf8().map_err(|e| e.to_string())?.into_owned())
     };
-    attach(&s, Path::new(&header("note")?), &header("name")?, |dst| std::fs::write(dst, bytes))
+    let c = s.cfg();
+    attach_in(&c.notes(), &c.attachments_dir, Path::new(&header("note")?), &header("name")?, |p| p.exists(), |dst| std::fs::write(dst, bytes))
 }
 
-/// Reserves the name with `create_new`, so concurrent attaches of one name don't collide.
-fn attach(s: &App, note: &Path, name: &str, write: impl FnOnce(&Path) -> std::io::Result<()>) -> R<String> {
-    let c = s.cfg();
+/// Reserves the name with `create_new`, so concurrent attaches of one name don't collide
+/// (`taken` may be stale; an `AlreadyExists` retries).
+fn attach_in(
+    notes: &Path,
+    dir: &str,
+    note: &Path,
+    name: &str,
+    taken: impl Fn(&Path) -> bool,
+    write: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> R<String> {
     loop {
-        let (dst, link) = attach::target(&c.notes(), &c.attachments_dir, note, name, |p| p.exists())?;
+        let (dst, link) = attach::target(notes, dir, note, name, &taken)?;
         std::fs::create_dir_all(dst.parent().unwrap()).map_err(|e| e.to_string())?;
         match std::fs::File::create_new(&dst) {
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
@@ -434,17 +443,22 @@ fn attach(s: &App, note: &Path, name: &str, write: impl FnOnce(&Path) -> std::io
     }
 }
 
-/// Files under the attachments folder (outside `.trash`) that no note links to.
-#[tauri::command]
-fn unused_attachments(s: State<App>) -> Vec<PathBuf> {
-    let c = s.cfg();
-    let files: Vec<PathBuf> = walkdir::WalkDir::new(c.notes().join(&c.attachments_dir))
+/// Files under ROOT, skipping `.trash`.
+fn attachment_files(root: &Path) -> Vec<PathBuf> {
+    walkdir::WalkDir::new(root)
         .into_iter()
         .filter_entry(|e| e.file_name() != ".trash")
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
         .map(|e| e.into_path())
-        .collect();
+        .collect()
+}
+
+/// Files under the attachments folder (outside `.trash`) that no note links to.
+#[tauri::command]
+fn unused_attachments(s: State<App>) -> Vec<PathBuf> {
+    let c = s.cfg();
+    let files = attachment_files(&c.notes().join(&c.attachments_dir));
     let notes = org::scan(&c.notes(), &s.kw(), &s.cache);
     let notes: Vec<(&Path, &str)> = notes.iter().map(|f| (f.path.as_path(), f.text.as_str())).collect();
     let mut v = attach::unused(&notes, &files);
@@ -1821,6 +1835,50 @@ mod tests {
         let (text, id) = notes_ensure_id("* A\n".into());
         assert!(text.contains(&id));
         assert_eq!(notes_ensure_id(text.clone()), (text, id));
+    }
+
+    #[test]
+    fn attach_in_numbers_clashes_retries_races_and_rolls_back() {
+        let notes = std::env::temp_dir().join(format!("margin-attach-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&notes);
+        let note = notes.join("n.org");
+        let put = |dst: &Path| std::fs::write(dst, "x");
+        let exists = |p: &Path| p.exists();
+        let at = |taken: &dyn Fn(&Path) -> bool, w: &dyn Fn(&Path) -> std::io::Result<()>| {
+            attach_in(&notes, "att", &note, "a.png", taken, w)
+        };
+        assert_eq!(at(&exists, &put).unwrap(), "att/n/a.png");
+        assert_eq!(at(&exists, &put).unwrap(), "att/n/a-1.png");
+        // Stale `taken` says free for an existing file once: create_new fails and the loop asks again.
+        let calls = std::cell::Cell::new(0);
+        let stale = |p: &Path| {
+            calls.set(calls.get() + 1);
+            calls.get() > 1 && p.exists()
+        };
+        assert_eq!(at(&stale, &put).unwrap(), "att/n/a-2.png");
+        // A failing write removes the reserved file and reports it.
+        let err = at(&exists, &|_| Err(std::io::Error::other("disk full"))).unwrap_err();
+        assert!(err.contains("disk full"), "{err}");
+        assert!(!notes.join("att/n/a-3.png").exists());
+        let _ = std::fs::remove_dir_all(&notes);
+    }
+
+    #[test]
+    fn attachment_files_skips_trash_and_unused_ignores_linked() {
+        let root = std::env::temp_dir().join(format!("margin-attfiles-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for f in ["att/a/x.png", "att/a/y.png", "att/b/deep/z.png", "att/.trash/a/old.png"] {
+            std::fs::create_dir_all(root.join(f).parent().unwrap()).unwrap();
+            std::fs::write(root.join(f), "").unwrap();
+        }
+        let att = root.join("att");
+        let mut files = attachment_files(&att);
+        files.sort();
+        assert_eq!(files, [att.join("a/x.png"), att.join("a/y.png"), att.join("b/deep/z.png")]);
+        let (n1, n2) = (root.join("one.org"), root.join("two.org"));
+        let notes = [(n1.as_path(), "see [[file:att/a/x.png]]"), (n2.as_path(), "[[att/b/deep/z.png][pic]]")];
+        assert_eq!(attach::unused(&notes, &files), [att.join("a/y.png")]);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     fn cfg(notes: &Path, data: &Path, profiles: &str) -> Config {
