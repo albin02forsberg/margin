@@ -192,7 +192,11 @@ describe("Features", () => {
     await browser.keys(Key.Escape);
     await browser.keys(" ");
     await type("bu");
-    await find(".status .file", "newbie.org");
+    try {
+      await find(".status .file", "newbie.org");
+    } catch (e) {
+      throw new Error(`${e}\nstatus msg: ${JSON.stringify(await texts(".status .msg"))}`); // "No closed tabs" = the entry was pruned
+    }
     assert.ok(!existsSync(join(d.notes, "oldie.org")), "old name recreated");
   });
 
