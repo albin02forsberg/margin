@@ -22,7 +22,7 @@
   import Settings from "$lib/Settings.svelte";
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
   import { chatContext } from "$lib/chatctx";
-  import { bugReportUrl, osName } from "$lib/bugreport";
+  import { bugReportUrl, isError, osName } from "$lib/bugreport";
   import Chat, { type ChatMsg } from "$lib/Chat.svelte";
 
   type View = "agenda" | "todo" | "time" | "projects" | "settings";
@@ -89,15 +89,16 @@
   let msgTimer: ReturnType<typeof setTimeout>;
   function flash(m: string) {
     message = m;
+    if (isError(m)) lastError = m;
     clearTimeout(msgTimer);
     msgTimer = setTimeout(() => (message = ""), 6000);
   }
 
-  /** The last error shown in the message line, for "Report a bug". */
+  /** The last ⚠ message shown in the message line, for "Report a bug". */
   let lastError = "";
   /** Run an action, surfacing errors in the message line. */
   function act(f: () => unknown) {
-    Promise.resolve().then(f).catch((e) => flash((lastError = `⚠ ${e}`)));
+    Promise.resolve().then(f).catch((e) => flash(`⚠ ${e}`));
   }
 
   // ---------------------------------------------------------------- tabs & files

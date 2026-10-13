@@ -17,6 +17,9 @@ export function bugReportUrl({ version, os, nightly, error }: BugEnv): string {
   return `${ISSUES}?${new URLSearchParams({ labels: "bug", title: "Bug: ", body })}`;
 }
 
+/** Whether a message-line text is an error (⚠-prefixed), i.e. what "Report a bug" shows as the last error. */
+export const isError = (m: string) => m.startsWith("⚠");
+
 /** A short OS name from a user agent string (the webview's navigator.userAgent). */
 export function osName(ua: string): string {
   const m = /Windows NT [\d.]+|Mac OS X [\d_]+|Android [\d.]+|Linux|CrOS/.exec(ua);
