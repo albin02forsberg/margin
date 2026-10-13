@@ -145,7 +145,7 @@
     <p class="error">⚠ config.toml changed on disk; your unsaved {clashing.map((f) => f.label).join(", ")} would overwrite it.</p>
   {/if}
   {#each GROUPS as g (g.name)}
-    <form onsubmit={(e) => { e.preventDefault(); submit(g.name, g.fields); }}>
+    <form class="card" onsubmit={(e) => { e.preventDefault(); submit(g.name, g.fields); }}>
       <fieldset disabled={!!error}>
         <legend>{g.name}</legend>
         {#each g.fields as f (f.key)}
@@ -184,7 +184,7 @@
     </form>
   {/each}
   {#if rules.length || errors.rules}
-    <fieldset class="list rules">
+    <fieldset class="list rules card">
       <legend>Learned activity rules</legend>
       <small>Suggested blocks whose title matches go to the project; learned when you log a suggestion to another project than guessed. Kept in this profile's activity_rules.toml.</small>
       {#each rules as r (r.pattern)}
@@ -213,7 +213,7 @@
     {#if errors[k]}<p class="error">⚠ {errors[k]}</p>{/if}
     <button type="submit" disabled={!dirtyRows(k)}>Save {what}</button>
   {/snippet}
-  <form onsubmit={(e) => { e.preventDefault(); saveRows("views"); }}>
+  <form class="card wide" onsubmit={(e) => { e.preventDefault(); saveRows("views"); }}>
     <fieldset disabled={!!error} class="list">
       <legend>Saved views</legend>
       <small>Task searches in the sidebar. Saving rewrites the [[views]] tables of config.toml; comments inside them are not kept.</small>
@@ -228,7 +228,7 @@
       {@render foot("views", "views")}
     </fieldset>
   </form>
-  <form onsubmit={(e) => { e.preventDefault(); saveRows("templates"); }}>
+  <form class="card wide" onsubmit={(e) => { e.preventDefault(); saveRows("templates"); }}>
     <fieldset disabled={!!error} class="list">
       <legend>Capture templates</legend>
       <small>Picked with Space c. File: strftime pattern relative to the notes folder, empty = the inbox. Heading: filed under it (created if missing). Body: {"%^{Prompt}"} asks, %U is now, %i the selection, %? the cursor. Templates folder files aren't listed here. Saving rewrites the [[templates]] tables of config.toml; comments inside them are not kept.</small>
@@ -254,10 +254,15 @@
 </div>
 
 <style>
-  .settings { height: 100%; overflow-y: auto; padding: 20px 28px 40px; box-sizing: border-box; font-family: var(--sans); max-width: 760px; }
+  .settings { height: 100%; overflow-y: auto; padding: 20px 28px 40px; box-sizing: border-box; font-family: var(--sans); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s3); align-content: start; align-items: start; }
+  /* heading, hint and banners span the full grid; cards sit on the form/fieldset, never inside a label */
+  .settings > :not(.card) { grid-column: 1 / -1; margin: 0; }
+  .card.wide, .rules { grid-column: 1 / -1; }
+  .card:hover { transform: none; box-shadow: var(--soft); }
+  @media (max-width: 700px) { .settings { grid-template-columns: minmax(0, 1fr); } }
   h1 { margin: 0 0 8px; font-size: 22px; font-weight: 650; }
-  form { margin: 18px 0 0; }
-  fieldset { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s2) var(--s3) var(--s3); margin: 0; }
+  form > fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+  .rules { border: 0; margin: 0; min-width: 0; }
   legend { color: var(--dim); font-size: var(--fs-sm); padding: 0 var(--s1); }
   label { display: grid; gap: 2px; margin: var(--s2) 0; font-size: var(--fs-base); }
   label.check { grid-template-columns: auto 1fr; align-items: center; column-gap: var(--s2); }
@@ -276,7 +281,6 @@
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s1); }
   .row button.link { text-decoration: none; padding: 0 var(--s1); }
   .row button.link:disabled { background: none; color: var(--dim); }
-  .rules { margin-top: 18px; }
   .rules .row { grid-template-columns: 1fr 1fr auto; }
   .rules code { font: var(--fs-md) var(--mono); overflow-wrap: anywhere; }
   .gone { color: var(--dim); }

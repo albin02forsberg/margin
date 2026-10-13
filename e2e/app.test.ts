@@ -224,6 +224,7 @@ describe("Margin", () => {
     await browser.pause(500);
     assert.doesNotMatch(await browser.$(".status").getText(), /changed on disk/, "our own save echoed back");
     await (await field("Export folder")).click();
+    await browser.keys(Key.End); // the click lands mid-text in a narrow card
     await type("-edited");
     writeFileSync(cfg, readFileSync(cfg, "utf8").replace(/^expected_daily_hours = .*$/m, "expected_daily_hours = 6.25 # by hand").replace(/^export_dir = .*$/m, `export_dir = "/elsewhere"`));
     await browser.waitUntil(async () => (await (await field("Expected hours per day")).getValue()) === "6.25", { timeoutMsg: "settings page didn't reload" });
