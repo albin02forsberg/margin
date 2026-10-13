@@ -148,10 +148,11 @@ fn ensure_attributes(dir: &Path) {
 /// Outside the backup lock, since a backup may run under the time-log lock.
 fn normalize_logs(dir: &Path) -> Vec<String> {
     use crate::timeclock::Tc;
+    type Fix = (&'static str, fn(&Tc) -> Result<bool, String>);
     let mut changed = vec![];
     for e in std::fs::read_dir(dir).into_iter().flatten().flatten().filter(|e| e.path().is_dir()) {
         let tc = Tc { dir: e.path(), diary: PathBuf::new(), expected: 0.0 };
-        let fixes: [(&str, fn(&Tc) -> Result<bool, String>); 2] = [("timelog.jsonl", Tc::normalize_log), ("leave.jsonl", Tc::dedupe_leave)];
+        let fixes: [Fix; 2] = [("timelog.jsonl", Tc::normalize_log), ("leave.jsonl", Tc::dedupe_leave)];
         for (file, fix) in fixes.into_iter().filter(|(f, _)| e.path().join(f).is_file()) {
             match crate::timeclock::locked(|| fix(&tc)) {
                 Ok(true) => changed.push(format!("{}/{file}", e.file_name().to_string_lossy())),
