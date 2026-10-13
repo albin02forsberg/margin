@@ -280,7 +280,9 @@
   }
 
   /** Write a missing config.toml from the current settings (Settings' button); errors go back to the page. */
+  let ownCfgWrite = 0; // when we last wrote config.toml ourselves: its watcher event needn't be announced
   async function recreateConfig() {
+    ownCfgWrite = Date.now(); // before the call: the debounced event can land while it is in flight
     const warn: string = await call("config_recreate");
     cfg = await call("config");
     reload++;
@@ -1619,6 +1621,7 @@
       reload++;
       syncFromDisk();
       await refreshTc();
+      if (!err && Date.now() - ownCfgWrite < 2000) return; // our own write: "recreated" stays
       flash(err ? `⚠ config.toml changed on disk: ${err}` : `config.toml changed on disk — settings reloaded.${warn ? ` ⚠ ${warn}` : ""}`);
     }));
     const unlistenTray = listen<string>("tray", (e) => act(() => timeActions[e.payload]()));
