@@ -108,204 +108,223 @@
       </label>
     </header>
 
-    <section class="status" class:on={d.project != null} class:paused={d.on_break != null}>
-      <div class="state">
-        {#if d.project != null}
-          <span class="dot"></span>
-          <div>
-            <small>Tracking since {clock(d.since)}</small>
-            <h2>{d.project || "No project"}</h2>
-            {#if d.task}<p>{d.task}</p>{/if}
-          </div>
-        {:else if d.on_break != null}
-          <span class="dot"></span>
-          <div><small>On a break</small><h2>{d.on_break}</h2></div>
-        {:else}
-          <div><small>Not tracking</small><h2>Ready when you are</h2></div>
-        {/if}
-      </div>
-      <div class="total"><strong>{hm(d.today_hours)}</strong><small>today</small><small class="leave">{d.leave_time}</small></div>
-      <div class="buttons">
-        {#if d.project != null}
-          <button onclick={() => run("pause")}><kbd>p</kbd>Pause</button>
-          <button onclick={() => run("switch")}><kbd>c</kbd>Switch project</button>
-          <button onclick={() => run("adjust")}><kbd>a</kbd>Started earlier…</button>
-          <button class="primary" onclick={() => run("stop")}><kbd>o</kbd>Stop</button>
-        {:else if d.on_break != null}
-          <button onclick={() => run("start")}><kbd>i</kbd>Start something else</button>
-          <button class="primary" onclick={() => run("resume")}><kbd>r</kbd>Resume</button>
-        {:else}
-          <button class="primary" onclick={() => run("start")}><kbd>i</kbd>Start tracking</button>
-        {/if}
-      </div>
-    </section>
-
     <div class="cols">
-      <section>
-        <h3>Today</h3>
-        {#if d.today.length}
-          <table>
-            <tbody>
-              {#each d.today as s}
-                <tr>
-                  <td class="mono">{s.start.slice(0, 5)}–{s.end.slice(0, 5)}</td>
-                  <td><strong>{s.project || "Other"}</strong> <span class="dim">{s.desc}</span></td>
-                  <td class="num">{hm(s.hours)}</td>
-                  <td>{#if s.line != null}<button class="icon" title="Edit session" onclick={() => run("editSession", s)}>✎</button>{/if}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        {:else}
-          <p class="dim">No finished sessions today yet.</p>
-        {/if}
-      </section>
-
-      <section>
-        <h3>This week <span class="dim">{hm(weekTotal)} of {hm(weekExpected)}</span></h3>
-        <div class="chart" role="img" aria-label="Hours worked per day this week">
-          {#each d.week as w}
-            <div class="col" class:today={w.date === todayIso} title="{dayName(w.date)} {w.date}: {hm(w.hours)} worked, {hm(w.expected)} expected{w.leave ? `, ${w.leave} ${hm(w.leave_hours)}` : ""}">
-              <div class="plot">
-                {#if w.leave_hours > 0}<div class="off" style:height="{(w.leave_hours / max) * 100}%"></div>{/if}
-                {#if w.expected > 0}<div class="expected" style:bottom="{(w.expected / max) * 100}%"></div>{/if}
-                <div class="bar" style:height="{(w.hours / max) * 100}%"></div>
+      <div class="lane">
+        <h2>Clock</h2>
+        <section class="card status" class:on={d.project != null} class:paused={d.on_break != null}>
+          <div class="state">
+            {#if d.project != null}
+              <span class="dot"></span>
+              <div>
+                <small>Tracking since {clock(d.since)}</small>
+                <h2>{d.project || "No project"}</h2>
+                {#if d.task}<p>{d.task}</p>{/if}
               </div>
-              <span class="val">{w.hours ? hm(w.hours) : "–"}</span>
-              <span class="day">{dayName(w.date)}</span>
-            </div>
-          {/each}
-        </div>
-        <p class="legend"><span class="dash"></span> expected hours{#if d.week.some((w: any) => w.leave_hours > 0)} <span class="hatch"></span> time off{/if}</p>
-        <div class="flex">
-          <div><small>Flex balance</small><strong class:neg={d.flex_total < 0}>{signed(d.flex_total)}</strong></div>
-          <div><small>This week</small><strong class:neg={d.flex_week < 0}>{signed(d.flex_week)}</strong></div>
-        </div>
-      </section>
-    </div>
-
-    {#if sugg}
-      <section class="suggested">
-        <h3>Suggested <span class="dim">from {source === "Margin" ? "this computer's activity" : source} · {day === todayIso ? "today" : `${dayName(day)} ${day}`} · <kbd>h</kbd><kbd>l</kbd> day</span></h3>
-        {#each warnings as w}
-          <p class="dim">{w}</p>
-        {/each}
-        {#if awError}
-          <p class="dim">{awError}.{#if /activitywatch/i.test(awError)} Is <a href="https://activitywatch.net/" target="_blank" rel="noreferrer">ActivityWatch</a> running?{/if}</p>
-        {:else if sugg.length}
-          <table>
-            <tbody>
-              {#each sugg as s (s.start)}
-                <tr>
-                  <td class="mono">{clock(s.start)}–{clock(s.end)}</td>
-                  <td>{#if s.meeting}<span class="badge">Meeting</span> {/if}{s.apps.join(", ")} <span class="dim">{s.titles.map((t) => `“${t}”`).join(" ")}</span>{#if s.project || s.task} → <strong>{[s.project, s.task].filter(Boolean).join(" / ")}</strong>?{/if}</td>
-                  <td class="num">{hm((Date.parse(s.end) - Date.parse(s.start)) / 3_600_000)}</td>
-                  <td class="actions"><button onclick={() => accept(s)}>Accept</button><button class="icon" title="Change start and end, then accept" onclick={() => accept(s, "editSuggestion")}>✎</button><button class="icon" title="Dismiss" onclick={() => dismiss(s)}>✕</button></td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        {:else}
-          <p class="dim">Nothing to suggest.</p>
-        {/if}
-      </section>
-    {/if}
-
-    <section>
-      <h3>Projects this week</h3>
-      {#if d.projects.length}
-        <table class="projects">
-          <thead><tr><th>Project</th><th>Code</th><th class="num">Worked</th><th class="num">Billable</th></tr></thead>
-          <tbody>
-            {#each d.projects as p}
-              <tr><td>{p.project}</td><td class="dim mono">{p.code}</td><td class="num">{hm(p.worked)}</td><td class="num">{p.billable.toFixed(2)} h</td></tr>
-            {/each}
-          </tbody>
-        </table>
-      {:else}
-        <p class="dim">Nothing tracked this week.</p>
-      {/if}
-    </section>
-
-    <section class="timeoff">
-      <h3>Time off <span class="dim">lowers the day's expected hours; work on those days is flex</span></h3>
-      <form onsubmit={(e) => { e.preventDefault(); addOff(); }}>
-        <input list="leave-kinds" bind:value={off.kind} aria-label="Kind of time off" size="10" required />
-        <datalist id="leave-kinds"><option>vacation</option><option>sick</option><option>other</option></datalist>
-        <input type="date" bind:value={off.from} aria-label="First day off" required />
-        <span class="dim">to</span>
-        <input type="date" bind:value={off.to} min={off.from} aria-label="Last day off (empty: one day)" />
-        <select bind:value={off.mode} aria-label="Hours off per day">
-          <option value="full">Full day</option>
-          <option value="hours">Hours a day</option>
-          {#if off.kind === "sick"}<option value="rest">Rest of the day</option>{/if}
-        </select>
-        {#if off.mode === "hours"}<input type="number" bind:value={off.hours} min="0.25" step="0.25" aria-label="Hours a day" required />{/if}
-        <input bind:value={off.note} placeholder="Note" aria-label="Time off note" />
-        <button type="submit">Add</button>
-      </form>
-      {#if recentOff.length}
-        <table>
-          <tbody>
-            {#each recentOff as [line, l] (line)}
-              <tr>
-                <td><strong>{l.kind}</strong> <span class="dim">{l.note ?? ""}</span></td>
-                <td class="mono">{l.from}{l.to !== l.from ? ` – ${l.to}` : ""}</td>
-                <td class="num">{offHours(l)}</td>
-                <td><button class="icon" title="Remove time off" onclick={() => removeOff(line)}>✕</button></td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      {/if}
-    </section>
-
-    <section class="tools">
-      <h3>More</h3>
-      <div>
-        <button onclick={() => run("daily")}><kbd>t</kbd>Day report</button>
-        <button onclick={() => run("weekly")}><kbd>w</kbd>Week report</button>
-        <button onclick={() => run("export")}><kbd>e</kbd>Export CSV…</button>
-        <button onclick={() => run("exportReport")}><kbd>E</kbd>Export report (HTML/PDF)…</button>
-        <button onclick={() => run("projects")}>Project settings</button>
-        <button onclick={() => run("holidays")}>Public holidays</button>
-        <button onclick={() => run("doctor")}>Check log for problems</button>
-        <button onclick={() => run("rawLog")}>Edit raw log</button>
-        <button onclick={() => run("backup")}>Back up now</button>
-        <button onclick={() => run("backupLog")}>Backup log</button>
-        <button onclick={() => run("import")}>Import from Emacs…</button>
+            {:else if d.on_break != null}
+              <span class="dot"></span>
+              <div><small>On a break</small><h2>{d.on_break}</h2></div>
+            {:else}
+              <div><small>Not tracking</small><h2>Ready when you are</h2></div>
+            {/if}
+          </div>
+          <div class="total"><strong>{hm(d.today_hours)}</strong><small>today</small><small class="leave">{d.leave_time}</small></div>
+          <div class="buttons">
+            {#if d.project != null}
+              <button onclick={() => run("pause")}><kbd>p</kbd>Pause</button>
+              <button onclick={() => run("switch")}><kbd>c</kbd>Switch project</button>
+              <button onclick={() => run("adjust")}><kbd>a</kbd>Started earlier…</button>
+              <button class="primary" onclick={() => run("stop")}><kbd>o</kbd>Stop</button>
+            {:else if d.on_break != null}
+              <button onclick={() => run("start")}><kbd>i</kbd>Start something else</button>
+              <button class="primary" onclick={() => run("resume")}><kbd>r</kbd>Resume</button>
+            {:else}
+              <button class="primary" onclick={() => run("start")}><kbd>i</kbd>Start tracking</button>
+            {/if}
+          </div>
+        </section>
+        <section class="card">
+          <h3>Balance</h3>
+          <div class="flex">
+            <div><small>Flex balance</small><strong class:neg={d.flex_total < 0}>{signed(d.flex_total)}</strong></div>
+            <div><small>This week</small><strong class:neg={d.flex_week < 0}>{signed(d.flex_week)}</strong></div>
+          </div>
+        </section>
+        <section class="card tools">
+          <h3>More</h3>
+          <div>
+            <button onclick={() => run("daily")}><kbd>t</kbd>Day report</button>
+            <button onclick={() => run("weekly")}><kbd>w</kbd>Week report</button>
+            <button onclick={() => run("export")}><kbd>e</kbd>Export CSV…</button>
+            <button onclick={() => run("exportReport")}><kbd>E</kbd>Export report (HTML/PDF)…</button>
+            <button onclick={() => run("projects")}>Project settings</button>
+            <button onclick={() => run("holidays")}>Public holidays</button>
+            <button onclick={() => run("doctor")}>Check log for problems</button>
+            <button onclick={() => run("rawLog")}>Edit raw log</button>
+            <button onclick={() => run("backup")}>Back up now</button>
+            <button onclick={() => run("backupLog")}>Backup log</button>
+            <button onclick={() => run("import")}>Import from Emacs…</button>
+          </div>
+          {#if d.backup_error}<p class="error">⚠ Last backup failed: {d.backup_error}</p>{/if}
+        </section>
       </div>
-      {#if d.backup_error}<p class="error">⚠ Last backup failed: {d.backup_error}</p>{/if}
-    </section>
+
+      <div class="lane">
+        <h2>Sessions</h2>
+        <section class="card">
+          <h3>Today</h3>
+          {#if d.today.length}
+            <table>
+              <tbody>
+                {#each d.today as s}
+                  <tr>
+                    <td class="mono">{s.start.slice(0, 5)}–{s.end.slice(0, 5)}</td>
+                    <td><strong>{s.project || "Other"}</strong> <span class="dim">{s.desc}</span></td>
+                    <td class="num">{hm(s.hours)}</td>
+                    <td>{#if s.line != null}<button class="icon" title="Edit session" onclick={() => run("editSession", s)}>✎</button>{/if}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          {:else}
+            <p class="dim">No finished sessions today yet.</p>
+          {/if}
+        </section>
+
+        <section class="card">
+          <h3>This week <span class="dim">{hm(weekTotal)} of {hm(weekExpected)}</span></h3>
+          <div class="chart" role="img" aria-label="Hours worked per day this week">
+            {#each d.week as w}
+              <div class="col" class:today={w.date === todayIso} title="{dayName(w.date)} {w.date}: {hm(w.hours)} worked, {hm(w.expected)} expected{w.leave ? `, ${w.leave} ${hm(w.leave_hours)}` : ""}">
+                <div class="plot">
+                  {#if w.leave_hours > 0}<div class="off" style:height="{(w.leave_hours / max) * 100}%"></div>{/if}
+                  {#if w.expected > 0}<div class="expected" style:bottom="{(w.expected / max) * 100}%"></div>{/if}
+                  <div class="bar" style:height="{(w.hours / max) * 100}%"></div>
+                </div>
+                <span class="val">{w.hours ? hm(w.hours) : "–"}</span>
+                <span class="day">{dayName(w.date)}</span>
+              </div>
+            {/each}
+          </div>
+          <p class="legend"><span class="dash"></span> expected hours{#if d.week.some((w: any) => w.leave_hours > 0)} <span class="hatch"></span> time off{/if}</p>
+        </section>
+
+        {#if sugg}
+          <section class="card suggested">
+            <h3>Suggested <span class="dim">from {source === "Margin" ? "this computer's activity" : source} · {day === todayIso ? "today" : `${dayName(day)} ${day}`} · <kbd>h</kbd><kbd>l</kbd> day</span></h3>
+            {#each warnings as w}
+              <p class="dim">{w}</p>
+            {/each}
+            {#if awError}
+              <p class="dim">{awError}.{#if /activitywatch/i.test(awError)} Is <a href="https://activitywatch.net/" target="_blank" rel="noreferrer">ActivityWatch</a> running?{/if}</p>
+            {:else if sugg.length}
+              <table>
+                <tbody>
+                  {#each sugg as s (s.start)}
+                    <tr>
+                      <td class="mono">{clock(s.start)}–{clock(s.end)}</td>
+                      <td>{#if s.meeting}<span class="badge">Meeting</span> {/if}{s.apps.join(", ")} <span class="dim">{s.titles.map((t) => `“${t}”`).join(" ")}</span>{#if s.project || s.task} → <strong>{[s.project, s.task].filter(Boolean).join(" / ")}</strong>?{/if}</td>
+                      <td class="num">{hm((Date.parse(s.end) - Date.parse(s.start)) / 3_600_000)}</td>
+                      <td class="actions"><button onclick={() => accept(s)}>Accept</button><button class="icon" title="Change start and end, then accept" onclick={() => accept(s, "editSuggestion")}>✎</button><button class="icon" title="Dismiss" onclick={() => dismiss(s)}>✕</button></td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            {:else}
+              <p class="dim">Nothing to suggest.</p>
+            {/if}
+          </section>
+        {/if}
+      </div>
+
+      <div class="lane">
+        <h2>Projects</h2>
+        <section class="card">
+          <h3>Projects this week</h3>
+          {#if d.projects.length}
+            <table class="projects">
+              <thead><tr><th>Project</th><th>Code</th><th class="num">Worked</th><th class="num">Billable</th></tr></thead>
+              <tbody>
+                {#each d.projects as p}
+                  <tr><td>{p.project}</td><td class="dim mono">{p.code}</td><td class="num">{hm(p.worked)}</td><td class="num">{p.billable.toFixed(2)} h</td></tr>
+                {/each}
+              </tbody>
+            </table>
+          {:else}
+            <p class="dim">Nothing tracked this week.</p>
+          {/if}
+        </section>
+
+        <section class="card timeoff">
+          <h3>Time off <span class="dim">lowers the day's expected hours; work on those days is flex</span></h3>
+          <form onsubmit={(e) => { e.preventDefault(); addOff(); }}>
+            <input list="leave-kinds" bind:value={off.kind} aria-label="Kind of time off" size="10" required />
+            <datalist id="leave-kinds"><option>vacation</option><option>sick</option><option>other</option></datalist>
+            <input type="date" bind:value={off.from} aria-label="First day off" required />
+            <span class="dim">to</span>
+            <input type="date" bind:value={off.to} min={off.from} aria-label="Last day off (empty: one day)" />
+            <select bind:value={off.mode} aria-label="Hours off per day">
+              <option value="full">Full day</option>
+              <option value="hours">Hours a day</option>
+              {#if off.kind === "sick"}<option value="rest">Rest of the day</option>{/if}
+            </select>
+            {#if off.mode === "hours"}<input type="number" bind:value={off.hours} min="0.25" step="0.25" aria-label="Hours a day" required />{/if}
+            <input bind:value={off.note} placeholder="Note" aria-label="Time off note" />
+            <button type="submit">Add</button>
+          </form>
+          {#if recentOff.length}
+            <table>
+              <tbody>
+                {#each recentOff as [line, l] (line)}
+                  <tr>
+                    <td><strong>{l.kind}</strong> <span class="dim">{l.note ?? ""}</span></td>
+                    <td class="mono">{l.from}{l.to !== l.from ? ` – ${l.to}` : ""}</td>
+                    <td class="num">{offHours(l)}</td>
+                    <td><button class="icon" title="Remove time off" onclick={() => removeOff(line)}>✕</button></td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          {/if}
+        </section>
+
+      </div>
+    </div>
   {/if}
 </div>
 
 <style>
-  .time { height: 100%; overflow-y: auto; padding: 20px 28px 40px; box-sizing: border-box; outline: none; font-family: var(--sans); }
-  header { display: flex; justify-content: space-between; align-items: center; }
+  .time { height: 100%; overflow-y: auto; padding: 20px 28px 40px; box-sizing: border-box; outline: none; font-family: var(--sans); background: var(--canvas); }
+  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--s4); }
   h1 { margin: 0; font-size: 22px; font-weight: 650; }
   .profile { color: var(--dim); font-size: var(--fs-md); display: flex; gap: var(--s2); align-items: center; }
-  select { background: var(--panel); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s1) var(--s2); font: var(--fs-md) var(--sans); }
-  section { margin-top: 22px; }
-  h3 { font-size: var(--fs-md); font-weight: 650; margin: 0 0 10px; color: var(--h2); display: flex; gap: 10px; align-items: baseline; }
-  .status { display: grid; grid-template-columns: 1fr auto; gap: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+  select { background: var(--card); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s1) var(--s2); font: var(--fs-md) var(--sans); }
+  /* B5 lanes of B2 cards (round-5 mockup, #251) */
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--s4); align-items: start; }
+  .lane { background: color-mix(in srgb, var(--active) 60%, transparent); border-radius: var(--r); padding: var(--s3); display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
+  .lane > h2 { margin: 0; padding: 0 var(--s1); font-size: var(--fs-md); font-weight: 600; }
+  .card { padding: var(--s4); }
+  h3 { font-size: var(--fs-md); font-weight: 600; margin: 0 0 var(--s3); display: flex; flex-wrap: wrap; gap: 0 10px; align-items: baseline; }
+  .status { display: grid; grid-template-columns: 1fr auto; gap: 14px; }
+  .status.on { background: linear-gradient(160deg, color-mix(in srgb, var(--done) 12%, var(--card)), var(--card) 60%); }
+  .status.paused { background: linear-gradient(160deg, color-mix(in srgb, var(--h5) 12%, var(--card)), var(--card) 60%); }
   .state { display: flex; gap: var(--s3); align-items: flex-start; }
   .state small, .total small, .flex small { color: var(--dim); font-size: var(--fs-sm); display: block; }
   .state h2 { margin: 2px 0; font-size: 20px; }
   .state p { margin: 0; color: var(--dim); }
-  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--done); margin-top: 6px; animation: pulse 2s infinite; flex: none; }
-  .paused .dot { background: var(--h5); animation: none; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--done); box-shadow: 0 0 0 3px color-mix(in srgb, var(--done) 25%, transparent); margin-top: 6px; animation: pulse 2s infinite; flex: none; }
+  .paused .dot { background: var(--h5); box-shadow: 0 0 0 3px color-mix(in srgb, var(--h5) 25%, transparent); animation: none; }
   @keyframes pulse { 50% { opacity: 0.35; } }
   .total { text-align: right; }
-  .total strong { font: 600 28px var(--mono); }
+  .total strong { font: 500 28px var(--mono); }
   .buttons { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--s2); }
-  button { background: var(--bg); border: 1px solid var(--border); color: var(--fg); border-radius: var(--radius); padding: 6px var(--s3); font: var(--fs-md) var(--sans); cursor: pointer; }
-  button:hover { border-color: var(--dim); }
+  button { background: var(--active); border: 1px solid transparent; color: var(--fg); border-radius: 8px; padding: 6px var(--s3); font: var(--fs-md) var(--sans); cursor: pointer; transition: background-color 120ms var(--ease), border-color 120ms var(--ease); }
+  button:hover { border-color: var(--border); background: color-mix(in srgb, var(--active) 70%, var(--border)); }
+  button:focus-visible { outline: none; box-shadow: var(--ring); }
   button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
   button.primary kbd { background: rgb(0 0 0 / 0.15); color: inherit; border-color: transparent; }
   .icon { padding: 2px var(--s2); border: 0; background: none; color: var(--dim); }
-  kbd { font: var(--fs-xs) var(--mono); background: var(--active); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--s1); margin-right: 6px; }
-  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 0 var(--s6); }
+  .icon:hover { color: var(--fg); }
+  kbd { font: var(--fs-xs) var(--mono); color: var(--dim); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--s1); margin-right: 6px; }
   table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
   td, th { padding: 6px var(--s2); border-bottom: 1px solid var(--border); text-align: left; }
   th { color: var(--dim); font-weight: 500; font-size: var(--fs-sm); }
@@ -320,7 +339,7 @@
   .off { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: min(26px, 70%); background: repeating-linear-gradient(135deg, var(--border) 0 3px, transparent 3px 6px); border: 1px solid var(--border); border-bottom: 0; box-sizing: border-box; }
   .hatch { width: 12px; height: 10px; margin-left: var(--s3); background: repeating-linear-gradient(135deg, var(--dim) 0 2px, transparent 2px 4px); }
   .timeoff form { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; margin-bottom: var(--s2); }
-  input { background: var(--panel); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s1) var(--s2); font: var(--fs-md) var(--sans); }
+  input { background: var(--card); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s1) var(--s2); font: var(--fs-md) var(--sans); }
   input[type="number"] { width: 5em; }
   .expected { position: absolute; left: 8%; right: 8%; border-top: 1.5px dashed var(--dim); }
   .val { font: var(--fs-xs) var(--mono); color: var(--fg); white-space: nowrap; }
@@ -328,13 +347,19 @@
   .col.today .day { color: var(--accent); font-weight: 700; }
   .legend { color: var(--dim); font-size: var(--fs-xs); margin: 6px 0 0; display: flex; align-items: center; gap: 6px; }
   .dash { width: 16px; border-top: 1.5px dashed var(--dim); }
-  .flex { display: flex; gap: 28px; margin-top: 14px; }
-  .flex strong { font: 600 18px var(--mono); }
+  .flex { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+  .flex > div { background: var(--canvas); border-radius: 8px; padding: var(--s2) var(--s3); }
+  .flex strong { font: 500 18px var(--mono); }
   .flex strong.neg { color: var(--todo); }
   .tools div { display: flex; flex-wrap: wrap; gap: var(--s2); }
   .suggested td:nth-child(2) { overflow-wrap: anywhere; }
   .badge { font-size: var(--fs-xs); background: var(--active); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--s1); }
   .actions { white-space: nowrap; text-align: right; }
   .error { color: var(--todo); font-size: var(--fs-md); }
-  @media (max-width: 759px) { .status { grid-template-columns: 1fr; } .total { text-align: left; } }
+  tr:last-child td { border-bottom: 0; }
+  @media (max-width: 759px) {
+    .status { grid-template-columns: 1fr; }
+    .total { text-align: left; }
+    .lane { background: none; padding: 0; }
+  }
 </style>
