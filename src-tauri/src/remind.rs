@@ -79,9 +79,7 @@ fn tick(app: &AppHandle) {
     let before = sent.len();
     sent.retain(|k| k.get(..10).and_then(|d| d.parse::<chrono::NaiveDate>().ok()).is_some_and(|d| d >= today));
     let mut changed = sent.len() != before;
-    let key = format!("{today} day-done");
-    if !sent.contains(&key) && crate::day_done_now(&s) {
-        sent.insert(key);
+    if once_a_day(&mut sent, today, "day-done", || crate::day_done_now(&s)) {
         changed = true;
         let _ = app.notification().builder().title("Margin").body("Today's hours are done.").show();
     }
@@ -94,6 +92,12 @@ fn tick(app: &AppHandle) {
     if changed {
         let _ = std::fs::write(&file, sent.into_iter().map(|k| k + "\n").collect::<String>());
     }
+}
+
+/// Whether the once-a-day event NAME should fire now (COND holds and it was not sent today); records it in SENT.
+fn once_a_day(sent: &mut BTreeSet<String>, today: chrono::NaiveDate, name: &str, cond: impl FnOnce() -> bool) -> bool {
+    let key = format!("{today} {name}");
+    !sent.contains(&key) && cond() && sent.insert(key)
 }
 
 /// Show D; clicking it opens the entry where the desktop reports clicks (Linux, via D-Bus).
@@ -119,6 +123,15 @@ mod tests {
     use super::*;
     use std::path::Path;
     use std::sync::Arc;
+
+    #[test]
+    fn once_a_day_fires_once() {
+        let (mut sent, day) = (BTreeSet::new(), "2026-10-02".parse().unwrap());
+        assert!(!once_a_day(&mut sent, day, "day-done", || false));
+        assert!(once_a_day(&mut sent, day, "day-done", || true));
+        assert!(!once_a_day(&mut sent, day, "day-done", || panic!("not evaluated once sent")));
+        assert!(sent.contains("2026-10-02 day-done"));
+    }
 
     #[test]
     fn picks_due_reminders() {
