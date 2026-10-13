@@ -646,15 +646,27 @@ pub fn leave_credit(leave: &[Leave], date: NaiveDate, expected: f64, worked: f64
     leave_on(leave, date, expected, worked).iter().map(|x| x.1).sum::<f64>().min(expected)
 }
 
+/// Seconds of DAY's expected hours (DAILY, less LEAVE) left after WORKED; None without expected hours.
+fn remaining_secs(day: NaiveDate, worked: f64, daily: f64, leave: &[Leave]) -> Option<i64> {
+    let e = expected_hours(day, daily);
+    (e > 0.0).then(|| ((e - leave_credit(leave, day, e, worked) - worked) * 3600.0).round() as i64)
+}
+
+/// Whether the clock is running and today's expected hours are worked, for the "day done" notification.
+/// False on a break, without expected hours, or with a rest/whole-day leave (nothing was worked off).
+pub fn day_done(now: NaiveDateTime, worked: f64, daily: f64, leave: &[Leave], running: bool, on_break: bool) -> bool {
+    let day = now.date();
+    let off = leave.iter().any(|l| l.from <= day && day <= l.to && (l.rest || l.hours.is_none()));
+    running && !on_break && !off && remaining_secs(day, worked, daily, leave).is_some_and(|s| s <= 0)
+}
+
 /// When to leave today, flex ignored: what is left of NOW's expected hours (DAILY, less LEAVE) after
 /// WORKED, rounded up to whole minutes; with the clock RUNNING, the time it runs out.
 pub fn leave_time(now: NaiveDateTime, worked: f64, daily: f64, leave: &[Leave], running: bool, on_break: bool) -> String {
     let (day, hm) = (now.date(), |m: i64| if m >= 60 { format!("{}h {:02}m", m / 60, m % 60) } else { format!("{m}m") });
-    let e = expected_hours(day, daily);
-    if e <= 0.0 {
+    let Some(secs) = remaining_secs(day, worked, daily, leave) else {
         return "No expected hours today.".into();
-    }
-    let secs = ((e - leave_credit(leave, day, e, worked) - worked) * 3600.0).round() as i64;
+    };
     if secs <= 0 {
         return if secs <= -60 { format!("Done for today, {} over.", hm(-secs / 60)) } else { "Done for today.".into() };
     }
@@ -1020,6 +1032,15 @@ mod tests {
         assert_eq!(leave_time(mon, 7.99, 8.0, &[], true, false), "Leave at 14:25 (1m left)."); // rounded up
         assert_eq!(leave_time(mon, 8.5, 8.0, &[], true, false), "Done for today, 30m over.");
         assert_eq!(leave_time(mon, 8.0, 8.0, &[], true, false), "Done for today.");
+        assert!(day_done(mon, 8.0, 8.0, &[], true, false)); // exactly at the boundary
+        assert!(day_done(mon, 8.0 + 59.0 / 3600.0, 8.0, &[], true, false));
+        assert!(!day_done(mon, 7.99, 8.0, &[], true, false));
+        assert!(!day_done(mon, 9.0, 8.0, &[], false, false)); // not running
+        assert!(!day_done(mon, 9.0, 8.0, &[], false, true)); // on a break
+        assert!(!day_done(dt("2026-10-10 10:00"), 1.0, 8.0, &[], true, false)); // no expected hours
+        assert!(day_done(mon, 4.0, 8.0, &[l(Some(4.0), false)], true, false)); // half day off
+        assert!(!day_done(mon, 3.0, 8.0, &[l(None, true)], true, false)); // rest of the day off
+        assert!(!day_done(mon, 0.0, 8.0, &[l(None, false)], true, false)); // whole day off
         assert_eq!(leave_time(dt("2026-10-10 10:00"), 1.0, 8.0, &[], true, false), "No expected hours today."); // Saturday
         assert_eq!(leave_time(dt("2026-12-25 10:00"), 0.0, 8.0, &[], true, false), "No expected hours today."); // red day
         assert_eq!(leave_time(mon, 2.0, 8.0, &[l(Some(4.0), false)], true, false), "Leave at 16:24 (2h 00m left)."); // half day off
