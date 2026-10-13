@@ -51,7 +51,7 @@ fn clean_env(vars: &[(&str, String)], appdir: &str) -> Vec<(String, Option<Strin
         match *k {
             "LD_LIBRARY_PATH" => {
                 let all: Vec<&str> = v.split(':').filter(|p| !p.is_empty()).collect();
-                let kept: Vec<&str> = all.iter().copied().filter(|p| !under(*p)).collect();
+                let kept: Vec<&str> = all.iter().copied().filter(|p| !under(p)).collect();
                 if kept.len() != all.len() {
                     out.push((k.to_string(), (!kept.is_empty()).then(|| kept.join(":"))));
                 }
