@@ -31,6 +31,8 @@ jobs:
           cache: npm
       - if: steps.gate.outputs.run == 'true'
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - if: steps.gate.outputs.run == 'true'
         uses: swatinem/rust-cache@v2
         with:
@@ -49,6 +51,17 @@ jobs:
       # With the built-in AI (llama.cpp, #132) so it keeps compiling; e2e covers the build without it.
       - if: steps.gate.outputs.run == 'true'
         run: cargo test --features embedded-ai
+        working-directory: src-tauri
+      # Report-only (#317): warning count goes to the job summary; not a gate yet.
+      - if: steps.gate.outputs.run == 'true'
+        name: Clippy (report only)
+        continue-on-error: true
+        run: |
+          cargo clippy --color never --all-targets --features embedded-ai 2>&1 | tee clippy.txt
+          n=$(grep -c '^warning: ' clippy.txt || true)
+          m=$(grep -c '^error' clippy.txt || true)
+          echo "clippy: $n warning line(s), $m error line(s) (includes per-crate summary lines)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"; grep -E '^(warning|error)' clippy.txt | sort | uniq -c | sort -rn | head -40 >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
         working-directory: src-tauri
 
   e2e:
