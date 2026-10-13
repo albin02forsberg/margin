@@ -23,6 +23,7 @@
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
   import { chatContext } from "$lib/chatctx";
   import { bugReportUrl, isError, osName } from "$lib/bugreport";
+  import { parseSession, type Entry } from "$lib/session";
   import Chat, { type ChatMsg } from "$lib/Chat.svelte";
 
   type View = "agenda" | "todo" | "time" | "projects" | "settings";
@@ -362,7 +363,47 @@
   });
 
   /** Recently closed tabs (newest last) for "Reopen closed tab": a file with its line, or a view / task search. */
-  const closed: ({ path: string; line: number } | { kind: View; query?: string; title: string })[] = [];
+  const closed: Entry[] = [];
+
+  /** The open tabs (`restore_tabs`) for the next start: only paths and lines, never content; Today always opens first. */
+  let restored = false; // nothing is written until the last session is back
+  function saveSession() {
+    if (!restored || !cfg?.config.restore_tabs) return;
+    const ok = (t: Tab) => (t.kind === "file" ? !t.missing && ([cfg.config_path, cfg.log_path, cfg.projects_path].includes(t.path) || t.path!.startsWith(cfg.notes)) : t.kind !== "report" && t.kind !== "agenda");
+    const keep = tabs.filter(ok);
+    const entries = keep.map((t): Entry => {
+      if (t.kind !== "file") return { kind: t.kind as View, query: t.query, title: t.title };
+      const st = stateOf(t);
+      return { path: t.path!, line: st.doc.lineAt(st.selection.main.head).number - 1 };
+    });
+    store("session", JSON.stringify({ tabs: entries, active: keep.indexOf(tabs[cur]) }));
+  }
+  let sessionTimer: ReturnType<typeof setTimeout>;
+  $effect(() => {
+    void [tabs.map((t) => t.key), cur];
+    clearTimeout(sessionTimer);
+    sessionTimer = setTimeout(saveSession, 1000);
+  });
+
+  /** Reopen the last session's tabs after Today (missing notes are skipped) and show its active one. */
+  async function restoreSession() {
+    const { tabs: entries, active } = cfg.config.restore_tabs ? parseSession(stored("session", "")) : { tabs: [], active: -1 };
+    const r = recent; // reopening shouldn't reorder Recent
+    let at = -1;
+    for (const [i, c] of entries.entries()) {
+      try {
+        if ("path" in c) await openFile(c.path, c.line);
+        else if (c.query != null) await openSearch(c.title, c.query);
+        else await openView(c.kind);
+        if (i === active) at = cur;
+      } catch { /* e.g. the file is gone */ }
+    }
+    if (entries.length) {
+      store("recent", JSON.stringify((recent = r)));
+      await show(at >= 0 ? at : 0);
+    }
+    restored = true;
+  }
 
   /** Keep only the recent notes (Ctrl P's order) and the closed tabs whose path passes KEEP (for trashed or vanished notes). */
   function pruneRecent(keep: (p: string) => boolean) {
@@ -1305,6 +1346,7 @@
     flash(`Downloading Margin ${u.version}…`);
     await u.download();
     await saveAll(); // the Windows installer closes the app as soon as it starts
+    saveSession();
     await u.install();
     await relaunch();
   }
@@ -1673,7 +1715,11 @@
       ed.hooks.follow = (target) => act(() => followLink(target ?? ed.linkAtCursor(view)));
       ed.hooks.tab = (d) => act(() => cycleTab(d));
       await openView("agenda");
+<<<<<<< HEAD
       requestAnimationFrame(() => (motion = true)); // nothing animates on first load
+=======
+      await restoreSession();
+>>>>>>> f94c5aa (feat: reopen the last session's tabs on startup (#330))
       await pruneMissing();
       const [tut, first] = await call<[string, boolean]>("tutorial");
       if (first) {
@@ -1685,7 +1731,7 @@
       if (!import.meta.env.DEV) checkUpdate(true).catch(() => {}); // offline or no release yet: stay quiet
     });
     const timer = setInterval(() => act(refreshTc), 60_000);
-    const blur = () => act(saveAll);
+    const blur = () => (saveSession(), act(saveAll));
     const focus = () => syncFromDisk();
     const unlisten = listen<string[]>("fs-changed", (e) => syncFromDisk(e.payload));
     // config.toml edited outside the app: apply it (a broken file keeps the current settings).
@@ -1722,6 +1768,7 @@
     editorEl!.addEventListener("paste", onPaste, true);
     window.addEventListener("keydown", onKey, true);
     window.addEventListener("blur", blur);
+    window.addEventListener("beforeunload", saveSession);
     window.addEventListener("focus", focus);
     return () => {
       clearInterval(timer);
@@ -1734,6 +1781,7 @@
       unlistenDrop.then((f) => f());
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("blur", blur);
+      window.removeEventListener("beforeunload", saveSession);
       window.removeEventListener("focus", focus);
     };
   });

@@ -24,6 +24,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "deadline_warning_days", label: "Warn about deadlines (days ahead)", kind: "number", step: 1, hint: "0 = on the day" },
     { key: "capture_shortcut", label: "Quick-capture shortcut", hint: "system-wide, e.g. Super+Shift+N; empty = off; if it doesn't fire (common on Wayland), bind `margin --capture` to a desktop shortcut" },
     { key: "close_to_tray", label: "Closing the window while tracking hides it to the tray", kind: "bool" },
+    { key: "restore_tabs", label: "Reopen the last session's tabs on startup", kind: "bool" },
     { key: "nightly_updates", label: "Nightly updates", kind: "bool", hint: "update to daily, untested builds of the latest code; switching back waits for the next stable release" },
   ] },
   { name: "Tasks", fields: [
