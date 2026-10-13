@@ -309,12 +309,14 @@
   .status.paused { background: linear-gradient(160deg, color-mix(in srgb, var(--h5) 12%, var(--card)), var(--card) 60%); }
   .state { display: flex; gap: var(--s3); align-items: flex-start; }
   .state small, .total small, .flex small { color: var(--dim); font-size: var(--fs-sm); display: block; }
-  .state h2 { margin: 2px 0; font-size: 20px; }
-  .state p { margin: 0; color: var(--dim); }
+  .state > div { min-width: 0; }
+  .state small { white-space: nowrap; }
+  .state h2 { margin: 2px 0; font-size: 20px; overflow-wrap: anywhere; }
+  .state p { margin: 0; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--done); box-shadow: 0 0 0 3px color-mix(in srgb, var(--done) 25%, transparent); margin-top: 6px; animation: pulse 2s infinite; flex: none; }
   .paused .dot { background: var(--h5); box-shadow: 0 0 0 3px color-mix(in srgb, var(--h5) 25%, transparent); animation: none; }
   @keyframes pulse { 50% { opacity: 0.35; } }
-  .total { text-align: right; }
+  .total { text-align: right; max-width: 11em; }
   .total strong { font: 500 28px var(--mono); }
   .buttons { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--s2); }
   button { background: var(--active); border: 1px solid transparent; color: var(--fg); border-radius: 8px; padding: 6px var(--s3); font: var(--fs-md) var(--sans); cursor: pointer; transition: background-color 120ms var(--ease), border-color 120ms var(--ease); }
@@ -327,6 +329,8 @@
   kbd { font: var(--fs-xs) var(--mono); color: var(--dim); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--s1); margin-right: 6px; }
   table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
   td, th { padding: 6px var(--s2); border-bottom: 1px solid var(--border); text-align: left; }
+  :is(td, th):first-child { padding-left: 0; }
+  :is(td, th):last-child { padding-right: 0; }
   th { color: var(--dim); font-weight: 500; font-size: var(--fs-sm); }
   .num { text-align: right; font-family: var(--mono); white-space: nowrap; }
   .mono { font-family: var(--mono); font-size: var(--fs-md); white-space: nowrap; }
@@ -342,7 +346,7 @@
   input { background: var(--card); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s1) var(--s2); font: var(--fs-md) var(--sans); }
   input[type="number"] { width: 5em; }
   .expected { position: absolute; left: 8%; right: 8%; border-top: 1.5px dashed var(--dim); }
-  .val { font: var(--fs-xs) var(--mono); color: var(--fg); white-space: nowrap; }
+  .val { font: var(--fs-xs) var(--mono); color: var(--fg); text-align: center; line-height: 1.15; }
   .day { font-size: var(--fs-xs); color: var(--dim); }
   .col.today .day { color: var(--accent); font-weight: 700; }
   .legend { color: var(--dim); font-size: var(--fs-xs); margin: 6px 0 0; display: flex; align-items: center; gap: 6px; }
@@ -359,7 +363,7 @@
   tr:last-child td { border-bottom: 0; }
   @media (max-width: 759px) {
     .status { grid-template-columns: 1fr; }
-    .total { text-align: left; }
+    .total { text-align: left; max-width: none; }
     .lane { background: none; padding: 0; }
   }
 </style>
