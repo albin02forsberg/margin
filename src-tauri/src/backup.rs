@@ -107,7 +107,7 @@ pub fn backup(dir: &Path, own: bool) {
         }
     }
     if own {
-        ensure_attributes(dir);
+        prepare_repo(dir);
     }
     let (ok_, out) = git(dir, &["add", "-A"]);
     if !ok_ {
@@ -135,14 +135,42 @@ pub fn backup(dir: &Path, own: bool) {
     });
 }
 
-/// Append-only logs merge by keeping both sides' lines, so two machines' clock events never
-/// conflict (`normalize_logs` restores time order). Written only if absent, and from a backup
-/// (committed right away): an untracked copy would block a rebase bringing the other machine's.
-fn ensure_attributes(dir: &Path) {
-    let f = std::fs::OpenOptions::new().write(true).create_new(true).open(dir.join(".gitattributes"));
-    if let Ok(mut f) = f {
-        let _ = std::io::Write::write_all(&mut f, b"timelog.jsonl merge=union\nleave.jsonl merge=union\n");
+/// Append each of LINES to FILE unless a line is already there (user lines are kept).
+fn ensure_lines(file: &Path, lines: &[&str]) {
+    let old = std::fs::read_to_string(file).unwrap_or_default();
+    let missing: Vec<&str> = lines.iter().copied().filter(|l| !old.lines().any(|o| o.trim() == *l)).collect();
+    if missing.is_empty() {
+        return;
     }
+    let mut text = old;
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push('\n');
+    }
+    text.push_str(&missing.join("\n"));
+    text.push('\n');
+    let _ = std::fs::write(file, text);
+}
+
+/// Append-only logs (the time log, leave, the per-day activity files) merge by keeping both
+/// sides' lines, so two machines' events never conflict (`normalize_logs` restores time order
+/// of the time log). Only missing lines are added, and from a backup (committed right away):
+/// an untracked copy would block a rebase bringing the other machine's.
+fn ensure_attributes(dir: &Path) {
+    let lines = ["timelog.jsonl merge=union", "leave.jsonl merge=union", "activity/*.jsonl merge=union"];
+    ensure_lines(&dir.join(".gitattributes"), &lines);
+}
+
+/// The active profile is per machine: ignored, and dropped from the index if an older build
+/// committed it (`sync_repo` keeps the local file when a pull removes it).
+fn untrack_local_state(dir: &Path) {
+    ensure_lines(&dir.join(".gitignore"), &["active-profile.txt"]);
+    git(dir, &["rm", "--cached", "-f", "-q", "--ignore-unmatch", "active-profile.txt"]);
+}
+
+/// Everything the data repo needs before a commit.
+fn prepare_repo(dir: &Path) {
+    ensure_attributes(dir);
+    untrack_local_state(dir);
 }
 
 /// After a pull: put each profile's (`<data>/<profile>/timelog.jsonl`) unioned log back in
@@ -215,7 +243,13 @@ fn sync_repo(dir: &Path) -> Result<Option<String>, String> {
     let incoming = git(dir, &["rev-list", "--count", "HEAD..@{u}"]).1;
     if incoming != "0" {
         let _lock = BACKUP.lock().unwrap_or_else(|e| e.into_inner());
+        // A pull that untracks the file (older builds committed it) deletes the working copy.
+        let profile_file = dir.join("active-profile.txt");
+        let profile = std::fs::read(&profile_file).ok();
         let (ok_, out) = git(dir, &["-c", "rebase.autoStash=true", "rebase", "@{u}"]);
+        if let Some(p) = ok_.then_some(profile).flatten().filter(|_| !profile_file.exists()) {
+            let _ = std::fs::write(&profile_file, p);
+        }
         if !ok_ {
             let files = git(dir, &["diff", "--name-only", "--diff-filter=U"]).1;
             git(dir, &["rebase", "--abort"]);
@@ -366,7 +400,7 @@ mod tests {
         let (root, a, b) = two_clones();
         let base = r#"{"ev":"out","t":"2026-09-30T17:00:00"}"#;
         let (ev_a, ev_b) = (r#"{"ev":"in","t":"2026-10-01T10:00:00","project":"A"}"#, r#"{"ev":"in","t":"2026-10-01T08:00:00","project":"B"}"#);
-        ensure_attributes(&a);
+        prepare_repo(&a);
         std::fs::create_dir_all(a.join("work")).unwrap();
         commit(&a, "work/timelog.jsonl", &format!("{base}\n"));
         assert!(git(&a, &["push"]).0);
@@ -383,6 +417,60 @@ mod tests {
             assert_eq!(git(d, &["status", "--porcelain"]).1, ""); // the sort is committed
         }
         assert_eq!(git(&a, &["rev-parse", "HEAD"]).1, git(&b, &["rev-parse", "HEAD"]).1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn attributes_are_appended_once() {
+        let d = std::env::temp_dir().join(format!("margin-attrs-{}", crate::notes::gen_id()));
+        std::fs::create_dir_all(&d).unwrap();
+        // An older build's file, without a trailing newline, plus a user line.
+        std::fs::write(d.join(".gitattributes"), "timelog.jsonl merge=union\nleave.jsonl merge=union\n*.org text").unwrap();
+        ensure_attributes(&d);
+        ensure_attributes(&d);
+        let t = std::fs::read_to_string(d.join(".gitattributes")).unwrap();
+        assert_eq!(t, "timelog.jsonl merge=union\nleave.jsonl merge=union\n*.org text\nactivity/*.jsonl merge=union\n");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn activity_files_union_merge() {
+        let (root, a, b) = two_clones();
+        prepare_repo(&a);
+        std::fs::create_dir_all(a.join("activity")).unwrap();
+        std::fs::create_dir_all(b.join("activity")).unwrap();
+        commit(&a, "activity/2026-10-01.jsonl", "{\"n\":0}\n");
+        assert!(git(&a, &["push"]).0);
+        assert!(sync_repo(&b).is_ok());
+        commit(&a, "activity/2026-10-01.jsonl", "{\"n\":0}\n{\"n\":1}\n");
+        assert!(git(&a, &["push"]).0);
+        commit(&b, "activity/2026-10-01.jsonl", "{\"n\":0}\n{\"n\":2}\n");
+        assert_eq!(sync_repo(&b), Ok(Some("pulled 1 commit(s); push succeeded.".into())));
+        let t = std::fs::read_to_string(b.join("activity/2026-10-01.jsonl")).unwrap();
+        assert!(t.contains("\"n\":1") && t.contains("\"n\":2"), "{t}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn active_profile_is_untracked_and_survives_the_pull() {
+        let (root, a, b) = two_clones();
+        // An older build committed it on both machines.
+        commit(&a, "active-profile.txt", "work\n");
+        assert!(git(&a, &["push"]).0);
+        assert!(sync_repo(&b).is_ok());
+        assert_eq!(std::fs::read_to_string(b.join("active-profile.txt")).unwrap(), "work\n");
+        // A new build untracks it and pushes.
+        prepare_repo(&a);
+        assert!(git(&a, &["add", "-A"]).0);
+        assert!(git(&a, &["commit", "-m", "untrack"]).0);
+        assert!(git(&a, &["push"]).0);
+        assert_eq!(git(&a, &["ls-files", "active-profile.txt"]).1, "");
+        assert!(a.join("active-profile.txt").exists());
+        // The pull removes the file from the index but B keeps its working copy.
+        assert!(sync_repo(&b).is_ok());
+        assert_eq!(std::fs::read_to_string(b.join("active-profile.txt")).unwrap(), "work\n");
+        assert_eq!(git(&b, &["ls-files", "active-profile.txt"]).1, "");
+        assert_eq!(git(&b, &["status", "--porcelain"]).1, "");
         let _ = std::fs::remove_dir_all(&root);
     }
 
