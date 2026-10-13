@@ -280,11 +280,11 @@
   }
 
   /** Write a missing config.toml from the current settings (Settings' button); errors go back to the page. */
-  let ownCfgWrite = 0; // when we last wrote config.toml ourselves: its watcher event needn't be announced
-  /** Stamp ownCfgWrite before and after a config-writing command (the debounced event can land in flight or just after). */
+  let ownCfgUntil = 0; // until when a config.toml watcher event is our own write's echo and needn't be announced
+  /** Run a config-writing command, covering its in-flight time plus the watcher's debounce afterwards (not longer: a hand edit right after must still be announced). */
   async function ownCfg<T>(p: () => Promise<T>): Promise<T> {
-    ownCfgWrite = Date.now();
-    try { return await p(); } finally { ownCfgWrite = Date.now(); }
+    ownCfgUntil = Infinity;
+    try { return await p(); } finally { ownCfgUntil = Date.now() + 600; }
   }
   async function recreateConfig() {
     const warn: string = await ownCfg(() => call("config_recreate"));
@@ -1643,7 +1643,7 @@
       reload++;
       syncFromDisk();
       await refreshTc();
-      if (!err && Date.now() - ownCfgWrite < 2000) return; // our own write: "recreated" stays
+      if (!err && Date.now() < ownCfgUntil) return; // our own write: "recreated" stays
       flash(err ? `⚠ config.toml changed on disk: ${err}` : `config.toml changed on disk — settings reloaded.${warn ? ` ⚠ ${warn}` : ""}`);
     }));
     const unlistenTray = listen<string>("tray", (e) => act(() => timeActions[e.payload]()));
