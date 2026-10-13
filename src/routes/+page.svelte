@@ -392,11 +392,13 @@
     let at = -1;
     for (const [i, c] of entries.entries()) {
       try {
-        if ("path" in c) await openFile(c.path, c.line);
-        else if (c.query != null) await openSearch(c.title, c.query);
+        if ("path" in c) {
+          if (!(await call<boolean>("file_exists", { path: c.path }))) continue; // a missing file would open empty
+          await openFile(c.path, c.line);
+        } else if (c.query != null) await openSearch(c.title, c.query);
         else await openView(c.kind);
         if (i === active) at = cur;
-      } catch { /* e.g. the file is gone */ }
+      } catch { /* e.g. a bad query or a path outside the folders */ }
     }
     if (entries.length) {
       store("recent", JSON.stringify((recent = r)));
