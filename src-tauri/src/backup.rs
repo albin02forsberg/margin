@@ -4,10 +4,12 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 static LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
-static LAST_FAILURE: Mutex<Option<String>> = Mutex::new(None);
+/// Each repo's last failure, keyed by its dir: one repo's success never hides another's failure.
+static LAST_FAILURE: Mutex<BTreeMap<String, String>> = Mutex::new(BTreeMap::new());
 /// Held for a whole backup: commands run on a thread pool, and two `git add` in one repo clash on `index.lock`.
 static BACKUP: Mutex<()> = Mutex::new(());
 
@@ -20,18 +22,17 @@ fn log(msg: String) {
     }
 }
 
-fn ok(msg: String) {
-    *LAST_FAILURE.lock().unwrap() = None;
+fn ok(dir: &Path, msg: String) {
+    LAST_FAILURE.lock().unwrap().remove(&dir.display().to_string());
     log(msg);
 }
 
 /// Logged once while it repeats (an offline sync retries every few minutes).
-fn fail(msg: String) {
+fn fail(dir: &Path, msg: String) {
     let mut last = LAST_FAILURE.lock().unwrap();
-    if last.as_deref() != Some(&msg) {
+    if last.insert(dir.display().to_string(), msg.clone()).as_ref() != Some(&msg) {
         log(format!("FAILED: {msg}"));
     }
-    *last = Some(msg);
 }
 
 pub fn log_text() -> String {
@@ -39,7 +40,8 @@ pub fn log_text() -> String {
 }
 
 pub fn last_failure() -> Option<String> {
-    LAST_FAILURE.lock().unwrap().clone()
+    let l = LAST_FAILURE.lock().unwrap();
+    (!l.is_empty()).then(|| l.values().cloned().collect::<Vec<_>>().join("; "))
 }
 
 /// Env changes that keep a child process off the AppImage's bundled libs:
@@ -101,7 +103,7 @@ pub fn backup(dir: &Path, own: bool) {
         let _ = std::fs::create_dir_all(dir);
         let (ok_, out) = git(dir, &["init"]);
         if !ok_ {
-            return fail(format!("{name}: git init: {out}"));
+            return fail(dir, format!("{name}: git init: {out}"));
         }
     }
     if own {
@@ -109,17 +111,17 @@ pub fn backup(dir: &Path, own: bool) {
     }
     let (ok_, out) = git(dir, &["add", "-A"]);
     if !ok_ {
-        return fail(format!("{name}: git add: {out}"));
+        return fail(dir, format!("{name}: git add: {out}"));
     }
     if git(dir, &["diff", "--cached", "--quiet"]).0 {
-        return ok(format!("{name}: nothing new to back up."));
+        return ok(dir, format!("{name}: nothing new to back up."));
     }
     let msg = format!("⏱ Auto-backup: {}", chrono::Local::now().format("%Y-%m-%d %H:%M"));
     let (ok_, out) = git(dir, &["commit", "-m", &msg]);
     if !ok_ {
-        return fail(format!("{name}: git commit: {out}"));
+        return fail(dir, format!("{name}: git commit: {out}"));
     }
-    ok(format!("{name}: committed: {}", out.lines().next().unwrap_or("")));
+    ok(dir, format!("{name}: committed: {}", out.lines().next().unwrap_or("")));
     if git(dir, &["remote"]).1.is_empty() {
         return log(format!("{name}: no remote configured, push skipped."));
     }
@@ -127,8 +129,8 @@ pub fn backup(dir: &Path, own: bool) {
     std::thread::spawn(move || match own {
         true => sync(&dir, true),
         false => match git(&dir, &["push"]) {
-            (true, _) => ok(format!("{}: push succeeded.", dir.display())),
-            (false, out) => fail(format!("{}: git push: {out}", dir.display())),
+            (true, _) => ok(&dir, format!("{}: push succeeded.", dir.display())),
+            (false, out) => fail(&dir, format!("{}: git push: {out}", dir.display())),
         },
     });
 }
@@ -151,7 +153,8 @@ fn normalize_logs(dir: &Path) -> Vec<String> {
     let mut changed = vec![];
     for e in std::fs::read_dir(dir).into_iter().flatten().flatten().filter(|e| e.path().is_dir()) {
         let tc = Tc { dir: e.path(), diary: PathBuf::new(), expected: 0.0 };
-        let fixes: [(&str, fn(&Tc) -> Result<bool, String>); 2] = [("timelog.jsonl", Tc::normalize_log), ("leave.jsonl", Tc::dedupe_leave)];
+        type Fix = fn(&Tc) -> Result<bool, String>;
+        let fixes: [(&str, Fix); 2] = [("timelog.jsonl", Tc::normalize_log), ("leave.jsonl", Tc::dedupe_leave)];
         for (file, fix) in fixes.into_iter().filter(|(f, _)| e.path().join(f).is_file()) {
             match crate::timeclock::locked(|| fix(&tc)) {
                 Ok(true) => changed.push(format!("{}/{file}", e.file_name().to_string_lossy())),
@@ -178,15 +181,12 @@ pub fn sync(dir: &Path, wait: bool) {
     };
     *LAST_SYNC.lock().unwrap() = Some(std::time::Instant::now());
     match sync_repo(dir) {
-        Ok(Some(m)) => ok(format!("{}: {m}", dir.display())),
+        Ok(Some(m)) => ok(dir, format!("{}: {m}", dir.display())),
         // Nothing moved: clear this repo's old failure (offline, conflict) only.
         Ok(None) => {
-            let mut last = LAST_FAILURE.lock().unwrap();
-            if last.as_ref().is_some_and(|f| f.starts_with(&format!("{}: ", dir.display()))) {
-                *last = None;
-            }
+            LAST_FAILURE.lock().unwrap().remove(&dir.display().to_string());
         }
-        Err(e) => fail(format!("{}: {e}", dir.display())),
+        Err(e) => fail(dir, format!("{}: {e}", dir.display())),
     }
 }
 
@@ -265,6 +265,21 @@ mod tests {
     }
 
     #[test]
+    fn failures_are_kept_per_repo() {
+        let (a, b) = (Path::new("/margin-test/fail-a"), Path::new("/margin-test/fail-b"));
+        let mine = || last_failure().unwrap_or_default().split("; ").filter(|m| m.starts_with("/margin-test/")).collect::<Vec<_>>().join("; ");
+        fail(a, "/margin-test/fail-a: x".into());
+        ok(b, "b done".into()); // another repo succeeding keeps A's failure
+        assert_eq!(mine(), "/margin-test/fail-a: x");
+        fail(b, "/margin-test/fail-b: y".into());
+        assert_eq!(mine(), "/margin-test/fail-a: x; /margin-test/fail-b: y");
+        ok(a, "a done".into());
+        assert_eq!(mine(), "/margin-test/fail-b: y");
+        ok(b, "b done".into());
+        assert_eq!(mine(), "");
+    }
+
+    #[test]
     fn concurrent_backups_both_succeed() {
         let dir = std::env::temp_dir().join(format!("margin-backup-{}", crate::notes::gen_id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -279,7 +294,8 @@ mod tests {
                 t.spawn(|| backup(&dir, false));
             }
         });
-        assert_eq!(last_failure(), None, "{}", log_text());
+        let me = dir.display().to_string(); // the map is shared with other tests
+        assert!(!last_failure().is_some_and(|f| f.contains(&me)), "{}", log_text());
         assert_eq!(git(&dir, &["status", "--porcelain"]).1, "");
         let _ = std::fs::remove_dir_all(&dir);
     }
