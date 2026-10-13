@@ -114,6 +114,12 @@ export async function find(css: string, text: string) {
   }
 }
 
+/** Wait for a saved view named NAME in the top bar, shown or folded into More (a narrow window folds them). */
+export async function savedView(name: string) {
+  await browser.waitUntil(async () => (await browser.execute(() => [...document.querySelectorAll(".topnav .views .saved")].map((e) => e.textContent ?? "")))
+    .some((t) => t.includes(name)), { timeoutMsg: `no saved view “${name}” in the top bar` });
+}
+
 /** Click BTN inside the first CSS element containing TEXT, retrying when a re-render makes the handle stale. */
 export async function clickIn(css: string, text: string, btn: string) {
   await browser.waitUntil(async () => {

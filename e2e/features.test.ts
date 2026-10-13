@@ -3,7 +3,7 @@ import { after, before, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { answer, browser, close, fileMatches, find, isoDay, Key, launch, orgDay, palette, read, texts, type, type Dirs } from "./setup.ts";
+import { answer, browser, close, fileMatches, find, isoDay, Key, launch, orgDay, palette, read, savedView, texts, type, type Dirs } from "./setup.ts";
 
 describe("First run", () => {
   let d: Dirs;
@@ -113,7 +113,7 @@ describe("Features", () => {
     const cfg = join(d.cfgDir, "config.toml");
     await palette("Save this search as a view");
     await answer("Save this search as a view named", "Work stuff");
-    await find(".topnav .views button", "Work stuff");
+    await savedView("Work stuff");
     await find(".tabs .tab.cur button", "Work stuff");
     await fileMatches(cfg, (s) => s.endsWith(`\n[[views]]\nname = "Work stuff"\nquery = "tag:work"\n`), "view not appended");
     const before = read(cfg);
@@ -122,7 +122,7 @@ describe("Features", () => {
     await answer("already shows this search", "Rename existing view");
     await answer("Rename “Work stuff” to", "Office");
     await find(".tabs .tab.cur button", "Office");
-    await find(".topnav .views button", "Office");
+    await savedView("Office");
     await fileMatches(cfg, (s) => s === before.replace(`name = "Work stuff"`, `name = "Office"`), "view not renamed in place");
   });
 

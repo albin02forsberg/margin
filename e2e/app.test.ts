@@ -3,7 +3,7 @@ import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { answer, browser, close, fileMatches, find, Key, launch, palette, texts, today, type, type Dirs } from "./setup.ts";
+import { answer, browser, close, fileMatches, find, Key, launch, palette, savedView, texts, today, type, type Dirs } from "./setup.ts";
 
 let notes: string, data: string, cfgDir: string;
 
@@ -257,7 +257,7 @@ describe("Margin", () => {
     await (await browser.$$(".settings .row button[title='Move up']"))[1].click();
     await (await find(".settings button", "Save views")).click();
     await fileMatches(cfg, (s) => /\[\[views\]\]\nname = "Next up"\nquery = "todo:NEXT"\n\n\[\[views\]\]\nname = "Work"/.test(s) && /^templates = \[\]$/m.test(s), "views not saved");
-    await find(".topnav .views button", "Next up");
+    await savedView("Next up");
     await (await browser.$$(".settings .row button[title='Remove']"))[0].click();
     await (await find(".settings button", "Save views")).click();
     await fileMatches(cfg, (s) => !s.includes("Next up") && s.includes(`name = "Work"`), "view not removed");
