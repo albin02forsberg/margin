@@ -75,9 +75,11 @@ describe("Last session's tabs", () => {
   const tabNames = () => texts(".tabs .tab > button:not(.x)");
 
   it("reopens after a restart with the active tab and its line, skipping a note that is gone", async () => {
+    await find(".agenda h1", "Today");
     for (const n of ["Two", "One", "Two"]) {
       await browser.keys([Key.Ctrl, "p"]);
       await answer("Open a note", n);
+      await find(".status .file", `${n.toLowerCase()}.org`);
     }
     await find(".status .file", "two.org");
     await browser.keys(Key.Escape);
