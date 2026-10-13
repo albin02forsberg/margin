@@ -22,6 +22,7 @@
   import Settings from "$lib/Settings.svelte";
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
   import { chatContext } from "$lib/chatctx";
+  import { bugReportUrl, osName } from "$lib/bugreport";
   import Chat, { type ChatMsg } from "$lib/Chat.svelte";
 
   type View = "agenda" | "todo" | "time" | "projects" | "settings";
@@ -92,9 +93,11 @@
     msgTimer = setTimeout(() => (message = ""), 6000);
   }
 
+  /** The last error shown in the message line, for "Report a bug". */
+  let lastError = "";
   /** Run an action, surfacing errors in the message line. */
   function act(f: () => unknown) {
-    Promise.resolve().then(f).catch((e) => flash(`⚠ ${e}`));
+    Promise.resolve().then(f).catch((e) => flash((lastError = `⚠ ${e}`)));
   }
 
   // ---------------------------------------------------------------- tabs & files
@@ -1290,6 +1293,7 @@
     { label: "Save all", leader: "f S", run: saveAll },
     { label: "About Margin", run: () => flash(`Margin ${version}`) },
     { label: "Check for updates", leader: "f u", run: () => checkUpdate() },
+    { label: "Report a bug (opens a prefilled GitHub issue)", run: () => openUrl(bugReportUrl({ version, os: osName(navigator.userAgent), nightly: !!cfg?.config?.nightly_updates, error: lastError })) },
     { label: "Run setup again…", run: setup },
     { label: "Help: tutorial", leader: "?", run: async () => openFile((await call<[string, boolean]>("tutorial"))[0]) },
     { label: "Switch tab…", leader: "b b", run: switchTab },
