@@ -105,13 +105,14 @@ pub fn today_hours(sessions: &[Session], cur: Option<NaiveDateTime>, now: NaiveD
     sessions.iter().filter(|s| s.date == now.date()).map(|s| s.hours).sum::<f64>() + open
 }
 
-/// Held by the `tc_*` commands that write the time log, so an append can't land between
-/// a rewrite's read and write (`adjust_start`, `edit_session`, `add_session`) and be lost.
-/// Taken in the commands, not in `Tc`, since `clock_in` calls `clock_out`.
 static TC_WRITES: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-pub fn tc_writes() -> std::sync::MutexGuard<'static, ()> {
-    TC_WRITES.lock().unwrap_or_else(|e| e.into_inner())
+/// Run F holding the time-log write lock. The `tc_*` commands that write the log use it, so an
+/// append can't land between a rewrite's read and write (`adjust_start`, `edit_session`,
+/// `add_session`) and be lost. Taken in the commands, not in `Tc`, since `clock_in` calls `clock_out`.
+pub fn locked<T>(f: impl FnOnce() -> T) -> T {
+    let _g = TC_WRITES.lock().unwrap_or_else(|e| e.into_inner());
+    f()
 }
 
 // ---------------------------------------------------------------- storage
@@ -1157,7 +1158,7 @@ mod tests {
     }
 
     #[test]
-    fn tc_writes_keeps_appends_during_a_rewrite() {
+    fn locked_keeps_appends_during_a_rewrite() {
         for i in 0..20 {
             let dir = std::env::temp_dir().join(format!("tc-race-{}-{i}", std::process::id()));
             let _ = fs::remove_dir_all(&dir);
@@ -1168,16 +1169,14 @@ mod tests {
                 t.spawn(|| {
                     go.wait();
                     for _ in 0..5 {
-                        let _lock = tc_writes();
-                        tc.adjust_start(1).unwrap();
+                        locked(|| tc.adjust_start(1)).unwrap();
                     }
                 });
                 t.spawn(|| {
                     go.wait();
                     for _ in 0..5 {
-                        let _lock = tc_writes();
-                        tc.take_break().unwrap();
-                        tc.resume().unwrap();
+                        locked(|| tc.take_break()).unwrap();
+                        locked(|| tc.resume()).unwrap();
                     }
                 });
             });
