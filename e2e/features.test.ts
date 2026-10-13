@@ -332,3 +332,56 @@ describe("Features", () => {
     await browser.waitUntil(async () => (await texts(".tabs .tab > button:not(.x)")).length === 2, { timeoutMsg: "closed tab not reopened" });
   });
 });
+
+describe("Task keys", () => {
+  let d: Dirs;
+  const file = () => join(d.notes, "keys.org");
+  const day = (n: number) => { const t = new Date(); t.setDate(t.getDate() + n); return `<${orgDay(t)}>`; };
+  /** Click TITLE's row in Today (re-found by text: the agenda re-sorts after each change). */
+  const select = async (title: string) => { await (await find(".agenda .row .title", title)).click(); };
+  before(async () => {
+    d = await launch({
+      files: ({ notes }) => {
+        writeFileSync(join(notes, "keys.org"), `* TODO Shift me\nSCHEDULED: ${day(0)}\n* TODO [#B] Rank me\nSCHEDULED: ${day(0)}\n* TODO Due me\nSCHEDULED: ${day(0)}\n`);
+        writeFileSync(join(notes, "minutes.org"), "#+title: Minutes\n\nIntro line.\nThe quarterly budget review happened on Tuesday.\nOutro line.\n");
+      },
+    });
+  });
+  after(close, { timeout: 30_000 });
+
+  it("> pushes the schedule a day later and u restores it", async () => {
+    await find(".agenda h1", "Today");
+    const orig = read(file());
+    await select("Shift me");
+    await browser.keys(">");
+    await fileMatches(file(), (s) => s.includes(`* TODO Shift me\nSCHEDULED: ${day(1)}\n`), "task not rescheduled to tomorrow");
+    await browser.keys("u"); // straight away: the task has left Today
+    await fileMatches(file(), (s) => s === orig, "undo didn't restore the file");
+  });
+
+  it("+ raises the priority and - lowers it again", async () => {
+    await select("Rank me");
+    await browser.keys("+");
+    await fileMatches(file(), (s) => s.includes("* TODO [#A] Rank me\n"), "priority not raised");
+    await browser.keys("-");
+    await fileMatches(file(), (s) => s.includes("* TODO [#B] Rank me\n"), "priority not lowered");
+  });
+
+  it("d sets the due date from +3d", async () => {
+    await select("Due me");
+    await browser.keys("d");
+    await answer("Due date", "+3d");
+    await fileMatches(file(), (s) => new RegExp(`\\* TODO Due me\\n[^*]*DEADLINE: ${day(3)}`).test(s), "deadline not set three days out");
+  });
+
+  it("Ctrl+Shift+F finds a line by words in any order and opens the note there", async () => {
+    await browser.keys([Key.Ctrl, Key.Shift, "f"]);
+    await find(".picker label span", "Search all notes");
+    await type("review budget");
+    // Results are async and come per keystroke: wait for the final list (one hit) before Enter.
+    await browser.waitUntil(async () => { const t = await texts(".picker li"); return t.length === 1 && t[0].includes("quarterly budget review"); }, { timeoutMsg: "search didn't list exactly the matching line" });
+    await browser.keys(Key.Enter);
+    await find(".status .file", "minutes.org");
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("quarterly budget")), { timeoutMsg: "cursor not on the matched line" });
+  });
+});
