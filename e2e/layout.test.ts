@@ -13,13 +13,21 @@ describe("Responsive layout", () => {
   before(async () => { await launch(); });
   after(close, { timeout: 30_000 });
 
-  it("collapses the sidebar to an icon rail under 760 px and restores it", async () => {
+  it("shows the top bar with icons only under 760 px and restores the labels", async () => {
     await find(".agenda h1", "Today");
+    await find(".topnav .views button.on", "Today");
     await width(700);
-    assert.equal(await displayed(".side .lbl"), false, "labels still shown at 700 px");
-    assert.ok((await (await browser.$(".side")).getSize("width")) < 60, "sidebar is not a rail");
+    assert.equal(await displayed(".topnav .lbl"), false, "labels still shown at 700 px");
+    assert.ok(await displayed(".topnav .views button .ico"), "icons hidden at 700 px");
     await width(1200);
-    assert.ok(await displayed(".side .lbl"), "labels not back at 1200 px");
+    assert.ok(await displayed(".topnav .lbl"), "labels not back at 1200 px");
+  });
+
+  it("toggles the top bar with Ctrl+\\", async () => {
+    await browser.keys([Key.Ctrl, "\\"]);
+    await browser.waitUntil(async () => !(await browser.$(".topnav").isExisting()), { timeoutMsg: "top bar still shown" });
+    await browser.keys([Key.Ctrl, "\\"]);
+    await find(".topnav .views button", "Today");
   });
 
   it("shows the links panel as a drawer under 1000 px, and Esc closes it", async () => {

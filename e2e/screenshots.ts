@@ -271,7 +271,7 @@ try {
   await browser.setWindowSize(1280, 800).catch((e) => console.warn("setWindowSize:", e.message));
   await browser.$(".agenda h1").waitForDisplayed();
 
-  // Open a few notes first so the sidebar and tabs look lived in.
+  // Open a few notes first so the tabs and Ctrl P look lived in.
   for (const [q, file] of [["Reading list", "reading.org"], ["Offline sync", "sync-design.org"], ["Harbor app", "harbor.org"], ["Orchard platform", "orchard.org"]]) await open(q, file);
   await browser.keys(Key.Escape);
   await browser.keys("}"); // cursor off the title line, so it renders

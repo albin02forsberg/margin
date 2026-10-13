@@ -113,7 +113,7 @@ describe("Features", () => {
     const cfg = join(d.cfgDir, "config.toml");
     await palette("Save this search as a view");
     await answer("Save this search as a view named", "Work stuff");
-    await find(".side nav button", "Work stuff");
+    await find(".topnav .views button", "Work stuff");
     await find(".tabs .tab.cur button", "Work stuff");
     await fileMatches(cfg, (s) => s.endsWith(`\n[[views]]\nname = "Work stuff"\nquery = "tag:work"\n`), "view not appended");
     const before = read(cfg);
@@ -122,7 +122,7 @@ describe("Features", () => {
     await answer("already shows this search", "Rename existing view");
     await answer("Rename “Work stuff” to", "Office");
     await find(".tabs .tab.cur button", "Office");
-    await find(".side nav button", "Office");
+    await find(".topnav .views button", "Office");
     await fileMatches(cfg, (s) => s === before.replace(`name = "Work stuff"`, `name = "Office"`), "view not renamed in place");
   });
 
@@ -204,13 +204,11 @@ describe("Features", () => {
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "Doomed");
     await find(".status .file", "doomed.org");
-    await find(".notes button", "doomed");
     await palette("Delete note");
     await answer("1 note links to it", "Move");
     await find(".status .msg", "Moved to .trash");
     assert.ok(!existsSync(join(d.notes, "doomed.org")), "note not moved");
     assert.equal(read(join(d.notes, ".trash", "doomed.org")), ":PROPERTIES:\n:ID: doomed-id\n:END:\n#+title: Doomed\n\nDoomed text.\n");
-    await browser.waitUntil(async () => !(await texts(".notes button")).some((t) => t.includes("doomed")), { timeoutMsg: "still under Notes" });
     assert.ok(!(await texts(".tabs .tab button")).some((t) => t.includes("doomed")), "tab still open");
     // ...and back again.
     await palette("Restore note from .trash");
