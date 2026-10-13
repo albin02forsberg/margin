@@ -146,7 +146,7 @@ fn config_recreate(app: AppHandle, s: State<App>) -> R<String> {
 fn reload_config(app: AppHandle, s: State<App>) -> R<String> {
     let new = Config::load(&s.cfg_path).inspect_err(|e| *s.cfg_error.lock().unwrap() = Some(e.clone()))?;
     let (old, profile) = (s.cfg(), s.profile());
-    if clock_out_before_setup(&s.tc(), &old, &new, &profile)? {
+    if timeclock::locked(|| clock_out_before_setup(&s.tc(), &old, &new, &profile))? {
         s.backup();
     }
     *s.cfg.lock().unwrap() = new.clone();
@@ -905,7 +905,7 @@ fn tc_suggestions(s: State<App>, project: Option<String>) -> Vec<String> {
 
 #[tauri::command(async)]
 fn tc_in(s: State<App>, project: String, task: String, export_code: Option<String>) -> R<String> {
-    let switched = s.tc().clock_in(&project, &task, export_code.as_deref())?;
+    let switched = timeclock::locked(|| s.tc().clock_in(&project, &task, export_code.as_deref()))?;
     if switched {
         s.backup();
     }
@@ -914,7 +914,7 @@ fn tc_in(s: State<App>, project: String, task: String, export_code: Option<Strin
 
 #[tauri::command(async)]
 fn tc_out(s: State<App>, note: String) -> R<String> {
-    if !s.tc().clock_out(&note)? {
+    if !timeclock::locked(|| s.tc().clock_out(&note))? {
         return Ok("Not clocked in.".into());
     }
     s.backup();
@@ -924,7 +924,7 @@ fn tc_out(s: State<App>, note: String) -> R<String> {
 /// Idle prompt: clock out at SINCE, and back in at BACK unless stopping.
 #[tauri::command(async)]
 fn tc_idle(s: State<App>, since: NaiveDateTime, back: Option<NaiveDateTime>, note: String) -> R<String> {
-    if !s.tc().discard_idle(since, back, &note)? {
+    if !timeclock::locked(|| s.tc().discard_idle(since, back, &note))? {
         return Ok("Not clocked in.".into());
     }
     s.backup();
@@ -933,7 +933,7 @@ fn tc_idle(s: State<App>, since: NaiveDateTime, back: Option<NaiveDateTime>, not
 
 #[tauri::command]
 fn tc_break(s: State<App>) -> R<String> {
-    Ok(match s.tc().take_break()? {
+    Ok(match timeclock::locked(|| s.tc().take_break())? {
         Some(p) => format!("☕ Clock paused! Project '{p}' saved."),
         None => "You are not clocked in right now!".into(),
     })
@@ -941,7 +941,7 @@ fn tc_break(s: State<App>) -> R<String> {
 
 #[tauri::command]
 fn tc_resume(s: State<App>) -> R<String> {
-    Ok(match s.tc().resume()? {
+    Ok(match timeclock::locked(|| s.tc().resume())? {
         Some(p) => format!("▶ Clock is ticking again on: {p}"),
         None => "No valid break found to resume from.".into(),
     })
@@ -949,7 +949,7 @@ fn tc_resume(s: State<App>) -> R<String> {
 
 #[tauri::command]
 fn tc_adjust(s: State<App>, minutes: i64) -> R<String> {
-    Ok(if s.tc().adjust_start(minutes)? { format!("⏪ Start time moved back by {minutes} minutes.") } else { "⚠ You must be clocked in to adjust the start time!".into() })
+    Ok(if timeclock::locked(|| s.tc().adjust_start(minutes))? { format!("⏪ Start time moved back by {minutes} minutes.") } else { "⚠ You must be clocked in to adjust the start time!".into() })
 }
 
 #[tauri::command]
@@ -960,14 +960,14 @@ fn tc_sessions_on(s: State<App>, date_input: String) -> R<Vec<timeclock::Session
 
 #[tauri::command]
 fn tc_edit_session(s: State<App>, line: usize, note: String, old_hours: f64, new_hours: f64) -> R<String> {
-    s.tc().edit_session(line, &note, old_hours, new_hours)?;
+    timeclock::locked(|| s.tc().edit_session(line, &note, old_hours, new_hours))?;
     Ok("✅ Session updated.".into())
 }
 
 /// Log a finished session after the fact (an accepted suggestion).
 #[tauri::command(async)]
 fn tc_add_session(s: State<App>, start: NaiveDateTime, end: NaiveDateTime, project: String, export_code: Option<String>, note: String) -> R<String> {
-    s.tc().add_session(start, end, &project, export_code.as_deref(), &note)?;
+    timeclock::locked(|| s.tc().add_session(start, end, &project, export_code.as_deref(), &note))?;
     s.backup();
     Ok(format!("✅ Logged {}–{} on {}", start.format("%H:%M"), end.format("%H:%M"), if project.trim().is_empty() { "Other" } else { project.trim() }))
 }
@@ -1335,7 +1335,7 @@ fn tc_switch_profile(s: State<App>, name: String) -> R<String> {
     if name == s.profile() {
         return Ok(format!("Already on {name}"));
     }
-    if s.tc().clock_out(&format!("Auto-clockout (Switched to {name} profile)"))? {
+    if timeclock::locked(|| s.tc().clock_out(&format!("Auto-clockout (Switched to {name} profile)")))? {
         s.backup();
     }
     *s.profile.lock().unwrap() = name.clone();
@@ -1346,7 +1346,7 @@ fn tc_switch_profile(s: State<App>, name: String) -> R<String> {
 
 #[tauri::command]
 fn tc_import(s: State<App>, dir: String) -> R<String> {
-    let n = s.tc().import_emacs(&config::expand(&dir), &s.profile())?;
+    let n = timeclock::locked(|| s.tc().import_emacs(&config::expand(&dir), &s.profile()))?;
     Ok(format!("Imported {n} events into {}", s.profile()))
 }
 
