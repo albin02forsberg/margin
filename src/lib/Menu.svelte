@@ -53,9 +53,15 @@
 
 <style>
   .menu {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 400; background: var(--panel);
-    border-top: 1px solid var(--border); padding: var(--s2) var(--s4) var(--s3); font: var(--fs-md) var(--mono);
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 400; background: var(--card);
+    border-top: 1px solid var(--border); border-radius: var(--r) var(--r) 0 0; box-shadow: var(--pshadow);
+    padding: var(--s2) var(--s4) var(--s3); font: var(--fs-md) var(--mono);
+    animation: rise-in 160ms var(--ease) both;
   }
+  /* opening only, no outro */
+  @keyframes rise-in { from { opacity: 0.4; transform: translateY(6px); } }
+  @media (prefers-reduced-motion: reduce) { .menu { animation: none; } }
+
   .crumb { color: var(--accent); margin-bottom: 6px; }
   .crumb span { color: var(--dim); margin-left: var(--s2); }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 3px var(--s4); }

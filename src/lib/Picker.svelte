@@ -145,12 +145,17 @@
 {/if}
 
 <style>
-  .backdrop { position: fixed; inset: 0; z-index: 499; background: rgb(0 0 0 / 0.25); }
+  .backdrop { position: fixed; inset: 0; z-index: 499; background: var(--scrim); }
   .picker {
     position: fixed; top: 12%; left: 50%; transform: translateX(-50%);
-    width: min(680px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--border);
-    border-radius: 10px; box-shadow: var(--shadow); z-index: 500; overflow: hidden;
+    width: min(680px, calc(100vw - 32px)); background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--r); box-shadow: var(--pshadow); z-index: 500; overflow: hidden;
+    animation: pop-in 160ms var(--ease) both;
   }
+  /* opening only: no outro, so chained prompts never leave a stale .picker */
+  @keyframes pop-in { from { opacity: 0.4; transform: translateX(-50%) scale(0.98); } }
+  @media (prefers-reduced-motion: reduce) { .picker { animation: none; } }
+
   label { display: flex; flex-direction: column; gap: 6px; padding: var(--s3) 14px; border-bottom: 1px solid var(--border); }
   label span { color: var(--dim); font-size: var(--fs-sm); }
   input { background: none; border: 0; outline: 0; color: var(--fg); font: 16px var(--sans); }
