@@ -880,7 +880,8 @@ pub fn csv(sessions: &[Session], projects: &Projects, (leave, codes): (&[Leave],
 pub fn doctor(text: &str, now: NaiveDateTime) -> Vec<String> {
     let mut issues = vec![];
     let mut open: Option<(usize, NaiveDateTime)> = None;
-    // Line of the overlapped clock-in whose clock-out is still to come, and the latest end so far.
+    // Line of the overlapped clock-in whose clock-out is still to come, and the latest clock-out
+    // so far (not breaks: `adjust_start` after a resume may move it before the break).
     let (mut overlapped, mut ended): (Option<usize>, Option<NaiveDateTime>) = (None, None);
     for (i, line) in text.lines().enumerate() {
         let n = i + 1;
@@ -894,6 +895,7 @@ pub fn doctor(text: &str, now: NaiveDateTime) -> Vec<String> {
                 continue;
             }
         };
+        let is_out = matches!(ev, Event::Out { .. });
         match ev {
             Event::In { t, .. } => {
                 if let Some((m, o)) = open {
@@ -913,7 +915,9 @@ pub fn doctor(text: &str, now: NaiveDateTime) -> Vec<String> {
                     Some((_, o)) if t < o => issues.push(format!("Line {n}: session ends before it starts ({o} -> {t})")),
                     _ => {}
                 }
-                ended = ended.max(Some(t));
+                if is_out {
+                    ended = ended.max(Some(t));
+                }
             }
         }
     }
