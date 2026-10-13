@@ -4,7 +4,7 @@
   import { Channel, invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { getVersion } from "@tauri-apps/api/app";
-  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
   import { Update } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -1292,6 +1292,8 @@
     { label: "Rename note…", leader: "n r", run: renameNote },
     { label: "Delete note… (move to .trash)", leader: "n D", run: trashNote },
     { label: "Restore note from .trash…", leader: "n R", run: restoreNote },
+    { label: "Note: show in file manager", leader: "n f", run: () => act(() => (inFile() ? revealItemInDir(tab.path!) : flash("Open a note first."))) },
+    { label: "Note: copy file path", leader: "n y", run: () => act(async () => { if (!inFile()) return flash("Open a note first."); await navigator.clipboard.writeText(tab.path!); flash(`Copied ${tab.path}`); }) },
     { label: "Today's journal", keys: ["Ctrl+J"], leader: "j", run: () => journal() },
     { label: "Journal for another day…", leader: "n J", run: journalPick },
     { label: "Journal: previous entry", leader: "n [", run: () => journalStep(-1) },

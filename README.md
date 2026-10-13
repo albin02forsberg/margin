@@ -295,6 +295,8 @@ Vim keys everywhere. On top of that:
 | Space n r | Rename this note (same folder, `.org` added if missing); `[[file:]]` links to it in other notes are updated after a backup, `[[id:]]` links need nothing |
 | Space n D | Delete this note: after a confirm (it says how many notes link to it) the file moves to `<notes>/.trash/`, keeping its subfolder; nothing is deleted for good and links to it are left as they are |
 | Space n R | Restore a note from `<notes>/.trash/`: pick it (newest first) and it moves back to its original place and opens; refused if a note of that name already exists |
+| Space n f | Show this file in the system file manager (any open file: a note, `config.toml`, the time log) |
+| Space n y | Copy this file's full path to the clipboard |
 | Space n a | AI chat with the local model, about this note if you like ([Drafts from a local model](#drafts-from-a-local-model)) |
 
 ![A note with its local graph](docs/screenshots/graph.png)
