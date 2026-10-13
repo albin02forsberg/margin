@@ -1412,6 +1412,8 @@ pub fn run() {
             tray::setup(app.handle())?;
             app.handle().plugin(tauri_plugin_notification::init())?;
             remind::start(app.handle());
+            let h = app.handle().clone();
+            backup::start(move || h.state::<App>().cfg().data());
             #[cfg(desktop)]
             {
                 idle::start(app.handle());
@@ -1433,6 +1435,9 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|w, ev| {
+            if let WindowEvent::Focused(true) = ev {
+                backup::sync_soon(w.app_handle().state::<App>().cfg().data()); // pick up another machine's time
+            }
             if let WindowEvent::CloseRequested { api, .. } = ev {
                 let app = w.app_handle();
                 if app.state::<App>().cfg().close_to_tray && tray::tracking(app) {
