@@ -91,6 +91,27 @@ fn git(dir: &Path, args: &[&str]) -> (bool, String) {
     }
 }
 
+/// Stage and commit everything in DIR (OWN: after `prepare_repo`). The caller holds `BACKUP`.
+/// `Ok(None)`: nothing to commit; `Ok(Some(first line of git's output))` otherwise.
+fn commit_all(dir: &Path, own: bool) -> Result<Option<String>, String> {
+    if own {
+        prepare_repo(dir);
+    }
+    let (ok_, out) = git(dir, &["add", "-A"]);
+    if !ok_ {
+        return Err(format!("git add: {out}"));
+    }
+    if git(dir, &["diff", "--cached", "--quiet"]).0 {
+        return Ok(None);
+    }
+    let msg = format!("⏱ Auto-backup: {}", chrono::Local::now().format("%Y-%m-%d %H:%M"));
+    let (ok_, out) = git(dir, &["commit", "-m", &msg]);
+    if !ok_ {
+        return Err(format!("git commit: {out}"));
+    }
+    Ok(Some(out.lines().next().unwrap_or("").to_string()))
+}
+
 /// Commit everything in DIR; push in the background if a remote exists.
 /// OWN (the app's data repo): create the repo if missing and `sync` instead of a bare push.
 pub fn backup(dir: &Path, own: bool) {
@@ -106,22 +127,11 @@ pub fn backup(dir: &Path, own: bool) {
             return fail(dir, format!("{name}: git init: {out}"));
         }
     }
-    if own {
-        prepare_repo(dir);
+    match commit_all(dir, own) {
+        Err(e) => return fail(dir, format!("{name}: {e}")),
+        Ok(None) => return ok(dir, format!("{name}: nothing new to back up.")),
+        Ok(Some(first)) => ok(dir, format!("{name}: committed: {first}")),
     }
-    let (ok_, out) = git(dir, &["add", "-A"]);
-    if !ok_ {
-        return fail(dir, format!("{name}: git add: {out}"));
-    }
-    if git(dir, &["diff", "--cached", "--quiet"]).0 {
-        return ok(dir, format!("{name}: nothing new to back up."));
-    }
-    let msg = format!("⏱ Auto-backup: {}", chrono::Local::now().format("%Y-%m-%d %H:%M"));
-    let (ok_, out) = git(dir, &["commit", "-m", &msg]);
-    if !ok_ {
-        return fail(dir, format!("{name}: git commit: {out}"));
-    }
-    ok(dir, format!("{name}: committed: {}", out.lines().next().unwrap_or("")));
     if git(dir, &["remote"]).1.is_empty() {
         return log(format!("{name}: no remote configured, push skipped."));
     }
@@ -242,20 +252,35 @@ fn sync_repo(dir: &Path) -> Result<Option<String>, String> {
     }
     let incoming = git(dir, &["rev-list", "--count", "HEAD..@{u}"]).1;
     if incoming != "0" {
-        let _lock = BACKUP.lock().unwrap_or_else(|e| e.into_inner());
-        // A pull that untracks the file (older builds committed it) deletes the working copy.
-        let profile_file = dir.join("active-profile.txt");
-        let profile = std::fs::read(&profile_file).ok();
-        let (ok_, out) = git(dir, &["-c", "rebase.autoStash=true", "rebase", "@{u}"]);
-        if let Some(p) = ok_.then_some(profile).flatten().filter(|_| !profile_file.exists()) {
-            let _ = std::fs::write(&profile_file, p);
-        }
-        if !ok_ {
+        // Time-log lock first (as in `normalize_logs`), so no clock event lands between the commit
+        // and the rebase; the fetch above and the push below stay outside both locks.
+        crate::timeclock::locked(|| -> Result<(), String> {
+            let _lock = BACKUP.lock().unwrap_or_else(|e| e.into_inner());
+            // Local changes go into a commit first (no autostash: a failed re-apply would leave
+            // conflict markers in the tree), so a clash is an ordinary, abortable rebase conflict.
+            commit_all(dir, true).map_err(|e| format!("committing local changes before the pull: {e}"))?;
+            // A pull that untracks the file (older builds committed it) deletes the working copy.
+            let profile_file = dir.join("active-profile.txt");
+            let profile = std::fs::read(&profile_file).ok();
+            let (ok_, out) = git(dir, &["rebase", "@{u}"]);
+            if let Some(p) = ok_.then_some(profile).flatten().filter(|_| !profile_file.exists()) {
+                let _ = std::fs::write(&profile_file, p);
+            }
             let files = git(dir, &["diff", "--name-only", "--diff-filter=U"]).1;
-            git(dir, &["rebase", "--abort"]);
+            let in_rebase = ["rebase-merge", "rebase-apply"].iter().any(|f| Path::new(&gitdir).join(f).exists());
+            if ok_ && files.is_empty() {
+                return Ok(());
+            }
+            if !ok_ && files.is_empty() && !in_rebase {
+                // E.g. the activity watcher dirtied the tree: nothing to abort, the next sync retries.
+                return Err(format!("rebase failed, will retry: {out}"));
+            }
+            if in_rebase {
+                git(dir, &["rebase", "--abort"]);
+            }
             let what = if files.is_empty() { out } else { files.lines().collect::<Vec<_>>().join(", ") };
-            return Err(format!("sync conflict, local changes not pushed: {what}"));
-        }
+            Err(format!("sync conflict, local changes not pushed: {what}"))
+        })?;
     }
     // Commit the sorted logs right away (pushed below), so the tree isn't left dirty for the next rebase.
     let sorted = if incoming == "0" { vec![] } else { normalize_logs(dir) };
@@ -347,6 +372,7 @@ mod tests {
         assert!(git(&root, &["init", "--bare", "-b", "main", "remote.git"]).0);
         assert!(git(&a, &["init", "-b", "main"]).0);
         cfg(&a);
+        prepare_repo(&a); // as a real data repo has it: a sync then has nothing of its own to add
         commit(&a, "p.toml", "name = \"x\"\n");
         assert!(git(&a, &["remote", "add", "origin", remote.to_str().unwrap()]).0);
         assert!(git(&a, &["push", "-u", "origin", "main"]).0);
@@ -455,7 +481,9 @@ mod tests {
     fn active_profile_is_untracked_and_survives_the_pull() {
         let (root, a, b) = two_clones();
         // An older build committed it on both machines.
-        commit(&a, "active-profile.txt", "work\n");
+        std::fs::write(a.join("active-profile.txt"), "work\n").unwrap();
+        assert!(git(&a, &["add", "-f", "active-profile.txt"]).0); // it is ignored now
+        assert!(git(&a, &["commit", "-m", "old build"]).0);
         assert!(git(&a, &["push"]).0);
         assert!(sync_repo(&b).is_ok());
         assert_eq!(std::fs::read_to_string(b.join("active-profile.txt")).unwrap(), "work\n");
@@ -488,6 +516,59 @@ mod tests {
         // A leftover rebase is refused, not stepped on.
         std::fs::create_dir(b.join(".git/rebase-merge")).unwrap();
         assert!(sync_repo(&b).unwrap_err().contains("in progress"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn dirty_change_clashing_with_the_pull_is_committed_not_marked() {
+        let (root, a, b) = two_clones();
+        commit(&a, "p.toml", "name = \"a\"\n");
+        assert!(git(&a, &["push"]).0);
+        std::fs::write(b.join("p.toml"), "name = \"b\"\n").unwrap(); // uncommitted
+        let e = sync_repo(&b).unwrap_err();
+        assert!(e.contains("conflict") && e.contains("p.toml"), "{e}");
+        assert!(!b.join(".git/rebase-merge").exists() && !b.join(".git/rebase-apply").exists());
+        assert_eq!(std::fs::read_to_string(b.join("p.toml")).unwrap(), "name = \"b\"\n"); // no markers
+        assert_eq!(git(&b, &["status", "--porcelain"]).1, "");
+        assert_eq!(git(&b, &["show", "HEAD:p.toml"]).1, "name = \"b\""); // kept in a commit
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn dirty_unrelated_file_syncs() {
+        let (root, a, b) = two_clones();
+        commit(&a, "a.txt", "from a\n");
+        assert!(git(&a, &["push"]).0);
+        std::fs::write(b.join("notes.txt"), "local\n").unwrap();
+        assert_eq!(sync_repo(&b), Ok(Some("pulled 1 commit(s); push succeeded.".into())));
+        assert!(b.join("a.txt").exists());
+        assert_eq!(git(&b, &["status", "--porcelain"]).1, "");
+        assert_eq!(git(&b, &["show", "HEAD:notes.txt"]).1, "local");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rebase_waits_for_the_time_log_lock() {
+        const EVENT: &str = r#"{"ev":"in","t":"2026-10-01T08:00:00","project":"B"}"#;
+        let (root, a, b) = two_clones();
+        commit(&a, "a.txt", "from a\n");
+        assert!(git(&a, &["push"]).0);
+        let before = git(&b, &["rev-parse", "HEAD"]).1;
+        std::fs::create_dir_all(b.join("work")).unwrap();
+        let res = std::thread::scope(|t| {
+            let h = crate::timeclock::locked(|| {
+                let h = t.spawn(|| sync_repo(&b));
+                std::thread::sleep(std::time::Duration::from_millis(400));
+                assert!(!h.is_finished(), "the sync must wait for the time-log lock");
+                assert_eq!(git(&b, &["rev-parse", "HEAD"]).1, before);
+                // A clock event appended meanwhile ends up in the sync's commit, not lost.
+                std::fs::write(b.join("work/timelog.jsonl"), format!("{EVENT}\n")).unwrap();
+                h
+            });
+            h.join().unwrap()
+        });
+        assert_eq!(res, Ok(Some("pulled 1 commit(s); push succeeded.".into())));
+        assert_eq!(git(&b, &["show", "HEAD:work/timelog.jsonl"]).1, EVENT);
         let _ = std::fs::remove_dir_all(&root);
     }
 
