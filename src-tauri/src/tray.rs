@@ -33,7 +33,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .on_menu_event(|app, ev| match ev.id().as_ref() {
             "show" => show(app),
-            "quit" => app.exit(0),
+            "quit" => crate::quit::ask(app),
             id => {
                 if id != "pause" && id != "resume" {
                     show(app); // these ask for a project or a note

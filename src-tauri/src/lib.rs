@@ -11,6 +11,7 @@ mod idle;
 mod wayland_idle;
 mod notes;
 mod org;
+mod quit;
 mod remind;
 mod timeclock;
 mod tray;
@@ -1572,6 +1573,10 @@ pub fn run() {
                 if app.state::<App>().cfg().close_to_tray && tray::tracking(app) {
                     api.prevent_close();
                     let _ = w.hide();
+                } else if !quit::confirmed() {
+                    // A real close: the webview holding unsaved edits goes with it, so ask first (#281).
+                    api.prevent_close();
+                    quit::ask(app);
                 }
             }
         })
@@ -1583,13 +1588,17 @@ pub fn run() {
             notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
-            export_note, export_linked, export_report, export_open
+            export_note, export_linked, export_report, export_open, quit::quit_reply
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, ev| {
             // Replaces kill-emacs-hook: commit on exit.
             match ev {
+                RunEvent::ExitRequested { code, api, .. } if !quit::exit_allowed(code, quit::confirmed()) => {
+                    api.prevent_exit();
+                    quit::ask(app)
+                }
                 RunEvent::ExitRequested { .. } => {
                     watcher::flush(&app.state::<App>().cfg().data().join("activity"));
                     app.state::<App>().backup()
