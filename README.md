@@ -132,8 +132,10 @@ Backups commit the time-data folder (and the notes folder, if it is a git
 repo) after each change. With a remote, the time-data repo also pulls
 (`git fetch` + rebase) before it pushes, every 5 minutes and when the window
 gets focus, so two machines sharing one remote see each other's time. The
-time log and time off merge by keeping both machines' lines (a `.gitattributes`
-with `merge=union`, added to the time-data repo if it has none), and after a
+time log, time off and the per-day activity files merge by keeping both machines'
+lines (`merge=union` lines in the time-data repo's `.gitattributes`, added if
+missing). The active profile (`active-profile.txt`) is per machine: it is
+git-ignored and never synced. After a
 pull the time log is put back in time order and both files drop exact duplicate
 lines. If both machines were clocked in at once, both clock-ins are kept and
 Time → Check log (`Space t D`) flags the overlapping sessions so you can fix one. A
