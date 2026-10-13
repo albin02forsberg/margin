@@ -1,0 +1,56 @@
+/* Round 5 of #251: B1's top bar, B5's columns, B2's cards. On top of b-variants.css and r4.css. */
+.c5 { display: flex; flex-direction: column; height: 100vh; }
+
+/* B1's rail as a top bar: logo, views (icon + label, the "on" one a raised card), search, settings, clock. */
+.topnav { display: flex; align-items: center; gap: var(--s2); padding: var(--s3) var(--s4) var(--s1); }
+.topnav .logo { width: 30px; height: 30px; border-radius: 9px; background: var(--accent); color: var(--bg); font: 700 16px/30px var(--sans); text-align: center; margin-right: var(--s2); flex: none; }
+.views { position: relative; display: flex; gap: 2px; }
+.views a, .topnav .set { position: relative; z-index: 1; display: flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: 10px; color: var(--dim); white-space: nowrap; transition: background-color 120ms var(--ease), color 120ms var(--ease); }
+.views .ico, .topnav .set .ico { font-size: 15px; line-height: 1; }
+.views a.on, .topnav .set.on { background: var(--card); color: var(--fg); box-shadow: var(--soft); font-weight: 500; }
+.views a.on .ico, .topnav .set.on .ico { color: var(--link); }
+.views a:hover { color: var(--fg); }
+.barind { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 10px; background: var(--card); box-shadow: var(--soft); }
+.topnav .cmdk { width: 250px; }
+
+/* B5's layout under it: title row (+ agenda chips), then full-width columns of B2 cards. */
+.work { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.c5 .subhead { padding: var(--s3) var(--s4); display: flex; flex-direction: column; gap: var(--s2); }
+.c5 .subhead .controls { flex-wrap: nowrap; }
+.c5 .subhead > .agenda, .c5 .subhead > .chips { align-self: flex-start; }
+.cols { flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); gap: var(--s3); padding: 0 var(--s4) var(--s4); }
+.cols > .kcol { gap: var(--s3); }
+.cols .kcol > .card, .cols .kcol > .kcard { flex: none; }
+.cols > .kcol.side { padding-top: var(--s3); }
+.pcol { padding-top: var(--s3); }
+.ksub { font-size: var(--fs-xs); color: var(--dim); text-transform: uppercase; letter-spacing: .06em; padding: 0 var(--s1); }
+.c5 .inp { min-width: 130px; }
+.c5 .hints { position: absolute; left: 50%; bottom: var(--s5); transform: translateX(-50%); background: var(--card); box-shadow: var(--lift); border-radius: 20px; padding: 6px var(--s4); flex-wrap: nowrap; white-space: nowrap; z-index: 2; }
+.c5 .hints .more { margin-left: 0; }
+:root:not(.demo) .c5 .work { animation: view-in 180ms var(--ease) both; }
+
+/* &bar=rail: the same page with B1's real left rail. */
+.c5.railv { display: grid; grid-template-columns: 76px 1fr; }
+.c5.railv .subhead { padding-top: var(--s4); }
+
+/* Demos */
+.c5 .layer { display: flex; flex-direction: column; }
+
+/* Narrow window (#73): the bar keeps icons only, columns stack with the agenda first. */
+@media (max-width: 700px) {
+  .topnav { gap: 2px; padding: var(--s2) var(--s3) 0; }
+  .topnav .logo { margin-right: var(--s1); }
+  .views a { padding: 6px 8px; }
+  .views .lbl, .views kbd, .topnav .cmdk .lbl, .topnav .cmdk kbd, .clockchip b, .clockchip kbd { display: none; }
+  .topnav .cmdk { width: auto; padding: 6px 9px; margin-left: auto; }
+  .topnav .grow, .topnav .set, .task .tag, .task .file { display: none; }
+  .views { min-width: 0; }
+  .c5 .subhead { padding: var(--s3); }
+  .c5 .subhead .vhead { flex-direction: column; align-items: flex-start; gap: var(--s2); }
+  .c5 .subhead .controls { flex-wrap: wrap; }
+  .c5 .subhead > .agenda { align-self: stretch; }
+  .cols { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: none; grid-auto-rows: min-content; overflow: hidden; padding: 0 var(--s3); }
+  .cols > .kcol { background: none; padding: 0; overflow: visible; }
+  .cols > .agcol { order: -1; }
+  .c5 .hints { display: none; }
+}

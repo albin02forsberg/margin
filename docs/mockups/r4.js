@@ -176,7 +176,7 @@ const PAGES = {
   time: { 1: () => shell1("time", view("time", () => frag(b1(), ".col").innerHTML)) },
 };
 document.documentElement.dataset.s = S;
-document.body.innerHTML = DEMO ? "" : (PAGES[P][S] ?? PAGES[P][1])();
+if (!window.R5) document.body.innerHTML = DEMO ? "" : (PAGES[P][S] ?? PAGES[P][1])(); // r5.js reuses this file without rendering it
 
 /* Motion demos. Each loops every LOOP ms with the same durations and easing as the CSS transitions in r4.css. */
 const EASE = "cubic-bezier(.2, 0, 0, 1)";
@@ -276,10 +276,10 @@ const DEMOS = {
     seq(sel, { transform: `translateY(${la.querySelector("li").offsetTop + la.offsetTop}px)` }, [[1150, 120, { transform: top(0) }], [2100, 120, { transform: top(1) }], [2600, 120, { transform: top(0) }], [3700, 0, { transform: `translateY(${la.querySelector("li").offsetTop + la.offsetTop}px)` }]]);
     keycap("Ctrl K", 300, 500); keycap("↓", 2000, 300); keycap("↑", 2500, 300); keycap("↵", 3200, 400); keycap("Ctrl 1", 4700, 500);
   },
-  // A task moves from Doing to Done with x, and back with g.
-  move() {
+  // A task moves from Doing to Done with x, and back with g (on B5's Today board, or the board r5.js passes in).
+  move(html = today5()) {
     LOOP = 4800;
-    document.body.innerHTML = today5();
+    document.body.innerHTML = html;
     document.documentElement.classList.add("demo-move");
     const cols = [...document.querySelectorAll(".kcol")], doing = cols[2], donec = cols[3];
     const card = doing.querySelectorAll(".kcard")[1], firstDone = donec.querySelector(".kcard");
@@ -313,7 +313,8 @@ const DEMOS = {
     document.querySelectorAll(".running .total b, .rail .timer .lbl, .live td.r").forEach((el) => roll(el, +el.textContent.match(/(\d)m$/)[1]));
   },
 };
-if (DEMO && matchMedia("(prefers-reduced-motion: reduce)").matches) // no motion: the demo's still page
+if (window.R5) { /* r5.js runs its own demos */ }
+else if (DEMO && matchMedia("(prefers-reduced-motion: reduce)").matches) // no motion: the demo's still page
   document.body.innerHTML = { view: PAGES.today[1], hover: PAGES.today[2], palette: PAGES.palette[1], move: PAGES.today[5], clock: PAGES.time[1] }[DEMO]();
 else if (DEMO) { document.documentElement.classList.add("demo"); DEMOS[DEMO](); }
-if (T != null) document.getAnimations().forEach((a) => { a.pause(); a.currentTime = +T; });
+if (T != null && !window.R5) document.getAnimations().forEach((a) => { a.pause(); a.currentTime = +T; });

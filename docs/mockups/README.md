@@ -18,6 +18,13 @@ hover lift and focus ring (140 ms), palette open/close (160 ms), a task moving b
 (200 ms) and the clock ticking (160 ms), all off under `prefers-reduced-motion`. `?demo=view|hover|
 palette|move|clock` loops one of them; `&t=ms` pauses it at that point, which is how `gif/` is made.
 
-Open `index.html?d=a|b|c&v=today|time`, `b.html?b=1..5&v=today|time` or `r4.html?…` in a browser
-(light/dark follows the system), or run `docs/mockups/render.sh [all|r4|gif]` to regenerate `png/`
-(1280x800) and `gif/` (25 fps, 800 px wide). Needs Chrome, and ffmpeg for the GIFs.
+Round 5 (`r5.html`, `r5.{js,css}`, reusing rounds 3 and 4), the combined draft: B1's top bar (its rail laid
+out sideways: logo, views, search, settings, clock, plus the floating key-hint pill), B5's layout (title row with
+the agenda chips, then full-width columns) and B2's cards inside the columns. `?p=today|time|tasks|projects|
+settings|editor|palette|graph`, `&bar=rail` for B1's real left rail instead, `&w=420` for a narrow window (the bar
+keeps its icons, columns stack with the agenda first). `?demo=view|palette|move` re-does the round-4 demos that
+look different in this shell (`gif/r5-*.gif`); hover and clock are unchanged from round 4.
+
+Open `index.html?d=a|b|c&v=today|time`, `b.html?b=1..5&v=today|time`, `r4.html?…` or `r5.html?…` in a browser
+(light/dark follows the system), or run `docs/mockups/render.sh [all|r4|gif|r5|gif5]` to regenerate `png/`
+(1280x800) and `gif/` (25 fps, 720-800 px wide). Needs Chrome, and ffmpeg for the GIFs.
