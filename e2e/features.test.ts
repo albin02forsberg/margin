@@ -446,6 +446,7 @@ describe("Task keys", () => {
   });
 
   it("D jumps the agenda to a date", async () => {
+    await select("Due me"); // focus the agenda: the previous picker may have left focus on body (#394)
     await browser.keys("D");
     await answer("Go to date", "+14d");
     const t = new Date(); t.setDate(t.getDate() + 14);
