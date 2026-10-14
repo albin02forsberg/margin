@@ -1694,6 +1694,7 @@
   let syncPaths: string[] | undefined;
   /** Sync with the disk; PATHS (the watcher's changed paths) narrows it, none checks everything. */
   function syncFromDisk(paths?: string[]) {
+    if (!cfg) return; // still starting up (focus/fs event before config loads); startup prunes anyway
     if (syncQueued) return void (syncPaths = mergeChanged(syncPaths, paths));
     syncQueued = true;
     syncPaths = paths;
