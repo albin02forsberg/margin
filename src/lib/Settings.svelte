@@ -180,7 +180,7 @@
               <span>{f.label}</span>
             {:else}
               <span>{f.label}</span>
-              {#if f.kind === "list"}
+              {#if f.kind === "list" || f.kind === "multiline"}
                 <textarea rows={Math.max(2, String(form[f.key] ?? "").split("\n").length)} value={form[f.key] as string} oninput={(e) => (form[f.key] = text(e))}></textarea>
               {:else}
                 <input type={f.kind === "number" ? "number" : "text"} step={f.step} value={form[f.key] as string} oninput={(e) => (form[f.key] = text(e))} />

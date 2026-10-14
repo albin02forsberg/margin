@@ -693,16 +693,38 @@ fn capture_template(s: State<App>, text: String, heading: Option<String>, body: 
 }
 
 /// Resolve a strftime file pattern under the notes dir for DATE_INPUT (default
-/// now), creating it as an org-roam note titled after its name if missing.
+/// now), creating it as an org-roam note titled after its name if missing. With JOURNAL,
+/// a new file also gets the `journal_template` expanded for that day.
 #[tauri::command]
-fn capture_path(s: State<App>, file: String, date_input: Option<String>) -> R<PathBuf> {
-    let p = capture_file(&s.cfg().notes(), &file, date_input.as_deref(), timeclock::now())?;
+fn capture_path(s: State<App>, file: String, date_input: Option<String>, journal: Option<bool>) -> R<PathBuf> {
+    let now = timeclock::now();
+    let p = capture_file(&s.cfg().notes(), &file, date_input.as_deref(), now)?;
     s.check(&p)?;
     if !p.exists() {
         let title = p.file_stem().map(|x| x.to_string_lossy().to_string()).unwrap_or_default();
         notes::write_note(&p, &title).map_err(|e| e.to_string())?;
+        if journal == Some(true) {
+            let day = match date_input.as_deref() {
+                Some(i) => date_at(i, now.date())?,
+                None => now.date(),
+            };
+            append_journal_template(&p, &s.cfg().journal_template, day)?;
+        }
     }
     Ok(p)
+}
+
+/// Append TEMPLATE, expanded for DAY at midnight (prompts and `%^{}` empty), to the new note P.
+fn append_journal_template(p: &Path, template: &str, day: NaiveDate) -> R<()> {
+    if template.trim().is_empty() {
+        return Ok(());
+    }
+    let mut body = org::expand_template(template, day.and_hms_opt(0, 0, 0).unwrap(), "", |_| String::new()).replace('\u{1}', ""); // %? marker
+    if !body.ends_with('\n') {
+        body.push('\n');
+    }
+    let mut f = std::fs::OpenOptions::new().append(true).open(p).map_err(|e| e.to_string())?;
+    std::io::Write::write_all(&mut f, body.as_bytes()).map_err(|e| e.to_string())
 }
 
 /// FILE (a strftime pattern) under NOTES for DATE_INPUT at NOW's time, or for NOW.
@@ -1926,6 +1948,21 @@ mod tests {
         assert_eq!(capture_file(n, "%a-%H%M.org", Some("fri"), now), Ok(PathBuf::from("/n/Fri-1430.org"))); // now's time kept
         assert_eq!(capture_file(n, "%Q.org", None, now), Err("bad date format in %Q.org".into()));
         assert_eq!(capture_file(n, "x.org", Some("soon"), now), Err("can't parse date: soon".into()));
+    }
+
+    #[test]
+    fn journal_template_fills_new_notes_for_their_day() {
+        let dir = std::env::temp_dir().join(format!("margin-jt-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("d.org");
+        crate::notes::write_note(&p, "d").unwrap();
+        let day = NaiveDate::from_ymd_opt(2026, 3, 4).unwrap();
+        append_journal_template(&p, "* Plan %t %^{x}%?", day).unwrap();
+        let t = std::fs::read_to_string(&p).unwrap();
+        assert!(t.ends_with("* Plan <2026-03-04 Wed> \n"), "{t:?}");
+        append_journal_template(&p, "  ", day).unwrap(); // empty template: untouched
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), t);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

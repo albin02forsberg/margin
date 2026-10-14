@@ -943,7 +943,7 @@
   const journalFile = () => `${cfg.config.daily_dir}/%Y-%m-%d.org`;
 
   async function journal(dateInput?: string) {
-    await openFile(await call("capture_path", { file: journalFile(), dateInput }));
+    await openFile(await call("capture_path", { file: journalFile(), dateInput, journal: true }));
     view.dispatch({ selection: { anchor: view.state.doc.length }, scrollIntoView: true });
   }
 
@@ -964,7 +964,7 @@
   async function journalEntry() {
     const text = await ask("Add a line to today's journal");
     if (!text) return;
-    const path: string = await call("capture_path", { file: journalFile() });
+    const path: string = await call("capture_path", { file: journalFile(), journal: true });
     const t = new Date();
     await toFile(path, (txt) => call("capture_insert", { text: txt, heading: null, entry: `* ${pad(t.getHours())}:${pad(t.getMinutes())} ${text}` }));
     flash("Added to today's journal.");
@@ -1093,7 +1093,7 @@
     if (!cfg.config.ai_model) return flash("Pick a model with AI drafts: choose model… (Space f a) to draft with a local model.");
     const draft = await aiDraft(await call("ai_day_prompt", { dateInput: "today" }), "Send", "Cancel", false);
     if (!draft) return draft === "" && flash("The model sent an empty draft.");
-    const path: string = await call("capture_path", { file: journalFile() });
+    const path: string = await call("capture_path", { file: journalFile(), journal: true });
     await recorded(() => toFile(path, (text) => call("capture_insert", { text, heading: null, entry: `* Summary\n${draft}` })));
     await journal();
     flash("Draft added under “Summary”: edit it, or Space n u to undo.");

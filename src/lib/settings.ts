@@ -1,5 +1,5 @@
 /** A config.toml setting on the settings page. KIND defaults to text; lists are edited one item per line. */
-export type Field = { key: string; label: string; kind?: "text" | "number" | "bool" | "list"; hint?: string; step?: number | "any" };
+export type Field = { key: string; label: string; kind?: "text" | "number" | "bool" | "list" | "multiline"; hint?: string; step?: number | "any" };
 export type Form = Record<string, string | boolean>;
 
 const rel = "relative to the notes folder";
@@ -9,6 +9,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "data_dir", label: "Time-tracking folder" },
     { key: "export_dir", label: "Export folder" },
     { key: "daily_dir", label: "Journal folder", hint: rel },
+    { key: "journal_template", label: "Journal template", kind: "multiline", hint: "org text added to each new journal entry, e.g. * Plan; %t and %u expand to that day's date, prompts and %? don't; empty = nothing" },
     { key: "inbox", label: "Inbox file", hint: `new tasks go here, ${rel}` },
     { key: "attachments_dir", label: "Attachments folder", hint: rel },
     { key: "templates_dir", label: "Templates folder", hint: `one capture template per .org file, ${rel}; empty = off` },
