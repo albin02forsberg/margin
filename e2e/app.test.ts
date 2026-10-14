@@ -84,7 +84,11 @@ describe("Margin", () => {
     await find(".board .kcol:nth-child(2) .kcard .title", "Water the e2e plants");
     await browser.keys("x");
     await fileMatches(join(notes, "inbox.org"), (s) => s.includes("* DONE Water the e2e plants"), "card not done");
-    await find(".board .kcol.donecol .kcard .title", "Water the e2e plants");
+    try { await find(".board .kcol.donecol .kcard .title", "Water the e2e plants"); } catch (e) {
+      console.log("DIAG cols", await browser.execute(() => [...document.querySelectorAll(".board .kcol")].map((c) => c.className + ": " + c.textContent)));
+      console.log("DIAG search", JSON.stringify(await browser.executeAsync((done: (x: unknown) => void) => { (window as any).__TAURI_INTERNALS__.invoke("search_todos", { query: 'todo:"DONE"' }).then(done, (err: unknown) => done(String(err))); })));
+      throw e;
+    }
     await (await find(".agenda .seg button", "List")).click();
     await browser.waitUntil(async () => !(await browser.$(".board").isExisting()), { timeoutMsg: "still a board" });
   });
