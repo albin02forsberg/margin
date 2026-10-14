@@ -162,8 +162,13 @@ describe("Margin", () => {
   });
 
   it("edits a project's settings on the Projects page", async () => {
+    const acmeOrg = join(notes, "acme.org");
+    writeFileSync(acmeOrg, "* TODO Acme fixture task\n");
     await (await find(".time button", "Project settings")).click();
     await find(".projects td", "Acme");
+    await find(".projects .pcard h3", "Acme"); // a card per project, with its open tasks (category = file name)
+    await find(".projects .pcard li", "Acme fixture task");
+    unlinkSync(acmeOrg);
     await browser.$(`select[aria-label="Rounding for Acme"]`).selectByVisibleText("Quarter hour");
     await browser.$(`input[aria-label="Export code for Acme"]`).click();
     await browser.keys([Key.Ctrl, "a"]);

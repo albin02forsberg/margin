@@ -1359,7 +1359,7 @@
     switch: changeProject, adjust: adjustStart, editSession: (s) => editSession(s), export: exportCsv, exportReport, projects: () => openView("projects"),
     profile: (n) => switchProfile(n), holidays: () => report("holidays", "Holidays"), daily: dailyReport,
     weekly: () => report("weekly", "Week report"), doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
-    backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), import: importEmacs, acceptSuggestion, editSuggestion,
+    backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), open: (loc) => openFile(loc.path, loc.line), import: importEmacs, acceptSuggestion, editSuggestion,
     flex: async () => flash(await call("tc_report", { kind: "flex" })), leave: async () => flash(await call("tc_leave_time")), diary: () => openFile(cfg.diary_path),
     /** Open the Time view and focus its "Time off" form (the view may still be mounting, so retry briefly). */
     timeOff: async () => {
@@ -1854,7 +1854,7 @@
               {#if v.kind === "time"}
                 <Time api={timeApi} active={v === tab} {reload} />
               {:else if v.kind === "projects"}
-                <Projects {act} active={v === tab} {reload} />
+                <Projects api={timeApi} active={v === tab} {reload} />
               {:else if v.kind === "settings"}
                 <Settings {version} active={v === tab} {reload} config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} missing={cfg.config_missing} save={saveSettings} recreate={recreateConfig} edit={() => act(editConfig)} />
               {:else}

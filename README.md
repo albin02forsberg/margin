@@ -402,7 +402,11 @@ work on a vacation day counts as flex; weekends and red days in a range are skip
 It's kept in `leave.jsonl` next to the time log, shows hatched in the week chart
 and in the day and week reports, and goes into the CSV export as one row per kind
 and working day (its export code, the note or kind, the hours it credits).
-Time → Project settings (`Space t P`) opens a Projects page listing every project
+Time → Project settings (`Space t P`) opens a Projects page. It starts with a card per
+project (shown, or tracked this month): hours this week and this month, billable hours,
+its share of the week, **Track** to start the clock on it, and its open tasks, which are
+the tasks whose org category is the project's name (a file's category is its name, so
+`acme.org` holds Acme's tasks; `#+CATEGORY:` overrides it). Below the cards it lists every project
 with its export code, billable-hour rounding, round-up and whether it's offered
 when you start tracking; change any of them and press Save (or Enter) on that row.
 Below it, Time off sets each kind's export code (kept in `leave.toml`, apart from

@@ -4,7 +4,7 @@
   export type TimeApi = {
     act: (f: () => unknown) => void;
     /** Named actions: start, stop, pause, resume, switch, adjust, editSession, export, exportReport, projects,
-     *  profile, holidays, daily, weekly, doctor, backup, backupLog, rawLog, import, acceptSuggestion, editSuggestion. */
+     *  open ({path, line?}), profile, holidays, daily, weekly, doctor, backup, backupLog, rawLog, import, acceptSuggestion, editSuggestion. */
     run: (name: string, arg?: unknown) => Promise<void>;
   };
   import { hm } from "./clock";
@@ -236,7 +236,7 @@
 
       <div class="lane">
         <h2>Projects</h2>
-        {#each d.projects as p (p.project)}
+        {#each d.projects.filter((p: any) => p.worked > 0) as p (p.project)}
           {@const on = d.project != null && (d.project || "Other") === p.project}
           <section class="card pcard" class:on>
             <h3>{p.project} <span class="code mono">{p.code}</span></h3>
