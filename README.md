@@ -191,7 +191,7 @@ key in your desktop's settings instead: it opens the same form in the running ap
 `j`/`k` move, `x` done, `s` schedule, `d` due date, `p` priority, `t` status,
 `#` tags, `m` move to another file/heading, `A` archive, `I` track time,
 `Enter` open, `<`/`>` reschedule a day, `+`/`-` priority, `n` new task, `u` undo,
-`v` day/week, `h`/`l` previous/next, `.` today, `/` filter, `?` all keys.
+`v` day/week, `h`/`l` previous/next, `.` today, `D` (or click the heading) go to a date, `/` filter, `?` all keys.
 Click the checkbox to complete a task.
 
 Tasks has a **List / Board** switch (`v`). The board has a column per open
