@@ -11,7 +11,9 @@ the editor has vim keys.
 - **Tasks** — Today and All tasks views, schedules, deadlines, priorities,
   tags, repeaters; capture from anywhere with a global shortcut.
 - **Journal** — a daily note, one keypress away; `Space n [` / `Space n ]`
-  step to the previous / next existing entry.
+  step to the previous / next existing entry. Set a `journal_template`
+  (Settings) to give each new entry a skeleton, e.g. `* Plan`; `%t` expands
+  to that day's date (prompts and `%?` are ignored).
 - **Time** — a timeclock with breaks, projects, flex balance and reports, in
   the window or the tray.
 - **Stays in sync** with Emacs, git or any sync tool editing the same files,

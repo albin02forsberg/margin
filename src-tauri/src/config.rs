@@ -13,6 +13,9 @@ pub struct Config {
     pub done_keywords: Vec<String>,
     /// Daily journal folder, relative to notes_dir.
     pub daily_dir: String,
+    /// Org text put in new journal files after the title; `%t`/`%T`/`%u`/`%U` expand for that day,
+    /// prompts and `%?` don't. Empty = nothing.
+    pub journal_template: String,
     /// Where new tasks go by default, relative to notes_dir.
     pub inbox: String,
     /// Closing the window while a timer runs hides it to the tray instead of quitting.
@@ -123,6 +126,7 @@ impl Default for Config {
             todo_keywords: v(&["TODO", "NEXT", "WAIT"]),
             done_keywords: v(&["DONE", "CANCELLED"]),
             daily_dir: "daily".into(),
+            journal_template: String::new(),
             inbox: "inbox.org".into(),
             close_to_tray: true,
             capture_shortcut: "Super+Shift+N".into(),
