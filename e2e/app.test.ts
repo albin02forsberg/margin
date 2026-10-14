@@ -84,6 +84,12 @@ describe("Margin", () => {
     await answer("What did you do?", "e2e done");
     const log = join(data, "work", "timelog.jsonl");
     await fileMatches(log, (s) => /"ev":"in".*"project":"Acme"/.test(s) && /"ev":"out".*"note":"e2e done"/.test(s), "no in/out entries in the time log");
+    await find(".time .worked h3", "Worked today");
+    await find(".time .pcard h3", "Acme"); // a card per project worked this week, its Track preselects it
+    await (await find(".time .pcard button", "Track")).click();
+    await find(".picker label span", "Track time on project");
+    await browser.waitUntil(async () => (await texts(".picker li"))[0]?.includes("Acme"), { timeoutMsg: "Track didn't preselect the project" });
+    await browser.keys(Key.Escape);
   });
 
   it("Space t w says when to leave, and the Time view shows it", async () => {
