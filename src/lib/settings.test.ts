@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changes, checkTemplates, checkViews, GROUPS, needsMacPrompt, refresh, refreshRows, type Field } from "./settings.ts";
+import { changes, checkTemplates, checkViews, GROUPS, needsMacPrompt, refresh, refreshRows, shows, type Field } from "./settings.ts";
 
 const config = { notes_dir: "~/notes", expected_daily_hours: 8, profiles: ["Work", "Home"], reminders: true };
 const fields: Field[] = GROUPS.flatMap((g) => g.fields).filter((f) => f.key in config);
@@ -53,4 +53,14 @@ test("the macOS watcher dialog shows once, only when turning it on without the p
   assert.equal(needsMacPrompt(false, false, true, true), false, "confirmed before");
   assert.equal(needsMacPrompt(false, true, true, false), false, "already on");
   assert.equal(needsMacPrompt(false, false, false, false), false, "turning it off");
+});
+
+test("category chips and the filter narrow the settings shown", () => {
+  const shown = (cat: string, q: string) => GROUPS.flatMap((g) => g.fields.filter((f) => shows(cat, q, g.name, f.label, f.hint, f.key)).map((f) => f.key));
+  assert.equal(shown("All", "").length, GROUPS.flatMap((g) => g.fields).length);
+  assert.deepEqual(shown("Time", ""), ["expected_daily_hours", "idle_threshold_minutes", "profiles"]);
+  assert.deepEqual(shown("All", "IDLE"), ["idle_threshold_minutes"]);
+  assert.deepEqual(shown("All", "tasks"), ["inbox", "todo_keywords", "done_keywords", "calendar_file"]); // inbox by hint, Tasks by group name
+  assert.deepEqual(shown("Time", "keywords"), []);
+  assert.ok(shows("All", "view", "Saved views") && !shows("Time", "", "Saved views"));
 });

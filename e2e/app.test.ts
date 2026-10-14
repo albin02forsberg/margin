@@ -271,6 +271,23 @@ describe("Margin", () => {
     assert.ok(!(await browser.$(`${label}//button`).isExisting()), "reset shown for a default value");
   });
 
+  it("narrows the settings page by category chip and filter", async () => {
+    const label = (text: string) => browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "${text}")]]`);
+    const views = () => browser.$(`//div[contains(@class, "settings")]//form[.//legend[.="Saved views"]]`);
+    await (await find(".settings .chips button", "Time")).click();
+    await (await label("Expected hours per day")).waitForDisplayed();
+    assert.ok(!(await (await label("Export folder")).isExisting()), "Folders field shown under Time");
+    assert.ok(!(await (await views()).isDisplayed()), "Saved views shown under Time");
+    await (await find(".settings .chips button", "All")).click();
+    await (await browser.$(".settings input.filter")).click();
+    await type("idle");
+    await (await label("Ask about idle time")).waitForDisplayed();
+    assert.ok(!(await (await label("Expected hours per day")).isExisting()), "filter kept a non-matching field");
+    await browser.keys(Key.Escape);
+    await (await label("Export folder")).waitForDisplayed({ timeoutMsg: "Escape didn't clear the filter" });
+    assert.ok(await (await views()).isDisplayed(), "Saved views hidden under All");
+  });
+
   it("adds and reorders saved views on the settings page", async () => {
     const cfg = join(cfgDir, "config.toml");
     const last = async (css: string) => Array.from(await browser.$$(css)).at(-1)!;

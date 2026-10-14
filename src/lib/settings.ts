@@ -43,6 +43,15 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
   ] },
 ];
 
+/** The settings page's category chips: all, each field group, then the list cards. */
+export const CATEGORIES = ["All", ...GROUPS.map((g) => g.name), "Saved views", "Capture templates"];
+/** Whether a card or field of group NAME shows under category CAT and filter Q: Q (any case) is
+ *  in the group name or one of TEXT (a field's label, hint and key). */
+export function shows(cat: string, q: string, name: string, ...text: (string | undefined)[]) {
+  const s = q.trim().toLowerCase();
+  return (cat === "All" || cat === name) && (!s || [name, ...text].some((t) => t?.toLowerCase().includes(s)));
+}
+
 /** Whether ticking the activity watcher (BEFORE saved, AFTER ticked) first needs the macOS dialog:
  *  GRANTED is the Screen Recording permission (null off macOS), OK an earlier confirmation. */
 export const needsMacPrompt = (granted: boolean | null, before: boolean, after: boolean, ok: boolean) =>
