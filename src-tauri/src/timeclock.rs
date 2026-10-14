@@ -365,6 +365,15 @@ impl Tc {
         Ok(true)
     }
 
+    /// Clock out at AT (forgot to stop); refuses a time before the session started.
+    pub fn clock_out_earlier(&self, at: NaiveDateTime, note: &str) -> Result<bool, String> {
+        let Some((start, _, _)) = self.current() else { return Ok(false) };
+        if at < start {
+            return Err(format!("That is before this session started ({}).", start.format("%H:%M")));
+        }
+        self.clock_out_at(note, at)
+    }
+
     pub fn take_break(&self) -> Result<Option<String>, String> {
         let Some((_, project, _)) = self.current() else { return Ok(None) };
         self.append(&Event::Break { t: now() })?;
@@ -1328,6 +1337,21 @@ mod tests {
         let err = tc.adjust_start(5).unwrap_err();
         assert!(err.contains("overlaps"), "{err}");
         assert!(tc.adjust_start(0).unwrap());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn clock_out_earlier_refuses_before_the_start() {
+        let dir = std::env::temp_dir().join(format!("tc-outat-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("d.org"), expected: 8.0 };
+        assert!(!tc.clock_out_earlier(dt("2026-10-01 08:00"), "").unwrap()); // not clocked in
+        tc.append(&Event::In { t: dt("2026-10-01 09:00"), project: "A".into(), task: String::new() }).unwrap();
+        let err = tc.clock_out_earlier(dt("2026-10-01 08:00"), "").unwrap_err();
+        assert!(err.contains("09:00"), "{err}");
+        assert!(tc.current().is_some());
+        assert!(tc.clock_out_earlier(dt("2026-10-01 10:00"), "").unwrap());
+        assert!(tc.current().is_none());
         let _ = fs::remove_dir_all(&dir);
     }
 

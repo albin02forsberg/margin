@@ -1046,7 +1046,7 @@ fn tc_idle(s: State<App>, since: NaiveDateTime, back: Option<NaiveDateTime>, not
 /// Clock out at AT, earlier than now (forgot to stop).
 #[tauri::command(async)]
 fn tc_out_at(s: State<App>, at: NaiveDateTime, note: String) -> R<String> {
-    if !timeclock::locked(|| s.tc().discard_idle(at, None, &note))? {
+    if !timeclock::locked(|| s.tc().clock_out_earlier(at, &note))? {
         return Ok("Not clocked in.".into());
     }
     s.backup();
