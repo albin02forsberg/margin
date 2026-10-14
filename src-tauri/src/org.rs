@@ -766,6 +766,32 @@ fn set_property(sub: &mut Vec<String>, key: &str, val: &str) {
     }
 }
 
+/// TEXT with an `:ID:` on the heading at or above LINE (reusing one in its drawer),
+/// that ID, and the heading's plain title. Before the first heading the file-level ID.
+pub fn ensure_heading_id(text: &str, line: usize, kw: &Kw) -> (String, String, String) {
+    let mut lines = to_lines(text);
+    let Some(hl) = headline_at(&lines, line) else {
+        let (t, id) = crate::notes::ensure_id(text);
+        let title = text.lines().find_map(|l| l.strip_prefix("#+title:")).unwrap_or("").trim().to_string();
+        return (t, id, title);
+    };
+    let title = Parts::parse(&lines[hl], kw).map(|p| p.title).unwrap_or_default();
+    let end = (hl + 1..lines.len()).find(|&i| heading_level(&lines[i]).is_some()).unwrap_or(lines.len());
+    let i = if end > hl + 1 && is_planning(&lines[hl + 1]) { hl + 2 } else { hl + 1 };
+    if lines.get(i).is_some_and(|l| l.trim().eq_ignore_ascii_case(":PROPERTIES:")) {
+        for l in lines[i + 1..end].iter().take_while(|l| !l.trim().eq_ignore_ascii_case(":END:")) {
+            if let Some(id) = l.trim().strip_prefix(":ID:").filter(|v| !v.trim().is_empty()) {
+                return (text.to_string(), id.trim().to_string(), title);
+            }
+        }
+    }
+    let id = crate::notes::gen_id();
+    let mut sub: Vec<String> = lines[hl..end].to_vec();
+    set_property(&mut sub, "ID", &id);
+    lines.splice(hl..end, sub);
+    (join(lines, text), id, title)
+}
+
 /// Move the subtree at LINE of SRC to the end of the archive file text DST, org style.
 pub fn archive(src: &str, line: usize, dst: &str, src_path: &str, now: chrono::NaiveDateTime) -> Result<(String, String), String> {
     let mut s = to_lines(src);
@@ -1237,5 +1263,42 @@ mod tests {
         assert_eq!(read_date("2027-01-01", t).unwrap().0, d("2027-01-01"));
         assert_eq!(read_date("15", t).unwrap().0, d("2026-10-15"));
         assert_eq!(read_date("nonsense", t), None);
+    }
+
+    #[test]
+    fn heading_id() {
+        let k = kw();
+        let src = "intro
+* TODO [#A] Parent :t:
+SCHEDULED: <2026-10-02 Fri>
+text
+** Child
+body
+";
+        // planning line: drawer goes below it, title is clean
+        let (t, id, title) = ensure_heading_id(src, 3, &k);
+        assert_eq!(title, "Parent");
+        assert_eq!(t.lines().nth(3).unwrap(), ":PROPERTIES:");
+        assert_eq!(t.lines().nth(4).unwrap(), format!(":ID: {id}"));
+        assert!(t.contains("** Child
+body") && !t.contains("Child
+:PROPERTIES:"));
+        // idempotent: existing ID reused, text unchanged
+        let (t2, id2, _) = ensure_heading_id(&t, 1, &k);
+        assert_eq!((t2.as_str(), id2.as_str()), (t.as_str(), id.as_str()));
+        // nested heading gets its own; drawer without ID gets one added
+        let (t3, id3, title3) = ensure_heading_id("* A
+:PROPERTIES:
+:CATEGORY: c
+:END:
+", 0, &k);
+        assert!(t3.contains(&format!(":ID: {id3}")) && t3.matches(":PROPERTIES:").count() == 1);
+        assert_eq!(title3, "A");
+        // before the first heading: file-level ID
+        let (t4, id4, _) = ensure_heading_id("intro
+* A
+", 0, &k);
+        assert!(t4.starts_with(&format!(":PROPERTIES:
+:ID:       {id4}")));
     }
 }

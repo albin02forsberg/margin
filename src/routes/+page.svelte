@@ -1415,6 +1415,13 @@
     { label: "Restore note from .trash…", leader: "n R", run: restoreNote },
     { label: "Note: show in file manager", leader: "n f", run: () => act(() => (inFile() ? revealItemInDir(tab.path!) : flash("Open a note first."))) },
     { label: "Note: copy file path", leader: "n y", run: () => act(async () => { if (!inFile()) return flash("Open a note first."); await navigator.clipboard.writeText(tab.path!); flash(`Copied ${tab.path}`); }) },
+    { label: "Note: copy link to heading at cursor", leader: "n w", run: () => act(async () => {
+      if (!inFile()) return flash("Open a note first.");
+      let id = "", title = "";
+      await toFile(tab.path!, async (text) => { const [t, i, ti] = await call<[string, string, string]>("notes_heading_id", { text, line: curLine0() }); id = i; title = ti; return t; });
+      await navigator.clipboard.writeText(`[[id:${id}][${(title || tab.path!.split("/").pop()!).replace(/\]/g, ")")}]]`);
+      flash(`Copied link to ${title || "note"}`);
+    }) },
     { label: "Today's journal", keys: ["Ctrl+J"], leader: "j", run: () => journal() },
     { label: "Journal for another day…", leader: "n J", run: journalPick },
     { label: "Journal: previous entry", leader: "n [", run: () => journalStep(-1) },
