@@ -592,7 +592,9 @@ Timed entries show as one hour; the rest are all-day.
 Ctrl+, (`Space f c`) opens the settings page: folders (notes `~/notes`, time data
 `~/timeclock`, export, journal, inbox, attachments, templates), expected daily
 hours, idle prompt, profiles, reminders, quick-capture shortcut (re-registered on
-save), task statuses, calendar feed, ActivityWatch and Ollama. Each group saves
+save), task statuses, calendar feed, ActivityWatch and Ollama. The chips under the title show one
+group, and the filter field (`/`, Escape clears it) keeps the settings whose name or hint matches;
+both only hide fields, so Save still saves a group's hidden edits. Each group saves
 on its own into `config.toml` (in the OS config dir), keeping your comments (also
 the `# …` after a changed value) and everything else in the file. Editing the file
 elsewhere (another editor, a sync tool) applies right away; unsaved edits on the

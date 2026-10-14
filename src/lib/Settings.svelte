@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { changes, checkTemplates, checkViews, GROUPS, needsMacPrompt, refresh, refreshRows, toForm, type Field, type Form, type Row } from "$lib/settings";
+  import { CATEGORIES, changes, checkTemplates, checkViews, GROUPS, needsMacPrompt, refresh, refreshRows, shows, toForm, type Field, type Form, type Row } from "$lib/settings";
 
   type List = "views" | "templates";
   /** The config.toml settings as a form, saved per group; unsaved fields survive a reload of CONFIG. */
@@ -122,6 +122,22 @@
     form.activity_watcher = true;
     granted = await invoke<boolean | null>("screen_recording", { request: true }).catch(() => granted);
   }
+  /** Category chip and filter text: they only hide cards and fields; Save still sends a group's hidden edits. */
+  let cat = $state("All");
+  let q = $state("");
+  let filterInput = $state<HTMLInputElement>();
+  const fieldsOf = (g: (typeof GROUPS)[number]) => g.fields.filter((f) => shows(cat, q, g.name, f.label, f.hint, f.key));
+  const VIEWS = "task searches query", TPLS = "capture key file heading body";
+  const showRules = $derived(!!(rules.length || errors.rules) && shows(cat, q, "Integrations", "Learned activity rules"));
+  const none = $derived(!GROUPS.some((g) => fieldsOf(g).length) && !shows(cat, q, "Saved views", VIEWS) && !shows(cat, q, "Capture templates", TPLS) && !showRules);
+  function key(e: KeyboardEvent) {
+    if (e.target === filterInput) {
+      if (e.key === "Escape") { q = ""; filterInput?.blur(); e.preventDefault(); }
+    } else if (e.key === "/" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+      filterInput?.focus();
+      e.preventDefault();
+    }
+  }
   const text = (e: Event) => (e.currentTarget as HTMLInputElement).value;
   async function restore() {
     try {
@@ -133,7 +149,8 @@
   }
 </script>
 
-<div class="settings">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="settings" onkeydown={key}>
   <h1>Settings</h1>
   <p class="dim">Saved to config.toml; comments and everything not shown here stay as written.{#if !missing} <button class="link" onclick={edit}>Edit config.toml</button> by hand.{/if}</p>
   {#if error}
@@ -144,11 +161,19 @@
   {#if clashing.length}
     <p class="error">⚠ config.toml changed on disk; your unsaved {clashing.map((f) => f.label).join(", ")} would overwrite it.</p>
   {/if}
+  <div class="bar">
+    <div class="chips" role="group" aria-label="Categories">
+      {#each CATEGORIES as c (c)}<button type="button" class:on={cat === c} onclick={() => (cat = c)}>{c}</button>{/each}
+    </div>
+    <input class="filter" type="search" aria-label="Filter settings" placeholder="Filter settings  /" spellcheck="false" bind:this={filterInput} bind:value={q} />
+  </div>
+  {#if none}<p class="dim">No settings match.</p>{/if}
   {#each GROUPS as g (g.name)}
-    <form class="card" onsubmit={(e) => { e.preventDefault(); submit(g.name, g.fields); }}>
+    {@const shown = fieldsOf(g)}
+    <form class="card" hidden={!shown.length} onsubmit={(e) => { e.preventDefault(); submit(g.name, g.fields); }}>
       <fieldset disabled={!!error}>
         <legend>{g.name}</legend>
-        {#each g.fields as f (f.key)}
+        {#each shown as f (f.key)}
           <label class:check={f.kind === "bool"}>
             {#if f.kind === "bool"}
               <input type="checkbox" checked={form[f.key] as boolean} onchange={(e) => check(f, e.currentTarget)} />
@@ -183,7 +208,7 @@
       </fieldset>
     </form>
   {/each}
-  {#if rules.length || errors.rules}
+  {#if showRules}
     <fieldset class="list rules card">
       <legend>Learned activity rules</legend>
       <small>Suggested blocks whose title matches go to the project; learned when you log a suggestion to another project than guessed. Kept in this profile's activity_rules.toml.</small>
@@ -213,7 +238,7 @@
     {#if errors[k]}<p class="error">⚠ {errors[k]}</p>{/if}
     <button type="submit" disabled={!dirtyRows(k)}>Save {what}</button>
   {/snippet}
-  <form class="card wide" onsubmit={(e) => { e.preventDefault(); saveRows("views"); }}>
+  <form class="card wide" hidden={!shows(cat, q, "Saved views", VIEWS)} onsubmit={(e) => { e.preventDefault(); saveRows("views"); }}>
     <fieldset disabled={!!error} class="list">
       <legend>Saved views</legend>
       <small>Task searches in the top bar. Saving rewrites the [[views]] tables of config.toml; comments inside them are not kept.</small>
@@ -228,7 +253,7 @@
       {@render foot("views", "views")}
     </fieldset>
   </form>
-  <form class="card wide" onsubmit={(e) => { e.preventDefault(); saveRows("templates"); }}>
+  <form class="card wide" hidden={!shows(cat, q, "Capture templates", TPLS)} onsubmit={(e) => { e.preventDefault(); saveRows("templates"); }}>
     <fieldset disabled={!!error} class="list">
       <legend>Capture templates</legend>
       <small>Picked with Space c. File: strftime pattern relative to the notes folder, empty = the inbox. Heading: filed under it (created if missing). Body: {"%^{Prompt}"} asks, %U is now, %i the selection, %? the cursor. Templates folder files aren't listed here. Saving rewrites the [[templates]] tables of config.toml; comments inside them are not kept.</small>
@@ -251,7 +276,7 @@
       {@render foot("templates", "templates")}
     </fieldset>
   </form>
-  <section class="card wide about">
+  <section class="card wide about" hidden={cat !== "All" || !!q.trim()}>
     <h2>About</h2>
     <p>Margin {version ? `v${version}` : ""}</p>
   </section>
@@ -262,6 +287,13 @@
   /* heading, hint and banners span the full grid; cards sit on the form/fieldset, never inside a label */
   .settings > :not(.card) { grid-column: 1 / -1; margin: 0; }
   .card.wide, .rules { grid-column: 1 / -1; }
+  .card[hidden] { display: none; }
+  /* Category chips and filter (round-5 mockup, #357) */
+  .bar { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; justify-content: space-between; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button { background: var(--bg); border: 1px solid var(--border); color: var(--fg); border-radius: 999px; padding: 3px 10px; margin: 0; font: var(--fs-sm) var(--sans); }
+  .chips button.on { border-color: var(--accent); color: var(--accent); }
+  input.filter { width: 220px; font-family: var(--sans); }
   .card:hover { transform: none; box-shadow: var(--soft); }
   @media (max-width: 700px) { .settings { grid-template-columns: minmax(0, 1fr); } }
   .about h2 { margin: 0 0 var(--s1); color: var(--dim); font-size: var(--fs-sm); font-weight: 400; }
