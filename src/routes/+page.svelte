@@ -552,7 +552,7 @@
     }) as Promise<string | null>;
   }
 
-  const taskOps: Record<string, (loc: Loc, it?: AgendaItem, arg?: number) => Promise<unknown>> = {
+  const taskOps: Record<string, (loc: Loc, it?: AgendaItem, arg?: number | string) => Promise<unknown>> = {
     async done(loc) {
       const h = await heading(loc);
       if (!h) return flash("Not on a task.");
@@ -565,6 +565,7 @@
       if (v != null) await edit(loc, "keyword", v);
     },
     cycle: (loc, _it, dir = 1) => edit(loc, "cycle", String(dir)),
+    keyword: (loc, _it, k = "") => edit(loc, "keyword", String(k)),
     schedule: (loc) => planDate(loc, "SCHEDULED"),
     deadline: (loc) => planDate(loc, "DEADLINE"),
     async priority(loc) {
@@ -1373,7 +1374,7 @@
   };
   const timeApi: TimeApi = { act, run: async (name, arg) => { await timeActions[name](arg); } };
   const agendaApi: AgendaApi = {
-    run: (op, it) => recorded(async () => { await taskOps[op]({ path: it.path, line: it.line }, it); }),
+    run: (op, it, arg) => recorded(async () => { await taskOps[op]({ path: it.path, line: it.line }, it, arg); }),
     newTask: (s) => act(() => newTask(s ?? "")),
     undo,
     act,

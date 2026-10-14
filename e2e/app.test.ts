@@ -74,6 +74,21 @@ describe("Margin", () => {
     await fileMatches(join(notes, "tasks.org"), (s) => s.startsWith("* DONE Fixture task"), "task not marked done");
   });
 
+  it("moves a task across the Tasks board", async () => {
+    await browser.keys([Key.Ctrl, "2"]);
+    await (await find(".agenda .seg button", "Board")).click();
+    await find(".board .kcol h2", "NEXT"); // a column per open keyword
+    await (await find(".board .kcol:first-child .kcard .title", "Water the e2e plants")).click();
+    await browser.keys("L");
+    await fileMatches(join(notes, "inbox.org"), (s) => s.includes("* NEXT Water the e2e plants"), "card not moved to NEXT");
+    await find(".board .kcol:nth-child(2) .kcard .title", "Water the e2e plants");
+    await browser.keys("x");
+    await fileMatches(join(notes, "inbox.org"), (s) => s.includes("* DONE Water the e2e plants"), "card not done");
+    await find(".board .kcol.donecol .kcard .title", "Water the e2e plants");
+    await (await find(".agenda .seg button", "List")).click();
+    await browser.waitUntil(async () => !(await browser.$(".board").isExisting()), { timeoutMsg: "still a board" });
+  });
+
   it("starts and stops the timer from the Time view", async () => {
     await browser.keys([Key.Ctrl, "4"]);
     await (await find(".time button", "Start tracking")).click();

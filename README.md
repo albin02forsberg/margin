@@ -192,6 +192,11 @@ key in your desktop's settings instead: it opens the same form in the running ap
 `v` day/week, `h`/`l` previous/next, `.` today, `/` filter, `?` all keys.
 Click the checkbox to complete a task.
 
+Tasks has a **List / Board** switch (`v`). The board has a column per open
+keyword (`todo_keywords`, so a `DOING` column appears if you configure one)
+and a Done column; `H`/`L` move the selected card to the column left/right,
+`x` moves it to Done (the Done column shows what you finished from the board).
+
 Today has a **Clock** column next to the agenda: the running clock (project,
 task, time since you clocked in, Pause / Switch / Stop or Start), **Worked
 today** against your daily target (`expected_daily_hours`, less any time off)
