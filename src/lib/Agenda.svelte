@@ -83,7 +83,7 @@
   const shown = $derived.by(() => {
     const f = filter.toLowerCase();
     const all = boardOn ? [...items, ...doneItems] : items;
-    let xs = f ? all.filter((i) => `${i.keyword ?? ""} ${i.title} ${i.tags.join(" ")} ${i.category}`.toLowerCase().includes(f)) : items;
+    let xs = f ? all.filter((i) => `${i.keyword ?? ""} ${i.title} ${i.tags.join(" ")} ${i.category}`.toLowerCase().includes(f)) : all;
     if (mode === "todo") {
       const rank = (k: string | null) => { const r = todo.indexOf(k ?? ""); return r < 0 ? 99 : r; };
       xs = [...xs].sort((a, b) => rank(a.keyword) - rank(b.keyword));
