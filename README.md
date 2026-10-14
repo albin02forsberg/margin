@@ -189,6 +189,11 @@ key in your desktop's settings instead: it opens the same form in the running ap
 `v` day/week, `h`/`l` previous/next, `.` today, `/` filter, `?` all keys.
 Click the checkbox to complete a task.
 
+Today has a **Clock** column next to the agenda: the running clock (project,
+task, time since you clocked in, Pause / Switch / Stop or Start), **Worked
+today** against your daily target (`expected_daily_hours`, less any time off)
+and this week's hours as bars. On a narrow window it moves below the agenda.
+
 Completing a repeating task logs `- State "DONE" from "TODO" [date time]`
 under it and sets `:LAST_REPEAT:`, as org does. Give it `:STYLE: habit` in its
 properties and Today (and Tasks) shows a 21-day consistency bar and how many

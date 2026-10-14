@@ -48,10 +48,13 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { tick } from "svelte";
+  import { hm, type TimeApi } from "./Time.svelte";
+  import WeekBars from "./WeekBars.svelte";
+  import { worked } from "./clock";
 
-  /** QUERY (todo mode): show only open tasks matching it, under TITLE. */
-  let { mode, api, active, reload, todo, done, query, title }: {
-    mode: "agenda" | "todo"; api: AgendaApi; active: boolean; reload: number; todo: string[]; done: string[]; query?: string; title?: string;
+  /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions. */
+  let { mode, api, active, reload, todo, done, query, title, time }: {
+    mode: "agenda" | "todo"; api: AgendaApi; active: boolean; reload: number; todo: string[]; done: string[]; query?: string; title?: string; time?: TimeApi;
   } = $props();
 
   const stored = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -116,11 +119,21 @@
     : `${fmtDay(start, { day: "numeric", month: "short" })} – ${fmtDay(days[6], { day: "numeric", month: "short", year: "numeric" })}`,
   );
 
+  /** The Clock column: `tc_dashboard` (running clock, today's hours vs the target, the week). */
+  let tc = $state<any>(null);
+  const clockOn = $derived(mode === "agenda" && !!time);
+  const day = $derived(tc ? worked(tc.week, today) : null);
+  const loadClock = async () => { if (clockOn) tc = await invoke("tc_dashboard"); };
+  /** A Time view action; it bumps `reload`, which reloads the column. */
+  const tcRun = (name: string) => api.act(async () => { await time!.run(name); root?.focus(); });
+  const elapsed = (since: string) => hm(Math.max(0, now.getTime() - Date.parse(since)) / 3_600_000);
+
   async function refresh() {
     now = new Date();
     items = mode === "agenda" ? await invoke("agenda", { start: iso(start), days: span })
       : query != null ? await invoke("search_todos", { query }) : await invoke("todos");
     sel = Math.min(sel, Math.max(0, shown.length - 1));
+    await loadClock();
   }
 
   $effect(() => {
@@ -132,7 +145,7 @@
   });
   $effect(() => {
     if (!active) return;
-    const t = setInterval(() => (now = new Date()), 60_000);
+    const t = setInterval(() => { now = new Date(); api.act(loadClock); }, 60_000);
     return () => clearInterval(t);
   });
   $effect(() => {
@@ -260,6 +273,43 @@
     </div>
   </header>
 
+  <div class="cols" class:clocked={clockOn}>
+  {#if clockOn && tc}
+    <aside class="clock" aria-label="Clock">
+      <h2>Clock</h2>
+      <section class="card run" class:on={tc.project != null} class:paused={tc.on_break != null}>
+        {#if tc.project != null}
+          <div class="state"><span class="dot"></span><small>Tracking since {tc.since?.slice(11, 16)}</small><span class="mono">{elapsed(tc.since)}</span></div>
+          <b>{tc.project || "No project"}</b>
+          {#if tc.task}<p title={tc.task}>{tc.task}</p>{/if}
+          <div class="buttons">
+            <button onclick={() => tcRun("pause")}>Pause</button>
+            <button onclick={() => tcRun("switch")}>Switch</button>
+            <button class="primary" onclick={() => tcRun("stop")}>Stop</button>
+          </div>
+        {:else if tc.on_break != null}
+          <div class="state"><span class="dot"></span><small>On a break</small></div>
+          <b>{tc.on_break}</b>
+          <div class="buttons"><button class="primary" onclick={() => tcRun("resume")}>Resume</button></div>
+        {:else}
+          <div class="state"><small>Not tracking</small></div>
+          <div class="buttons"><button class="primary" onclick={() => tcRun("start")}>Start tracking</button></div>
+        {/if}
+      </section>
+      {#if day}
+        <section class="card worked">
+          <h3>Worked today</h3>
+          <div class="big mono">{hm(day.hours)}</div>
+          <div class="progress" role="progressbar" aria-label="Worked today" aria-valuenow={Math.round(day.progress * 100)}><i style:width="{day.progress * 100}%"></i></div>
+          <small>{day.expected > 0 ? `of ${hm(day.expected)} · ${day.left > 0 ? `${hm(day.left)} to go` : "done for today"}` : "no expected hours today"}</small>
+        </section>
+      {/if}
+      <section class="card">
+        <h3>This week</h3>
+        <WeekBars week={tc.week} height={110} />
+      </section>
+    </aside>
+  {/if}
   <div class="list">
     {#each groups as g (g.key)}
       {@const ni = g.today ? nowIndex(g.rows) : -1}
@@ -283,6 +333,7 @@
         <p>Press <kbd>n</kbd> to add a task{mode === "agenda" ? ", or h / l to look at other days" : ""}.</p>
       </div>
     {/if}
+  </div>
   </div>
 
   {#if help}
@@ -323,7 +374,37 @@
   .controls .seg button:hover { transform: none; color: var(--fg); }
   .controls .seg button.on { background: var(--sel); color: var(--fg); font-weight: 500; }
   .controls input { cursor: text; width: 140px; }
-  .list { flex: 1; overflow-y: auto; padding: 2px var(--s5) var(--s5); display: flex; flex-direction: column; gap: var(--s3); }
+  /* Clock column (round-5 mockup, #357): left of the list; under it on narrow windows */
+  .cols { flex: 1; min-height: 0; display: flex; }
+  .clock { flex: 0 0 300px; overflow-y: auto; padding: 2px 0 var(--s5) var(--s5); display: flex; flex-direction: column; gap: var(--s3); }
+  .clock > h2 { margin: 0; }
+  .clock .card { flex: none; padding: var(--s3) var(--s4); }
+  .clock h3 { font-size: var(--fs-md); font-weight: 600; margin: 0 0 var(--s2); }
+  .clock small { color: var(--dim); font-size: var(--fs-sm); }
+  .mono { font-family: var(--mono); }
+  .run { display: flex; flex-direction: column; gap: var(--s1); }
+  .run.on { background: linear-gradient(160deg, color-mix(in srgb, var(--done) 12%, var(--card)), var(--card) 60%); }
+  .run.paused { background: linear-gradient(160deg, color-mix(in srgb, var(--h5) 12%, var(--card)), var(--card) 60%); }
+  .run .state { display: flex; align-items: center; gap: var(--s2); }
+  .run .state .mono { margin-left: auto; font-size: 20px; }
+  .run b { font-size: 18px; overflow-wrap: anywhere; }
+  .run p { margin: 0; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--done); box-shadow: 0 0 0 3px color-mix(in srgb, var(--done) 25%, transparent); flex: none; }
+  .paused .dot { background: var(--h5); box-shadow: 0 0 0 3px color-mix(in srgb, var(--h5) 25%, transparent); }
+  .buttons { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s2); }
+  .buttons button { background: var(--active); border: 0; color: var(--fg); border-radius: 8px; padding: 5px var(--s3); font: var(--fs-md) var(--sans); cursor: pointer; transition: background-color 120ms var(--ease); }
+  .buttons button:hover { background: color-mix(in srgb, var(--active) 70%, var(--border)); }
+  .buttons button:focus-visible { outline: none; box-shadow: var(--ring); }
+  .buttons .primary { background: var(--accent); color: var(--bg); font-weight: 600; }
+  .worked .big { font-size: 28px; font-weight: 500; }
+  .progress { height: 8px; border-radius: 999px; background: var(--active); overflow: hidden; margin: var(--s2) 0; }
+  .progress i { display: block; height: 100%; background: var(--done); border-radius: inherit; }
+  @media (max-width: 759px) {
+    .cols.clocked { flex-direction: column; overflow-y: auto; }
+    .cols.clocked .list { flex: none; overflow: visible; }
+    .cols.clocked .clock { order: 1; flex: none; overflow: visible; padding: 0 var(--s5) var(--s5); }
+  }
+  .list { flex: 1; min-width: 0; overflow-y: auto; padding: 2px var(--s5) var(--s5); display: flex; flex-direction: column; gap: var(--s3); }
   .list > .card { flex: none; padding: var(--s3); }
   .list > .card.today { box-shadow: var(--soft), inset 3px 0 0 var(--accent); }
   .list > .card.today:hover { box-shadow: var(--lift), inset 3px 0 0 var(--accent); }

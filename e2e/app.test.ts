@@ -95,6 +95,8 @@ describe("Margin", () => {
     await browser.waitUntil(async () => (await texts(".time .total .leave")).some((t) => said.test(t)), { timeoutMsg: "no leave time in the Time view" });
     await browser.keys([Key.Ctrl, "1"]);
     await find(".agenda h1", "Today");
+    await find(".agenda .clock .run b", "Acme"); // the Today clock column shows the running clock
+    await find(".agenda .clock .worked h3", "Worked today");
     await browser.keys(" ");
     await type("tw");
     await browser.waitUntil(async () => (await texts(".status .msg")).some((t) => said.test(t)), { timeoutMsg: "Space t w flashed no leave time" });

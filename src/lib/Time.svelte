@@ -16,6 +16,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { tick } from "svelte";
+  import WeekBars from "./WeekBars.svelte";
 
   let { api, active, reload }: { api: TimeApi; active: boolean; reload: number } = $props();
   let d = $state<any>(null);
@@ -64,7 +65,6 @@
   const run = (name: string, arg?: unknown) => api.act(async () => { await api.run(name, arg); await refresh(); root?.focus(); });
   const clock = (iso: string) => iso?.slice(11, 16);
   const dayName = (s: string) => new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)).toLocaleDateString(undefined, { weekday: "short" });
-  const max = $derived(d ? Math.max(1, ...d.week.map((w: any) => Math.max(w.hours, w.expected, w.leave_hours))) : 1);
   const weekTotal = $derived(d ? d.week.reduce((s: number, w: any) => s + w.hours, 0) : 0);
   const weekExpected = $derived(d ? d.week.reduce((s: number, w: any) => s + w.expected, 0) : 0);
   const todayIso = $derived(new Date().toLocaleDateString("sv-SE"));
@@ -192,20 +192,7 @@
 
         <section class="card">
           <h3>This week <span class="dim">{hm(weekTotal)} of {hm(weekExpected)}</span></h3>
-          <div class="chart" role="img" aria-label="Hours worked per day this week">
-            {#each d.week as w}
-              <div class="col" class:today={w.date === todayIso} title="{dayName(w.date)} {w.date}: {hm(w.hours)} worked, {hm(w.expected)} expected{w.leave ? `, ${w.leave} ${hm(w.leave_hours)}` : ""}">
-                <div class="plot">
-                  {#if w.leave_hours > 0}<div class="off" style:height="{(w.leave_hours / max) * 100}%"></div>{/if}
-                  {#if w.expected > 0}<div class="expected" style:bottom="{(w.expected / max) * 100}%"></div>{/if}
-                  <div class="bar" style:height="{(w.hours / max) * 100}%"></div>
-                </div>
-                <span class="val">{w.hours ? hm(w.hours) : "–"}</span>
-                <span class="day">{dayName(w.date)}</span>
-              </div>
-            {/each}
-          </div>
-          <p class="legend"><span class="dash"></span> expected hours{#if d.week.some((w: any) => w.leave_hours > 0)} <span class="hatch"></span> time off{/if}</p>
+          <WeekBars week={d.week} />
         </section>
 
         {#if sugg}
@@ -335,22 +322,9 @@
   .num { text-align: right; font-family: var(--mono); white-space: nowrap; }
   .mono { font-family: var(--mono); font-size: var(--fs-md); white-space: nowrap; }
   .dim { color: var(--dim); font-weight: 400; }
-  .chart { display: grid; grid-template-columns: repeat(7, 1fr); gap: var(--s2); height: 150px; }
-  .col { display: flex; flex-direction: column; align-items: center; gap: var(--s1); min-width: 0; }
-  .plot { flex: 1; width: 100%; position: relative; border-bottom: 1px solid var(--border); }
-  .bar { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: min(26px, 70%); background: var(--link); border-radius: var(--radius-sm) 4px 0 0; min-height: 0; }
-  .col:hover .bar { filter: brightness(1.15); }
-  .off { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: min(26px, 70%); background: repeating-linear-gradient(135deg, var(--border) 0 3px, transparent 3px 6px); border: 1px solid var(--border); border-bottom: 0; box-sizing: border-box; }
-  .hatch { width: 12px; height: 10px; margin-left: var(--s3); background: repeating-linear-gradient(135deg, var(--dim) 0 2px, transparent 2px 4px); }
   .timeoff form { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; margin-bottom: var(--s2); }
   input { background: var(--card); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s1) var(--s2); font: var(--fs-md) var(--sans); }
   input[type="number"] { width: 5em; }
-  .expected { position: absolute; left: 8%; right: 8%; border-top: 1.5px dashed var(--dim); }
-  .val { font: var(--fs-xs) var(--mono); color: var(--fg); text-align: center; line-height: 1.15; }
-  .day { font-size: var(--fs-xs); color: var(--dim); }
-  .col.today .day { color: var(--accent); font-weight: 700; }
-  .legend { color: var(--dim); font-size: var(--fs-xs); margin: 6px 0 0; display: flex; align-items: center; gap: 6px; }
-  .dash { width: 16px; border-top: 1.5px dashed var(--dim); }
   .flex { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
   .flex > div { background: var(--canvas); border-radius: 8px; padding: var(--s2) var(--s3); }
   .flex strong { font: 500 18px var(--mono); }
