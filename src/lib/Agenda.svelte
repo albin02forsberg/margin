@@ -6,8 +6,8 @@
     habit?: { bar: string; streak: number } | null;
   };
   export type AgendaApi = {
-    /** Run a task operation on IT (see ACTIONS); resolves when the files are written. */
-    run: (op: string, it: AgendaItem) => Promise<void>;
+    /** Run a task operation on IT (see ACTIONS; `keyword` sets ARG); resolves when the files are written. */
+    run: (op: string, it: AgendaItem, arg?: string) => Promise<void>;
     newTask: (scheduled?: string) => void;
     undo: () => Promise<void>;
     act: (f: () => unknown) => void;
@@ -40,7 +40,7 @@
   ];
   const MORE: [string, string][] = [
     ["j / k", "Move selection"], ["< / >", "Reschedule a day earlier / later"], ["+ / -", "Raise / lower priority"],
-    ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week view"], ["h / l", "Previous / next period"],
+    ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["H / L", "Board: move to the column left / right"], ["h / l", "Previous / next period"],
     [".", "Jump to today"], ["/", "Filter"], ["r", "Refresh"], ["?", "Toggle this help"],
   ];
 </script>
@@ -51,6 +51,7 @@
   import type { TimeApi } from "./Time.svelte";
   import WeekBars from "./WeekBars.svelte";
   import { hm, worked } from "./clock";
+  import { columns, moveTo } from "./board";
 
   /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions. */
   let { mode, api, active, reload, todo, done, query, title, time }: {
@@ -69,13 +70,20 @@
   let root = $state<HTMLDivElement>();
   let filterInput = $state<HTMLInputElement>();
   let now = $state(new Date());
+  /** Tasks as a board (todo mode); the Done column holds tasks done from the board (path + title), re-read on refresh. */
+  let board = $state(stored("tasks-layout", "list") === "board");
+  const boardOn = $derived(mode === "todo" && board);
+  const doneHere = new Set<string>();
+  const keyOf = (it: AgendaItem) => `${it.path}\n${it.title}`;
+  let doneItems = $state.raw<AgendaItem[]>([]);
 
   const today = $derived(iso(now));
   const isDone = (it: AgendaItem) => !!it.keyword && done.includes(it.keyword);
   const days = $derived(Array.from({ length: span }, (_, i) => addDays(start, i)));
   const shown = $derived.by(() => {
     const f = filter.toLowerCase();
-    let xs = f ? items.filter((i) => `${i.keyword ?? ""} ${i.title} ${i.tags.join(" ")} ${i.category}`.toLowerCase().includes(f)) : items;
+    const all = boardOn ? [...items, ...doneItems] : items;
+    let xs = f ? all.filter((i) => `${i.keyword ?? ""} ${i.title} ${i.tags.join(" ")} ${i.category}`.toLowerCase().includes(f)) : all;
     if (mode === "todo") {
       const rank = (k: string | null) => { const r = todo.indexOf(k ?? ""); return r < 0 ? 99 : r; };
       xs = [...xs].sort((a, b) => rank(a.keyword) - rank(b.keyword));
@@ -132,12 +140,14 @@
     now = new Date();
     items = mode === "agenda" ? await invoke("agenda", { start: iso(start), days: span })
       : query != null ? await invoke("search_todos", { query }) : await invoke("todos");
+    doneItems = boardOn && query == null && doneHere.size && done[0]
+      ? (await invoke<AgendaItem[]>("search_todos", { query: `todo:"${done[0]}"` })).filter((i) => doneHere.has(keyOf(i))) : [];
     sel = Math.min(sel, Math.max(0, shown.length - 1));
     await loadClock();
   }
 
   $effect(() => {
-    void reload, start, span;
+    void reload, start, span, boardOn;
     if (active) api.act(refresh);
   });
   $effect(() => {
@@ -160,17 +170,34 @@
   const move = (d: number) => (start = addDays(start, d * span));
   const goToday = () => (start = span === 7 ? monday(new Date()) : new Date());
 
-  /** Run an op on the selected item, then reload. */
-  function op(name: string, it = selected) {
+  function setBoard(on: boolean) {
+    board = on;
+    try { localStorage.setItem("tasks-layout", on ? "board" : "list"); } catch {}
+  }
+
+  /** Board: move the selected card one column left (-1) or right (1). */
+  function shift(dir: number) {
+    const k = selected && moveTo(selected.keyword, dir, todo, done);
+    if (k) op("keyword", selected, k);
+  }
+
+  /** Run an op on the selected item (ARG for `keyword`), then reload; on the board the selection follows the card. */
+  function op(name: string, it = selected, arg?: string) {
     if (!it || busy) return;
+    const k = name === "keyword" ? arg : name === "done" && !isDone(it) ? done[0] : null;
+    if (boardOn && k && done.includes(k)) doneHere.add(keyOf(it));
     api.act(async () => {
       busy = true;
       try {
-        await api.run(name, it);
+        await api.run(name, it, arg);
       } finally {
         busy = false;
       }
       if (name !== "open") await refresh();
+      if (boardOn && (name === "keyword" || name === "done")) {
+        const j = shown.findIndex((x) => keyOf(x) === keyOf(it));
+        if (j >= 0) sel = j;
+      }
       root?.focus();
     });
   }
@@ -200,7 +227,9 @@
       case "-": op("priority-down"); break;
       case "n": api.newTask(dayInput()); break;
       case "u": api.act(async () => { await api.undo(); await refresh(); }); break;
-      case "v": if (mode === "agenda") setSpan(span === 1 ? 7 : 1); break;
+      case "v": if (mode === "agenda") setSpan(span === 1 ? 7 : 1); else setBoard(!board); break;
+      case "H": if (boardOn) shift(-1); break;
+      case "L": if (boardOn) shift(1); break;
       case "l": case "ArrowRight": case "f": if (mode === "agenda") move(1); break;
       case "h": case "ArrowLeft": case "b": if (mode === "agenda") move(-1); break;
       case ".": goToday(); sel = 0; break;
@@ -230,6 +259,22 @@
 
   const dateChip = (s: string) => (s.length === 10 ? fmtDay(parse(s), { weekday: "short", day: "numeric", month: "short" }) : "");
 </script>
+
+{#snippet card(it: AgendaItem, i: number)}
+  <div class="kcard" class:sel={i === sel} class:done={isDone(it)} data-i={i} role="option" aria-selected={i === sel}>
+    <div class="kt">
+      <span class="check" title="Mark done (x)">{isDone(it) ? "✓" : ""}</span>
+      {#if it.priority}<span class="prio p{it.priority}">{it.priority}</span>{/if}
+      <span class="title">{it.title}</span>
+    </div>
+    <div class="kmeta">
+      {#each it.tags as t}<span class="tag">{t}</span>{/each}
+      {#if dateChip(it.date)}<span class="meta">{dateChip(it.date)}</span>{/if}
+      <span class="spacer"></span>
+      <span class="cat">{it.category}</span>
+    </div>
+  </div>
+{/snippet}
 
 {#snippet row(it: AgendaItem, i: number)}
   <div class="row" class:sel={i === sel} class:done={isDone(it)} data-i={i} role="option" aria-selected={i === sel}>
@@ -267,6 +312,11 @@
         <button onclick={() => move(-1)} title="Previous (h)">‹</button>
         <button onclick={goToday} title="Today (.)">Today</button>
         <button onclick={() => move(1)} title="Next (l)">›</button>
+      {:else}
+        <div class="seg" title="List / board (v)">
+          <button class:on={!board} onclick={() => setBoard(false)}>List</button>
+          <button class:on={board} onclick={() => setBoard(true)}>Board</button>
+        </div>
       {/if}
       <input bind:this={filterInput} bind:value={filter} placeholder="Filter  /" spellcheck="false" />
       <button class="primary" onclick={() => api.newTask(dayInput())} title="New task (n)">+ New task</button>
@@ -310,6 +360,17 @@
       </section>
     </aside>
   {/if}
+  {#if boardOn}
+    <div class="board" aria-label="Board">
+      {#each columns(shown.map((it, i) => ({ it, i, keyword: it.keyword })), todo, done) as c (c.done ? "\0" : c.key)}
+        <section class="card kcol" class:donecol={c.done}>
+          <h2>{c.title}<small class="n">{c.items.length}</small></h2>
+          {#each c.items as { it, i } (i)}{@render card(it, i)}{/each}
+          {#if !c.items.length}<p class="none">—</p>{/if}
+        </section>
+      {/each}
+    </div>
+  {:else}
   <div class="list">
     {#each groups as g (g.key)}
       {@const ni = g.today ? nowIndex(g.rows) : -1}
@@ -334,6 +395,7 @@
       </div>
     {/if}
   </div>
+  {/if}
   </div>
 
   {#if help}
@@ -437,6 +499,20 @@
   .meta { font-size: var(--fs-sm); color: var(--dim); white-space: nowrap; }
   .meta.warn { color: var(--todo); background: color-mix(in srgb, var(--todo) 14%, transparent); border-radius: var(--radius-sm); padding: 0 6px; }
   .cat { font-size: var(--fs-sm); color: var(--dim); max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Tasks board (#357): a column per open keyword, then Done; scrolls sideways on narrow windows */
+  .board { flex: 1; min-width: 0; overflow: auto; padding: 2px var(--s5) var(--s5); display: grid; grid-auto-flow: column; grid-auto-columns: minmax(220px, 1fr); gap: var(--s3); align-items: start; }
+  .kcol { padding: var(--s3); display: flex; flex-direction: column; gap: var(--s2); }
+  .board > .kcol:hover { transform: none; box-shadow: var(--soft); }
+  .kcol h2 { padding: 0 var(--s1); margin: 0; }
+  .kcard { background: var(--canvas); border-radius: 10px; padding: var(--s2) var(--s3); display: flex; flex-direction: column; gap: var(--s1); cursor: default; transition: background-color 120ms var(--ease); }
+  .kcard:hover { background: var(--active); }
+  .kcard.sel { background: var(--sel); }
+  .kcard .kt { display: flex; align-items: baseline; gap: var(--s2); font-size: var(--fs-base); }
+  .kcard .kt .check { align-self: center; }
+  .kcard .title { white-space: normal; overflow-wrap: anywhere; }
+  .kcard.done .title { text-decoration: line-through; color: var(--dim); }
+  .kcard.done .check { border-color: var(--done); }
+  .kmeta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); }
   .now { display: flex; align-items: center; gap: var(--s2); color: var(--accent); font-size: var(--fs-xs); margin: 2px 0; }
   .now::after { content: ""; flex: 1; border-top: 1px dashed var(--accent); }
   .none { color: var(--dim); margin: 0 0 0 var(--s2); font-size: var(--fs-sm); }
@@ -453,7 +529,7 @@
   .help h3 { margin: 0 0 var(--s2); font-size: var(--fs-md); }
   .help h3 small { color: var(--dim); font-weight: 400; }
   @media (prefers-reduced-motion: reduce) {
-    .controls button, .controls input, .row, .check, .actions button { transition: none; }
+    .controls button, .controls input, .row, .kcard, .check, .actions button { transition: none; }
     .controls button:hover { transform: none; }
   }
   .keys { display: grid; grid-template-columns: repeat(2, minmax(200px, auto)); gap: var(--s1) 20px; font-size: var(--fs-md); }
