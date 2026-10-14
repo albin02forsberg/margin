@@ -694,7 +694,8 @@ fn capture_template(s: State<App>, text: String, heading: Option<String>, body: 
 
 /// Resolve a strftime file pattern under the notes dir for DATE_INPUT (default
 /// now), creating it as an org-roam note titled after its name if missing. With JOURNAL,
-/// a new file also gets the `journal_template` expanded for that day.
+/// a new file also gets the `journal_template` expanded for that day, as does any new
+/// file directly in the daily folder.
 #[tauri::command]
 fn capture_path(s: State<App>, file: String, date_input: Option<String>, journal: Option<bool>) -> R<PathBuf> {
     let now = timeclock::now();
@@ -703,7 +704,8 @@ fn capture_path(s: State<App>, file: String, date_input: Option<String>, journal
     if !p.exists() {
         let title = p.file_stem().map(|x| x.to_string_lossy().to_string()).unwrap_or_default();
         notes::write_note(&p, &title).map_err(|e| e.to_string())?;
-        if journal == Some(true) {
+        let (notes, daily) = (s.cfg().notes(), s.cfg().daily_dir.clone());
+        if journal == Some(true) || is_daily_path(&notes, &daily, &p) {
             let day = match date_input.as_deref() {
                 Some(i) => date_at(i, now.date())?,
                 None => now.date(),
@@ -712,6 +714,11 @@ fn capture_path(s: State<App>, file: String, date_input: Option<String>, journal
         }
     }
     Ok(p)
+}
+
+/// Whether P is a direct child of the daily folder DAILY_DIR under NOTES.
+fn is_daily_path(notes: &Path, daily_dir: &str, p: &Path) -> bool {
+    !daily_dir.trim_matches('/').is_empty() && p.parent() == Some(notes.join(daily_dir).as_path())
 }
 
 /// Append TEMPLATE, expanded for DAY at midnight (prompts and `%^{}` empty), to the new note P.
@@ -1979,6 +1986,17 @@ mod tests {
         append_journal_template(&p, "  ", day).unwrap(); // empty template: untouched
         assert_eq!(std::fs::read_to_string(&p).unwrap(), t);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn daily_paths_are_direct_children_of_the_daily_dir() {
+        let n = Path::new("/n/notes");
+        assert!(is_daily_path(n, "daily", Path::new("/n/notes/daily/2026-03-04.org")));
+        assert!(is_daily_path(n, "journal/daily/", Path::new("/n/notes/journal/daily/x.org")));
+        assert!(!is_daily_path(n, "daily", Path::new("/n/notes/daily/sub/x.org")));
+        assert!(!is_daily_path(n, "daily", Path::new("/n/notes/x.org")));
+        assert!(!is_daily_path(n, "", Path::new("/n/notes/x.org")));
+        assert!(!is_daily_path(n, "/", Path::new("/n/notes/x.org")));
     }
 
     #[test]
