@@ -1,7 +1,7 @@
 // End-to-end tests of features beyond the basics; setup and helpers are in setup.ts.
 import { after, before, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { answer, browser, close, fileMatches, find, isoDay, Key, launch, orgDay, palette, read, savedView, texts, type, type Dirs } from "./setup.ts";
 
@@ -463,5 +463,68 @@ describe("Task keys", () => {
     await browser.keys(Key.Enter);
     await find(".status .file", "minutes.org");
     await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("quarterly budget")), { timeoutMsg: "cursor not on the matched line" });
+  });
+});
+
+describe("Journal, archive and move", () => {
+  let d: Dirs;
+  const chores = "* TODO Archive me\n* TODO Move me\n* TODO Stay put\n";
+  const projects = "#+title: Projects\n\n* Garden\n* Shed\n";
+  const f = (n: string) => join(d.notes, n);
+  /** Leader key sequence KEYS from the editor's normal mode. */
+  const leader = async (keys: string) => { await browser.keys(Key.Escape); await browser.keys(" "); await type(keys); };
+  before(async () => {
+    d = await launch({
+      files: ({ notes }) => {
+        mkdirSync(join(notes, "daily"));
+        writeFileSync(join(notes, "daily", "2020-01-01.org"), "#+title: 2020-01-01\n\n* First day\n");
+        writeFileSync(join(notes, "daily", "2020-01-02.org"), "#+title: 2020-01-02\n\n* Second day\n");
+        writeFileSync(join(notes, "chores.org"), chores);
+        writeFileSync(join(notes, "projects.org"), projects);
+      },
+    });
+  });
+  after(close, { timeout: 30_000 });
+
+  it("Ctrl+J creates today's entry, Space n e adds a line, Space n [ / ] step between entries", async () => {
+    await find(".agenda h1", "Today");
+    const day = isoDay(new Date()), file = f(join("daily", `${day}.org`));
+    await browser.keys([Key.Ctrl, "j"]);
+    await find(".status .file", `${day}.org`);
+    await fileMatches(file, (s) => s.includes(`#+title: ${day}\n`), "today's journal not created with a title");
+    await leader("ne");
+    await answer("Add a line to today's journal", "standup done");
+    await fileMatches(file, (s) => /\n\* \d\d:\d\d standup done\n/.test(s), "journal line not added");
+    for (const [keys, want] of [["n[", "2020-01-02.org"], ["n[", "2020-01-01.org"], ["n]", "2020-01-02.org"], ["n]", `${day}.org`]]) {
+      await leader(keys);
+      await find(".status .file", want);
+    }
+    await leader("n]");
+    await find(".status .msg", "No later journal entry");
+  });
+
+  it("A archives a task to <file>_archive and u restores both files", async () => {
+    const archive = f("chores.org_archive");
+    await browser.keys([Key.Ctrl, "2"]);
+    await (await find(".agenda .row .title", "Archive me")).click();
+    await browser.keys("A");
+    await fileMatches(archive, (s) => s.includes("* TODO Archive me\n:PROPERTIES:\n:ARCHIVE_TIME: ") && s.includes(`\n:ARCHIVE_FILE: ${f("chores.org")}\n:END:\n`), "task not in the archive file");
+    await fileMatches(f("chores.org"), (s) => s === "* TODO Move me\n* TODO Stay put\n", "task not removed from its file");
+    await find(".status .msg", "Archived to chores.org_archive");
+    await browser.keys("u");
+    await fileMatches(f("chores.org"), (s) => s === chores, "undo didn't restore the source");
+    await fileMatches(archive, (s) => s === "", "undo didn't restore the archive file"); // it didn't exist before: undo writes back ""
+  });
+
+  it("m moves a task under another file's heading and u restores both files", async () => {
+    await (await find(".agenda .row .title", "Move me")).click();
+    await browser.keys("m");
+    await answer("Move to…", "projects.org / Shed");
+    await fileMatches(f("projects.org"), (s) => s === `${projects}** TODO Move me\n`, "task not filed under Shed");
+    await fileMatches(f("chores.org"), (s) => s === "* TODO Archive me\n* TODO Stay put\n", "task not removed from its file");
+    await find(".status .msg", "Moved to projects.org / Shed");
+    await browser.keys("u");
+    await fileMatches(f("chores.org"), (s) => s === chores, "undo didn't restore the source");
+    await fileMatches(f("projects.org"), (s) => s === projects, "undo didn't restore the target");
   });
 });
