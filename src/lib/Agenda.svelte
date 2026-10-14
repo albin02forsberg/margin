@@ -52,6 +52,7 @@
   import WeekBars from "./WeekBars.svelte";
   import { hm, worked } from "./clock";
   import { columns, moveTo } from "./board";
+  import { chips } from "./chips";
 
   /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions. */
   let { mode, api, active, reload, todo, done, query, title, time }: {
@@ -134,6 +135,9 @@
   const loadClock = async () => { if (clockOn) tc = await invoke("tc_dashboard"); };
   /** A Time view action; it bumps `reload`, which reloads the column. */
   const tcRun = (name: string) => api.act(async () => { await time!.run(name); root?.focus(); });
+  /** Chips strip (Day view): the day's timed items and the running clock; a chip's `i` indexes `shown`. */
+  const strip = $derived(mode === "agenda" && span === 1
+    ? chips(shown, iso(start), today, `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`, isDone, tc?.project != null ? tc : null) : []);
   const elapsed = (since: string) => hm(Math.max(0, now.getTime() - Date.parse(since)) / 3_600_000);
 
   async function refresh() {
@@ -322,6 +326,13 @@
       <button class="primary" onclick={() => api.newTask(dayInput())} title="New task (n)">+ New task</button>
     </div>
   </header>
+  {#if strip.length}
+    <div class="chips" aria-label="Timed items">
+      {#each strip as c (`${c.i} ${c.time}`)}
+        <button class="ag {c.state}" class:sel={c.i === sel} onclick={() => { if (c.i >= 0) sel = c.i; root?.focus(); }} title={c.title}><b>{c.time}</b><span>{c.title}</span></button>
+      {/each}
+    </div>
+  {/if}
 
   <div class="cols" class:clocked={clockOn}>
   {#if clockOn && tc}
@@ -436,6 +447,15 @@
   .controls .seg button:hover { transform: none; color: var(--fg); }
   .controls .seg button.on { background: var(--sel); color: var(--fg); font-weight: 500; }
   .controls input { cursor: text; width: 140px; }
+  /* Chips strip (#357): one line under the title row, scrolls sideways when full */
+  .chips { display: flex; gap: var(--s2); overflow-x: auto; scrollbar-width: none; padding: 0 var(--s5) var(--s3); margin-top: calc(-1 * var(--s2)); flex: none; }
+  .ag { display: flex; gap: 6px; align-items: center; flex: none; max-width: 32ch; border: 0; padding: 3px var(--s3); border-radius: 999px; background: var(--active); color: var(--fg); font: var(--fs-sm) var(--sans); white-space: nowrap; cursor: pointer; }
+  .ag span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .ag b { font: 500 var(--fs-sm) var(--mono); color: var(--date); }
+  .ag.done { opacity: .6; }
+  .ag.live { background: color-mix(in srgb, var(--done) 15%, var(--card)); }
+  .ag.sel { box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .ag:focus-visible { outline: none; box-shadow: var(--ring); }
   /* Clock column (round-5 mockup, #357): left of the list; under it on narrow windows */
   .cols { flex: 1; min-height: 0; display: flex; }
   .clock { flex: 0 0 300px; overflow-y: auto; padding: 2px 0 var(--s5) var(--s5); display: flex; flex-direction: column; gap: var(--s3); }

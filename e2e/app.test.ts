@@ -118,6 +118,7 @@ describe("Margin", () => {
     await find(".agenda h1", "Today");
     await find(".agenda .clock .run b", "Acme"); // the Today clock column shows the running clock
     await find(".agenda .clock .worked h3", "Worked today");
+    await find(".agenda .chips .ag.live", "Acme · tracking"); // and the chips strip has it as a live chip
     await browser.keys(" ");
     await type("tw");
     await browser.waitUntil(async () => (await texts(".status .msg")).some((t) => said.test(t)), { timeoutMsg: "Space t w flashed no leave time" });
