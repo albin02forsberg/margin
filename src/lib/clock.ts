@@ -1,3 +1,9 @@
+/** HOURS as "1h 05m" (or "45m"). */
+export const hm = (h: number) => {
+  const m = Math.round(h * 60);
+  return m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m` : `${m}m`;
+};
+
 /** A day of `tc_dashboard`'s week: hours worked and expected (time off already taken out). */
 export type WeekDay = { date: string; hours: number; expected: number; leave: string; leave_hours: number };
 

@@ -48,9 +48,9 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { tick } from "svelte";
-  import { hm, type TimeApi } from "./Time.svelte";
+  import type { TimeApi } from "./Time.svelte";
   import WeekBars from "./WeekBars.svelte";
-  import { worked } from "./clock";
+  import { hm, worked } from "./clock";
 
   /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions. */
   let { mode, api, active, reload, todo, done, query, title, time }: {

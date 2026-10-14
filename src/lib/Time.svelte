@@ -7,10 +7,8 @@
      *  profile, holidays, daily, weekly, doctor, backup, backupLog, rawLog, import, acceptSuggestion, editSuggestion. */
     run: (name: string, arg?: unknown) => Promise<void>;
   };
-  export const hm = (h: number) => {
-    const m = Math.round(h * 60);
-    return m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m` : `${m}m`;
-  };
+  import { hm } from "./clock";
+  export { hm };
 </script>
 
 <script lang="ts">

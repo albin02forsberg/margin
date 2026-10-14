@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { hm } from "./Time.svelte";
-  import type { WeekDay } from "./clock";
+  import { hm, type WeekDay } from "./clock";
 
   /** Hours worked per day of WEEK (from `tc_dashboard`), with expected hours and time off; HEIGHT of the plot in px. */
   let { week, height = 150 }: { week: WeekDay[]; height?: number } = $props();
