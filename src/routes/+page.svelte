@@ -1717,11 +1717,8 @@
       ed.hooks.follow = (target) => act(() => followLink(target ?? ed.linkAtCursor(view)));
       ed.hooks.tab = (d) => act(() => cycleTab(d));
       await openView("agenda");
-<<<<<<< HEAD
       requestAnimationFrame(() => (motion = true)); // nothing animates on first load
-=======
       await restoreSession();
->>>>>>> f94c5aa (feat: reopen the last session's tabs on startup (#330))
       await pruneMissing();
       const [tut, first] = await call<[string, boolean]>("tutorial");
       if (first) {

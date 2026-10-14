@@ -160,14 +160,11 @@ profile clocks out first, and warns where old files stay (nothing is moved).
   searches, the Ctrl+K search, Settings and the running clock (Pause / Stop / Start).
   Toggle it with Ctrl+\\ or `Space v s`. In a narrow window it keeps only the icons (under 760 px)
   and the links/graph panel opens over the note (under 1000 px; Esc or a click on the note closes it).
-<<<<<<< HEAD
   Switching views fades the new one in and slides the bar's highlight; the system's
   "reduce motion" setting turns both off.
-=======
 - On startup Margin reopens the tabs you had open last time (after Today), each note at the
   line you left, with the same tab active; notes that are gone are skipped. Only paths and
   lines are remembered, never note content. Turn it off with `restore_tabs = false` in settings.
->>>>>>> f94c5aa (feat: reopen the last session's tabs on startup (#330))
 
 | | |
 |---|---|
