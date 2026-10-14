@@ -381,10 +381,17 @@ impl Tc {
         Ok(Some(project))
     }
 
-    /// Move the current session's start back by MINUTES.
+    /// Move the current session's start back by MINUTES, but not before the previous session's end.
     pub fn adjust_start(&self, minutes: i64) -> Result<bool, String> {
-        let Some((idx, Event::In { t, project, task })) = self.events().pop() else { return Ok(false) };
-        self.rewrite_line(idx, &Event::In { t: t - Duration::minutes(minutes), project, task })?;
+        let mut ev = self.events();
+        let Some((idx, Event::In { t, project, task })) = ev.pop() else { return Ok(false) };
+        let t = t - Duration::minutes(minutes);
+        if let Some(Event::Out { t: end, .. }) = ev.last().map(|e| &e.1) {
+            if t < *end {
+                return Err(format!("That start overlaps the previous session, which ended {}.", end.format("%H:%M")));
+            }
+        }
+        self.rewrite_line(idx, &Event::In { t, project, task })?;
         Ok(true)
     }
 
@@ -1307,6 +1314,20 @@ mod tests {
             });
         });
         assert_eq!(tc.leave().len(), 20);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn adjust_start_refuses_to_overlap_the_previous_session() {
+        let dir = std::env::temp_dir().join(format!("tc-adjust-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("d.org"), expected: 8.0 };
+        assert!(!tc.clock_in("A", "", None).unwrap());
+        assert!(tc.clock_out("").unwrap());
+        assert!(!tc.clock_in("A", "", None).unwrap());
+        let err = tc.adjust_start(5).unwrap_err();
+        assert!(err.contains("overlaps"), "{err}");
+        assert!(tc.adjust_start(0).unwrap());
         let _ = fs::remove_dir_all(&dir);
     }
 

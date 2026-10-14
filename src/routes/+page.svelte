@@ -23,6 +23,7 @@
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
   import { chatContext } from "$lib/chatctx";
   import { bugReportUrl, isError, osName } from "$lib/bugreport";
+  import { naive, parseWhen } from "$lib/clock";
   import { parseSession, type Entry } from "$lib/session";
   import Chat, { type ChatMsg } from "$lib/Chat.svelte";
 
@@ -1179,9 +1180,28 @@
     if (note != null) await tcDo("tc_idle", { since, back: c === "stop" ? null : back, note });
   }
 
+  /** Ask WHAT happened (minutes ago, or a time of day) for the running clock; null if none or invalid. */
+  async function askWhen(what: string) {
+    await refreshTc();
+    if (tc.project == null) return void flash("You're not tracking anything.");
+    const m = await ask(`When did you actually ${what}?`, "", "minutes ago (25) or a time (14:05)");
+    if (!m) return;
+    const when = parseWhen(m, new Date());
+    if (!when) flash("Enter minutes ago (25) or a time of day (14:05) that is not in the future.");
+    return when;
+  }
+
   async function adjustStart() {
-    const m = await ask("How many minutes ago did you actually start?");
-    if (m && !isNaN(+m)) await tcDo("tc_adjust", { minutes: Math.round(+m) });
+    const when = await askWhen("start");
+    if (when) await tcDo("tc_adjust", { minutes: Math.round((Date.parse(tc.since) - when.getTime()) / 60000) });
+  }
+
+  /** Forgot to stop: clock out at an earlier time. */
+  async function stopEarlier() {
+    const when = await askWhen("stop");
+    if (!when) return;
+    const note = await ask("What did you do?", tc.task ?? "", "goes into the work diary");
+    if (note != null) await tcDo("tc_out_at", { at: naive(when), note });
   }
 
   async function report(kind: string, title: string, dateInput?: string | null) {
@@ -1356,7 +1376,7 @@
 
   const timeActions: Record<string, (arg?: any) => unknown> = {
     start: (p?: string) => clockIn(p), stop: clockOut, pause: () => tcDo("tc_break"), resume: () => tcDo("tc_resume"),
-    switch: changeProject, adjust: adjustStart, editSession: (s) => editSession(s), export: exportCsv, exportReport, projects: () => openView("projects"),
+    switch: changeProject, adjust: adjustStart, stopEarlier, editSession: (s) => editSession(s), export: exportCsv, exportReport, projects: () => openView("projects"),
     profile: (n) => switchProfile(n), holidays: () => report("holidays", "Holidays"), daily: dailyReport,
     weekly: () => report("weekly", "Week report"), doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
     backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), open: (loc) => openFile(loc.path, loc.line), import: importEmacs, acceptSuggestion, editSuggestion,
@@ -1488,6 +1508,7 @@
     { label: "Time: resume after break", leader: "t r", run: t("resume") },
     { label: "Time: switch project", leader: "t c", run: t("switch") },
     { label: "Time: I started earlier…", leader: "t a", run: t("adjust") },
+    { label: "Time: I stopped earlier…", leader: "t O", run: t("stopEarlier") },
     { label: "Time: day report", leader: "t t", run: t("daily") },
     { label: "Time: week report", leader: "t s", run: t("weekly") },
     { label: "Time: show flex balance", leader: "t f", run: t("flex") },

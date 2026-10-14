@@ -1037,6 +1037,16 @@ fn tc_idle(s: State<App>, since: NaiveDateTime, back: Option<NaiveDateTime>, not
     Ok(if back.is_some() { "⏱ Idle time discarded.".into() } else { "⏱ Idle time discarded and clocked out.".into() })
 }
 
+/// Clock out at AT, earlier than now (forgot to stop).
+#[tauri::command(async)]
+fn tc_out_at(s: State<App>, at: NaiveDateTime, note: String) -> R<String> {
+    if !timeclock::locked(|| s.tc().discard_idle(at, None, &note))? {
+        return Ok("Not clocked in.".into());
+    }
+    s.backup();
+    Ok(format!("⏱ Clocked out at {}.", at.format("%H:%M")))
+}
+
 #[tauri::command]
 fn tc_break(s: State<App>) -> R<String> {
     Ok(match timeclock::locked(|| s.tc().take_break())? {
@@ -1558,7 +1568,7 @@ pub fn run() {
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_unlinked, notes_ensure_id,
-            tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_break, tc_resume, tc_adjust,
+            tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_linked, export_report, export_open
         ])

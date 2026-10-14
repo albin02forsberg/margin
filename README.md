@@ -392,6 +392,7 @@ billable hours, its share of the week, and **Track** to start the clock on it). 
 `i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV (import template: `Project` = export code, `Duration` in decimal hours, `1,5`; zero-hour rows are left out),
 `E` export a report as HTML/PDF.
 Space t … has every timeclock command (same letters as the old Emacs menu).
+`Space t a` ("I started earlier") and `Space t O` ("I stopped earlier", for when you forgot to stop) take minutes ago (`25`) or a time (`14:05`). A start can't move before the previous session's end.
 `Space t w` says when to leave today: the time today's expected hours (less time
 off, flex ignored) are reached at the current pace, e.g. `Leave at 16:42 (2h 18m left)`.
 The Time view shows the same line under today's total. A clock still running past

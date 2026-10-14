@@ -13,3 +13,25 @@ export function worked(week: WeekDay[], today: string) {
   const hours = d?.hours ?? 0, expected = d?.expected ?? 0;
   return { hours, expected, progress: expected > 0 ? Math.min(1, hours / expected) : hours > 0 ? 1 : 0, left: Math.max(0, expected - hours) };
 }
+
+const p2 = (n: number) => String(n).padStart(2, "0");
+
+/** Local naive "YYYY-MM-DDTHH:MM:SS" (what the backend's NaiveDateTime parses; toISOString is UTC with a Z). */
+export const naive = (d: Date) =>
+  `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+
+/** "25" = minutes ago, "14:05" = that time today (yesterday if still ahead of NOW); null if empty, invalid or future. */
+export function parseWhen(input: string, now: Date): Date | null {
+  const s = input.trim();
+  let t: Date;
+  const hm = /^(\d{1,2}):(\d{2})$/.exec(s);
+  if (hm) {
+    const [h, m] = [+hm[1], +hm[2]];
+    if (h > 23 || m > 59) return null;
+    t = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m);
+    if (t > now) t.setDate(t.getDate() - 1);
+  } else if (/^\d+$/.test(s)) {
+    t = new Date(now.getTime() - +s * 60000);
+  } else return null;
+  return t > now ? null : t;
+}
