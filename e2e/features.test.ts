@@ -444,6 +444,15 @@ describe("Task keys", () => {
     await fileMatches(file(), (s) => new RegExp(`\\* TODO Due me\\n[^*]*DEADLINE: ${day(3)}`).test(s), "deadline not set three days out");
   });
 
+  it("D jumps the agenda to a date", async () => {
+    await browser.keys("D");
+    await answer("Go to date", "+14d");
+    const t = new Date(); t.setDate(t.getDate() + 14);
+    await find(".agenda h1", t.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" }));
+    await browser.keys(".");
+    await find(".agenda h1", "Today");
+  });
+
   it("Ctrl+Shift+F finds a line by words in any order and opens the note there", async () => {
     await browser.keys([Key.Ctrl, Key.Shift, "f"]);
     await find(".picker label span", "Search all notes");
