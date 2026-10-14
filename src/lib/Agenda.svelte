@@ -176,6 +176,7 @@
   const move = (d: number) => (start = addDays(start, d * span));
   async function goTo() {
     const d = await api.pickDate();
+    root?.focus(); // so keys (".", arrows) work right after the picker closes
     if (!d) return;
     const t = parse(d);
     start = span === 7 ? monday(t) : t;
