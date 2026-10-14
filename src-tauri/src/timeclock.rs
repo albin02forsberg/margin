@@ -1322,9 +1322,9 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("tc-adjust-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let tc = Tc { dir: dir.join("work"), diary: dir.join("d.org"), expected: 8.0 };
-        assert!(tc.clock_in("A", "", None).unwrap());
+        assert!(!tc.clock_in("A", "", None).unwrap());
         assert!(tc.clock_out("").unwrap());
-        assert!(tc.clock_in("A", "", None).unwrap());
+        assert!(!tc.clock_in("A", "", None).unwrap());
         let err = tc.adjust_start(5).unwrap_err();
         assert!(err.contains("overlaps"), "{err}");
         assert!(tc.adjust_start(0).unwrap());
