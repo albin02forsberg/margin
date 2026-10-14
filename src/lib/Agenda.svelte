@@ -407,7 +407,9 @@
   .list { flex: 1; min-width: 0; overflow-y: auto; padding: 2px var(--s5) var(--s5); display: flex; flex-direction: column; gap: var(--s3); }
   .list > .card { flex: none; padding: var(--s3); }
   .list > .card.today { box-shadow: var(--soft), inset 3px 0 0 var(--accent); }
-  .list > .card.today:hover { box-shadow: var(--lift), inset 3px 0 0 var(--accent); }
+  /* long scrolling cards: no hover lift (the card moves under the pointer and flickers) */
+  .list > .card:hover { transform: none; box-shadow: var(--soft); }
+  .list > .card.today:hover { box-shadow: var(--soft), inset 3px 0 0 var(--accent); }
   h2 { font-size: var(--fs-md); font-weight: 650; margin: 0 0 var(--s2); padding: 0 var(--s2); color: var(--fg); display: flex; gap: var(--s2); align-items: baseline; }
   h2.today { color: var(--accent); }
   h2 small { color: var(--dim); font-weight: 400; }
