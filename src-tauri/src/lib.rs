@@ -917,8 +917,12 @@ fn dashboard(inp: DashIn) -> Value {
     let mut by: std::collections::BTreeMap<String, (f64, f64)> = Default::default();
     merged.iter().filter(|x| in_week(x.date)).for_each(|x| by.entry(x.project.clone()).or_default().0 += x.hours);
     rounded.iter().filter(|x| in_week(x.date)).for_each(|x| by.entry(x.project.clone()).or_default().1 += x.hours);
-    // Hours this calendar month, for the projects worked this week.
-    let month = |p: &str| merged.iter().filter(|x| x.project == p && x.date.year() == t.year() && x.date.month() == t.month()).map(|x| x.hours).sum::<f64>();
+    // Hours this calendar month; projects worked only earlier this month are listed too, with 0 this week.
+    let in_month = |d: NaiveDate| d.year() == t.year() && d.month() == t.month();
+    merged.iter().filter(|x| in_month(x.date)).for_each(|x| {
+        by.entry(x.project.clone()).or_default();
+    });
+    let month = |p: &str| merged.iter().filter(|x| x.project == p && in_month(x.date)).map(|x| x.hours).sum::<f64>();
     let mut per_project: Vec<Value> = by
         .into_iter()
         .map(|(p, (w, b))| json!({ "project": if p.is_empty() { "Other".to_string() } else { p.clone() }, "code": timeclock::export_code(&p, projects), "worked": w, "billable": b, "month": month(&p) }))
@@ -1804,11 +1808,16 @@ mod tests {
     fn dashboard_projects_month() {
         let mut fx = dash_fixture("2026-01-08", (None, None));
         let s = fx.sessions[1].clone(); // Acme, 2026-01-05, 3.2
-        fx.sessions.push(timeclock::Session { date: "2026-01-02".parse().unwrap(), hours: 2.0, ..s }); // this month, last week
+        fx.sessions.push(timeclock::Session { date: "2026-01-02".parse().unwrap(), hours: 2.0, ..s.clone() }); // this month, last week
+        fx.sessions.push(timeclock::Session { date: "2026-01-02".parse().unwrap(), project: "Gamma".into(), hours: 1.5, ..s.clone() }); // only last week
+        fx.sessions.push(timeclock::Session { date: "2025-12-30".parse().unwrap(), project: "Delta".into(), hours: 1.0, ..s }); // only last month
         let v = dashboard(fx);
         let acme = &v["projects"][0];
         assert_eq!(acme["project"], json!("Acme"));
         assert!((acme["worked"].as_f64().unwrap() - 5.2).abs() < 1e-9 && (acme["month"].as_f64().unwrap() - 7.2).abs() < 1e-9, "{acme}"); // not December's 9.0
+        let gamma = v["projects"].as_array().unwrap().iter().find(|p| p["project"] == "Gamma").expect("Gamma listed for its month");
+        assert_eq!((gamma["worked"].as_f64(), gamma["month"].as_f64()), (Some(0.0), Some(1.5)));
+        assert!(!v["projects"].as_array().unwrap().iter().any(|p| p["project"] == "Delta"), "last month's project listed");
     }
 
     #[test]
