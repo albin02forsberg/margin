@@ -60,6 +60,55 @@ describe("Broken config.toml", () => {
   });
 });
 
+describe("Last session's tabs", () => {
+  let d: Dirs;
+  before(async () => {
+    d = await launch({
+      files: ({ notes }) => {
+        writeFileSync(join(notes, "one.org"), "#+title: One\n\nFirst.\n");
+        writeFileSync(join(notes, "two.org"), "#+title: Two\n\nline a\nline b\nline c\n");
+      },
+    });
+  });
+  after(close, { timeout: 30_000 });
+
+  const tabNames = () => texts(".tabs .tab > button:not(.x)");
+
+  it("reopens after a restart with the active tab and its line, skipping a note that is gone", async () => {
+    await find(".agenda h1", "Today");
+    for (const n of ["Two", "One", "Two"]) {
+      await browser.keys([Key.Ctrl, "p"]);
+      await answer("Open a note", n);
+      await find(".status .file", `${n.toLowerCase()}.org`);
+    }
+    await find(".status .file", "two.org");
+    await browser.keys(Key.Escape);
+    await type("4G"); // "line b"
+    await browser.refresh();
+    await browser.waitUntil(async () => (await tabNames()).length === 3, { timeoutMsg: "tabs not restored" });
+    assert.match((await tabNames())[0], /Today/);
+    await find(".tabs .tab.cur button", "two");
+    await find(".status .file", "two.org");
+    await type("iX");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "two.org"), (s) => s.includes("line a\nXline b\n"), "restored tab lost its line");
+
+    // A note deleted while the app was closed is skipped quietly.
+    await browser.execute((gone) => {
+      const s = JSON.parse(localStorage.getItem("session")!);
+      s.tabs.unshift({ path: gone, line: 0 });
+      s.active++;
+      localStorage.setItem("session", JSON.stringify(s));
+      Storage.prototype.setItem = () => {}; // until the reload, so the unload save keeps this session
+    }, join(d.notes, "gone.org"));
+    await browser.refresh();
+    await browser.waitUntil(async () => (await tabNames()).length === 3, { timeoutMsg: "tabs not restored" });
+    await find(".tabs .tab.cur button", "two");
+    assert.ok(!(await texts(".msg")).some((m) => m.includes("⚠")), "flashed an error");
+  });
+});
+
 describe("Features", () => {
   let d: Dirs;
   before(async () => {

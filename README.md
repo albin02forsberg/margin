@@ -162,6 +162,9 @@ profile clocks out first, and warns where old files stay (nothing is moved).
   and the links/graph panel opens over the note (under 1000 px; Esc or a click on the note closes it).
   Switching views fades the new one in and slides the bar's highlight; the system's
   "reduce motion" setting turns both off.
+- On startup Margin reopens the tabs you had open last time (after Today), each note at the
+  line you left, with the same tab active; notes that are gone are skipped. Only paths and
+  lines are remembered, never note content. Turn it off with `restore_tabs = false` in settings.
 
 | | |
 |---|---|
