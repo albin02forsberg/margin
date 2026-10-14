@@ -1354,7 +1354,7 @@
   }
 
   const timeActions: Record<string, (arg?: any) => unknown> = {
-    start: () => clockIn(), stop: clockOut, pause: () => tcDo("tc_break"), resume: () => tcDo("tc_resume"),
+    start: (p?: string) => clockIn(p), stop: clockOut, pause: () => tcDo("tc_break"), resume: () => tcDo("tc_resume"),
     switch: changeProject, adjust: adjustStart, editSession: (s) => editSession(s), export: exportCsv, exportReport, projects: () => openView("projects"),
     profile: (n) => switchProfile(n), holidays: () => report("holidays", "Holidays"), daily: dailyReport,
     weekly: () => report("weekly", "Week report"), doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),

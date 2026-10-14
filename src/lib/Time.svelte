@@ -15,6 +15,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { tick } from "svelte";
   import WeekBars from "./WeekBars.svelte";
+  import { worked } from "./clock";
 
   let { api, active, reload }: { api: TimeApi; active: boolean; reload: number } = $props();
   let d = $state<any>(null);
@@ -66,6 +67,8 @@
   const weekTotal = $derived(d ? d.week.reduce((s: number, w: any) => s + w.hours, 0) : 0);
   const weekExpected = $derived(d ? d.week.reduce((s: number, w: any) => s + w.expected, 0) : 0);
   const todayIso = $derived(new Date().toLocaleDateString("sv-SE"));
+  const work = $derived(d ? worked(d.week, todayIso) : null);
+  const projTotal = $derived(d ? d.projects.reduce((s: number, p: any) => s + p.worked, 0) : 0);
   const signed = (h: number) => `${h >= 0 ? "+" : "−"}${hm(Math.abs(h))}`;
 
   // Time off: a range of days, full days, N hours a day, or the rest of the day after work (sick).
@@ -140,20 +143,30 @@
             {/if}
           </div>
         </section>
-        <section class="card">
+        {#if work}
+          <section class="card worked">
+            <h3>Worked today</h3>
+            <strong class="big">{hm(work.hours)}</strong>
+            <div class="progress" role="progressbar" aria-label="Worked today" aria-valuenow={Math.round(work.progress * 100)}><i style:width="{work.progress * 100}%"></i></div>
+            <small>{work.expected > 0 ? `of ${hm(work.expected)} · ${work.left > 0 ? `${hm(work.left)} to go` : "done for today"}` : "no expected hours today"}</small>
+          </section>
+        {/if}
+        <section class="card tools">
           <h3>Balance</h3>
           <div class="flex">
             <div><small>Flex balance</small><strong class:neg={d.flex_total < 0}>{signed(d.flex_total)}</strong></div>
             <div><small>This week</small><strong class:neg={d.flex_week < 0}>{signed(d.flex_week)}</strong></div>
           </div>
-        </section>
-        <section class="card tools">
-          <h3>More</h3>
           <div>
             <button onclick={() => run("daily")}><kbd>t</kbd>Day report</button>
             <button onclick={() => run("weekly")}><kbd>w</kbd>Week report</button>
             <button onclick={() => run("export")}><kbd>e</kbd>Export CSV…</button>
             <button onclick={() => run("exportReport")}><kbd>E</kbd>Export report (HTML/PDF)…</button>
+          </div>
+        </section>
+        <section class="card tools">
+          <h3>More</h3>
+          <div>
             <button onclick={() => run("projects")}>Project settings</button>
             <button onclick={() => run("holidays")}>Public holidays</button>
             <button onclick={() => run("doctor")}>Check log for problems</button>
@@ -223,21 +236,20 @@
 
       <div class="lane">
         <h2>Projects</h2>
-        <section class="card">
-          <h3>Projects this week</h3>
-          {#if d.projects.length}
-            <table class="projects">
-              <thead><tr><th>Project</th><th>Code</th><th class="num">Worked</th><th class="num">Billable</th></tr></thead>
-              <tbody>
-                {#each d.projects as p}
-                  <tr><td>{p.project}</td><td class="dim mono">{p.code}</td><td class="num">{hm(p.worked)}</td><td class="num">{p.billable.toFixed(2)} h</td></tr>
-                {/each}
-              </tbody>
-            </table>
-          {:else}
-            <p class="dim">Nothing tracked this week.</p>
-          {/if}
-        </section>
+        {#each d.projects as p (p.project)}
+          {@const on = d.project != null && (d.project || "Other") === p.project}
+          <section class="card pcard" class:on>
+            <h3>{p.project} <span class="code mono">{p.code}</span></h3>
+            <strong class="big">{hm(p.worked)}</strong>
+            <small>this week · {hm(p.month)} this month · {p.billable.toFixed(2)} h billable</small>
+            <div class="progress" title="Share of this week's tracked time"><i style:width="{projTotal > 0 ? (p.worked / projTotal) * 100 : 0}%"></i></div>
+            <div class="foot">
+              {#if on}<small>Tracking now</small>{:else}<button onclick={() => run("start", p.project === "Other" ? undefined : p.project)}>Track</button>{/if}
+            </div>
+          </section>
+        {:else}
+          <section class="card"><p class="dim">Nothing tracked this week.</p></section>
+        {/each}
 
         <section class="card timeoff">
           <h3>Time off <span class="dim">lowers the day's expected hours; work on those days is flex</span></h3>
@@ -313,10 +325,9 @@
   .icon:hover { color: var(--fg); }
   kbd { font: var(--fs-xs) var(--mono); color: var(--dim); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--s1); margin-right: 6px; }
   table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
-  td, th { padding: 6px var(--s2); border-bottom: 1px solid var(--border); text-align: left; }
-  :is(td, th):first-child { padding-left: 0; }
-  :is(td, th):last-child { padding-right: 0; }
-  th { color: var(--dim); font-weight: 500; font-size: var(--fs-sm); }
+  td { padding: 6px var(--s2); border-bottom: 1px solid var(--border); text-align: left; }
+  td:first-child { padding-left: 0; }
+  td:last-child { padding-right: 0; }
   .num { text-align: right; font-family: var(--mono); white-space: nowrap; }
   .mono { font-family: var(--mono); font-size: var(--fs-md); white-space: nowrap; }
   .dim { color: var(--dim); font-weight: 400; }
@@ -327,7 +338,16 @@
   .flex > div { background: var(--canvas); border-radius: 8px; padding: var(--s2) var(--s3); }
   .flex strong { font: 500 18px var(--mono); }
   .flex strong.neg { color: var(--todo); }
-  .tools div { display: flex; flex-wrap: wrap; gap: var(--s2); }
+  .tools > div:not(.flex) { display: flex; flex-wrap: wrap; gap: var(--s2); }
+  .tools .flex { margin-bottom: var(--s3); }
+  .worked small, .pcard small { color: var(--dim); font-size: var(--fs-sm); }
+  .big { display: block; font: 500 28px var(--mono); }
+  .progress { height: 8px; border-radius: 999px; background: var(--active); overflow: hidden; margin: var(--s2) 0; }
+  .progress i { display: block; height: 100%; background: var(--done); border-radius: inherit; }
+  .pcard .progress i { background: var(--accent); }
+  .pcard.on { box-shadow: inset 3px 0 0 var(--done); }
+  .code { font-size: var(--fs-xs); color: var(--dim); background: var(--active); border-radius: var(--radius-sm); padding: 0 var(--s1); }
+  .foot { display: flex; justify-content: flex-end; min-height: 1.6em; align-items: center; }
   .suggested td:nth-child(2) { overflow-wrap: anywhere; }
   .badge { font-size: var(--fs-xs); background: var(--active); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--s1); }
   .actions { white-space: nowrap; text-align: right; }

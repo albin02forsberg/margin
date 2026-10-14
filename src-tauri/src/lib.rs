@@ -917,9 +917,11 @@ fn dashboard(inp: DashIn) -> Value {
     let mut by: std::collections::BTreeMap<String, (f64, f64)> = Default::default();
     merged.iter().filter(|x| in_week(x.date)).for_each(|x| by.entry(x.project.clone()).or_default().0 += x.hours);
     rounded.iter().filter(|x| in_week(x.date)).for_each(|x| by.entry(x.project.clone()).or_default().1 += x.hours);
+    // Hours this calendar month, for the projects worked this week.
+    let month = |p: &str| merged.iter().filter(|x| x.project == p && x.date.year() == t.year() && x.date.month() == t.month()).map(|x| x.hours).sum::<f64>();
     let mut per_project: Vec<Value> = by
         .into_iter()
-        .map(|(p, (w, b))| json!({ "project": if p.is_empty() { "Other".to_string() } else { p.clone() }, "code": timeclock::export_code(&p, projects), "worked": w, "billable": b }))
+        .map(|(p, (w, b))| json!({ "project": if p.is_empty() { "Other".to_string() } else { p.clone() }, "code": timeclock::export_code(&p, projects), "worked": w, "billable": b, "month": month(&p) }))
         .collect();
     per_project.sort_by(|a, b| b["worked"].as_f64().unwrap_or(0.0).total_cmp(&a["worked"].as_f64().unwrap_or(0.0)));
     let (flex_total, flex_week, _) = timeclock::flex(sessions, projects, &leave_only, expected, Some((monday, t)));
@@ -1799,12 +1801,23 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_projects_month() {
+        let mut fx = dash_fixture("2026-01-08", (None, None));
+        let s = fx.sessions[1].clone(); // Acme, 2026-01-05, 3.2
+        fx.sessions.push(timeclock::Session { date: "2026-01-02".parse().unwrap(), hours: 2.0, ..s }); // this month, last week
+        let v = dashboard(fx);
+        let acme = &v["projects"][0];
+        assert_eq!(acme["project"], json!("Acme"));
+        assert!((acme["worked"].as_f64().unwrap() - 5.2).abs() < 1e-9 && (acme["month"].as_f64().unwrap() - 7.2).abs() < 1e-9, "{acme}"); // not December's 9.0
+    }
+
+    #[test]
     fn dashboard_builds_the_week() {
         let v = dashboard(dash_fixture("2026-01-08", (None, None)));
         // The frontend contract (Time.svelte).
         assert_eq!(keys(&v), ["backup_error", "flex_total", "flex_week", "leave", "leave_time", "on_break", "profile", "profiles", "project", "projects", "since", "task", "today", "today_hours", "week"]);
         assert_eq!(keys(&v["week"][0]), ["date", "expected", "hours", "leave", "leave_hours"]);
-        assert_eq!(keys(&v["projects"][0]), ["billable", "code", "project", "worked"]);
+        assert_eq!(keys(&v["projects"][0]), ["billable", "code", "month", "project", "worked"]);
         let day = |i: usize, k: &str| v["week"][i][k].clone();
         let dates: Vec<_> = (0..7).map(|i| day(i, "date")).collect();
         assert_eq!(dates, (5..=11).map(|n| json!(format!("2026-01-{n:02}"))).collect::<Vec<_>>());

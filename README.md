@@ -377,7 +377,9 @@ vmedian abs round floor ceil sqrt exp ln`; format with `;%.2f` or `;%d`.
 ![The Time view: running timer, today's sessions, the week against expected hours, flex and projects](docs/screenshots/time.png)
 
 The Time view shows what you're tracking, today's sessions (click ✎ to edit),
-the week's hours against expected, flex balance and per-project totals. Keys:
+today's hours against the daily target (`expected_daily_hours`), the week's hours against expected,
+flex balance with the report buttons, and a card per project worked this week (hours this week and month,
+billable hours, its share of the week, and **Track** to start the clock on it). Keys:
 `i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV (import template: `Project` = export code, `Duration` in decimal hours, `1,5`; zero-hour rows are left out),
 `E` export a report as HTML/PDF.
 Space t … has every timeclock command (same letters as the old Emacs menu).
