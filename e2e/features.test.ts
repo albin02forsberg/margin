@@ -105,7 +105,8 @@ describe("Last session's tabs", () => {
     await browser.refresh();
     await browser.waitUntil(async () => (await tabNames()).length === 3, { timeoutMsg: "tabs not restored" });
     await find(".tabs .tab.cur button", "two");
-    assert.ok(!(await texts(".msg")).some((m) => m.includes("⚠")), "flashed an error");
+    const msgs = (await texts(".msg")).filter((m) => m.includes("⚠"));
+    assert.deepEqual(msgs, [], `flashed an error: ${msgs.join(" | ")}`);
   });
 });
 

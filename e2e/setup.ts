@@ -143,6 +143,14 @@ export async function answer(prompt: string, text: string) {
 
 /** Run the palette command whose label starts with LABEL (Ctrl+K). */
 export async function palette(label: string) {
-  await browser.keys([Key.Ctrl, "k"]);
+  // A Ctrl+K can be lost (the page isn't listening yet, or a picker is open): re-send until the palette shows.
+  const shown = async () => (await texts(".picker label span")).some((t) => t.includes("Run a command"));
+  await browser.waitUntil(async () => {
+    if (await shown()) return true;
+    if ((await texts(".picker")).length) await browser.keys(Key.Escape); // a stale picker swallows Ctrl+K
+    await browser.keys([Key.Ctrl, "k"]);
+    await browser.pause(300);
+    return shown();
+  }, { timeoutMsg: "palette never opened" });
   await answer("Run a command", label);
 }
