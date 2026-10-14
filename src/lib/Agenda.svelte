@@ -11,6 +11,8 @@
     newTask: (scheduled?: string) => void;
     undo: () => Promise<void>;
     act: (f: () => unknown) => void;
+    /** Ask for a date ("Go to date"); ISO day, or null on cancel / unparsable input. */
+    pickDate: () => Promise<string | null>;
   };
 
   export const iso = (d: Date) =>
@@ -41,7 +43,7 @@
   const MORE: [string, string][] = [
     ["j / k", "Move selection"], ["< / >", "Reschedule a day earlier / later"], ["+ / -", "Raise / lower priority"],
     ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["H / L", "Board: move to the column left / right"], ["h / l", "Previous / next period"],
-    [".", "Jump to today"], ["/", "Filter"], ["r", "Refresh"], ["?", "Toggle this help"],
+    [".", "Jump to today"], ["D", "Go to a date"], ["/", "Filter"], ["r", "Refresh"], ["?", "Toggle this help"],
   ];
 </script>
 
@@ -172,6 +174,13 @@
     try { localStorage.setItem("agenda-span", String(n)); } catch {}
   }
   const move = (d: number) => (start = addDays(start, d * span));
+  async function goTo() {
+    const d = await api.pickDate();
+    if (!d) return;
+    const t = parse(d);
+    start = span === 7 ? monday(t) : t;
+    sel = 0;
+  }
   const goToday = () => (start = span === 7 ? monday(new Date()) : new Date());
 
   function setBoard(on: boolean) {
@@ -237,6 +246,7 @@
       case "l": case "ArrowRight": case "f": if (mode === "agenda") move(1); break;
       case "h": case "ArrowLeft": case "b": if (mode === "agenda") move(-1); break;
       case ".": goToday(); sel = 0; break;
+      case "D": if (mode === "agenda") goTo(); break;
       case "/": filterInput?.focus(); break;
       case "r": api.act(refresh); break;
       case "?": help = !help; break;
@@ -304,7 +314,11 @@
 <div class="agenda" bind:this={root} tabindex="0" onkeydown={key} onclick={pointer} ondblclick={pointer} role="listbox">
   <header>
     <div class="titles">
-      <h1>{heading}</h1>
+      {#if mode === "agenda"}
+        <h1><button class="goto" onclick={goTo} title="Go to date (D)">{heading}</button></h1>
+      {:else}
+        <h1>{heading}</h1>
+      {/if}
       {#if subheading}<span>{subheading}</span>{/if}
     </div>
     <div class="controls">
@@ -433,6 +447,7 @@
 <style>
   .agenda { height: 100%; display: flex; flex-direction: column; outline: none; font-family: var(--sans); position: relative; background: var(--canvas); }
   header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: var(--s3); padding: 20px var(--s5) var(--s4); }
+  .titles h1 .goto { all: inherit; margin: 0; padding: 0; cursor: pointer; }
   .titles h1 { margin: 0; font-size: var(--fs-h1); font-weight: 700; letter-spacing: -0.01em; }
   .titles span { color: var(--dim); font-size: var(--fs-md); }
   .controls { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }

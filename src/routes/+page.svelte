@@ -1398,6 +1398,11 @@
     newTask: (s) => act(() => newTask(s ?? "")),
     undo,
     act,
+    pickDate: async () => {
+      const input = await datePick("Go to date");
+      if (input == null || input === "rm") return null;
+      try { return await call<string>("read_date", { input }); } catch { return null; }
+    },
   };
 
   // ---------------------------------------------------------------- commands
