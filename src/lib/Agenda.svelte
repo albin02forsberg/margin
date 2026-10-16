@@ -2,6 +2,8 @@
   export type AgendaItem = {
     date: string; kind: string; label: string; time: string | null; path: string; line: number;
     keyword: string | null; priority: string | null; title: string; tags: string[]; category: string;
+    /** Tags from `#+FILETAGS:` and parent headings (shown dimmed). */
+    inherited?: string[];
     /** Habits (today's entry, Tasks): last 21 days ('x' done, '-' due within `.+2d/3d` max, '!' overdue, '.' not due) and streak. */
     habit?: { bar: string; streak: number } | null;
     /** `CLOSED:` stamp ("2026-10-14T10:12:00"), set when a task is marked done (config `log_done`). */
@@ -89,7 +91,7 @@
   const shown = $derived.by(() => {
     const f = filter.toLowerCase();
     const all = boardOn ? [...items, ...doneItems] : items;
-    let xs = f ? all.filter((i) => `${i.keyword ?? ""} ${i.title} ${i.tags.join(" ")} ${i.category}`.toLowerCase().includes(f)) : all;
+    let xs = f ? all.filter((i) => `${i.keyword ?? ""} ${i.title} ${i.tags.join(" ")} ${(i.inherited ?? []).join(" ")} ${i.category}`.toLowerCase().includes(f)) : all;
     if (mode === "todo") {
       const rank = (k: string | null) => { const r = todo.indexOf(k ?? ""); return r < 0 ? 99 : r; };
       xs = [...xs].sort((a, b) => rank(a.keyword) - rank(b.keyword));
@@ -288,7 +290,7 @@
       <span class="title">{it.title}</span>
     </div>
     <div class="kmeta">
-      {#each it.tags as t}<span class="tag">{t}</span>{/each}
+      {#each it.tags as t}<span class="tag">{t}</span>{/each}{#each it.inherited ?? [] as t}<span class="tag inh" title="Inherited">{t}</span>{/each}
       {#if dateChip(it.date)}<span class="meta">{dateChip(it.date)}</span>{/if}
       <span class="spacer"></span>
       <span class="cat">{it.category}</span>
@@ -302,7 +304,7 @@
     {#if it.priority}<span class="prio p{it.priority}">{it.priority}</span>{/if}
     {#if it.keyword && it.keyword !== todo[0] && !isDone(it)}<span class="kw">{it.keyword}</span>{/if}
     <span class="title">{it.title}</span>
-    {#each it.tags as t}<span class="tag">{t}</span>{/each}
+    {#each it.tags as t}<span class="tag">{t}</span>{/each}{#each it.inherited ?? [] as t}<span class="tag inh" title="Inherited">{t}</span>{/each}
     <span class="spacer"></span>
     {#if it.habit}
       <span class="habit" title="Last {it.habit.bar.length} days: green done, amber due (not yet overdue), red overdue, grey not due">
@@ -529,6 +531,7 @@
   .prio.pB { color: var(--h5); }
   .kw { font-size: var(--fs-xs); font-weight: 700; color: var(--link); letter-spacing: 0.03em; }
   .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .tag.inh { opacity: 0.6; }
   .tag { font-size: var(--fs-xs); color: var(--dim); background: var(--active); border-radius: 999px; padding: 0 7px; white-space: nowrap; }
   .spacer { flex: 1; }
   .habit { display: inline-flex; gap: 1px; }
