@@ -12,7 +12,7 @@
   import { EditorView } from "@codemirror/view";
   import type { EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
-  import { changed, journalNeighbour, mergeChanged, relativeTo } from "$lib/paths";
+  import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, relativeTo } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
@@ -849,12 +849,39 @@
     let name = (await ask("Rename note to", base(from)))?.trim();
     if (!name || name === base(from)) return;
     if (!/\.org(_archive)?$/.test(name)) name += ".org";
+    const r = await relocateNote(t, () => call<[string, string[]]>("rename_note", { from, name }));
+    if (!r) return;
+    const n = r[1].filter((p) => p !== r[0]).length;
+    flash(`Renamed to ${base(r[0])}${n ? ` — updated links in ${n} note${n > 1 ? "s" : ""}` : ""}`);
+  }
+
+  /** Move the open note to another folder under the notes folder (a typed one is created); the backend fixes links to and from it. */
+  async function moveNote() {
+    if (!inFile() || !tab.path!.startsWith(cfg.notes)) return flash("Open a note first.");
+    const t = tab, from = t.path!;
+    const here = rel(from).split(/[\\/]/).slice(0, -1).join("/");
+    const folders = noteFolders((await call<string[]>("list_files")).map(rel), cfg.config.attachments_dir).filter((f) => f !== here);
+    const items = folders.map((f) => ({ label: f ? `${f}/` : "(notes folder)", value: f || "." }));
+    const typed = await pick({ prompt: `Move “${t.title}” to folder`, items, allowCustom: true, hint: "type a path + Ctrl+↵ for a new folder" });
+    if (typed == null || typed === "") return;
+    const dir = folderName(typed as string);
+    if (dir == null) return flash(`“${typed}” isn't a folder inside the notes folder`);
+    const to = dir ? join(cfg.notes, dir.split("/").join(sep())) : cfg.notes;
+    const r = await relocateNote(t, () => call<[string, string[]]>("move_note", { from, dir: to }));
+    if (!r) return;
+    const n = r[1].filter((p) => p !== r[0]).length;
+    flash(`Moved to ${dir ? `${dir}/` : "the notes folder"}${n ?` — updated links in ${n} note${n > 1 ? "s" : ""}` : ""}`);
+  }
+
+  /** Save, run the rename/move OP on tab T's note, then re-key T, Recent and closed tabs to its new path; undefined on a conflict. */
+  async function relocateNote(t: Tab, op: () => Promise<[string, string[]]>): Promise<[string, string[]] | undefined> {
+    const from = t.path!;
     await saveAll(); // links are rewritten on disk
     if (refuseConflict(t)) return; // saveAll skips conflict tabs, so the buffer is not what the disk holds
     renaming = from; // the watcher's sync must not prune FROM before the remaps below
     let to: string, changed: string[];
     try {
-      [to, changed] = await call<[string, string[]]>("rename_note", { from, name });
+      [to, changed] = await op();
     } finally {
       renaming = "";
     }
@@ -872,8 +899,7 @@
     store("recent", JSON.stringify(recent));
     for (const c of closed) if ("path" in c && c.path === from) c.path = to; // so "Reopen closed tab" finds it
     syncFromDisk();
-    const n = changed.filter((p) => p !== to).length;
-    flash(`Renamed to ${base(to)}${n ? ` — updated links in ${n} note${n > 1 ? "s" : ""}` : ""}`);
+    return [to, changed];
   }
 
   /** Move the open note to <notes>/.trash/ after a confirm naming how many notes link to it (links are left as they are). */
@@ -1474,6 +1500,7 @@
     { label: "Capture with template…", leader: "c", run: captureTemplate },
     { label: "New note", keys: ["Ctrl+Shift+N"], leader: "n n", run: newNote },
     { label: "Rename note…", leader: "n r", run: renameNote },
+    { label: "Move note to folder…", leader: "n m", run: moveNote },
     { label: "Delete note… (move to .trash)", leader: "n D", run: trashNote },
     { label: "Restore note from .trash…", leader: "n R", run: restoreNote },
     { label: "Note: show in file manager", leader: "n f", run: () => act(() => (inFile() ? revealItemInDir(tab.path!) : flash("Open a note first."))) },

@@ -218,7 +218,7 @@ needs **Record when tasks are done**.
 
 Today warns about a deadline ("Due in 5d") 14 days ahead. A warning cookie
 sets a deadline's own period, as in org: `DEADLINE: <2026-10-30 Fri -3d>`
-warns 3 days ahead, `-2w` two weeks, `-0d` only on the day. Rescheduling keeps it.
+warns 3 days ahead, `-2w` two weeks, `-0d` only on the day. Rescheduling keeps it (and any repeater).
 
 Today has a **Clock** column next to the agenda: the running clock (project,
 task, time since you clocked in, Pause / Switch / Stop or Start), **Worked
@@ -251,7 +251,7 @@ same keys. Terms are space-separated and must all match; `-` negates one:
 | | |
 |---|---|
 | `todo:NEXT` | Status; a done status (`todo:DONE`) searches done tasks too |
-| `tag:work`, `-tag:home` | Has / hasn't the tag |
+| `tag:work`, `-tag:home` | Has / hasn't the tag (its own, a parent heading's or the file's `#+FILETAGS:`; inherited tags show dimmed) |
 | `pri:A` | Priority |
 | `file:inbox` | File name contains |
 | `due:today`, `due:<=+7d`, `scheduled:<=fri` | Date compared with `<` `<=` `>` `>=` (none: on that day); any date input works |
@@ -338,6 +338,7 @@ Vim keys everywhere. On top of that:
 | Space n b | Notes linking here, plus unlinked mentions of this note's title (**Link** turns one into an `[[id:]]` link; Space n u undoes) |
 | Space n g | Graph of notes within two links of this one; click a note to open it |
 | Space n r | Rename this note (same folder, `.org` added if missing); `[[file:]]` links to it in other notes are updated after a backup, `[[id:]]` links need nothing |
+| Space n m | Move this note to another folder under the notes folder (pick one, or type a path like `archive/2026` to create it; not `.trash` or the attachments folder). `[[file:]]` links to it are updated and its own relative links (attachments too) re-based, after a backup |
 | Space n D | Delete this note: after a confirm (it says how many notes link to it) the file moves to `<notes>/.trash/`, keeping its subfolder; nothing is deleted for good and links to it are left as they are |
 | Space n R | Restore a note from `<notes>/.trash/`: pick it (newest first) and it moves back to its original place and opens; refused if a note of that name already exists |
 | Space n f | Show this file in the system file manager (any open file: a note, `config.toml`, the time log) |
@@ -620,7 +621,8 @@ notes and links jumping to the right section. Overwriting the folder moves pages
 
 Timed entries (`SCHEDULED: <… 14:00>`, deadlines with a time, appointments)
 pop up a desktop notification 10 minutes before; date-only deadlines remind you
-once a day from the day before. Clicking one opens the task (Linux; elsewhere
+once a day from the day before (`deadline_warning_days`), or from their own
+warning cookie (`-3d`) when they have one. Clicking one opens the task (Linux; elsewhere
 notifications are display-only for now). Settings: `reminders`, `remind_before_minutes`,
 `deadline_warning_days`.
 

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changed, journalNeighbour, mergeChanged, relativeTo } from "./paths.ts";
+import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, relativeTo } from "./paths.ts";
 
 test("relativeTo", () => {
   assert.equal(relativeTo("/n/a.org", "/n/b.org"), "b.org");
@@ -36,4 +36,19 @@ test("changed", () => {
   assert.ok(!changed("/n/subway.org", ["/n/sub"]));
   assert.ok(changed("C:\\n\\sub\\a.org", ["C:\\n\\sub"]));
   assert.ok(!changed("/n/a.org", []));
+});
+
+test("noteFolders", () => {
+  const f = ["a.org", "daily/d.org", "projects/x/y.org", "projects\\z.org", ".trash/t.org", "a/.hid/h.org", "attachments/a/n.org", "files/att/k.org", "files/ok.org"];
+  assert.deepEqual(noteFolders(f, "attachments"), ["", "a", "daily", "files", "files/att", "projects", "projects/x"]);
+  assert.deepEqual(noteFolders(f, "./files/att/"), ["", "a", "attachments", "attachments/a", "daily", "files", "projects", "projects/x"]);
+  assert.deepEqual(noteFolders([], ""), [""]);
+});
+
+test("folderName", () => {
+  assert.equal(folderName(" projects/2026 "), "projects/2026");
+  assert.equal(folderName("a\\b//c/"), "a/b/c");
+  assert.equal(folderName("./x/./y"), "x/y");
+  assert.equal(folderName("."), "");
+  for (const bad of ["/etc", "\\x", "C:\\x", "..", "a/../../b", "a/.."]) assert.equal(folderName(bad), null, bad);
 });

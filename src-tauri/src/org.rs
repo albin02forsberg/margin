@@ -12,10 +12,10 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::SystemTime;
 
 static TS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"<(\d{4}-\d{2}-\d{2})(?:\s+[^\s>\d]+)?(?:\s+(\d{1,2}:\d{2})(?:-\d{1,2}:\d{2})?)?(?:\s+(\.\+|\+\+|\+)(\d+)([hdwmy])(?:/(\d+)([hdwmy]))?)?(?:\s+--?(\d+)([dwmy]))?[^>]*>").unwrap()
+    Regex::new(r"<(\d{4}-\d{2}-\d{2})(?:\s+[^\s>\d+\-.][^\s>\d]*)?(?:\s+(\d{1,2}:\d{2})(?:-\d{1,2}:\d{2})?)?(?:\s+(\.\+|\+\+|\+)(\d+)([hdwmy])(?:/(\d+)([hdwmy]))?)?(?:\s+--?(\d+)([dwmy]))?[^>]*>").unwrap()
 });
 static ALIAS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#""([^"]+)"|(\S+)"#).unwrap());
-static TS_HEAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<\d{4}-\d{2}-\d{2}(?:\s+[^\s>\d]+)?").unwrap());
+static TS_HEAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<\d{4}-\d{2}-\d{2}(?:\s+[^\s>\d+\-.][^\s>\d]*)?").unwrap());
 pub(crate) static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[(id|file):([^\]]+)\](?:\[([^\]]*)\])?\]").unwrap());
 static TAGS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+(:[^\s]+:)\s*$").unwrap());
 static STATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^\s*- State "([^"]+)"\s+from .*?\[(\d{4}-\d{2}-\d{2})"#).unwrap());
@@ -57,6 +57,8 @@ pub struct Headline {
     pub priority: Option<String>,
     pub title: String,
     pub tags: Vec<String>,
+    /// Tags from `#+FILETAGS:` and ancestor headings, minus its own.
+    pub inherited: Vec<String>,
     pub scheduled: Option<Ts>,
     pub deadline: Option<Ts>,
     pub timestamps: Vec<Ts>,
@@ -147,6 +149,8 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
     let mut f = OrgFile { path: path.to_path_buf(), title: stem.clone(), text: text.to_string(), ..Default::default() };
     let mut file_cat = stem;
     let mut cats: Vec<(usize, String)> = vec![]; // (level, category) stack
+    let mut file_tags: Vec<String> = vec![];
+    let mut tag_stack: Vec<(usize, Vec<String>)> = vec![]; // (level, own + inherited tags)
     let mut cur: Option<Headline> = None;
     let mut in_drawer = false;
     for (i, &line) in lines.iter().enumerate() {
@@ -156,14 +160,24 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
         if let Some((level, keyword, priority, title, tags)) = split_headline(line, kw) {
             if let Some(h) = cur.take() {
                 cats.push((h.level, h.category.clone()));
+                tag_stack.push((h.level, h.inherited.iter().chain(&h.tags).cloned().collect()));
                 f.headlines.push(h);
             }
             in_drawer = false;
             while cats.last().is_some_and(|(l, _)| *l >= level) {
                 cats.pop();
             }
+            while tag_stack.last().is_some_and(|(l, _)| *l >= level) {
+                tag_stack.pop();
+            }
             let category = cats.last().map_or(file_cat.clone(), |(_, c)| c.clone());
-            cur = Some(Headline { line: i, level, keyword, priority, title, tags, category, ..Default::default() });
+            let mut inherited: Vec<String> = vec![];
+            for t in tag_stack.last().map_or(&file_tags, |(_, t)| t) {
+                if !tags.contains(t) && !inherited.contains(t) {
+                    inherited.push(t.clone());
+                }
+            }
+            cur = Some(Headline { line: i, level, keyword, priority, title, tags, inherited, category, ..Default::default() });
             continue;
         }
         let lower = line.trim_start().to_lowercase();
@@ -173,6 +187,8 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
                 f.title = line.trim_start()[8..].trim().to_string();
             } else if lower.starts_with("#+category:") {
                 file_cat = line.trim_start()[11..].trim().to_string();
+            } else if lower.starts_with("#+filetags:") {
+                file_tags.extend(line.trim_start()[11..].split(':').map(str::trim).filter(|t| !t.is_empty()).map(String::from));
             } else if let Some(c) = PROP.captures(line) {
                 if c[1].eq_ignore_ascii_case("ID") {
                     f.id = Some(c[2].to_string());
@@ -283,10 +299,19 @@ pub struct Item {
     pub priority: Option<String>,
     pub title: String,
     pub tags: Vec<String>,
+    pub inherited: Vec<String>,
     pub category: String,
     /// Set on today's agenda entry of a habit, and on its Tasks entry.
     pub habit: Option<Habit>,
     pub closed: Option<NaiveDateTime>,
+    /// A deadline's own warning period in days (`-3d` cookie), for reminders.
+    #[serde(skip)]
+    pub warn: Option<i64>,
+}
+
+/// Days of a deadline's `-3d`/`-1w` warning cookie.
+pub fn warn_days(ts: &Ts) -> Option<i64> {
+    ts.warn.map(|(n, u)| i64::from(n) * match u { 'w' => 7, 'm' => 30, 'y' => 365, _ => 1 })
 }
 
 fn item(f: &OrgFile, h: &Headline, date: NaiveDate, kind: &'static str, label: String, time: Option<String>) -> Item {
@@ -301,9 +326,11 @@ fn item(f: &OrgFile, h: &Headline, date: NaiveDate, kind: &'static str, label: S
         priority: h.priority.clone(),
         title: h.title.clone(),
         tags: h.tags.clone(),
+        inherited: h.inherited.clone(),
         category: h.category.clone(),
         habit: None,
         closed: h.closed,
+        warn: None,
     }
 }
 
@@ -419,11 +446,11 @@ pub fn agenda(files: &[Arc<OrgFile>], kw: &Kw, start: NaiveDate, days: i64, toda
             }
             if let Some(dl) = &h.deadline {
                 for d in occurrences(dl, start, end) {
-                    out.push(item(f, h, d, "deadline", "Due".into(), dl.time.clone()));
+                    out.push(Item { warn: warn_days(dl), ..item(f, h, d, "deadline", "Due".into(), dl.time.clone()) });
                 }
                 let diff = (dl.date - today).num_days();
                 // Warning period: the deadline's own `-3d` cookie, else org's default 14 days.
-                let warn = dl.warn.map_or(14, |(n, u)| i64::from(n) * match u { 'w' => 7, 'm' => 30, 'y' => 365, _ => 1 });
+                let warn = warn_days(dl).unwrap_or(14);
                 if !done && today_in && diff < 0 {
                     out.push(item(f, h, today, "overdue", format!("Overdue {}d", -diff), None));
                 } else if !done && today_in && (1..=warn).contains(&diff) {
@@ -500,7 +527,7 @@ pub fn query(q: &str, today: NaiveDate, kw: &Kw) -> Result<(Filter, bool), Strin
                 done |= !neg && kw.done.iter().any(|k| k.to_lowercase() == v);
                 Box::new(move |_, h| h.keyword.as_ref().is_some_and(|k| k.to_lowercase() == v))
             }
-            "tag" => Box::new(move |_, h| h.tags.iter().any(|t| t.to_lowercase() == v)),
+            "tag" => Box::new(move |_, h| h.tags.iter().chain(&h.inherited).any(|t| t.to_lowercase() == v)),
             "pri" => Box::new(move |_, h| h.priority.as_ref().is_some_and(|p| p.to_lowercase() == v)),
             "file" => Box::new(move |f, _| f.path.file_stem().is_some_and(|s| s.to_string_lossy().to_lowercase().contains(&v))),
             k @ ("scheduled" | "due" | "closed") => {
@@ -969,7 +996,7 @@ pub fn targets(files: &[Arc<OrgFile>], root: &Path) -> Vec<Target> {
 }
 
 pub fn all_tags(files: &[Arc<OrgFile>]) -> Vec<String> {
-    let mut t: Vec<String> = files.iter().flat_map(|f| f.headlines.iter().flat_map(|h| h.tags.clone())).collect();
+    let mut t: Vec<String> = files.iter().flat_map(|f| f.headlines.iter().flat_map(|h| h.tags.iter().chain(&h.inherited).cloned())).collect();
     t.sort();
     t.dedup();
     t
@@ -994,13 +1021,24 @@ pub fn set_planning(text: &str, line: usize, kind: &str, date: Option<(NaiveDate
     let mut lines: Vec<String> = text.lines().map(String::from).collect();
     let Some(hl) = headline_at(&lines, line) else { return text.to_string() };
     let re = Regex::new(&format!(r"\s*{kind}:\s*<[^>]*>")).unwrap();
-    // A new date keeps the old timestamp's warning cookie.
+    // A new date keeps the old timestamp's repeater and warning cookie.
     let old = lines.get(hl + 1).filter(|p| is_planning(p)).and_then(|p| p.find(&format!("{kind}:")).map(|i| &p[i..]));
-    let warn = old.and_then(|p| TS.captures(p)).and_then(|c| parse_ts(&c)).and_then(|t| t.warn);
+    let old = old.and_then(|p| TS.captures(p)).and_then(|c| parse_ts(&c));
     let new = date.map(|(d, t)| {
-        let s = ts_string(d, t.as_deref());
-        let s = match warn { Some((n, u)) => format!("{} -{n}{u}>", &s[..s.len() - 1]), None => s };
-        format!("{kind}: {s}")
+        let mut s = ts_string(d, t.as_deref());
+        s.pop();
+        if let Some(Ts { repeater, max, warn, .. }) = &old {
+            if let Some((k, n, u)) = repeater {
+                s += &format!(" {k}{n}{u}");
+                if let Some((n, u)) = max {
+                    s += &format!("/{n}{u}");
+                }
+            }
+            if let Some((n, u)) = warn {
+                s += &format!(" -{n}{u}");
+            }
+        }
+        format!("{kind}: {s}>")
     });
     if hl + 1 < lines.len() && is_planning(&lines[hl + 1]) {
         let p = &lines[hl + 1];
@@ -1140,6 +1178,26 @@ mod tests {
         assert_eq!(shift_date(s, 0, "DEADLINE", 1), "* TODO A\nDEADLINE: <2026-10-06 Tue -3d>\n");
         assert_eq!(set_planning(s, 0, "DEADLINE", Some((d("2026-10-09"), Some("10:00".into())))), "* TODO A\nDEADLINE: <2026-10-09 Fri 10:00 -3d>\n");
         assert_eq!(set_planning(s, 0, "SCHEDULED", Some((d("2026-10-01"), None))), "* TODO A\nDEADLINE: <2026-10-05 Mon -3d> SCHEDULED: <2026-10-01 Thu>\n");
+    }
+
+    #[test]
+    fn timestamp_without_day_name() {
+        let h = &parse(Path::new("x.org"), "* TODO A\nDEADLINE: <2026-10-30 -3d> SCHEDULED: <2026-10-28 .+1w/2w>\n", &kw()).headlines[0];
+        assert_eq!(h.deadline.as_ref().unwrap().warn, Some((3, 'd')));
+        let s = h.scheduled.as_ref().unwrap();
+        assert_eq!((s.repeater.clone(), s.max), (Some((".+".into(), 1, 'w')), Some((2, 'w'))));
+        let h = &parse(Path::new("x.org"), "* A\n<2026-10-30 lun. 10:00 +1d>\n", &kw()).headlines[0];
+        assert_eq!((h.timestamps[0].time.as_deref(), h.timestamps[0].repeater.is_some()), (Some("10:00"), true));
+        let t = "* TODO A\nDEADLINE: <2026-10-30 -3d>\n";
+        assert_eq!(shift_date(t, 0, "DEADLINE", 1), "* TODO A\nDEADLINE: <2026-10-31 Sat -3d>\n");
+    }
+
+    #[test]
+    fn set_planning_keeps_repeater() {
+        let s = "* TODO A\nSCHEDULED: <2026-10-05 Mon .+2d/3d> DEADLINE: <2026-10-09 Fri +1w -2d>\n";
+        let s = set_planning(s, 0, "SCHEDULED", Some((d("2026-10-06"), Some("09:00".into()))));
+        let s = set_planning(&s, 0, "DEADLINE", Some((d("2026-10-16"), None)));
+        assert_eq!(s, "* TODO A\nSCHEDULED: <2026-10-06 Tue 09:00 .+2d/3d> DEADLINE: <2026-10-16 Fri +1w -2d>\n");
     }
 
     #[test]
@@ -1313,6 +1371,17 @@ mod tests {
         assert_eq!(q("todo:next"), "Write report");
         assert_eq!(q("tag:work"), "Write report, Plan trip");
         assert_eq!(q("-tag:home"), "Write report, Report draft");
+        // Inherited tags: #+FILETAGS and ancestors, popped on a sibling.
+        let inh = [Arc::new(parse(Path::new("/n/acme.org"), "#+FILETAGS: :client:\n* Acme :work:\n** TODO Invoice :money:\n*** TODO Send\n\
+* TODO Lunch\n", &kw()))];
+        let h = &inh[0].headlines;
+        assert_eq!((h[0].inherited.clone(), h[1].tags.clone(), h[1].inherited.clone()), (vec!["client".into()], vec!["money".into()], vec!["client".into(), "work".into()]));
+        assert_eq!((h[2].inherited.clone(), h[3].inherited.clone()), (vec!["client".to_string(), "work".into(), "money".into()], vec!["client".to_string()]));
+        let iq = |s: &str| todos(&inh, &kw(), false, query(s, t, &kw()).unwrap().0, t).into_iter().map(|i| i.title).collect::<Vec<_>>().join(", ");
+        assert_eq!(iq("tag:work"), "Invoice, Send");
+        assert_eq!(iq("-tag:work"), "Lunch");
+        assert_eq!(iq("tag:client"), "Invoice, Send, Lunch");
+        assert_eq!(all_tags(&inh), vec!["client", "money", "work"]);
         assert_eq!(q("pri:A"), "Write report");
         assert_eq!(q("file:proj"), "Report draft");
         assert_eq!(q("-file:inbox"), "Report draft");

@@ -821,6 +821,21 @@ fn rename_note(s: State<App>, from: PathBuf, name: String) -> R<(PathBuf, Vec<Pa
     notes::rename(&s.files(), &from, &name)
 }
 
+/// Move note FROM into folder DIR under the notes folder (not a dot folder or the attachments
+/// folder), fixing the links to and from it (see notes::move_note), after a backup.
+#[tauri::command(async)]
+fn move_note(s: State<App>, from: PathBuf, dir: PathBuf) -> R<(PathBuf, Vec<PathBuf>)> {
+    let c = s.cfg();
+    for p in [&from, &dir] {
+        s.check(p)?;
+        in_notes(&c.notes(), p)?;
+    }
+    notes::folder_ok(&c.notes(), &c.attachments_dir, &dir)?;
+    s.backup();
+    let _lock = note_writes();
+    notes::move_note(&s.files(), &from, &dir)
+}
+
 /// Move the note PATH to `<notes>/.trash/`, keeping its subpath (after a backup). Returns where it went.
 #[tauri::command(async)]
 fn trash_note(s: State<App>, path: PathBuf) -> R<PathBuf> {
@@ -1605,7 +1620,7 @@ pub fn run() {
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
-            notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_unlinked, notes_ensure_id, notes_heading_id,
+            notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_linked, export_report, export_open, quit::quit_reply

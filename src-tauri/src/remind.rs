@@ -20,7 +20,7 @@ pub struct Due {
 
 /// Reminders that are due at NOW: timed entries (scheduled, deadline, appointment)
 /// from BEFORE ahead until they start, and date-only deadlines once a day from
-/// WARN_DAYS ahead. Done tasks are skipped. Callers drop keys already sent.
+/// their own `-3d` warning period ahead (else WARN_DAYS). Done tasks are skipped. Callers drop keys already sent.
 pub fn due(items: &[Item], kw: &Kw, now: NaiveDateTime, before: Duration, warn_days: i64) -> Vec<Due> {
     let mut out = vec![];
     for it in items {
@@ -40,7 +40,7 @@ pub fn due(items: &[Item], kw: &Kw, now: NaiveDateTime, before: Duration, warn_d
             }
             ("deadline", None) => {
                 let days = (it.date - now.date()).num_days();
-                if (0..=warn_days).contains(&days) {
+                if (0..=it.warn.unwrap_or(warn_days)).contains(&days) {
                     let body = match days {
                         0 => "Due today".into(),
                         1 => "Due tomorrow".into(),
@@ -72,7 +72,10 @@ fn tick(app: &AppHandle) {
     }
     let now = crate::timeclock::now();
     let today = now.date();
-    let items = org::agenda(&s.files(), &s.kw(), today, c.deadline_warning_days.max(0) + 2, today);
+    let files = s.files();
+    // Wide enough for the longest per-deadline warning cookie.
+    let span = files.iter().flat_map(|f| &f.headlines).filter_map(|h| h.deadline.as_ref().and_then(org::warn_days)).fold(c.deadline_warning_days, i64::max);
+    let items = org::agenda(&files, &s.kw(), today, span.max(0) + 2, today);
     let due = due(&items, &s.kw(), now, Duration::minutes(c.remind_before_minutes), c.deadline_warning_days);
     let file = c.data().join("reminders-sent.txt");
     let mut sent: BTreeSet<String> = std::fs::read_to_string(&file).unwrap_or_default().lines().map(str::to_string).collect();
@@ -155,5 +158,16 @@ mod tests {
         let keys: Vec<String> = due(&items, &kw, at("13:55"), Duration::minutes(10), 1).into_iter().map(|d| d.key).collect();
         assert_eq!(keys[0], "2026-10-02 scheduled /n/a.org:0 14:00:00");
         assert!(keys.iter().all(|k| k.starts_with("2026-10-02")));
+    }
+
+    #[test]
+    fn deadline_cookie_overrides_warn_days() {
+        let kw = Kw { todo: vec!["TODO".into()], done: vec![] };
+        let doc = "* TODO Far\nDEADLINE: <2026-10-12 Mon -10d>\n* TODO Near\nDEADLINE: <2026-10-04 -0d>\n* TODO Plain\nDEADLINE: <2026-10-03>\n";
+        let f = Arc::new(org::parse(Path::new("/n/a.org"), doc, &kw));
+        let day: chrono::NaiveDate = "2026-10-02".parse().unwrap();
+        let items = org::agenda(&[f], &kw, day, 12, day);
+        let got: Vec<String> = due(&items, &kw, day.and_hms_opt(9, 0, 0).unwrap(), Duration::minutes(10), 1).into_iter().map(|d| format!("{}: {}", d.title, d.body)).collect();
+        assert_eq!(got, ["Plain: Due tomorrow", "Far: Due in 10 days"]);
     }
 }
