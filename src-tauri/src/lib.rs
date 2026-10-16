@@ -1558,6 +1558,8 @@ pub fn run() {
             watch(app.handle());
             write_calendar(app.handle());
             tray::setup(app.handle())?;
+            #[cfg(target_os = "macos")]
+            quit::app_menu(app.handle())?;
             app.handle().plugin(tauri_plugin_notification::init())?;
             remind::start(app.handle());
             let h = app.handle().clone();
