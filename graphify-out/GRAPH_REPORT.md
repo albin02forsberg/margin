@@ -1,17 +1,17 @@
 # Graph Report - margin  (2026-10-16)
 
 ## Corpus Check
-- 107 files · ~907,316 words
+- 107 files · ~907,337 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 14 file(s) not represented in the graph (top: .css 8, (none) 3, .icns 1)
 
 ## Summary
-- 1658 nodes · 3704 edges · 110 communities (72 shown, 38 thin omitted)
+- 1661 nodes · 3704 edges · 112 communities (73 shown, 39 thin omitted)
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 72 edges (avg confidence: 0.87)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `6a70c2b7`
+- Built from commit: `87b0e16e`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -30,9 +30,10 @@
 - ics.rs
 - GitHub Releases
 - tray.rs
-- level
+- curLine
 - Notes
 - AppImage
+- svelte
 - lib/Menu.svelte
 - default.json
 - setup.ts
@@ -49,7 +50,7 @@
 - lib/TaskDialog.svelte
 - generate
 - config.rs
-- CLAUDE.md
+- main
 - super
 - quit.rs
 - day_prompt
@@ -73,7 +74,7 @@
 - Time Tracking
 - TypeScript
 - gnome.rs
-- Glyph
+- decorate
 - backup.rs
 - r4.js
 - settings.ts
@@ -92,20 +93,21 @@
 - merge.test.ts
 - lib.rs
 - v0.3.0 - 2026-10-11
-- dependencies
+- screenshots.ts
 - changelog.sh
 - NOTE_WRITES
 - App
-- board.test.ts
+- ref_node_assert
 - date
 - chatctx.ts
-- ship/SKILL.md
+- level
 - clock.ts
 - CALENDAR
 - mock.js
+- activity.test.ts
 - r5.js
-- main
-- releaser.md
+- bugreport.test.ts
+- chips.test.ts
 - frag
 - render.sh
 - pills4
@@ -117,8 +119,6 @@
 - keycap
 - rail4
 - README.md
-- autopilot/SKILL.md
-- scout.md
 - projects.ts
 
 ## God Nodes (most connected - your core abstractions)
@@ -136,19 +136,19 @@
 ## Surprising Connections (you probably didn't know these)
 - `Agent Workflow` --references--> `main()`  [INFERRED]
   CLAUDE.md → scripts/coverage-ratchet.ts
+- `Finish` --references--> `main()`  [INFERRED]
+  .claude/agents/implementer.md → scripts/coverage-ratchet.ts
+- `House rules` --references--> `main()`  [INFERRED]
+  .claude/agents/implementer.md → scripts/coverage-ratchet.ts
 - `1. Gate (all must hold, else report which failed and stop)` --references--> `main()`  [INFERRED]
   .claude/agents/releaser.md → scripts/coverage-ratchet.ts
 - `Run` --references--> `main()`  [INFERRED]
   .claude/agents/scout.md → scripts/coverage-ratchet.ts
-- `Repo Conventions` --references--> `main()`  [INFERRED]
-  CLAUDE.md → scripts/coverage-ratchet.ts
-- `Idle` --references--> `main()`  [INFERRED]
-  .claude/skills/autopilot/SKILL.md → scripts/coverage-ratchet.ts
 
 ## Import Cycles
 - 1-file cycle: `src-tauri/src/ai.rs -> src-tauri/src/ai.rs`
 
-## Communities (110 total, 38 thin omitted)
+## Communities (112 total, 39 thin omitted)
 
 ### Community 0 - "org.rs"
 Cohesion: 0.07
@@ -163,16 +163,16 @@ Cohesion: 0.15
 Nodes (21): ai_chat(), ai_download(), ai_draft(), ai_model_delete(), ai_models(), ai_set(), apply_config(), capture() (+13 more)
 
 ### Community 3 - "editor.ts"
-Cohesion: 0.08
-Nodes (27): Block, BULLETS, clicks, codeTokens(), decorate(), hide, hooks, imageSrc() (+19 more)
+Cohesion: 0.09
+Nodes (20): Block, BULLETS, clicks, hide, hooks, LANG_ALIAS, langLoaded, langs (+12 more)
 
 ### Community 4 - "lib/Agenda.svelte"
 Cohesion: 0.16
-Nodes (10): dayInput(), key(), op(), pointer(), setBoard(), shift(), refresh(), priority() (+2 more)
+Nodes (13): dayInput(), key(), op(), pointer(), setBoard(), shift(), Column, columns() (+5 more)
 
 ### Community 5 - "watcher.rs"
-Cohesion: 0.12
-Nodes (24): active(), active_window(), AFK_MINS, append(), clean(), exclusion_and_truncation_before_write(), flush(), flush_writes_the_open_record_once() (+16 more)
+Cohesion: 0.13
+Nodes (23): active(), active_window(), AFK_MINS, append(), clean(), flush(), flush_writes_the_open_record_once(), gnome_extension() (+15 more)
 
 ### Community 6 - "orgtable.ts"
 Cohesion: 0.12
@@ -202,9 +202,9 @@ Nodes (17): builds_feed(), calendar_from_a_url(), CALENDAR_TTL, date(), event(),
 Cohesion: 0.27
 Nodes (5): refresh(), setup(), show(), tracking(), Tray
 
-### Community 15 - "level"
-Cohesion: 0.18
-Nodes (27): createState(), curLine(), drawerRange(), expandTemplate(), headingAt(), headings(), insertBlock(), insertMode() (+19 more)
+### Community 15 - "curLine"
+Cohesion: 0.21
+Nodes (14): createState(), curLine(), expandTemplate(), insertBlock(), insertMode(), insertTable(), inTable(), newItem() (+6 more)
 
 ### Community 16 - "Notes"
 Cohesion: 0.29
@@ -219,19 +219,19 @@ Cohesion: 0.33
 Nodes (5): description, identifier, permissions, $schema, windows
 
 ### Community 21 - "setup.ts"
-Cohesion: 0.05
-Nodes (59): ADR-0007, ADR-0008, at(), buckets, day, ev(), events, y (+51 more)
+Cohesion: 0.20
+Nodes (19): answer(), app, browser, close(), Dirs, fileMatches(), find(), isoDay() (+11 more)
 
 ### Community 22 - "activity.rs"
 Cohesion: 0.07
-Nodes (47): AwEvent, browser_urls(), Bucket, Buckets, CEST, COMMON, cut(), dismiss() (+39 more)
+Nodes (48): AwEvent, browser_urls(), Bucket, Buckets, CEST, COMMON, cut(), dismiss() (+40 more)
 
 ### Community 23 - "export.rs"
-Cohesion: 0.08
+Cohesion: 0.09
 Nodes (46): BLOCK, Heading, List, Para, Pre, Quote, Rule, Table (+38 more)
 
 ### Community 24 - "notes.rs"
-Cohesion: 0.10
+Cohesion: 0.11
 Nodes (31): ANY_LINK, backlinks(), ensure_id(), ensures_ids(), files(), gen_id(), Graph, graph_neighbourhood() (+23 more)
 
 ### Community 25 - "Sync"
@@ -255,12 +255,12 @@ Cohesion: 0.16
 Nodes (15): Backend, Embedded, Ollama, body(), chat(), chat_messages(), chats(), clean() (+7 more)
 
 ### Community 35 - "config.rs"
-Cohesion: 0.11
+Cohesion: 0.10
 Nodes (25): add_view(), add_views(), atomic_writes(), Config, defaults_round_trip(), expand(), recreate(), recreate_only_when_missing() (+17 more)
 
-### Community 36 - "CLAUDE.md"
-Cohesion: 0.17
-Nodes (10): Agent Workflow, Build & Test, Code Style, Permission Mode, Project, Release & CI/CD, Repo Conventions, Tauri-Specific (+2 more)
+### Community 36 - "main"
+Cohesion: 0.05
+Nodes (33): Agent Workflow, Finish, House rules, Report (your final message), Start, 1. Gate (all must hold, else report which failed and stop), 2. Bump PR, 3. Tag, build, publish (+25 more)
 
 ### Community 37 - "super"
 Cohesion: 0.22
@@ -299,12 +299,16 @@ Cohesion: 0.07
 Nodes (15): active(), apply(), Ev, App, Closed, State, Title, focused() (+7 more)
 
 ### Community 57 - "ollama"
-Cohesion: 0.22
-Nodes (9): available_gb(), free_gb(), ollama(), ollama_chat(), parse(), read_chat(), ticket(), unreachable() (+1 more)
+Cohesion: 0.18
+Nodes (11): available_gb(), cancel_draft(), cancel_hits_only_the_running_draft(), free_gb(), ollama(), ollama_chat(), parse(), read_chat() (+3 more)
 
 ### Community 60 - "gnome.rs"
 Cohesion: 0.20
 Nodes (10): active(), BUS, FILES, get(), install(), install_copies_the_extension(), parse(), session() (+2 more)
+
+### Community 61 - "decorate"
+Cohesion: 0.13
+Nodes (9): codeTokens(), decorate(), Glyph, imageSrc(), Img, inline(), langFor(), mark() (+1 more)
 
 ### Community 62 - "backup.rs"
 Cohesion: 0.12
@@ -316,7 +320,7 @@ Nodes (26): agendaDays, backlinks, board, byTag, DEMO, DEMOS, done3, doneWeek (+
 
 ### Community 64 - "settings.ts"
 Cohesion: 0.18
-Nodes (16): CATEGORIES, changes(), checkTemplates(), checkViews(), Field, Form, fromForm(), GROUPS (+8 more)
+Nodes (17): CATEGORIES, changes(), checkTemplates(), checkViews(), Field, Form, fromForm(), GROUPS (+9 more)
 
 ### Community 65 - "triager.md"
 Cohesion: 0.40
@@ -343,12 +347,12 @@ Cohesion: 0.25
 Nodes (7): chat_http(), download(), download_resumes_and_checks(), download_stall_times_out(), part(), serve(), sha256_file()
 
 ### Community 73 - "load"
-Cohesion: 0.20
-Nodes (8): cancel_draft(), cancel_hits_only_the_running_draft(), CANCELLED, load(), run(), RUNNING, TICKETS, whole()
+Cohesion: 0.25
+Nodes (6): CANCELLED, load(), run(), RUNNING, TICKETS, whole()
 
 ### Community 74 - "scripts"
-Cohesion: 0.13
-Nodes (15): scripts, build, check, check:watch, coverage, coverage:ratchet, dev, e2e:build (+7 more)
+Cohesion: 0.07
+Nodes (28): dependencies, @codemirror/commands, @codemirror/language, @codemirror/language-data, @codemirror/search, @codemirror/state, @codemirror/view, @lezer/highlight (+20 more)
 
 ### Community 76 - "kw"
 Cohesion: 0.15
@@ -366,17 +370,17 @@ Nodes (28): attachment_files(), attachment_files_skips_trash_and_unused_ignores_
 Cohesion: 0.33
 Nodes (5): Changelog, Features, Fixes, Other, v0.3.0 - 2026-10-11
 
-### Community 80 - "dependencies"
-Cohesion: 0.15
-Nodes (13): dependencies, @codemirror/commands, @codemirror/language, @codemirror/language-data, @codemirror/search, @codemirror/state, @codemirror/view, @lezer/highlight (+5 more)
+### Community 80 - "screenshots.ts"
+Cohesion: 0.13
+Nodes (18): ADR-0007, ADR-0008, app, data, day(), driver, env, fixtures() (+10 more)
 
 ### Community 83 - "App"
 Cohesion: 0.11
 Nodes (44): activity_dismiss(), activity_learn(), activity_rules_delete(), activity_suggestions(), agenda(), App, backup_now(), day_done_now() (+36 more)
 
-### Community 84 - "board.test.ts"
-Cohesion: 0.32
-Nodes (5): Column, columns(), moveTo(), done, todo
+### Community 84 - "ref_node_assert"
+Cohesion: 0.21
+Nodes (7): layout(), Pt, changed(), journalNeighbour(), mergeChanged(), relativeTo(), empty
 
 ### Community 85 - "date"
 Cohesion: 0.19
@@ -386,29 +390,33 @@ Nodes (16): ai_day_prompt(), append_journal_template(), capture_file(), capture_
 Cohesion: 0.33
 Nodes (6): onkeydown(), send(), chatContext(), cleanChat(), enc, level()
 
-### Community 87 - "ship/SKILL.md"
-Cohesion: 0.25
-Nodes (7): 1. Survey, 2. Dispatch, 3. Review each report, 4. Clean up, 5. Report to the owner, Rules, Running it repeatedly
+### Community 87 - "level"
+Cohesion: 0.41
+Nodes (13): drawerRange(), headingAt(), headings(), level(), line(), moveSubtree(), newHeading(), orgFold (+5 more)
 
 ### Community 89 - "clock.ts"
-Cohesion: 0.33
+Cohesion: 0.27
 Nodes (5): naive(), p2(), parseWhen(), WeekDay, worked()
 
 ### Community 91 - "mock.js"
 Cohesion: 0.22
 Nodes (8): habit, late, nav, q, row(), tags(), today, week
 
+### Community 92 - "activity.test.ts"
+Cohesion: 0.22
+Nodes (7): at(), buckets, day, ev(), events, y, clickIn()
+
 ### Community 93 - "r5.js"
 Cohesion: 0.32
 Nodes (6): bar(), DEMOS5, layered(), P5, page(), worked
 
-### Community 94 - "main"
-Cohesion: 0.33
-Nodes (5): Finish, House rules, Report (your final message), Start, main()
+### Community 94 - "bugreport.test.ts"
+Cohesion: 0.48
+Nodes (5): BugEnv, bugReportUrl(), isError(), ISSUES, osName()
 
-### Community 95 - "releaser.md"
+### Community 95 - "chips.test.ts"
 Cohesion: 0.33
-Nodes (5): 1. Gate (all must hold, else report which failed and stop), 2. Bump PR, 3. Tag, build, publish, Report, Rules
+Nodes (3): Chip, chips(), items
 
 ### Community 96 - "frag"
 Cohesion: 0.50
@@ -430,27 +438,23 @@ Nodes (3): allProjects, inp(), timeOff
 Cohesion: 0.67
 Nodes (3): boardCols(), kc(), kcol()
 
-### Community 107 - "autopilot/SKILL.md"
-Cohesion: 0.40
-Nodes (4): Idle, Loop, Rules, Stop
-
 ### Community 112 - "projects.ts"
 Cohesion: 0.24
 Nodes (10): Card, cards(), merge(), Project, ROUNDINGS, Row, Task, toProject() (+2 more)
 
 ## Knowledge Gaps
 - **316 isolated node(s):** `changelog.sh script`, `q`, `sched`, `late`, `habit` (+311 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 538 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **38 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 541 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **39 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `at()` connect `setup.ts` to `+page.svelte`?**
-  _High betweenness centrality (0.094) - this node is a cross-community bridge._
-- **Why does `line()` connect `level` to `editor.ts`, `lib/Agenda.svelte`, `+page.svelte`?**
-  _High betweenness centrality (0.081) - this node is a cross-community bridge._
-- **Why does `insertTable()` connect `level` to `editor.ts`, `+page.svelte`?**
+- **Why does `at()` connect `activity.test.ts` to `+page.svelte`?**
+  _High betweenness centrality (0.092) - this node is a cross-community bridge._
+- **Why does `line()` connect `level` to `editor.ts`, `curLine`, `decorate`, `clock.ts`, `+page.svelte`?**
+  _High betweenness centrality (0.080) - this node is a cross-community bridge._
+- **Why does `insertTable()` connect `curLine` to `editor.ts`, `+page.svelte`?**
   _High betweenness centrality (0.061) - this node is a cross-community bridge._
 - **What connects `changelog.sh script`, `q`, `sched` to the rest of the system?**
   _316 weakly-connected nodes found - possible documentation gaps or missing edges._
@@ -459,4 +463,4 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `timeclock.rs` be split into smaller, more focused modules?**
   _Cohesion score 0.051919291338582675 - nodes in this community are weakly interconnected._
 - **Should `editor.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.08387096774193549 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.09057971014492754 - nodes in this community are weakly interconnected._
