@@ -23,6 +23,8 @@ const MAX_TITLE: usize = 300;
 
 /// The record being grown by the sampler, shared so quitting can write it (`flush`).
 static OPEN: Mutex<Option<Rec>> = Mutex::new(None);
+/// The same for mic/camera use (`media.rs`), logged in `activity/media/`.
+static MEDIA: Mutex<Option<Rec>> = Mutex::new(None);
 
 /// One line of the log: a window active from START to END.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -94,11 +96,28 @@ fn write(dir: &Path, r: &Rec) {
 }
 
 /// Write the open record to DIR, ended when its window was last seen (on quit or when the
-/// watcher is turned off); one that never grew is dropped.
+/// watcher is turned off), and the open media one to DIR/media; one that never grew is dropped.
 pub fn flush(dir: &Path) {
-    if let Some(r) = OPEN.lock().unwrap().take().filter(|r| r.end > r.start) {
+    flush_one(&OPEN, dir);
+    flush_one(&MEDIA, &dir.join("media"));
+}
+
+fn flush_one(open: &Mutex<Option<Rec>>, dir: &Path) {
+    if let Some(r) = open.lock().unwrap().take().filter(|r| r.end > r.start) {
         write(dir, &r);
     }
+}
+
+/// One media poll at NOW (last seen at SEEN): grow or close the open record in DIR.
+#[cfg(desktop)]
+fn media_step(dir: &Path, seen: NaiveDateTime, now: NaiveDateTime) {
+    let sample = crate::media::in_use().filter(|&u| u).map(|_| ("media".to_string(), String::new()));
+    let mut open = MEDIA.lock().unwrap();
+    let (next, done) = step(open.take(), sample, seen, now);
+    if let Some(r) = done {
+        write(dir, &r);
+    }
+    *open = next;
 }
 
 /// The active window's app and title: X11, Windows, macOS, KDE and Hyprland under Wayland, then
@@ -149,8 +168,9 @@ pub fn screen_recording(request: bool) -> Option<bool> {
     }
 }
 
-/// Poll every 5 s while `activity_watcher` is on (checked each poll, so the setting applies at
-/// once); the idle source is only set up once it's first on.
+/// Poll every 5 s while `activity_watcher` or `activity_media_signal` is on (checked each poll, so
+/// the setting applies at once); the idle source is only set up once the watcher is first on.
+/// Media use is recorded even when away: a call you only listen to has no input.
 #[cfg(desktop)]
 pub fn start(app: &tauri::AppHandle) {
     use crate::{activity, timeclock::now, App};
@@ -161,21 +181,27 @@ pub fn start(app: &tauri::AppHandle) {
         loop {
             std::thread::sleep(std::time::Duration::from_secs(POLL_SECS as u64));
             let (c, t) = (app.state::<App>().cfg(), now());
-            let dir = c.data().join("activity");
+            let (dir, slept) = (c.data().join("activity"), t - last > Duration::seconds(3 * POLL_SECS));
+            if c.activity_media_signal {
+                media_step(&dir.join("media"), if slept { last } else { t }, t);
+            } else {
+                flush_one(&MEDIA, &dir.join("media"));
+            }
+            if day != Some(t.date()) && (c.activity_watcher || c.activity_media_signal) {
+                prune(&dir, t.date(), c.activity_retention_days);
+                prune(&dir.join("media"), t.date(), c.activity_retention_days);
+                day = Some(t.date());
+            }
             // A bad pattern records nothing rather than what it should have hidden.
             let exclude = activity::exclude_rules(&c.activity_exclude).ok();
             let Some(exclude) = exclude.filter(|_| c.activity_watcher) else {
-                flush(&dir);
+                flush_one(&OPEN, &dir);
                 last = t;
                 continue;
             };
-            if day != Some(t.date()) {
-                prune(&dir, t.date(), c.activity_retention_days);
-                day = Some(t.date());
-            }
             let away = idle.get_or_insert_with(|| crate::idle::source(Duration::minutes(AFK_MINS))).as_ref().map_or(Duration::zero(), |f| f());
             let afk = away >= Duration::minutes(AFK_MINS);
-            let seen = if t - last > Duration::seconds(3 * POLL_SECS) { last } else if afk { t - away } else { t };
+            let seen = if slept { last } else if afk { t - away } else { t };
             let sample = if afk { None } else { active().and_then(|(a, title)| clean(&a, &title, &exclude)) };
             let mut open = OPEN.lock().unwrap();
             let (next, done) = step(open.take(), sample, seen, t);

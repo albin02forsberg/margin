@@ -53,6 +53,9 @@ pub struct Config {
     pub activity_watcher: bool,
     /// Days of that log to keep; 0 = all.
     pub activity_retention_days: i64,
+    /// Note when a mic or camera is in use (yes/no only) to <data>/activity/media/, so calls are
+    /// marked as meetings (opt-in; see media.rs).
+    pub activity_media_signal: bool,
     /// Where drafts come from: "ollama", or "embedded" (a model Margin downloads and runs).
     pub ai_backend: crate::ai::Backend,
     /// Model that drafts diary and journal notes: an Ollama model, e.g. "llama3.2:3b", or a
@@ -150,6 +153,7 @@ impl Default for Config {
             activity_calendar: String::new(),
             activity_watcher: false,
             activity_retention_days: 30,
+            activity_media_signal: false,
             activity_meetings: v(&["^zoom", "Microsoft Teams", r"meet\.google\.com", "Slack.*huddle", "Webex"]),
             ai_backend: Default::default(),
             ai_model: String::new(),

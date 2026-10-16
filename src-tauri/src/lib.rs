@@ -5,6 +5,7 @@ mod backup;
 mod config;
 mod export;
 mod ics;
+mod media;
 #[cfg(desktop)]
 mod idle;
 #[cfg(target_os = "linux")]
@@ -1134,7 +1135,8 @@ fn activity_suggestions(s: State<App>, date_input: String) -> R<Value> {
     warnings.extend(w);
     let (rules, bad) = activity::parse_rules(&timeclock::read_or_empty(&tc.dir.join("activity_rules.toml"))?);
     warnings.extend(bad);
-    let all = activity::suggest(&window, &afk, &tracked, &exclude, activity::Known { projects: &projects, tasks: &tasks, meetings: &meetings, calendar: &calendar, rules: &rules }, d);
+    let media = if c.activity_media_signal { media::intervals(&c.data().join("activity").join("media"), d) } else { vec![] };
+    let all = activity::suggest(&window, &afk, &tracked, &exclude, activity::Known { projects: &projects, tasks: &tasks, meetings: &meetings, calendar: &calendar, rules: &rules, media: &media }, d);
     Ok(json!({ "source": source, "items": activity::undismissed(all, &dismissed(&tc).unwrap_or_default()), "warnings": warnings }))
 }
 
