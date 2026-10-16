@@ -9,3 +9,10 @@ export function parseZoom(raw: string | null) {
   const z = Number(raw);
   return raw && Number.isFinite(z) && z > 0 ? clamp(z) : 1;
 }
+
+/** Ctrl+wheel: adds up deltaY (restarting on a direction change) and steps once the total passes 50, so a
+ *  mouse notch (~100) is one step and a touchpad pinch (many 1-10 events) doesn't flood setZoom (#439). */
+export function wheelZoom(acc: number, deltaY: number): [number, "in" | "out" | null] {
+  const a = acc * deltaY < 0 ? deltaY : acc + deltaY;
+  return Math.abs(a) < 50 ? [a, null] : [0, a < 0 ? "in" : "out"];
+}

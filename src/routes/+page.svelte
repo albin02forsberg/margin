@@ -25,7 +25,7 @@
   import { bugReportUrl, isError, osName } from "$lib/bugreport";
   import { naive, parseWhen } from "$lib/clock";
   import { parseSession, type Entry } from "$lib/session";
-  import { nextZoom, parseZoom } from "$lib/zoom";
+  import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
 
   type View = "agenda" | "todo" | "time" | "projects" | "settings";
@@ -99,10 +99,13 @@
     e.stopPropagation();
     zoomBy(dir);
   }
+  let wheelAcc = 0;
   function onZoomWheel(e: WheelEvent) {
     if (!e.ctrlKey || !e.deltaY) return;
     e.preventDefault();
-    zoomBy(e.deltaY < 0 ? "in" : "out");
+    const [acc, dir] = wheelZoom(wheelAcc, e.deltaY);
+    wheelAcc = acc;
+    if (dir) zoomBy(dir);
   }
   const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 
