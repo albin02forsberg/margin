@@ -115,21 +115,58 @@ fn points_to(from: &OrgFile, l: &Link, to: &OrgFile) -> bool {
     }
 }
 
-/// TEXT (the note at NOTE) with every one-line `[[file:…]]` link that resolves to OLD renamed to
-/// NAME in the same folder, keeping its path style, `::search` and description; None if none did.
-pub fn relink(text: &str, note: &Path, old: &Path, name: &str) -> Option<String> {
-    let old_name = old.file_name()?.to_str()?;
+/// Path from folder DIR to TO (both normalised), with "/" separators, as org `file:` links expect.
+fn rel_path(dir: &Path, to: &Path) -> String {
+    let (a, b): (Vec<_>, Vec<_>) = (dir.components().collect(), to.components().collect());
+    let i = a.iter().zip(&b).take_while(|(x, y)| x == y).count();
+    let up = std::iter::repeat_n("..".to_string(), a.len() - i);
+    up.chain(b[i..].iter().map(|c| c.as_os_str().to_string_lossy().into_owned())).collect::<Vec<_>>().join("/")
+}
+
+/// TEXT, the note at NOTE that will live at AT, with every one-line `[[file:…]]` link that resolves to
+/// OLD pointed at NEW and, when the note changes folder, its other relative links re-based so they
+/// still resolve. Keeps each link's style (relative, `~/`, absolute), `::search` and description;
+/// a same-folder rename only swaps the file name. None if nothing changed.
+pub fn relink(text: &str, note: &Path, at: &Path, old: &Path, new: &Path) -> Option<String> {
+    let (old_name, new_name) = (old.file_name()?.to_str()?, new.file_name()?.to_str()?);
+    let (dir, moved) = (at.parent()?, note.parent() != at.parent());
     let mut changed = false;
     let out = crate::org::LINK.replace_all(text, |c: &regex::Captures| {
         let (all, t) = (c.get(0).unwrap(), c.get(2).unwrap());
+        let keep = || all.as_str().to_string();
         let p = t.as_str().split("::").next().unwrap_or("");
+        let target = resolve(note, t.as_str());
+        let hits = target == old;
+        if &c[1] != "file" || all.as_str().contains('\n') || !(hits || moved) {
+            return keep();
+        }
+        let target = if hits { new.to_path_buf() } else { target };
         let cut = p.rfind(['/', '\\']).map_or(0, |i| i + 1);
-        if &c[1] != "file" || all.as_str().contains('\n') || &p[cut..] != old_name || resolve(note, t.as_str()) != old {
-            return all.as_str().to_string();
+        let path = if !moved && old.parent() == new.parent() && &p[cut..] == old_name {
+            format!("{}{new_name}", &p[..cut])
+        } else if p.starts_with(['~', '/', '\\']) || Path::new(p).is_absolute() {
+            // Absolute styles don't depend on where the note is.
+            if !hits {
+                return keep();
+            }
+            match std::env::home_dir().filter(|_| p.starts_with("~/")).and_then(|h| target.strip_prefix(h).ok().map(|r| rel_path(Path::new(""), r))) {
+                Some(r) => format!("~/{r}"),
+                None => target.display().to_string(),
+            }
+        } else {
+            let r = rel_path(dir, &target);
+            if p.starts_with("./") && !r.starts_with("..") {
+                format!("./{r}")
+            } else {
+                r
+            }
+        };
+        if path == p {
+            return keep();
         }
         changed = true;
-        let (a, b) = (t.start() - all.start() + cut, t.start() - all.start() + p.len());
-        format!("{}{name}{}", &all.as_str()[..a], &all.as_str()[b..])
+        let (a, b) = (t.start() - all.start(), t.start() - all.start() + p.len());
+        format!("{}{path}{}", &all.as_str()[..a], &all.as_str()[b..])
     });
     changed.then(|| out.into_owned())
 }
@@ -147,9 +184,7 @@ fn same_file(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// Rename note FROM to NAME in the same folder, first pointing the `[[file:]]` links in FILES at it.
-/// All or nothing: if a write or the rename fails, the notes already rewritten are put back.
-/// Returns the new path and the notes whose links changed.
+/// Rename note FROM to NAME in the same folder (see `move_to`).
 pub fn rename(files: &[Arc<OrgFile>], from: &Path, name: &str) -> Result<(PathBuf, Vec<PathBuf>), String> {
     let name = name.trim();
     if name.is_empty() || name.starts_with('.') || name.contains(['/', '\\', '[', ']', ':']) {
@@ -165,11 +200,56 @@ pub fn rename(files: &[Arc<OrgFile>], from: &Path, name: &str) -> Result<(PathBu
     if to.exists() && !same_file(from, &to) {
         return Err(format!("{name} already exists"));
     }
+    move_to(files, from, &to).map_err(|e| format!("Nothing renamed: {e}"))
+}
+
+/// Can notes move into DIR? Only under NOTES, and not into a dot folder (unscanned, like `.trash`) or the attachments folder ATTACH.
+pub fn folder_ok(notes: &Path, attach: &str, dir: &Path) -> Result<(), String> {
+    let r = dir.strip_prefix(notes).map_err(|_| format!("{} isn't in the notes folder", dir.display()))?;
+    let hidden = r.components().any(|c| !matches!(c, Component::Normal(n) if !n.to_string_lossy().starts_with('.')));
+    if hidden || (!attach.is_empty() && r.starts_with(attach)) {
+        return Err(format!("Notes can't go in {}", dir.display()));
+    }
+    Ok(())
+}
+
+/// Move note FROM into folder DIR (created if missing), keeping links to and from it working (see `move_to`).
+pub fn move_note(files: &[Arc<OrgFile>], from: &Path, dir: &Path) -> Result<(PathBuf, Vec<PathBuf>), String> {
+    let to = dir.join(from.file_name().ok_or("not a note")?);
+    if !from.is_file() {
+        return Err(format!("{} doesn't exist", from.display()));
+    }
+    if from.parent() == Some(dir) {
+        return Err("It's already in that folder.".into());
+    }
+    if to.exists() {
+        return Err(format!("{} already exists", to.display()));
+    }
+    let made = !dir.exists();
+    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    move_to(files, from, &to).map_err(|e| {
+        if made {
+            let _ = std::fs::remove_dir(dir);
+        }
+        format!("Nothing moved: {e}")
+    })
+}
+
+/// Move note FROM to TO, first pointing the `[[file:]]` links in FILES at it and re-basing its own.
+/// All or nothing: if a write or the move fails, the notes already rewritten are put back.
+/// Returns the new path and the notes whose links changed.
+fn move_to(files: &[Arc<OrgFile>], from: &Path, to: &Path) -> Result<(PathBuf, Vec<PathBuf>), String> {
+    let links_here = |f: &OrgFile| f.links.iter().any(|l| l.file && resolve(&f.path, &l.target) == from);
+    let mut notes: Vec<&Path> = files.iter().filter(|f| f.path == from || links_here(f)).map(|f| f.path.as_path()).collect();
+    if !notes.contains(&from) {
+        notes.push(from);
+    }
     let mut edits = vec![];
-    for f in files.iter().filter(|f| f.links.iter().any(|l| l.file && resolve(&f.path, &l.target) == from)) {
-        let text = std::fs::read_to_string(&f.path).map_err(|e| format!("{}: {e}", f.path.display()))?;
-        if let Some(new) = relink(&text, &f.path, from, name) {
-            edits.push((f.path.clone(), text, new));
+    for p in notes {
+        let text = std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
+        // One edit for the moved note: its links to itself and to others, written as seen from TO.
+        if let Some(new) = relink(&text, p, if p == from { to } else { p }, from, to) {
+            edits.push((p.to_path_buf(), text, new));
         }
     }
     let mut done = 0;
@@ -180,16 +260,16 @@ pub fn rename(files: &[Arc<OrgFile>], from: &Path, name: &str) -> Result<(PathBu
             done += 1;
             Ok::<_, String>(())
         })
-        .and_then(|_| std::fs::rename(from, &to).map_err(|e| e.to_string()));
+        .and_then(|_| std::fs::rename(from, to).map_err(|e| e.to_string()));
     if let Err(e) = res {
         for (p, old, _) in &edits[..done] {
             let _ = crate::config::write_atomic(p, old);
         }
-        return Err(format!("Nothing renamed: {e}"));
+        return Err(e);
     }
-    // The renamed note's own links now live at TO.
-    let changed = edits.into_iter().map(|(p, ..)| if p == from { to.clone() } else { p }).collect();
-    Ok((to, changed))
+    // The moved note's own links now live at TO.
+    let changed = edits.into_iter().map(|(p, ..)| if p == from { to.to_path_buf() } else { p }).collect();
+    Ok((to.to_path_buf(), changed))
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -451,7 +531,8 @@ mod tests {
     #[test]
     fn relinks_file_links() {
         let old = Path::new("/n/sub/c.org");
-        let r = |note: &str, text: &str| relink(text, Path::new(note), old, "d.org");
+        let new = Path::new("/n/sub/d.org");
+        let r = |note: &str, text: &str| relink(text, Path::new(note), Path::new(note), old, new);
         assert_eq!(r("/n/sub/x.org", "see [[file:c.org]] and [[file:c.org::*H][C]]!").as_deref(), Some("see [[file:d.org]] and [[file:d.org::*H][C]]!"));
         assert_eq!(r("/n/a.org", "[[file:sub/c.org][c.org]] [[file:./sub/../sub/c.org::12]]").as_deref(), Some("[[file:sub/d.org][c.org]] [[file:./sub/../sub/d.org::12]]"));
         assert_eq!(r("/n/sub/deep/y.org", "[[file:../c.org]]").as_deref(), Some("[[file:../d.org]]"));
@@ -460,8 +541,44 @@ mod tests {
         assert_eq!(r("/n/a.org", "[[file:c.org]] [[id:c.org]] [[file:sub/c.orgx]] [[file:sub/xc.org]] file:sub/c.org [[file:sub/\nc.org]]"), None);
         if let Some(home) = std::env::home_dir() {
             let old = home.join("n/c.org");
-            assert_eq!(relink("[[file:~/n/c.org]]", Path::new("/x/a.org"), &old, "d.org").as_deref(), Some("[[file:~/n/d.org]]"));
+            let a = Path::new("/x/a.org");
+            assert_eq!(relink("[[file:~/n/c.org]]", a, a, &old, &home.join("n/d.org")).as_deref(), Some("[[file:~/n/d.org]]"));
+            // Moving the target keeps `~/`; moving the note leaves `~/` links to others alone.
+            let to = home.join("n/sub/c.org");
+            assert_eq!(relink("[[file:~/n/c.org][C]]", a, a, &old, &to).as_deref(), Some("[[file:~/n/sub/c.org][C]]"));
+            assert_eq!(relink("[[file:~/x.org]]", &old, &to, &old, &to), None);
         }
+    }
+
+    #[test]
+    fn relinks_moves() {
+        let (old, new) = (Path::new("/n/c.org"), Path::new("/n/projects/c.org"));
+        let r = |note: &str, text: &str| relink(text, Path::new(note), Path::new(note), old, new);
+        // Links to the moved note, from the root, a sibling folder and below.
+        assert_eq!(r("/n/a.org", "[[file:c.org::*H][C]] [[file:./c.org]]").as_deref(), Some("[[file:projects/c.org::*H][C]] [[file:./projects/c.org]]"));
+        assert_eq!(r("/n/daily/d.org", "[[file:../c.org]]").as_deref(), Some("[[file:../projects/c.org]]"));
+        assert_eq!(r("/n/projects/p.org", "[[file:../c.org]]").as_deref(), Some("[[file:c.org]]"));
+        assert_eq!(r("/z.org", "[[file:/n/c.org]] [[id:c.org]] [[file:x.org]]").as_deref(), Some("[[file:/n/projects/c.org]] [[id:c.org]] [[file:x.org]]"));
+        assert_eq!(r("/n/a.org", "[[file:x.org]] [[file:/n/x.org]]"), None);
+
+        // The moved note's own links: relative ones (attachments too) re-based, absolute and id ones untouched.
+        let own = "[[file:a.org]] [[file:attachments/c/x.png]] [[file:daily/d.org::12][D]] [[file:/n/a.org]] [[id:abc]] [[file:c.org::*Self]]";
+        let got = relink(own, old, new, old, new).unwrap();
+        assert_eq!(got, "[[file:../a.org]] [[file:../attachments/c/x.png]] [[file:../daily/d.org::12][D]] [[file:/n/a.org]] [[id:abc]] [[file:c.org::*Self]]");
+        // ...and back out of the folder, or across to a sibling.
+        assert_eq!(relink(&got, new, old, new, old).as_deref(), Some(own));
+        let side = Path::new("/n/archive/c.org");
+        assert_eq!(relink("[[file:../a.org]] [[file:p.org]]", new, side, new, side).as_deref(), Some("[[file:../a.org]] [[file:../projects/p.org]]"));
+    }
+
+    #[test]
+    fn note_folders() {
+        let n = Path::new("/n");
+        assert!(folder_ok(n, "attachments", Path::new("/n")).is_ok() && folder_ok(n, "attachments", Path::new("/n/projects/x")).is_ok());
+        for bad in ["/n/.trash", "/n/a/.hidden", "/n/attachments", "/n/attachments/x", "/elsewhere", "/n/../etc"] {
+            assert!(folder_ok(n, "attachments", Path::new(bad)).is_err(), "{bad}");
+        }
+        assert!(folder_ok(n, "files/att", Path::new("/n/files/att/x")).is_err() && folder_ok(n, "files/att", Path::new("/n/files")).is_ok());
     }
 
     #[test]
@@ -507,6 +624,33 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&d).unwrap(), "self [[file:d.org::*H]]\n");
         assert_eq!(std::fs::read_to_string(&x).unwrap(), "[[file:d.org]] [[file:a.org]]\n");
         assert_eq!(std::fs::read_to_string(&y).unwrap(), "[[file:a.org]]\n");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn moves_notes() {
+        let dir = std::env::temp_dir().join(format!("margin-move-{}", gen_id()));
+        std::fs::create_dir_all(dir.join("daily")).unwrap();
+        let (a, c, d) = (dir.join("a.org"), dir.join("c.org"), dir.join("daily/d.org"));
+        let docs = [(&a, "[[file:c.org][C]]\n"), (&c, "[[file:a.org]] [[file:attachments/c/x.png]] [[file:c.org::*H]]\n"), (&d, "[[file:../a.org]]\n")];
+        for (p, t) in docs {
+            std::fs::write(p, t).unwrap();
+        }
+        let kw = Kw { todo: vec![], done: vec![] };
+        let fs: Vec<_> = docs.iter().map(|(p, t)| Arc::new(parse(p, t, &kw))).collect();
+        assert!(move_note(&fs, &c, &dir).unwrap_err().contains("already in"));
+        std::fs::write(dir.join("daily/c.org"), "").unwrap();
+        assert!(move_note(&fs, &c, &dir.join("daily")).unwrap_err().contains("already exists"));
+        assert!(move_note(&fs, &dir.join("none.org"), &dir.join("daily")).is_err());
+
+        let p = dir.join("projects/2026");
+        let (to, changed) = move_note(&fs, &c, &p).unwrap();
+        let n = p.join("c.org");
+        assert_eq!((to, changed), (n.clone(), vec![a.clone(), n.clone()]));
+        assert!(!c.exists());
+        assert_eq!(std::fs::read_to_string(&a).unwrap(), "[[file:projects/2026/c.org][C]]\n");
+        assert_eq!(std::fs::read_to_string(&n).unwrap(), "[[file:../../a.org]] [[file:../../attachments/c/x.png]] [[file:c.org::*H]]\n");
+        assert_eq!(std::fs::read_to_string(&d).unwrap(), "[[file:../a.org]]\n");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

@@ -131,6 +131,8 @@ describe("Features", () => {
         writeFileSync(join(notes, "exportme.org"), "#+title: Export me\n\nSome *bold* text.\n\n* A heading\n- one item\n");
         writeFileSync(join(notes, "draft.org"), "#+title: Draft\n\nDraft text.\n");
         writeFileSync(join(notes, "oldie.org"), "#+title: Oldie\n\nOld text.\n");
+        writeFileSync(join(notes, "wanderer.org"), "#+title: Wanderer\n\nSee [[file:elsewhere.org][Elsewhere]] and [[file:attachments/wanderer/x.png]].\n");
+        writeFileSync(join(notes, "signpost.org"), "#+title: Signpost\n\nGo to [[file:wanderer.org::*Top][the wanderer]].\n");
         writeFileSync(join(notes, "refs.org"), "#+title: Refs\n\nSee [[file:draft.org::*Top][the draft]] and [[file:drafts.org]].\n");
         writeFileSync(join(notes, "doomed.org"), ":PROPERTIES:\n:ID: doomed-id\n:END:\n#+title: Doomed\n\nDoomed text.\n");
         writeFileSync(join(notes, "fan.org"), "#+title: Fan\n\nSee [[id:doomed-id][the doomed note]].\n");
@@ -220,6 +222,19 @@ describe("Features", () => {
     assert.ok(existsSync(join(d.notes, "final.org")) && !existsSync(join(d.notes, "draft.org")), "not renamed");
     assert.equal(read(join(d.notes, "refs.org")), "#+title: Refs\n\nSee [[file:final.org::*Top][the draft]] and [[file:drafts.org]].\n");
     assert.equal(read(join(d.notes, "final.org")), "#+title: Draft\n\nDraft text.\n");
+  });
+
+  it("moves a note to a new folder and keeps links to and from it working", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Wanderer");
+    await find(".status .file", "wanderer.org");
+    await palette("Move note to folder");
+    await answer("to folder", "archive/2026");
+    await find(".status .msg", "Moved to archive/2026/ — updated links in 1 note");
+    const to = join(d.notes, "archive", "2026", "wanderer.org");
+    assert.ok(existsSync(to) && !existsSync(join(d.notes, "wanderer.org")), "not moved");
+    assert.equal(read(to), "#+title: Wanderer\n\nSee [[file:../../elsewhere.org][Elsewhere]] and [[file:../../attachments/wanderer/x.png]].\n");
+    assert.equal(read(join(d.notes, "signpost.org")), "#+title: Signpost\n\nGo to [[file:archive/2026/wanderer.org::*Top][the wanderer]].\n");
   });
 
   it("reopens a closed tab under the note's new name after a rename", async () => {
