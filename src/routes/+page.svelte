@@ -1377,9 +1377,10 @@
   let version = $state("");
 
   async function checkUpdate(quiet = false) {
-    const meta = await call<ConstructorParameters<typeof Update>[0] | null>("update_check"); // stable or nightly, per config.toml
+    const meta = await call<(ConstructorParameters<typeof Update>[0] & { pacman?: boolean }) | null>("update_check"); // stable or nightly, per config.toml
     const u = meta && new Update(meta);
     if (!u) return quiet || flash("Margin is up to date.");
+    if (meta.pacman) return flash(`Margin ${u.version} is available — install its Arch package (margin-bin) from the Releases page.`);
     if (quiet) return flash(`Margin ${u.version} is available — Space f u to install.`);
     const yes = await pick({ prompt: `Install Margin ${u.version}${version ? ` (you have ${version})` : ""} and restart?`, items: [{ label: "Install and restart", value: true }, { label: "Not now", value: false }] });
     if (!yes) return;

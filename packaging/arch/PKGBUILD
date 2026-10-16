@@ -1,0 +1,20 @@
+# Arch Linux package of a Margin release (#127): repackages the release .deb, no compiling.
+# release.yml sets pkgver and the checksum, builds it and attaches the .pkg.tar.zst and this
+# PKGBUILD to the release; `makepkg -si` next to that PKGBUILD installs it too.
+pkgname=margin-bin
+pkgver=0.3.0
+pkgrel=1
+pkgdesc='Notes, tasks, journal and time tracking in plain org files'
+arch=('x86_64')
+url='https://github.com/albin02forsberg/margin'
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'libxss')
+provides=('margin')
+conflicts=('margin')
+options=('!strip' '!debug')
+source=("Margin_${pkgver}_amd64.deb::$url/releases/download/v$pkgver/Margin_${pkgver}_amd64.deb")
+sha256sums=('SKIP')
+
+package() {
+  bsdtar -xf data.tar.gz -C "$pkgdir"
+}

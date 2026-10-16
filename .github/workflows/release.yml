@@ -75,3 +75,34 @@ jobs:
           releaseBody: ${{ needs.notes.outputs.body }}
           releaseDraft: true
           args: ${{ matrix.args }}
+      # The Arch package (below) repackages this .deb.
+      - if: matrix.platform == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: src-tauri/target/release/bundle/deb/*.deb
+
+  # margin-bin for Arch Linux (#127): Tauri has no pacman target, so packaging/arch repackages the .deb and
+  # attaches the .pkg.tar.zst and its PKGBUILD to the draft release. Not on the AUR (needs the owner's account).
+  arch:
+    needs: build
+    if: ${{ !cancelled() }} # a failed macOS or Windows leg shouldn't hold back the Linux package
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: deb
+          path: out
+      - run: |
+          version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' src-tauri/tauri.conf.json)
+          packaging/arch/build.sh "$version" out
+          pacman -S --noconfirm --needed github-cli
+          gh release upload "${TAG:-v$version}" out/*.pkg.tar.zst out/PKGBUILD --clobber

@@ -30,6 +30,10 @@ Download the latest build from
 [Releases](https://github.com/albin02forsberg/margin/releases/latest):
 
 - **Linux** — `.AppImage` (updates itself; `chmod +x` and run), or `.deb` / `.rpm`
+- **Arch Linux** — `margin-bin-<version>-1-x86_64.pkg.tar.zst`:
+  `sudo pacman -U margin-bin-*.pkg.tar.zst`. Margin tells you when a release is out but
+  doesn't install it itself; install the new package the same way. The release's `PKGBUILD`
+  builds the same package with `makepkg -si` (it repackages the `.deb`). Not on the AUR yet.
 - **macOS** (10.15+) — `.dmg` (universal). Ad-hoc signed, not notarized: the first time,
   right-click Margin → Open. If macOS still refuses, run
   `xattr -dr com.apple.quarantine /Applications/Margin.app`.
