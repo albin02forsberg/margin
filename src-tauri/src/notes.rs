@@ -211,8 +211,8 @@ pub struct Graph {
 /// At most this many nodes; nearer notes are kept first.
 const MAX_NODES: usize = 150;
 
-pub fn graph(files: &[Arc<OrgFile>], path: &Path, depth: usize) -> Graph {
-    let Some(start) = files.iter().position(|f| f.path == path) else { return Graph::default() };
+/// For each of FILES, the indexes of the files it links to or is linked from (itself excluded).
+pub fn adjacency(files: &[Arc<OrgFile>]) -> Vec<BTreeSet<usize>> {
     let by_path: HashMap<&Path, usize> = files.iter().enumerate().map(|(i, f)| (f.path.as_path(), i)).collect();
     let mut by_id: HashMap<&str, usize> = HashMap::new();
     for (i, f) in files.iter().enumerate() {
@@ -230,6 +230,12 @@ pub fn graph(files: &[Arc<OrgFile>], path: &Path, depth: usize) -> Graph {
             }
         }
     }
+    adj
+}
+
+pub fn graph(files: &[Arc<OrgFile>], path: &Path, depth: usize) -> Graph {
+    let Some(start) = files.iter().position(|f| f.path == path) else { return Graph::default() };
+    let adj = adjacency(files);
     let mut hops = HashMap::from([(start, 0)]);
     let mut order = vec![start];
     let mut queue = VecDeque::from([start]);

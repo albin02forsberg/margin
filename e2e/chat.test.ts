@@ -27,7 +27,10 @@ describe("AI chat", () => {
     await new Promise<void>((r) => ollama.listen(0, "127.0.0.1", r));
     await launch({
       config: [`ai_backend = "ollama"`, `ai_model = "m"`, `ai_url = "http://127.0.0.1:${(ollama.address() as AddressInfo).port}"`],
-      files: ({ notes }) => writeFileSync(join(notes, "plans.org"), "#+title: Plans\n\n* TODO Ship the chat\n"),
+      files: ({ notes }) => {
+        writeFileSync(join(notes, "plans.org"), "#+title: Plans\n\n* TODO Ship the chat\nSee [[file:launch.org][the launch]].\n");
+        writeFileSync(join(notes, "launch.org"), "#+title: Launch\n\n* Date\nThe rollout happens on May 3.\n");
+      },
     });
   });
   after(async () => { await close(); ollama.close(); }, { timeout: 30_000 });
@@ -66,5 +69,18 @@ describe("AI chat", () => {
     await (await find(".status .cancel", "cancel")).click();
     await find(".chat .err", "Cancelled.");
     await find(".chat p.assistant", "Partial");
+  });
+
+  it("answers from the matching and linked notes and lists them (#304)", async () => {
+    await (await find(".chat label", "Use my notes")).click();
+    await (await find(".chat textarea", "")).click();
+    const n = asked.length;
+    await type("When is the rollout?");
+    await browser.keys(Key.Enter);
+    await find(".chat p.assistant", `Answer ${n + 1}`);
+    const sys = asked.at(-1)!.body.messages[0].content;
+    assert.ok(sys.includes("[note: Launch | launch.org:3]\n* Date\nThe rollout happens on May 3."), sys);
+    await (await find(".chat .srcs button", "Launch:3")).click();
+    await find(".status .file", "launch.org");
   });
 });

@@ -26,7 +26,7 @@
   import { naive, parseWhen } from "$lib/clock";
   import { parseSession, type Entry } from "$lib/session";
   import { nextZoom, parseZoom } from "$lib/zoom";
-  import Chat, { type ChatMsg } from "$lib/Chat.svelte";
+  import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
 
   type View = "agenda" | "todo" | "time" | "projects" | "settings";
   /** SAVED: the text last read from / written to disk, to tell our own writes from outside changes.
@@ -1032,13 +1032,16 @@
 
   const chatNote = () => { const c = chatPart(); return [c.label === tab!.title ? c.label : `${tab!.title}, ${c.label}`, c.text]; };
 
-  /** The chat panel's answer to MESSAGES, about the open note's chatPart when WITH_NOTE (unsaved edits included). */
-  async function chatAsk(messages: ChatMsg[], withNote: boolean, onPiece: (piece: string) => void): Promise<string> {
+  /** The chat panel's answer to MESSAGES, about the open note's chatPart when WITH_NOTE (unsaved edits included) and the notes matching the question when USE_NOTES (#304). */
+  async function chatAsk(messages: ChatMsg[], withNote: boolean, useNotes: boolean, onPiece: (piece: string) => void) {
     const ch = new Channel<string>(onPiece);
     drafting++;
     chatting = true;
     try {
-      return await call<string>("ai_chat", { messages, note: withNote && tab?.kind === "file" ? chatNote() : null, onPiece: ch });
+      const open = tab?.kind === "file" ? tab.path : null;
+      const sources = useNotes ? await call<Source[]>("ai_retrieve", { question: messages[messages.length - 1].content, open }) : undefined;
+      const answer = await call<string>("ai_chat", { messages, note: withNote && tab?.kind === "file" ? chatNote() : null, sources: sources ?? null, onPiece: ch });
+      return { answer, sources };
     } finally {
       drafting--;
       chatting = false;
@@ -1980,7 +1983,7 @@
         </aside>
       {/if}
       <!-- hidden, not removed, so the chat survives closing the panel -->
-      <aside class="links chat" style:display={showChat ? null : "none"}><Chat bind:this={chat} ask={chatAsk} note={tab?.kind === "file" ? tab.title : null} noteLabel={() => chatPart().label} insert={tab?.kind === "file" ? insertAtCursor : undefined} /></aside>
+      <aside class="links chat" style:display={showChat ? null : "none"}><Chat bind:this={chat} ask={chatAsk} open={(p, l) => openFile(p, l)} note={tab?.kind === "file" ? tab.title : null} noteLabel={() => chatPart().label} insert={tab?.kind === "file" ? insertAtCursor : undefined} /></aside>
       {#if showBacklinks}
         <aside class="links">
           <h3>Linked from <small>{backlinks.length}</small></h3>
