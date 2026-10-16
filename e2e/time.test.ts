@@ -76,7 +76,7 @@ describe("Time tracking", () => {
     await answer("Export from", isoDay(new Date(Date.now() - 86_400_000)));
     await answer("Export to", "today");
     await answer("Save CSV as", csv);
-    await fileMatches(csv, (s) => /^"ACME","half an hour","[\d-]+","0,5"$/m.test(s), "no ACME row in the CSV");
+    await fileMatches(csv, (s) => /^"ACME","half an hour","[\d-]+","0,(4[89]|5[012]?)"$/m.test(s), "no ACME row in the CSV"); // ~30 min: the start moved back by whole minutes
     const rows = read(csv).trim().split("\n").slice(1);
     assert.ok(!rows.some((r) => r.endsWith(',"0"') || r.startsWith('"BETA"')), `0 h rows in the CSV:\n${read(csv)}`); // Beta only has seconds
   });
