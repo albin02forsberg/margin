@@ -123,8 +123,8 @@ jobs:
           docker run --rm -v "$PWD:/w" -w /w archlinux:latest packaging/arch/build.sh "${tag#v}" out
 
   # macOS-only Rust (`cfg(target_os = "macos")`, #418) otherwise first compiles in the nightly.
-  # Type-check only (no link, default features; embedded-ai.yml builds that), on PRs touching src-tauri.
-  # Warnings are reported, not fatal: Linux clippy enforces those.
+  # Clippy only (no link, default features; embedded-ai.yml builds that), on PRs touching src-tauri.
+  # Warnings fail the job, as in the Linux clippy step (#443).
   macos:
     if: github.event_name == 'pull_request'
     runs-on: macos-latest
@@ -139,6 +139,8 @@ jobs:
         uses: actions/checkout@v5
       - if: steps.gate.outputs.run == 'true'
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - if: steps.gate.outputs.run == 'true'
         uses: swatinem/rust-cache@v2
         with:
@@ -147,8 +149,8 @@ jobs:
       - if: steps.gate.outputs.run == 'true'
         run: mkdir -p build && touch build/index.html
       - if: steps.gate.outputs.run == 'true'
-        name: cargo check (macOS)
-        run: cargo check --color never --all-targets
+        name: Clippy (macOS)
+        run: cargo clippy --color never --all-targets -- -D warnings
         working-directory: src-tauri
 
   # Coverage report (#252): per-file tables in the job summary, lcov files as an artifact,

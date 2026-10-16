@@ -4,7 +4,7 @@ use crate::org::{self, Item, Kw};
 use crate::App;
 use chrono::{Duration, NaiveDateTime, NaiveTime};
 use std::collections::BTreeSet;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_notification::NotificationExt;
 
 #[derive(Debug, PartialEq)]
@@ -112,7 +112,7 @@ fn notify(app: &AppHandle, d: Due) {
             h.wait_for_action(|a| {
                 if a == "default" {
                     crate::tray::show(&app);
-                    let _ = app.emit("open-entry", serde_json::json!({ "path": d.path, "line": d.line }));
+                    let _ = tauri::Emitter::emit(&app, "open-entry", serde_json::json!({ "path": d.path, "line": d.line }));
                 }
             })
         });
