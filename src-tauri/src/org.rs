@@ -12,7 +12,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::SystemTime;
 
 static TS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"<(\d{4}-\d{2}-\d{2})(?:\s+[^\s>\d+\-.][^\s>\d]*)?(?:\s+(\d{1,2}:\d{2})(?:-\d{1,2}:\d{2})?)?(?:\s+(\.\+|\+\+|\+)(\d+)([hdwmy])(?:/(\d+)([hdwmy]))?)?(?:\s+--?(\d+)([dwmy]))?[^>]*>").unwrap()
+    Regex::new(r"<(\d{4}-\d{2}-\d{2})(?:\s+[^\s>\d+\-.][^\s>\d]*)?(?:\s+(\d{1,2}:\d{2})(?:-(\d{1,2}:\d{2}))?)?(?:\s+(\.\+|\+\+|\+)(\d+)([hdwmy])(?:/(\d+)([hdwmy]))?)?(?:\s+--?(\d+)([dwmy]))?[^>]*>").unwrap()
 });
 static ALIAS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#""([^"]+)"|(\S+)"#).unwrap());
 static TS_HEAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<\d{4}-\d{2}-\d{2}(?:\s+[^\s>\d+\-.][^\s>\d]*)?").unwrap());
@@ -47,6 +47,21 @@ pub struct Ts {
     pub max: Option<(u32, char)>,
     /// Deadline warning cookie of `<... -3d>` (or `--3d`): (3, 'd').
     pub warn: Option<(u32, char)>,
+    /// End of a time range `<... 10:00-11:00>`, or the time of a range's second timestamp.
+    pub end_time: Option<String>,
+    /// Last day of a date range `<a>--<b>`.
+    pub end: Option<NaiveDate>,
+}
+
+impl Ts {
+    /// The time as the agenda shows it: "10:00", or "10:00-11:00" for a time range.
+    pub fn span(&self) -> Option<String> {
+        let t = self.time.clone()?;
+        Some(match self.end_time.as_ref().filter(|_| self.end.is_none()) {
+            Some(e) => format!("{t}-{e}"),
+            None => t,
+        })
+    }
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -106,9 +121,11 @@ fn parse_ts(c: &regex::Captures) -> Option<Ts> {
     Some(Ts {
         date: c[1].parse().ok()?,
         time: c.get(2).map(|m| m.as_str().to_string()),
-        repeater: c.get(3).map(|k| (k.as_str().to_string(), c[4].parse().unwrap_or(1), c[5].chars().next().unwrap())),
-        max: c.get(6).map(|m| (m.as_str().parse().unwrap_or(1), c[7].chars().next().unwrap())),
-        warn: c.get(8).map(|m| (m.as_str().parse().unwrap_or(0), c[9].chars().next().unwrap())),
+        end_time: c.get(3).map(|m| m.as_str().to_string()),
+        repeater: c.get(4).map(|k| (k.as_str().to_string(), c[5].parse().unwrap_or(1), c[6].chars().next().unwrap())),
+        max: c.get(7).map(|m| (m.as_str().parse().unwrap_or(1), c[8].chars().next().unwrap())),
+        warn: c.get(9).map(|m| (m.as_str().parse().unwrap_or(0), c[10].chars().next().unwrap())),
+        end: None,
     })
 }
 
@@ -244,7 +261,17 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
             h.done_log.extend(c[2].parse::<NaiveDate>().ok());
             continue;
         }
-        h.timestamps.extend(TS.captures_iter(line).filter_map(|c| parse_ts(&c)));
+        // `<a>--<b>` folds into one ranged timestamp.
+        let mut prev = usize::MAX;
+        for c in TS.captures_iter(line) {
+            let m = c.get(0).unwrap();
+            let Some(ts) = parse_ts(&c) else { continue };
+            match h.timestamps.last_mut() {
+                Some(a) if line.get(prev..m.start()) == Some("--") && a.end.is_none() && ts.date >= a.date => (a.end, a.end_time) = ((ts.date > a.date).then_some(ts.date), ts.time),
+                _ => h.timestamps.push(ts),
+            }
+            prev = m.end();
+        }
     }
     if let Some(h) = cur {
         f.headlines.push(h);
@@ -443,7 +470,7 @@ pub fn agenda(files: &[Arc<OrgFile>], kw: &Kw, start: NaiveDate, days: i64, toda
                 let hb = |d| habit(h, today).filter(|_| d == today);
                 for d in occurrences(s, start, end) {
                     if !(overdue && d == today) {
-                        out.push(Item { habit: hb(d), ..item(f, h, d, "scheduled", String::new(), s.time.clone()) });
+                        out.push(Item { habit: hb(d), ..item(f, h, d, "scheduled", String::new(), s.span()) });
                     }
                 }
                 if overdue {
@@ -453,7 +480,7 @@ pub fn agenda(files: &[Arc<OrgFile>], kw: &Kw, start: NaiveDate, days: i64, toda
             }
             if let Some(dl) = &h.deadline {
                 for d in occurrences(dl, start, end) {
-                    out.push(Item { warn: warn_days(dl), ..item(f, h, d, "deadline", "Due".into(), dl.time.clone()) });
+                    out.push(Item { warn: warn_days(dl), ..item(f, h, d, "deadline", "Due".into(), dl.span()) });
                 }
                 let diff = (dl.date - today).num_days();
                 // Warning period: the deadline's own `-3d` cookie, else org's default 14 days.
@@ -465,8 +492,17 @@ pub fn agenda(files: &[Arc<OrgFile>], kw: &Kw, start: NaiveDate, days: i64, toda
                 }
             }
             for ts in &h.timestamps {
+                if let Some(last) = ts.end {
+                    // A date range shows on each of its days as "(i/n)", with the start time on the first.
+                    let n = (last - ts.date).num_days() + 1;
+                    for d in ts.date.max(start).iter_days().take_while(|&d| d <= last.min(end)) {
+                        let i = (d - ts.date).num_days() + 1;
+                        out.push(item(f, h, d, "timestamp", format!("({i}/{n})"), ts.time.clone().filter(|_| i == 1)));
+                    }
+                    continue;
+                }
                 for d in occurrences(ts, start, end) {
-                    out.push(item(f, h, d, "timestamp", String::new(), ts.time.clone()));
+                    out.push(item(f, h, d, "timestamp", String::new(), ts.span()));
                 }
             }
         }
@@ -654,7 +690,7 @@ pub fn set_keyword(text: &str, line: usize, kw: &Kw, new: Option<&str>, now: Nai
     let Some(mut p) = Parts::parse(&lines[hl], kw) else { return text.to_string() };
     let mut next = new.map(String::from);
     let planning = hl + 1 < lines.len() && is_planning(&lines[hl + 1]);
-    let repeats = planning && TS.captures_iter(&lines[hl + 1]).any(|c| c.get(3).is_some());
+    let repeats = planning && TS.captures_iter(&lines[hl + 1]).any(|c| c.get(4).is_some());
     if next.as_deref().is_some_and(|k| kw.is_done(k)) && repeats {
         for kind in ["SCHEDULED", "DEADLINE"] {
             lines[hl + 1] = shift_planning(&lines[hl + 1], kind, |ts| {
@@ -1197,6 +1233,25 @@ mod tests {
         assert_eq!((h.timestamps[0].time.as_deref(), h.timestamps[0].repeater.is_some()), (Some("10:00"), true));
         let t = "* TODO A\nDEADLINE: <2026-10-30 -3d>\n";
         assert_eq!(shift_date(t, 0, "DEADLINE", 1), "* TODO A\nDEADLINE: <2026-10-31 Sat -3d>\n");
+    }
+
+    #[test]
+    fn time_and_date_ranges() {
+        let doc = "* Talk\n<2026-10-16 Fri 10:00-11:00>\n* TODO Call\nSCHEDULED: <2026-10-16 Fri 09:00-09:30 +1w>\n\
+                   * Trip\n<2026-10-18 Sun 08:00>--<2026-10-20 Tue 18:00>\n* Lunch\n<2026-10-17 Sat 12:00>--<2026-10-17 Sat 13:00>\n\
+                   * Two\n<2026-10-10 Sat> and <2026-10-20 Tue>\n";
+        let f = Arc::new(parse(Path::new("/n/x.org"), doc, &kw()));
+        let trip = &f.headlines[2].timestamps;
+        assert_eq!((trip.len(), trip[0].end, trip[0].end_time.as_deref()), (1, Some(d("2026-10-20")), Some("18:00")));
+        assert_eq!(f.headlines[3].timestamps[0].span().as_deref(), Some("12:00-13:00"));
+        assert_eq!(f.headlines[4].timestamps.len(), 2, "not a range without --");
+        // The window ends mid-range: days 1 and 2 of 3 show, the time on the first only.
+        let got: Vec<_> = agenda(std::slice::from_ref(&f), &kw(), d("2026-10-16"), 4, d("2026-10-16"))
+            .into_iter().map(|i| format!("{} {} {} {}", i.date, i.title, i.time.unwrap_or_default(), i.label)).collect();
+        assert_eq!(got, ["2026-10-16 Call 09:00-09:30 ", "2026-10-16 Talk 10:00-11:00 ", "2026-10-17 Lunch 12:00-13:00 ",
+            "2026-10-18 Trip 08:00 (1/3)", "2026-10-19 Trip  (2/3)"]);
+        let mid: Vec<_> = agenda(&[f], &kw(), d("2026-10-20"), 1, d("2026-10-16")).into_iter().map(|i| (i.title, i.label)).collect();
+        assert_eq!(mid, [("Trip".to_string(), "(3/3)".to_string()), ("Two".into(), String::new())]);
     }
 
     #[test]

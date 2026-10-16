@@ -201,6 +201,9 @@ key in your desktop's settings instead: it opens the same form in the running ap
 `v` day/week, `h`/`l` previous/next, `.` today, `D` (or click the heading) go to a date, `/` filter, `?` all keys.
 Click the checkbox to complete a task.
 Subtrees archived in place with an `:ARCHIVE:` tag (Emacs's `C-c C-x a`) are left out of Today, Tasks, reminders and the calendar feed, as in org's agenda; they stay in the note and in search.
+A time range (`<2026-10-16 Fri 10:00-11:00>`) shows as `10:00-11:00`; a date
+range (`<2026-10-19 Mon>--<2026-10-21 Wed>`) shows on each of its days with a
+`(2/3)` counter, as in org's agenda.
 
 Tasks has a **List / Board** switch (`v`). The board has a column per open
 keyword (`todo_keywords`, so a `DOING` column appears if you configure one)
@@ -636,7 +639,9 @@ it follows the `reminders` setting.
 Set `calendar_file` (e.g. `"~/Sync/margin.ics"`) and Margin keeps an iCalendar
 file of open tasks' schedules, deadlines and appointments up to date, with
 repeaters. Subscribe to it from your calendar app (or a synced copy of it).
-Timed entries show as one hour; the rest are all-day.
+Timed entries show as one hour (or until the end of a time range such as
+`<… 10:00-11:30>`); the rest are all-day. A date range `<a>--<b>` is one
+multi-day event.
 
 ## Settings
 
