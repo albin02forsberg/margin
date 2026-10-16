@@ -16,6 +16,27 @@ export function journalNeighbour(files: string[], daily: string, date: string, d
   return days.filter((x) => (dir > 0 ? x.n > date : x.n < date)).sort((a, b) => dir * a.n.localeCompare(b.n))[0]?.f;
 }
 
+/** Folders ("a/b", "" for the notes folder itself) holding the notes FILES (relative, any separators), sorted;
+ *  dot folders (like .trash) and the attachments folder ATTACH are left out. */
+export function noteFolders(files: string[], attach: string): string[] {
+  const a = folderName(attach);
+  const out = new Set([""]);
+  for (const f of files) {
+    const p = f.split(/[\\/]+/).slice(0, -1);
+    for (let i = 1; i <= p.length; i++) out.add(p.slice(0, i).join("/"));
+  }
+  return [...out].filter((d) => !d.split("/").some((s) => s.startsWith(".")) && !(a && (d === a || d.startsWith(a + "/")))).sort();
+}
+
+/** A typed folder NAME as "a/b" relative to the notes folder ("" for the folder itself), or null when it
+ *  starts with a slash or drive, or has a ".." step that could leave the notes folder. */
+export function folderName(name: string): string | null {
+  const n = name.trim();
+  if (/^([\\/]|[a-zA-Z]:)/.test(n)) return null;
+  const parts = n.split(/[\\/]+/).filter((s) => s && s !== ".");
+  return parts.includes("..") ? null : parts.join("/");
+}
+
 /** The changed paths of two coalesced syncs; undefined (check everything) wins. */
 export const mergeChanged = (a?: string[], b?: string[]) => (a && b ? [...new Set([...a, ...b])] : undefined);
 
