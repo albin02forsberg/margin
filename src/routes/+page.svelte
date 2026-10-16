@@ -577,12 +577,15 @@
   const edit = (loc: Loc, op: string, value?: string) => toFile(loc.path, (text) => call("org_edit", { text, line: loc.line, op, value }));
   const dateKind = (it?: AgendaItem) => (it && /deadline|overdue|warning/.test(it.kind) ? "DEADLINE" : "SCHEDULED");
 
-  function datePick(prompt: string) {
+  /** REPEAT adds Every day / Every week quick picks (for SCHEDULED/DEADLINE prompts). */
+  function datePick(prompt: string, repeat = false) {
     return pick({
       prompt,
       items: [
         { label: "Today", value: "today" }, { label: "Tomorrow", value: "tomorrow" }, { label: "Next Monday", value: "mon" },
-        { label: "In a week", value: "+1w" }, { label: "No date", value: "rm", detail: "remove" },
+        { label: "In a week", value: "+1w" },
+        ...(repeat ? [{ label: "Every day", value: "today +1d", detail: "repeats" }, { label: "Every week", value: "today +1w", detail: "repeats" }] : []),
+        { label: "No date", value: "rm", detail: "remove" },
       ],
       allowCustom: true,
       preview: (q) => call("date_preview", { input: q }),
@@ -666,7 +669,7 @@
   let monoFont = $state(stored("mono-font", "0") === "1");
 
   async function planDate(loc: Loc, kind: "SCHEDULED" | "DEADLINE") {
-    const input = await datePick(kind === "SCHEDULED" ? "Schedule for" : "Due date");
+    const input = await datePick(kind === "SCHEDULED" ? "Schedule for" : "Due date", true);
     if (input != null) await toFile(loc.path, (text) => call("org_planning", { text, line: loc.line, kind, input }));
   }
 

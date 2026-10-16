@@ -428,7 +428,7 @@ describe("Task keys", () => {
   before(async () => {
     d = await launch({
       files: ({ notes }) => {
-        writeFileSync(join(notes, "keys.org"), `* TODO Shift me\nSCHEDULED: ${day(0)}\n* TODO [#B] Rank me\nSCHEDULED: ${day(0)}\n* TODO Due me\nSCHEDULED: ${day(0)}\n* TODO Finish me\nSCHEDULED: ${day(0)}\n`);
+        writeFileSync(join(notes, "keys.org"), `* TODO Shift me\nSCHEDULED: ${day(0)}\n* TODO [#B] Rank me\nSCHEDULED: ${day(0)}\n* TODO Due me\nSCHEDULED: ${day(0)}\n* TODO Finish me\nSCHEDULED: ${day(0)}\n* TODO Repeat me\nSCHEDULED: ${day(0)}\n`);
         writeFileSync(join(notes, "minutes.org"), "#+title: Minutes\n\nIntro line.\nThe quarterly budget review happened on Tuesday.\nOutro line.\n");
       },
     });
@@ -458,6 +458,13 @@ describe("Task keys", () => {
     await browser.keys("d");
     await answer("Due date", "+3d");
     await fileMatches(file(), (s) => new RegExp(`\\* TODO Due me\\n[^*]*DEADLINE: ${day(3)}`).test(s), "deadline not set three days out");
+  });
+
+  it("s offers Every week, which adds a weekly repeater", async () => {
+    await select("Repeat me");
+    await browser.keys("s");
+    await answer("Schedule for", "every week");
+    await fileMatches(file(), (s) => s.includes(`* TODO Repeat me\nSCHEDULED: <${orgDay(new Date())} +1w>\n`), "weekly repeater not set");
   });
 
   it("D jumps the agenda to a date", async () => {

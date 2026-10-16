@@ -85,7 +85,7 @@
       <div>
         <input id="sched" bind:value={spec.scheduled} placeholder="today, fri +1w, +3d, 12-24 14:00" spellcheck="false" />
         <div class="chips">
-          {#each [["Today", "today"], ["Tomorrow", "tomorrow"], ["Next week", "mon"], ["No date", ""]] as [l, v]}
+          {#each [["Today", "today"], ["Tomorrow", "tomorrow"], ["Next week", "mon"], ["Every week", "today +1w"], ["No date", ""]] as [l, v]}
             <button type="button" class:on={spec.scheduled === v} onclick={() => quick("scheduled", v)}>{l}</button>
           {/each}
           <span class="pv" class:bad={schedPreview.startsWith("✗")}>{schedPreview}</span>
