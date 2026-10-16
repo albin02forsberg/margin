@@ -565,6 +565,7 @@ describe("Tables, lists and attachments", () => {
       files: ({ notes }) => {
         writeFileSync(join(notes, "tbl.org"), "#+title: Tbl\n\n| a | b |\n|-\n| long cell | 1 |\n");
         writeFileSync(join(notes, "calc.org"), "#+title: Calc\n\n| item | qty | price | total |\n|-\n| a | 2 | 3 | |\n| b | 4 | 5 | |\n");
+        writeFileSync(join(notes, "emph.org"), "#+title: Emph\n\nsay hello now\n");
         writeFileSync(join(notes, "list.org"), "#+title: List\n\n1. a\n2. b\n3. c\n");
         writeFileSync(join(notes, "pics.org"), "#+title: Pics\n\n[[file:attachments/pics/used.txt][used]]\n");
         mkdirSync(join(notes, "attachments", "pics"), { recursive: true });
@@ -611,6 +612,18 @@ describe("Tables, lists and attachments", () => {
     await browser.keys(Key.Escape);
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(join(d.notes, "list.org"), (s) => s.includes("1. a\n2. b\n3. new\n4. c\n"), "list not renumbered");
+  });
+
+  it("Space i b bolds the word at the cursor, Ctrl+B in insert mode the word just typed", async () => {
+    await open("Emph", "emph.org");
+    await type("3Gw");
+    await browser.keys(" ");
+    await type("ib");
+    await type("A x");
+    await browser.keys([Key.Ctrl, "b"]);
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "emph.org"), (s) => s.includes("say *hello* now *x*\n"), "word not bolded");
   });
 
   it("cleans up only the unlinked attachment, then reports there is nothing left", async () => {

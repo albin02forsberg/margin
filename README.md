@@ -375,6 +375,7 @@ dates stay monospace (`Space v m` switches everything to monospace).
 | `<s`, `<q`, `<e`, `<v` + Tab | Code, quote, example, verse block |
 | Ctrl+Shift+O | Go to a heading in this note |
 | Space i … | Insert table, code block, quote, link, date, rule |
+| Space i b / i / ~ / + | Bold, italic, code, strike-through the selection or the word at the cursor (again removes it); Ctrl/Cmd+B and Ctrl/Cmd+I in insert mode |
 | Space T … | Table: rows, columns, separator, sort, align |
 | `[/]` or `[%]` in a heading | Progress cookie, updated when you tick checkboxes or finish child tasks |
 | Enter / Alt+Enter in a `1.` list | Next item; the items below are renumbered (Space x r renumbers after vim edits like `dd` / `p`) |

@@ -13,6 +13,7 @@ import { vim, Vim, getCM } from "@replit/codemirror-vim";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import * as tbl from "./orgtable";
 import { renumber } from "./list";
+import { EMPH, toggleEmphasis } from "./emphasis";
 
 /** Set by the app; vim ex commands, mappings and clicks call through these. */
 export const hooks = {
@@ -245,7 +246,7 @@ function inline(out: Range<Decoration>[], text: string, from: number, active: bo
     if (free(s, e)) { taken.push([s, e]); out.push(mark("cm-org-fn").range(s, e)); }
   }
   const EM: Record<string, string> = { "*": "b", "/": "i", _: "u", "=": "v", "~": "c", "+": "s" };
-  for (const m of text.matchAll(/(^|[\s\-({'"])([*/_=~+])(\S|\S.*?\S)\2(?=[\s\-.,:!?;'")}\]]|$)/g)) {
+  for (const m of text.matchAll(EMPH)) {
     const s = from + m.index! + m[1].length, e = s + m[3].length + 2;
     if (!free(s, e)) continue;
     taken.push([s, e]);
@@ -752,6 +753,24 @@ export function insertText(v: EditorView, text: string, at = v.state.selection.m
   v.dispatch({ changes: { from: at, insert: text }, selection: { anchor: at + text.length } });
 }
 
+/** Bold / italic / … (MARK) the selection or the word at the cursor, or remove
+ *  the mark around it; an empty pair puts the cursor between in insert mode. */
+export function emphasis(v: EditorView, mark: string): boolean {
+  const s = v.state;
+  const { from, to } = s.selection.main;
+  const at = s.doc.lineAt(from).from;
+  const r = toggleEmphasis(s.sliceDoc(at, s.doc.lineAt(to).to), from - at, to - at, mark);
+  const cm = getCM(v) as any;
+  const visual = cm?.state.vim?.visualMode;
+  if (visual) Vim.handleKey(cm, "<Esc>", "mapping");
+  const changes = r.changes.map((c) => ({ from: c.from + at, to: c.to + at, insert: c.insert }));
+  v.dispatch({ changes, selection: { anchor: r.from + at, head: (visual ? r.from : r.to) + at } });
+  if (r.empty) insertMode(v);
+  return true;
+}
+
+const vimInsert = (v: EditorView) => !!(getCM(v) as any)?.state.vim?.insertMode;
+
 export function insertMode(v: EditorView) {
   const cm = getCM(v) as any;
   if (cm && !cm.state.vim?.insertMode) Vim.handleKey(cm, "i", "mapping");
@@ -879,7 +898,9 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
   if (opts.org) {
     ext.push(
       orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path }), orgStyle, orgFold, clicks,
-      Prec.high(keymap.of([{ key: "Tab", run: orgTab }, { key: "Shift-Tab", run: orgShiftTab }, { key: "Enter", run: smartEnter }])),
+      Prec.high(keymap.of([{ key: "Tab", run: orgTab }, { key: "Shift-Tab", run: orgShiftTab }, { key: "Enter", run: smartEnter },
+        // Insert mode only: in normal / visual mode Ctrl+B stays vim's page up.
+        { key: "Mod-b", run: (v) => vimInsert(v) && emphasis(v, "*") }, { key: "Mod-i", run: (v) => vimInsert(v) && emphasis(v, "/") }])),
     );
   } else ext.push(EditorView.contentAttributes.of({ class: "cm-plain" }));
   let state = EditorState.create({ doc, extensions: ext });
