@@ -171,6 +171,8 @@ pub struct Known<'a> {
     pub calendar: &'a [Event],
     /// Learned `activity_rules.toml` rules: pattern → project.
     pub rules: &'a [(Regex, String)],
+    /// When a mic or camera was in use (`media::intervals`, non-overlapping).
+    pub media: &'a [(NaiveDateTime, NaiveDateTime)],
 }
 
 #[derive(Deserialize)]
@@ -292,9 +294,10 @@ fn task_matcher(title: &str) -> (Option<String>, Vec<Regex>) {
 /// longest (at least a minute, no tie) is guessed too, and gives the project when its
 /// category is one and no name was seen. A block at least half spent in windows MEETINGS
 /// match (app, title or URL), or at least half covered by a CALENDAR event (which names it,
-/// and gives the project when its title or attendees name one), is labelled a meeting.
+/// and gives the project when its title or attendees name one), or at least half with a mic or
+/// camera in use (MEDIA: "Call" unless a rule or event names it), is labelled a meeting.
 pub fn suggest(window: &[Span], afk: &[Span], tracked: &[(NaiveDateTime, NaiveDateTime)], exclude: &[Regex], known: Known, day: NaiveDate) -> Vec<Suggestion> {
-    let Known { projects, tasks, meetings, calendar, rules } = known;
+    let Known { projects, tasks, meetings, calendar, rules, media } = known;
     let calendar: Vec<_> = calendar.iter().filter(|e| !exclude.iter().any(|r| r.is_match(&e.summary))).collect();
     let matchers: Vec<_> = tasks.iter().map(|(t, _)| task_matcher(t)).collect();
     let (d0, d1) = (day.and_time(NaiveTime::MIN), (day + Duration::days(1)).and_time(NaiveTime::MIN));
@@ -377,6 +380,8 @@ pub fn suggest(window: &[Span], afk: &[Span], tracked: &[(NaiveDateTime, NaiveDa
             let meeting = (2 * b.iter().filter(|p| call(p)).map(secs).sum::<i64>() >= b.iter().map(secs).sum::<i64>())
                 .then(|| top(|p| &p.title, &call).into_iter().chain(top(|p| &p.app, &call)).next())
                 .flatten();
+            let on_call = media.iter().map(|&(s, e)| (e.min(end) - s.max(start)).num_seconds().max(0)).sum::<i64>();
+            let meeting = meeting.or_else(|| (2 * on_call >= (end - start).num_seconds()).then(|| "Call".to_string()));
             let meeting = event.map(|e| e.summary.clone()).or(meeting);
             let titles = top(|p| &p.title, &all);
             let editor = titles.first().is_some_and(|t| b.iter().any(|p| p.editor && p.title == *t));
@@ -637,6 +642,14 @@ mod tests {
         assert_eq!(cal(&planning, &[]), [(Some("Planning".into()), Some("Acme".into()))]);
         assert_eq!(cal(&planning, &exclude_rules(&["planning".into()]).unwrap()), [(None, None)], "excluded events are dropped");
         assert_eq!(cal(&planning[1..], &[]), [(None, None)], "under half isn't");
+        // A mic or camera in use for half the block makes it a call; a rule or event still names it.
+        let on = |a: &str, b: &str| (dt(&format!("2026-10-01 {a}")), dt(&format!("2026-10-01 {b}")));
+        let call = |w: &[Span], m: &[(NaiveDateTime, NaiveDateTime)], c: &[Event]| suggest(w, &[], &[], &[], Known { meetings: &rules, media: m, calendar: c, ..Default::default() }, "2026-10-01".parse().unwrap()).into_iter().map(|s| s.meeting).collect::<Vec<_>>();
+        let home = [sp("09:00", "09:40", "firefox", "Home")];
+        assert_eq!(call(&home, &[on("08:30", "09:05"), on("09:10", "09:25")], &[]), [Some("Call".into())]);
+        assert_eq!(call(&home, &[on("09:00", "09:19")], &[]), [None], "under half isn't");
+        assert_eq!(call(&zoom, &[on("09:00", "10:15")], &[]), [Some("Zoom Meeting".into())]);
+        assert_eq!(call(&home, &[on("09:00", "09:40")], &planning), [Some("Planning".into())]);
     }
 
     #[test]

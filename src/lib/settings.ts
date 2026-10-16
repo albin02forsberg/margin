@@ -36,6 +36,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
   ] },
   { name: "Integrations", fields: [
     { key: "activity_watcher", label: "Built-in activity watcher", kind: "bool", hint: "records the active app and window title every 5 s into the time-tracking folder's activity/ for suggestions in the Time view; stays on this computer, never uploaded. Used when ActivityWatch is off or not running. Wayland: KDE, Hyprland, Sway and other wlroots compositors, and GNOME with a small Shell extension (installed from here)" },
+    { key: "activity_media_signal", label: "Mark calls from mic and camera use", kind: "bool", hint: "notes only whether a microphone or camera is in use (never audio, video or which app) in activity/media/, so a block spent mostly on a call becomes a meeting suggestion; works with ActivityWatch or the built-in watcher. macOS only for now (the mic needs macOS 14+)" },
     { key: "activity_retention_days", label: "Keep the activity log (days)", kind: "number", step: 1, hint: "older days are deleted; 0 = keep all" },
     { key: "activitywatch_url", label: "ActivityWatch server", hint: "e.g. http://localhost:5600; empty = off" },
     { key: "activity_exclude", label: "Activity to ignore", kind: "list", hint: "regexes over app names and window titles, one per line" },
