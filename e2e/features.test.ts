@@ -601,3 +601,70 @@ describe("Tables and attachments", () => {
     await find(".status .msg", "Every attachment is linked from a note.");
   });
 });
+
+describe("Note navigation", () => {
+  let d: Dirs;
+  before(async () => {
+    d = await launch({
+      files: ({ notes }) => {
+        mkdirSync(join(notes, "sub"));
+        mkdirSync(join(notes, "other"));
+        writeFileSync(join(notes, "sub", "deep.org"), "#+title: Deep\n\nDeep text.\n");
+        writeFileSync(join(notes, "sub", "writer.org"), "#+title: Writer\n\n");
+        writeFileSync(join(notes, "other", "target.org"), "#+title: Target Note\n\nTarget text.\n");
+        writeFileSync(join(notes, "headed.org"), "#+title: Headed\n\n* One\nfirst\n\n* Two\nsecond\n\n* Three\nthird\n");
+        writeFileSync(join(notes, "inbox.org"), "* TODO Sort the mail\n");
+      },
+    });
+    await browser.$(".status").waitForDisplayed(); // a Ctrl+P before the page listens is lost
+    await browser.pause(500);
+  });
+  after(close, { timeout: 30_000 });
+
+  it("restores a trashed note from a subfolder to its original path with Space n R", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Deep");
+    await find(".status .file", "deep.org");
+    await palette("Delete note");
+    await answer("to the notes .trash folder", "Move");
+    await find(".status .msg", "Moved to .trash");
+    assert.ok(!existsSync(join(d.notes, "sub", "deep.org")), "note not trashed");
+    await browser.keys(" ");
+    await type("nR");
+    await answer("Restore note from .trash", "deep");
+    await find(".status .msg", "Restored sub");
+    await find(".status .file", "deep.org");
+    assert.equal(read(join(d.notes, "sub", "deep.org")), "#+title: Deep\n\nDeep text.\n");
+    assert.ok(!existsSync(join(d.notes, ".trash", "sub", "deep.org")) && !existsSync(join(d.notes, ".trash", "deep.org")), "still in .trash");
+  });
+
+  it("Ctrl+L inserts a link relative to the note", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Writer");
+    await find(".status .file", "writer.org");
+    await browser.keys(Key.Escape);
+    await browser.keys("G");
+    await browser.keys([Key.Ctrl, "l"]);
+    await answer("Link to note", "Target Note");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "sub", "writer.org"), (s) => s.includes("[[file:../other/target.org][Target Note]]"), "link not relative to the note");
+    // gf on a ../ link is not covered: the backend rejects `..` paths, so it can't open (filed as a follow-up).
+  });
+
+  it("Ctrl+Shift+O jumps to the picked heading", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Headed");
+    await find(".status .file", "headed.org");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, Key.Shift, "o"]);
+    await answer("Go to heading", "Three");
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("* Three")), { timeoutMsg: "cursor not on the third heading" });
+  });
+
+  it("Ctrl+3 opens the inbox", async () => {
+    await browser.keys([Key.Ctrl, "3"]);
+    await find(".status .file", "inbox.org");
+    await find(".cm-content", "Sort the mail");
+  });
+});
