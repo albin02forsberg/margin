@@ -586,7 +586,7 @@
       ],
       allowCustom: true,
       preview: (q) => call("date_preview", { input: q }),
-      hint: "or type fri, +3d, 12-24 14:00, fri +1w (repeat)",
+      hint: "or type fri, +3d, 12-24 14:00, fri +1w (repeat), fri -3d (warn)",
     }) as Promise<string | null>;
   }
 

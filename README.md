@@ -222,7 +222,8 @@ needs **Record when tasks are done**.
 
 Today warns about a deadline ("Due in 5d") 14 days ahead. A warning cookie
 sets a deadline's own period, as in org: `DEADLINE: <2026-10-30 Fri -3d>`
-warns 3 days ahead, `-2w` two weeks, `-0d` only on the day. Rescheduling keeps it (and any repeater).
+warns 3 days ahead, `-2w` two weeks, `-0d` only on the day. Type it after the
+date (`fri -3d`, `fri +1w -2d`) to set one; rescheduling without one keeps it (and any repeater).
 
 Today has a **Clock** column next to the agenda: the running clock (project,
 task, time since you clocked in, Pause / Switch / Stop or Start), **Worked
@@ -357,6 +358,8 @@ Dates accept `today`, `tomorrow`, `fri`, `+3d`, `-1w`, `12-24`,
 date (and time) makes the task repeat, as in org: `fri +1w` (every week),
 `mon 09:00 ++1w` (every week, catching up), `today .+1d` (a day after each
 completion), `.+2d/3d` for habits. Setting a new date without one keeps the old repeater.
+A warning cookie last, as in `fri -3d` or `fri 14:00 +1w -2d`, warns that long before a
+deadline (the first word `-3d` is still "3 days ago").
 
 ## Writing in org
 
