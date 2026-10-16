@@ -1104,16 +1104,23 @@ pub fn set_planning(text: &str, line: usize, kind: &str, date: Option<(NaiveDate
 
 /// Parse org-read-date style input: "", "today", "tomorrow", "+3d", "-1w",
 /// "mon".."sun", "2026-10-02", "10-02", "15" (day of month), each optionally
-/// followed by a time "14:00".
+/// followed by a time "14:00" or range "9:00-10:30"; anything else is rejected.
 pub fn read_date(input: &str, today: NaiveDate) -> Option<(NaiveDate, Option<String>)> {
     let mut parts = input.split_whitespace();
     let first = parts.next().unwrap_or("").to_lowercase();
     let mut time = parts.next().map(String::from);
+    if parts.next().is_some() {
+        return None;
+    }
     let mut first = first.as_str();
     if first.contains(':') && time.is_none() {
         time = Some(first.to_string());
         first = "";
     }
+    let time = match time {
+        Some(t) => Some(norm_time(&t)?),
+        None => None,
+    };
     let rel = Regex::new(r"^([+-])(\d+)([dwmy]?)$").unwrap();
     let date = if first.is_empty() || first == "today" || first == "." {
         today
@@ -1149,6 +1156,19 @@ pub fn read_date(input: &str, today: NaiveDate) -> Option<(NaiveDate, Option<Str
         return None;
     };
     Some((date, time))
+}
+
+/// "9:30" -> "09:30", "9:00-10:30" -> "09:00-10:30"; None unless every part is a valid clock time.
+fn norm_time(t: &str) -> Option<String> {
+    let one = |s: &str| {
+        let (h, m) = s.split_once(':')?;
+        let ok = |p: &str, max: u32| (1..=2).contains(&p.len()) && p.bytes().all(|b| b.is_ascii_digit()) && p.parse::<u32>().is_ok_and(|n| n <= max);
+        (ok(h, 23) && m.len() == 2 && ok(m, 59)).then(|| format!("{:02}:{m}", h.parse::<u32>().unwrap()))
+    };
+    match t.split_once('-') {
+        Some((a, b)) => Some(format!("{}-{}", one(a)?, one(b)?)),
+        None => one(t),
+    }
 }
 
 #[cfg(test)]
@@ -1512,6 +1532,13 @@ mod tests {
         assert_eq!(read_date("2027-01-01", t).unwrap().0, d("2027-01-01"));
         assert_eq!(read_date("15", t).unwrap().0, d("2026-10-15"));
         assert_eq!(read_date("nonsense", t), None);
+        // Only a clock time (or range) may follow the date (#448).
+        for bad in ["fri 2pm", "fri foo", "+1w 14:00 x", "fri 25:00", "fri 9:60", "fri 9:5", "fri 10:00-", "14:00 x"] {
+            assert_eq!(read_date(bad, t), None, "{bad}");
+        }
+        assert_eq!(read_date("fri 9:30", t).unwrap().1.as_deref(), Some("09:30"));
+        assert_eq!(read_date("fri 10:00-11:30", t).unwrap().1.as_deref(), Some("10:00-11:30"));
+        assert_eq!(read_date("8:15", t), Some((t, Some("08:15".into()))));
     }
 
     #[test]
