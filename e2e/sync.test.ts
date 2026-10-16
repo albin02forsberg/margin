@@ -117,6 +117,17 @@ describe("Sync with the disk", () => {
     await find(".cm-content", "Mine 3");
     await find(".status .file", "changed on disk");
   });
+
+  // Emitted here the way quit.rs does on tray Quit / window close; "go" would end the session, so only Keep editing is driven.
+  it("asks before quitting with edits that clash with the disk, and Keep editing stays (#281)", async () => {
+    await browser.execute(() => (window as any).__TAURI_INTERNALS__.invoke("plugin:event|emit", { event: "quit-requested", payload: null }));
+    await find(".picker label span", "Quit: “");
+    await answer("Quit: “", "Keep editing");
+    await browser.pause(500);
+    await find(".cm-content", "Mine 3");
+    await find(".status .file", "changed on disk");
+    assert.match(readFileSync(file, "utf8"), /^#\+title: Theirs 3\n/);
+  });
 });
 
 // The watcher's event names the changed files; the sync re-reads only those tabs (#286).

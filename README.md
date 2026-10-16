@@ -126,7 +126,10 @@ changes underneath unsaved edits, non-overlapping changes are merged; real
 conflicts are flagged (`:w` keeps yours, `Space f r` reloads). A save never
 overwrites a change made elsewhere that the app hasn't seen yet: it is merged
 or flagged the same way first. Closing a flagged tab asks whether to keep
-editing, save yours over the disk version, or discard yours. A note deleted or
+editing, save yours over the disk version, or discard yours. Quitting (tray Quit,
+or closing the window when it doesn't hide to the tray) and installing an update
+save everything first and ask the same for each flagged tab; keep editing cancels.
+On macOS, Cmd+Q doesn't ask yet. A note deleted or
 moved away outside the app keeps its text in the open tab, flagged "deleted on
 disk" and not autosaved (`:w` recreates it), and drops out of the recent notes.
 

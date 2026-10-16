@@ -430,19 +430,36 @@
     flash("No closed tabs");
   }
 
+  /** Unsaved edits in T that clash with the disk or whose file is gone (check after saving, which can flag them):
+   *  ask whether to save or discard them. False = keep editing. PREFIX leads the prompt (e.g. "Quit: "). */
+  const clashes = (t: Tab) => t.kind === "file" && (t.conflict || t.missing) && t.dirty;
+  async function resolveClash(t: Tab, prefix = "") {
+    if (!clashes(t)) return true;
+    const c = await pick({
+      prompt: `${prefix}“${t.title}” has unsaved edits and ${t.missing ? "is gone from disk" : "changed on disk"}`,
+      items: [{ label: "Keep editing", value: "keep" }, { label: t.missing ? "Save mine (recreates the file)" : "Save mine (overwrites the disk version)", value: "save" }, { label: "Discard mine", value: "discard" }],
+    });
+    if (c === "save") await saveTab(t, true);
+    return c === "save" || c === "discard";
+  }
+
+  /** Before quitting or restarting for an update: save everything, then ask about each tab whose edits clash with the disk.
+   *  False = the user wants to keep editing (shown that tab). */
+  async function readyToLeave(prefix: string, ask?: () => Promise<unknown>) {
+    await saveAll();
+    for (const t of tabs.filter(clashes)) {
+      await ask?.();
+      await show(tabs.indexOf(t));
+      if (!(await resolveClash(t, prefix))) return false;
+    }
+    return true;
+  }
+
   /** Save tab T, ask before dropping unsaved edits that clash with the disk, put it on the Reopen stack and remove it.
    *  `cur` stays on the same tab (-1 if T was current); the caller shows a tab afterwards. Returns T's old index, or -1 if it stays. */
   async function detachTab(t: Tab) {
     await saveTab(t);
-    // Unsaved edits that clash with the disk or whose file is gone (flagged earlier or by that save): ask before dropping them.
-    if (t.kind === "file" && (t.conflict || t.missing) && t.dirty) {
-      const c = await pick({
-        prompt: `“${t.title}” has unsaved edits and ${t.missing ? "is gone from disk" : "changed on disk"}`,
-        items: [{ label: "Keep editing", value: "keep" }, { label: t.missing ? "Save mine (recreates the file)" : "Save mine (overwrites the disk version)", value: "save" }, { label: "Discard mine", value: "discard" }],
-      });
-      if (c === "save") await saveTab(t, true);
-      else if (c !== "discard") return -1;
-    }
+    if (!(await resolveClash(t))) return -1;
     const i = tabs.indexOf(t);
     if (i < 0) return -1;
     if (t.kind === "file" && t.path) {
@@ -1366,6 +1383,7 @@
     if (quiet) return flash(`Margin ${u.version} is available — Space f u to install.`);
     const yes = await pick({ prompt: `Install Margin ${u.version}${version ? ` (you have ${version})` : ""} and restart?`, items: [{ label: "Install and restart", value: true }, { label: "Not now", value: false }] });
     if (!yes) return;
+    if (!(await readyToLeave("Update: "))) return;
     flash(`Downloading Margin ${u.version}…`);
     await u.download();
     await saveAll(); // the Windows installer closes the app as soon as it starts
@@ -1779,6 +1797,20 @@
       if (!err && Date.now() < ownCfgUntil) return; // our own write: "recreated" stays
       flash(err ? `⚠ config.toml changed on disk: ${err}` : `config.toml changed on disk — settings reloaded.${warn ? ` ⚠ ${warn}` : ""}`);
     }));
+    // A real quit (tray Quit, closing the window when it doesn't hide to the tray): save, ask about clashing edits, then answer (quit.rs).
+    let quitting = false;
+    const unlistenQuit = listen("quit-requested", () => act(async () => {
+      if (quitting) return;
+      quitting = true;
+      let ok = false;
+      try {
+        await call("quit_reply", { answer: "wait" });
+        ok = await readyToLeave("Quit: ", () => call("quit_reply", { answer: "show" }));
+      } finally {
+        quitting = false;
+        await call("quit_reply", { answer: ok ? "go" : "cancel" });
+      }
+    }));
     const unlistenTray = listen<string>("tray", (e) => act(() => timeActions[e.payload]()));
     const unlistenOpen = listen<{ path: string; line: number }>("open-entry", (e) => act(() => openFile(e.payload.path, e.payload.line)));
     const unlistenIdle = listen<{ since: string; back: string }>("idle", (e) => act(() => idleReturn(e.payload)));
@@ -1809,6 +1841,7 @@
       unlisten.then((f) => f());
       unlistenCfg.then((f) => f());
       unlistenTray.then((f) => f());
+      unlistenQuit.then((f) => f());
       unlistenOpen.then((f) => f());
       unlistenIdle.then((f) => f());
       unlistenCapture.then((f) => f());
