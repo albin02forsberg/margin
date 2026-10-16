@@ -353,7 +353,10 @@ Vim keys everywhere. On top of that:
 ![A note with its local graph](docs/screenshots/graph.png)
 
 Dates accept `today`, `tomorrow`, `fri`, `+3d`, `-1w`, `12-24`,
-`2026-12-24 14:00`; the input shows what it understood.
+`2026-12-24 14:00`; the input shows what it understood. A repeater after the
+date (and time) makes the task repeat, as in org: `fri +1w` (every week),
+`mon 09:00 ++1w` (every week, catching up), `today .+1d` (a day after each
+completion), `.+2d/3d` for habits. Setting a new date without one keeps the old repeater.
 
 ## Writing in org
 
