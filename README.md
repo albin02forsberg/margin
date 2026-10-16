@@ -213,7 +213,7 @@ then only shows what you finished from the board in this session.
 
 Today warns about a deadline ("Due in 5d") 14 days ahead. A warning cookie
 sets a deadline's own period, as in org: `DEADLINE: <2026-10-30 Fri -3d>`
-warns 3 days ahead, `-2w` two weeks, `-0d` only on the day. Rescheduling keeps it.
+warns 3 days ahead, `-2w` two weeks, `-0d` only on the day. Rescheduling keeps it (and any repeater).
 
 Today has a **Clock** column next to the agenda: the running clock (project,
 task, time since you clocked in, Pause / Switch / Stop or Start), **Worked
@@ -615,7 +615,8 @@ notes and links jumping to the right section. Overwriting the folder moves pages
 
 Timed entries (`SCHEDULED: <… 14:00>`, deadlines with a time, appointments)
 pop up a desktop notification 10 minutes before; date-only deadlines remind you
-once a day from the day before. Clicking one opens the task (Linux; elsewhere
+once a day from the day before (`deadline_warning_days`), or from their own
+warning cookie (`-3d`) when they have one. Clicking one opens the task (Linux; elsewhere
 notifications are display-only for now). Settings: `reminders`, `remind_before_minutes`,
 `deadline_warning_days`.
 
