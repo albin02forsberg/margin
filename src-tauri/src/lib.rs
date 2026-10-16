@@ -97,6 +97,19 @@ fn in_notes(notes: &Path, p: &Path) -> R<()> {
     Ok(())
 }
 
+/// A CSV export may go anywhere the user picks (export_dir defaults to ~/Desktop), but only to an
+/// absolute `.csv` path with no `..`, and never into the data/config dirs (time logs, config.toml).
+fn csv_dest(p: &Path, forbidden: &[PathBuf]) -> R<()> {
+    let csv = p.extension().is_some_and(|e| e.eq_ignore_ascii_case("csv"));
+    if !p.is_absolute() || p.components().any(|c| c == Component::ParentDir) || !csv {
+        return Err(format!("{} must be an absolute path to a .csv file", p.display()));
+    }
+    if forbidden.iter().any(|r| p.starts_with(r)) {
+        return Err(format!("{} is inside the app's data or config folder", p.display()));
+    }
+    Ok(())
+}
+
 fn today() -> NaiveDate {
     timeclock::now().date()
 }
@@ -1403,13 +1416,14 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
 
 #[tauri::command]
 fn tc_csv(s: State<App>, start: String, end: String, path: PathBuf) -> R<String> {
+    csv_dest(&path, &[s.cfg().data(), s.cfg_path.parent().unwrap().to_path_buf()])?;
     let tc = s.tc();
     let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
     let (csv, off) = timeclock::csv(&tc.sessions(), &tc.load_projects()?, (&leave, &tc.leave_codes()?), tc.expected, date(&start)?, date(&end)?);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?; // the export dir may not exist yet
     }
-    std::fs::write(&path, csv).map_err(|e| e.to_string())?;
+    config::write_atomic(&path, csv).map_err(|e| e.to_string())?;
     Ok(format!("✅ CSV exported to {} ({off})", path.display()))
 }
 
@@ -2081,6 +2095,19 @@ mod tests {
             assert_eq!(in_notes(notes, Path::new(p)), Err(format!("{p} isn't in the notes folder")));
         }
         assert!(check_in(&roots, Path::new("/d/work/timelog")).is_ok() && check_in(&roots, Path::new("/c/config.toml")).is_ok());
+    }
+
+    #[test]
+    fn csv_dest_allows_any_absolute_csv_outside_data_and_config() {
+        let t = std::env::temp_dir();
+        let (data, cfg) = (t.join("d"), t.join("c"));
+        let forbidden = [data.clone(), cfg.clone()];
+        for ok in [t.join("Desktop/time_work.csv"), t.join("new/dir/x.CSV"), t.join("d2/x.csv")] {
+            assert_eq!(csv_dest(&ok, &forbidden), Ok(()), "{}", ok.display());
+        }
+        for bad in [PathBuf::from("time.csv"), t.join("Desktop/../x.csv"), t.join("x.org"), t.join("x"), cfg.join("config.toml"), data.join("x.csv"), cfg.join("x.csv")] {
+            assert!(csv_dest(&bad, &forbidden).is_err(), "{}", bad.display());
+        }
     }
 
     /// Pins today's behaviour: the paths are compared as written, symlinks are not resolved.
