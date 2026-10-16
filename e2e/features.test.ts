@@ -529,3 +529,59 @@ describe("Journal, archive and move", () => {
     await fileMatches(f("projects.org"), (s) => s === projects, "undo didn't restore the target");
   });
 });
+
+describe("Tables and attachments", () => {
+  let d: Dirs;
+  const att = (...p: string[]) => join(d.notes, "attachments", ...p);
+  before(async () => {
+    d = await launch({
+      files: ({ notes }) => {
+        writeFileSync(join(notes, "tbl.org"), "#+title: Tbl\n\n| a | b |\n|-\n| long cell | 1 |\n");
+        writeFileSync(join(notes, "calc.org"), "#+title: Calc\n\n| item | qty | price | total |\n|-\n| a | 2 | 3 | |\n| b | 4 | 5 | |\n");
+        writeFileSync(join(notes, "pics.org"), "#+title: Pics\n\n[[file:attachments/pics/used.txt][used]]\n");
+        mkdirSync(join(notes, "attachments", "pics"), { recursive: true });
+        writeFileSync(join(notes, "attachments", "pics", "used.txt"), "used");
+        writeFileSync(join(notes, "attachments", "pics", "orphan.txt"), "orphan");
+      },
+    });
+  });
+  after(close, { timeout: 30_000 });
+
+  const open = async (title: string, file: string) => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", title);
+    await find(".status .file", file);
+  };
+
+  it("Tab in a table aligns it and moves the cursor to the next cell", async () => {
+    await open("Tbl", "tbl.org");
+    await type("3G");
+    await browser.keys(Key.Tab);
+    await type("iX");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "tbl.org"), (s) => /\| a\s+\| Xb\s*\|/.test(s) && /\| long cell \| 1\s*\|/.test(s), "table not aligned, or the cursor not in the second cell");
+  });
+
+  it("a typed =expr cell becomes a #+TBLFM column formula and fills the column", async () => {
+    await open("Calc", "calc.org");
+    await type("6G");
+    for (let i = 0; i < 3; i++) await browser.keys(Key.Tab);
+    await type("i=$2*$3");
+    await browser.keys(Key.Tab);
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "calc.org"), (s) => /\n#\+TBLFM: \$4=\$2\*\$3\n?$/.test(s) && /\|\s*6\s*\|/.test(s) && /\|\s*20\s*\|/.test(s), "formula or computed values missing");
+  });
+
+  it("cleans up only the unlinked attachment, then reports there is nothing left", async () => {
+    await palette("Clean up unused attachments");
+    await answer("Unused attachments", "orphan");
+    await find(".status .msg", "Moved 1 file");
+    assert.ok(!existsSync(att("pics", "orphan.txt")), "orphan not moved");
+    assert.equal(read(att(".trash", "pics", "orphan.txt")), "orphan");
+    assert.equal(read(att("pics", "used.txt")), "used", "linked file touched");
+    await palette("Clean up unused attachments");
+    await find(".status .msg", "Every attachment is linked from a note.");
+  });
+});
