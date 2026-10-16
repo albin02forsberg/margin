@@ -1,5 +1,5 @@
 {
-  "0": "chrono",
+  "0": "super",
   "1": "timeclock.rs",
   "2": "cfg",
   "3": "editor.ts",
@@ -9,7 +9,7 @@
   "7": "tauri.conf.json",
   "8": "package.json",
   "9": "compilerOptions",
-  "10": "$lib/graph",
+  "10": "graph",
   "11": "Calendar",
   "12": "ics.rs",
   "13": "GitHub Releases",
@@ -75,7 +75,7 @@
   "73": "load",
   "74": "scripts",
   "75": "ideator.md",
-  "76": "super",
+  "76": "path",
   "77": "merge.test.ts",
   "78": "lib.rs",
   "79": "v0.3.0 - 2026-10-11",
@@ -113,7 +113,12 @@
   "111": "retrieve.rs",
   "112": "projects.ts",
   "113": "org.rs",
-  "114": "@codemirror/state",
+  "114": "State",
+  "115": "chrono",
+  "116": ".event",
   "117": "kw",
-  "120": "lib/Projects.svelte"
+  "118": "$lib/graph",
+  "119": "@tauri-apps/api/event",
+  "120": "$lib/projects",
+  "121": "@tauri-apps/api/webview"
 }
