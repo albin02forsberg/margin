@@ -1992,6 +1992,7 @@ mod tests {
         assert_eq!(date_preview_at("fri", t), "Friday 16 October 2026");
         assert_eq!(date_preview_at("fri 14:00", t), "Friday 16 October 2026, 14:00");
         assert_eq!(date_preview_at("soon", t), "✗ can't read this date");
+        assert_eq!(date_preview_at("fri 2pm", t), "✗ can't read this date");
     }
 
     #[test]
