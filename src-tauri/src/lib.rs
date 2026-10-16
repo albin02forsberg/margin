@@ -328,9 +328,17 @@ async fn update_check(webview: tauri::Webview, s: State<'_, App>) -> R<Option<Va
         b = b.endpoints(vec![NIGHTLY_UPDATES.parse().unwrap()]).map_err(e)?;
     }
     let Some(u) = b.build().map_err(e)?.check().await.map_err(e)? else { return Ok(None) };
-    let mut meta = json!({ "currentVersion": u.current_version, "version": u.version, "body": u.body, "rawJson": u.raw_json });
+    let mut meta = json!({ "currentVersion": u.current_version, "version": u.version, "body": u.body, "rawJson": u.raw_json, "pacman": pacman_owned() });
     meta["rid"] = webview.resources_table().add(u).into();
     Ok(Some(meta))
+}
+
+/// Whether pacman installed this copy (packaging/arch, #127): it can't install the .deb update itself.
+/// An AppImage runs from /tmp/.mount_*, so it still updates itself.
+fn pacman_owned() -> bool {
+    cfg!(target_os = "linux")
+        && Path::new("/usr/bin/pacman").exists()
+        && std::env::current_exe().is_ok_and(|p| p.starts_with("/usr/"))
 }
 
 #[tauri::command]
