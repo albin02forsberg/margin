@@ -642,7 +642,7 @@ fn org_archive(src: String, line: usize, dst: String, src_path: String) -> R<[St
 }
 
 /// Date input → Some(date), "" → None, unreadable → error.
-fn opt_date_at(input: &str, today: NaiveDate) -> R<Option<(NaiveDate, Option<String>)>> {
+fn opt_date_at(input: &str, today: NaiveDate) -> R<Option<org::When>> {
     if input.trim().is_empty() {
         return Ok(None);
     }
@@ -671,9 +671,22 @@ fn date_preview(input: String) -> String {
 fn date_preview_at(input: &str, today: NaiveDate) -> String {
     match opt_date_at(input, today) {
         Ok(None) => String::new(),
-        Ok(Some((d, t))) => format!("{}{}", d.format("%A %-d %B %Y"), t.map(|t| format!(", {t}")).unwrap_or_default()),
+        Ok(Some((d, t, r))) => [Some(d.format("%A %-d %B %Y").to_string()), t, r.as_deref().and_then(repeat_text)].into_iter().flatten().collect::<Vec<_>>().join(", "),
         Err(_) => "✗ can't read this date".into(),
     }
+}
+
+/// "+1w" -> "every week", "++2d" -> "every 2 days, catching up", ".+1m" -> "1 month after done".
+fn repeat_text(r: &str) -> Option<String> {
+    let c = org::REPEATER.captures(r)?;
+    let unit = match &c[3] { "h" => "hour", "d" => "day", "w" => "week", "m" => "month", _ => "year" };
+    let n = &c[2];
+    let every = if n == "1" { unit.to_string() } else { format!("{n} {unit}s") };
+    Some(match &c[1] {
+        "+" => format!("every {every}"),
+        "++" => format!("every {every}, catching up"),
+        _ => format!("{n} {unit}{} after done", if n == "1" { "" } else { "s" }),
+    })
 }
 
 #[tauri::command]
@@ -1986,13 +1999,16 @@ mod tests {
         assert_eq!(date_at("", t), Ok(t)); // blank is today here, unlike opt_date_at
         assert_eq!(date_at("soon", t), Err("can't parse date: soon".into()));
         assert_eq!((opt_date_at("", t), opt_date_at("  ", t)), (Ok(None), Ok(None)));
-        assert_eq!(opt_date_at("+1d 14:00", t), Ok(Some((iso("2026-10-13"), Some("14:00".into())))));
+        assert_eq!(opt_date_at("+1d 14:00", t), Ok(Some((iso("2026-10-13"), Some("14:00".into()), None))));
         assert_eq!(opt_date_at("soon", t), Err("can't read date \"soon\"".into()));
         assert_eq!(date_preview_at(" ", t), "");
         assert_eq!(date_preview_at("fri", t), "Friday 16 October 2026");
         assert_eq!(date_preview_at("fri 14:00", t), "Friday 16 October 2026, 14:00");
         assert_eq!(date_preview_at("soon", t), "✗ can't read this date");
         assert_eq!(date_preview_at("fri 2pm", t), "✗ can't read this date");
+        assert_eq!(date_preview_at("fri +1w", t), "Friday 16 October 2026, every week");
+        assert_eq!(date_preview_at("fri 9:00 ++2d", t), "Friday 16 October 2026, 09:00, every 2 days, catching up");
+        assert_eq!(date_preview_at("today .+1m", t), "Monday 12 October 2026, 1 month after done");
     }
 
     #[test]
@@ -2001,6 +2017,7 @@ mod tests {
         assert_eq!(task_text(&todo, "  ", None, vec![], "", "", t), Err("the task needs a title".into()));
         assert_eq!(task_text(&todo, "Call", Some(""), vec![], "", "", t), Ok("* NEXT Call\n".into())); // first keyword, empty priority dropped
         assert_eq!(task_text(&[], "Call", Some("A"), vec!["home".into()], "+1d", "fri 09:00", t), Ok("* [#A] Call :home:\nSCHEDULED: <2026-10-13 Tue> DEADLINE: <2026-10-16 Fri 09:00>\n".into()));
+        assert_eq!(task_text(&[], "Water", None, vec![], "fri +1w", "", t), Ok("* Water\nSCHEDULED: <2026-10-16 Fri +1w>\n".into()));
         assert_eq!(task_text(&todo, "Call", None, vec![], "", "soon", t), Err("can't read date \"soon\"".into()));
         let set = "* TODO A\nDEADLINE: <2026-10-13 Tue>\n";
         assert_eq!(planning_at("* TODO A\n", 0, "DEADLINE", "+1d", t), Ok(set.into()));

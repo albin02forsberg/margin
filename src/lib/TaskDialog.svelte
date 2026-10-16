@@ -83,7 +83,7 @@
     <div class="grid">
       <label for="sched">When</label>
       <div>
-        <input id="sched" bind:value={spec.scheduled} placeholder="today, fri, +3d, 12-24 14:00" spellcheck="false" />
+        <input id="sched" bind:value={spec.scheduled} placeholder="today, fri +1w, +3d, 12-24 14:00" spellcheck="false" />
         <div class="chips">
           {#each [["Today", "today"], ["Tomorrow", "tomorrow"], ["Next week", "mon"], ["No date", ""]] as [l, v]}
             <button type="button" class:on={spec.scheduled === v} onclick={() => quick("scheduled", v)}>{l}</button>
