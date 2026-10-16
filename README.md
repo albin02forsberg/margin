@@ -417,7 +417,7 @@ The Time view shows what you're tracking, today's sessions (click ✎ to edit),
 today's hours against the daily target (`expected_daily_hours`), the week's hours against expected,
 flex balance with the report buttons, and a card per project worked this week (hours this week and month,
 billable hours, its share of the week, and **Track** to start the clock on it). Keys:
-`i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV (import template: `Project` = export code, `Duration` in decimal hours, `1,5`; zero-hour rows are left out),
+`i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV (import template: `Project` = export code, `Duration` in decimal hours, `1,5`; zero-hour rows are left out; a missing folder is created),
 `E` export a report as HTML/PDF.
 Space t … has every timeclock command (same letters as the old Emacs menu).
 `Space t a` ("I started earlier") and `Space t O` ("I stopped earlier", for when you forgot to stop) take minutes ago (`25`) or a time (`14:05`). A start can't move before the previous session's end.

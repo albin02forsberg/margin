@@ -1393,6 +1393,9 @@ fn tc_csv(s: State<App>, start: String, end: String, path: PathBuf) -> R<String>
     let tc = s.tc();
     let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
     let (csv, off) = timeclock::csv(&tc.sessions(), &tc.load_projects()?, (&leave, &tc.leave_codes()?), tc.expected, date(&start)?, date(&end)?);
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?; // the export dir may not exist yet
+    }
     std::fs::write(&path, csv).map_err(|e| e.to_string())?;
     Ok(format!("✅ CSV exported to {} ({off})", path.display()))
 }
