@@ -55,7 +55,7 @@ describe("Responsive layout", () => {
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "vimbar");
     await find(".status .file", "vimbar.org");
-    await find(".cm-vim-panel", "NORMAL");
+    await find(".cm-vim-panel", "--"); // a new note opens in insert mode
     const r = await browser.execute(() => {
       const box = (css: string) => document.querySelector(css)!.getBoundingClientRect();
       const [ed, sc, p] = [box(".cm-editor"), box(".cm-scroller"), box(".cm-panels-bottom")];
