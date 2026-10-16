@@ -1246,7 +1246,7 @@ mod tests {
         assert_eq!(f.headlines[3].timestamps[0].span().as_deref(), Some("12:00-13:00"));
         assert_eq!(f.headlines[4].timestamps.len(), 2, "not a range without --");
         // The window ends mid-range: days 1 and 2 of 3 show, the time on the first only.
-        let got: Vec<_> = agenda(&[f.clone()], &kw(), d("2026-10-16"), 4, d("2026-10-16"))
+        let got: Vec<_> = agenda(std::slice::from_ref(&f), &kw(), d("2026-10-16"), 4, d("2026-10-16"))
             .into_iter().map(|i| format!("{} {} {} {}", i.date, i.title, i.time.unwrap_or_default(), i.label)).collect();
         assert_eq!(got, ["2026-10-16 Call 09:00-09:30 ", "2026-10-16 Talk 10:00-11:00 ", "2026-10-17 Lunch 12:00-13:00 ",
             "2026-10-18 Trip 08:00 (1/3)", "2026-10-19 Trip  (2/3)"]);
