@@ -1,9 +1,9 @@
 {
   "0": "setup.ts",
   "1": "timeclock.rs",
-  "2": "AppHandle",
+  "2": "cfg",
   "3": "editor.ts",
-  "4": "$lib/graph",
+  "4": "graph",
   "5": "watcher.rs",
   "6": "orgtable.ts",
   "7": "tauri.conf.json",
@@ -17,7 +17,7 @@
   "15": "curLine",
   "16": "Notes",
   "17": "AppImage",
-  "18": "@tauri-apps/api/core",
+  "18": "$lib/projects",
   "19": "lib/Menu.svelte",
   "20": "default.json",
   "21": "activity.test.ts",
@@ -94,7 +94,7 @@
   "92": "autopilot/SKILL.md",
   "93": "r5.js",
   "94": "releaser.md",
-  "95": "cfg",
+  "95": "attach_bytes",
   "96": "frag",
   "97": "render.sh",
   "98": "pills4",
@@ -115,6 +115,10 @@
   "113": "org.rs",
   "114": "devDependencies",
   "115": "donelog.ts",
-  "116": "scout.md",
-  "117": "@codemirror/state"
+  "116": ".tc",
+  "117": "board.test.ts",
+  "118": "emphasis.test.ts",
+  "119": "$lib/graph",
+  "120": "@tauri-apps/api/event",
+  "121": "@tauri-apps/api/webview"
 }
