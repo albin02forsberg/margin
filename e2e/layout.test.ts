@@ -51,6 +51,22 @@ describe("Responsive layout", () => {
     await width(1200);
   });
 
+  it("keeps the Vim status line below the editor's scroller, inside the card", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "vimbar");
+    await find(".status .file", "vimbar.org");
+    await find(".cm-vim-panel", "--"); // a new note opens in insert mode
+    const r = await browser.execute(() => {
+      const box = (css: string) => document.querySelector(css)!.getBoundingClientRect();
+      const [ed, sc, p] = [box(".cm-editor"), box(".cm-scroller"), box(".cm-panels-bottom")];
+      return { below: p.top >= sc.bottom - 0.5, inside: p.bottom <= ed.bottom + 0.5, border: getComputedStyle(document.querySelector(".cm-panels-bottom")!).borderTopColor };
+    });
+    assert.ok(r.below, "Vim status line overlaps the scroller");
+    assert.ok(r.inside, "Vim status line sticks out of the card");
+    assert.notEqual(r.border, "rgb(221, 221, 221)", "CodeMirror's light panel edge on the card");
+    await (await browser.$(".tabs .tab.cur .x")).click();
+  });
+
   it("opens Settings at the About card from the palette", async () => {
     await palette("About Margin");
     await find(".settings .about", "About");
