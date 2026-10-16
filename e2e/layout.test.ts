@@ -67,6 +67,21 @@ describe("Responsive layout", () => {
     await (await browser.$(".tabs .tab.cur .x")).click();
   });
 
+  it("zooms with Ctrl+= / - / 0, also with the palette open, and remembers the level", async () => {
+    const zoom = (z: string) => browser.waitUntil(async () => (await browser.execute(() => localStorage.getItem("zoom"))) === z, { timeoutMsg: `zoom not stored as ${z}` });
+    await browser.keys([Key.Ctrl, "="]);
+    await zoom("1.1");
+    await browser.keys([Key.Ctrl, "="]);
+    await browser.keys([Key.Ctrl, "-"]);
+    await browser.keys([Key.Ctrl, "="]);
+    await zoom("1.2");
+    await browser.keys([Key.Ctrl, "p"]);
+    await find(".picker label span", "Open a note");
+    await browser.keys([Key.Ctrl, "0"]);
+    await zoom("1");
+    await browser.keys(Key.Escape);
+  });
+
   it("opens Settings at the About card from the palette", async () => {
     await palette("About Margin");
     await find(".settings .about", "About");
