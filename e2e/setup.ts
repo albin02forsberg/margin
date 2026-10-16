@@ -141,6 +141,11 @@ export async function answer(prompt: string, text: string) {
   await browser.keys(Key.Enter);
 }
 
+/** Wait until no picker is open (one still closing can swallow the next flow's keys). */
+export async function noPicker() {
+  await browser.waitUntil(async () => !(await texts(".picker")).length, { timeoutMsg: "a picker is still open" });
+}
+
 /** Run the palette command whose label starts with LABEL (Ctrl+K). */
 export async function palette(label: string) {
   // A Ctrl+K can be lost (the page isn't listening yet, or a picker is open): re-send until the palette shows.

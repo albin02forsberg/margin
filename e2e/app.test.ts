@@ -3,7 +3,7 @@ import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { answer, browser, close, fileMatches, find, Key, launch, palette, savedView, texts, today, type, type Dirs } from "./setup.ts";
+import { answer, browser, close, fileMatches, find, Key, launch, noPicker, palette, savedView, texts, today, type, type Dirs } from "./setup.ts";
 
 let notes: string, data: string, cfgDir: string;
 
@@ -108,10 +108,12 @@ describe("Margin", () => {
     await find(".picker label span", "Track time on project");
     await browser.waitUntil(async () => (await texts(".picker li"))[0]?.includes("Acme"), { timeoutMsg: "Track didn't preselect the project" });
     await browser.keys(Key.Escape);
+    await noPicker();
   });
 
   it("Space t w says when to leave, and the Time view shows it", async () => {
     const said = /Leave at \d\d:\d\d \(.+ left\)|No expected hours today|Done for today/; // weekends and red days have no target
+    await noPicker();
     await (await find(".time button", "Start tracking")).click();
     await answer("Track time on project", "Acme");
     await answer("What are you working on?", "leave check");
