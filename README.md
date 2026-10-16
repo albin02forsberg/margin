@@ -374,6 +374,7 @@ dates stay monospace (`Space v m` switches everything to monospace).
 | Space i … | Insert table, code block, quote, link, date, rule |
 | Space T … | Table: rows, columns, separator, sort, align |
 | `[/]` or `[%]` in a heading | Progress cookie, updated when you tick checkboxes or finish child tasks |
+| Enter / Alt+Enter in a `1.` list | Next item; the items below are renumbered (Space x r renumbers after vim edits like `dd` / `p`) |
 
 Image links (`[[file:pic.png]]`, `[[https://…/pic.jpg]]`) show the image inline.
 

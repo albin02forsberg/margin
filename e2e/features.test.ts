@@ -557,7 +557,7 @@ describe("Journal, archive and move", () => {
   });
 });
 
-describe("Tables and attachments", () => {
+describe("Tables, lists and attachments", () => {
   let d: Dirs;
   const att = (...p: string[]) => join(d.notes, "attachments", ...p);
   before(async () => {
@@ -565,6 +565,7 @@ describe("Tables and attachments", () => {
       files: ({ notes }) => {
         writeFileSync(join(notes, "tbl.org"), "#+title: Tbl\n\n| a | b |\n|-\n| long cell | 1 |\n");
         writeFileSync(join(notes, "calc.org"), "#+title: Calc\n\n| item | qty | price | total |\n|-\n| a | 2 | 3 | |\n| b | 4 | 5 | |\n");
+        writeFileSync(join(notes, "list.org"), "#+title: List\n\n1. a\n2. b\n3. c\n");
         writeFileSync(join(notes, "pics.org"), "#+title: Pics\n\n[[file:attachments/pics/used.txt][used]]\n");
         mkdirSync(join(notes, "attachments", "pics"), { recursive: true });
         writeFileSync(join(notes, "attachments", "pics", "used.txt"), "used");
@@ -600,6 +601,16 @@ describe("Tables and attachments", () => {
     await browser.keys(Key.Escape);
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(join(d.notes, "calc.org"), (s) => /\n#\+TBLFM: \$4=\$2\*\$3\n?$/.test(s) && /\|\s*6\s*\|/.test(s) && /\|\s*20\s*\|/.test(s), "formula or computed values missing");
+  });
+
+  it("Enter after an ordered-list item renumbers the items below", async () => {
+    await open("List", "list.org");
+    await type("4GA");
+    await browser.keys(Key.Enter);
+    await type("new");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "list.org"), (s) => s.includes("1. a\n2. b\n3. new\n4. c\n"), "list not renumbered");
   });
 
   it("cleans up only the unlinked attachment, then reports there is nothing left", async () => {

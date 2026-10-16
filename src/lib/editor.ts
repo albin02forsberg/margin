@@ -1,6 +1,6 @@
 // CodeMirror 6 setup: vim, org styling (decorations that hide markup except on
 // the line being edited), folding, tables, blocks and the structure-editing ops.
-import { EditorState, Facet, Prec, StateEffect, type Extension, type Range } from "@codemirror/state";
+import { EditorState, Facet, Prec, StateEffect, type Extension, type Range, type TransactionSpec } from "@codemirror/state";
 import {
   Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, highlightActiveLine, keymap, type DecorationSet, type ViewUpdate,
 } from "@codemirror/view";
@@ -12,6 +12,7 @@ import { highlightTree, classHighlighter } from "@lezer/highlight";
 import { vim, Vim, getCM } from "@replit/codemirror-vim";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import * as tbl from "./orgtable";
+import { renumber } from "./list";
 
 /** Set by the app; vim ex commands, mappings and clicks call through these. */
 export const hooks = {
@@ -535,14 +536,32 @@ export function newHeading(v: EditorView, todo = ""): boolean {
   return true;
 }
 
+/** Dispatch SPEC plus, in the same transaction (one undo), the renumbering of
+ *  the ordered list at line N of the resulting doc. */
+function withRenumber(v: EditorView, spec: TransactionSpec, n: number) {
+  const doc = v.state.update(spec).state.doc;
+  const changes = renumber((i) => (i >= 1 && i <= doc.lines ? doc.line(i).text : undefined), n)
+    .map((c) => ({ from: doc.line(c.line).from + c.from, to: doc.line(c.line).from + c.to, insert: c.insert }));
+  v.dispatch(spec, { changes, sequential: true });
+}
+
+/** Renumber the ordered list at the cursor (after vim moves / deletes items). */
+export function renumberList(v: EditorView): boolean {
+  withRenumber(v, {}, curLine(v).number);
+  return true;
+}
+
 /** Continue a list (new item after this line); otherwise a new heading. */
 export function newItem(v: EditorView): boolean {
   const ln = curLine(v);
   const m = ITEM.exec(ln.text);
   if (!m || level(ln.text)) return newHeading(v);
-  const bullet = /\d/.test(m[2]) ? parseInt(m[2]) + 1 + m[2].slice(-1) : m[2];
+  const num = /\d/.test(m[2]);
+  const bullet = num ? parseInt(m[2]) + 1 + m[2].slice(-1) : m[2];
   const insert = `\n${m[1]}${bullet}${m[3]}${m[4] ? "[ ] " : ""}`;
-  v.dispatch({ changes: { from: ln.to, insert }, selection: { anchor: ln.to + insert.length }, scrollIntoView: true });
+  const spec = { changes: { from: ln.to, insert }, selection: { anchor: ln.to + insert.length }, scrollIntoView: true };
+  if (num) withRenumber(v, spec, ln.number + 1);
+  else v.dispatch(spec);
   insertMode(v);
   return true;
 }
@@ -554,7 +573,8 @@ function smartEnter(v: EditorView): boolean {
   const m = ITEM.exec(ln.text);
   if (!m || level(ln.text) || v.state.selection.main.head !== ln.to) return false;
   if (m[0].length === ln.text.length) {
-    v.dispatch({ changes: { from: ln.from, to: ln.to, insert: "" } });
+    // Ending a list in its middle: the items below move up a number.
+    withRenumber(v, { changes: { from: ln.from, to: ln.to, insert: "" } }, ln.number + 1);
     return true;
   }
   return newItem(v);
