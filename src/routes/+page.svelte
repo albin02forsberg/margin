@@ -26,6 +26,7 @@
   import { naive, parseWhen } from "$lib/clock";
   import { parseSession, type Entry } from "$lib/session";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
+  import { wordCount, wordsLabel } from "$lib/words";
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
 
   type View = "agenda" | "todo" | "time" | "projects" | "settings";
@@ -55,6 +56,8 @@
   let menu = $state<Menu>();
   let taskDialog = $state<TaskDialog>();
   let mode = $state("normal");
+  let words = $state("");
+  let docWords = 0;
   let message = $state("");
   let tc = $state<any>({});
   let backlinks = $state.raw<Hit[]>([]);
@@ -129,12 +132,20 @@
   const stateOf = (t: Tab) => (t === tabs[cur] && isText(t) ? view.state : t.state!);
   const fileTab = (path: string) => tabs.find((t) => t.kind === "file" && t.path === path);
 
+  /** Status-bar word count of S; the whole note is only recounted when its text changed. */
+  function countWords(s: EditorState, docChanged = true) {
+    if (docChanged) docWords = wordCount(s.doc.toString());
+    const r = s.selection.main;
+    words = wordsLabel(docWords, r.empty ? undefined : wordCount(s.sliceDoc(r.from, r.to)));
+  }
+
   function newState(key: string, text: string, path?: string, readOnly = false) {
     return ed.createState(text, {
       org: !path || /\.org(_archive)?$/.test(path),
       readOnly,
       ...kw(),
       path,
+      onUpdate: countWords,
       onChange: () => {
         if (syncing) return;
         const t = tabs.find((x) => x.key === key);
@@ -163,6 +174,7 @@
       view.setState(t.state);
       ed.onModeChange(view, (m) => (mode = m));
       mode = "normal";
+      countWords(view.state);
       await tick();
       view.focus();
     }
@@ -900,6 +912,7 @@
       view.dispatch({ selection: old.selection });
       ed.onModeChange(view, (m) => (mode = m));
       mode = "normal";
+      countWords(view.state);
     }
     recent = recent.map((p) => (p === from ? to : p));
     store("recent", JSON.stringify(recent));
@@ -2046,6 +2059,7 @@
     <footer class="status">
       {#if isText(tab)}<span class="mode">{mode.toUpperCase()}</span>{/if}
       <span class="file">{tab?.path ? rel(tab.path) : ""}{tab?.missing ? " • deleted on disk (:w recreates it)" : tab?.conflict ? " • changed on disk (:w keeps yours, Space f r reloads)" : tab?.dirty ? " • unsaved" : ""}</span>
+      {#if isText(tab)}<span class="words">{words}</span>{/if}
       <span class="msg">{message}</span>
       {#if download}<progress class="dl" max={download.size} value={download.have} title="Downloading the AI model ({Math.floor((download.have / download.size) * 100)}%); cancel it in AI drafts: choose model…"></progress>{/if}
       {#if drafting && (cfg.config.ai_backend === "embedded" || chatting)}<button class="hint cancel" onclick={() => act(() => call("ai_draft_cancel"))}>Drafting… cancel</button>{/if}
@@ -2128,7 +2142,7 @@
   .links .link-it { width: auto; flex: none; color: var(--link); font-size: var(--fs-sm); }
   .status { display: flex; gap: var(--s3); align-items: center; padding: 0 var(--s4) var(--s2); color: var(--dim); font: var(--fs-xs) var(--mono); flex: none; min-height: 20px; }
   .mode { color: var(--bg); background: var(--accent); padding: 0 6px; border-radius: var(--radius-sm); font-weight: 700; }
-  .file { color: var(--dim); }
+  .file, .words { color: var(--dim); }
   .msg { color: var(--fg); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dl { width: 120px; height: 8px; accent-color: var(--accent); }
   .hint { background: none; border: 0; color: var(--dim); font: var(--fs-xs) var(--sans); cursor: pointer; }
@@ -2148,6 +2162,6 @@
     .topnav .lbl, .topnav kbd, .clockchip b, .clockchip .warn, .clockchip button:not(.what) { display: none; }
   }
   @media (max-width: 559px) {
-    .status .file, .hint:not(.cancel) { display: none; }
+    .status .file, .status .words, .hint:not(.cancel) { display: none; }
   }
 </style>
