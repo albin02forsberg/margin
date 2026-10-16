@@ -110,6 +110,11 @@ fn csv_dest(p: &Path, forbidden: &[PathBuf]) -> R<()> {
     Ok(())
 }
 
+/// A relative CSV name (e.g. `report.csv`) lands in `export_dir`; absolute paths pass through.
+fn csv_target(p: PathBuf, export_dir: &Path) -> PathBuf {
+    if p.is_relative() { export_dir.join(p) } else { p }
+}
+
 fn today() -> NaiveDate {
     timeclock::now().date()
 }
@@ -1416,6 +1421,7 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
 
 #[tauri::command]
 fn tc_csv(s: State<App>, start: String, end: String, path: PathBuf) -> R<String> {
+    let path = csv_target(path, &config::expand(&s.cfg().export_dir));
     csv_dest(&path, &[s.cfg().data(), s.cfg_path.parent().unwrap().to_path_buf()])?;
     let tc = s.tc();
     let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
@@ -2095,6 +2101,14 @@ mod tests {
             assert_eq!(in_notes(notes, Path::new(p)), Err(format!("{p} isn't in the notes folder")));
         }
         assert!(check_in(&roots, Path::new("/d/work/timelog")).is_ok() && check_in(&roots, Path::new("/c/config.toml")).is_ok());
+    }
+
+    #[test]
+    fn csv_target_resolves_relative_names_into_export_dir() {
+        let d = Path::new("/home/u/Desktop");
+        assert_eq!(csv_target("r.csv".into(), d), d.join("r.csv"));
+        assert_eq!(csv_target("/x/r.csv".into(), d), PathBuf::from("/x/r.csv"));
+        assert!(csv_dest(&csv_target("../r.csv".into(), d), &[]).is_err());
     }
 
     #[test]
