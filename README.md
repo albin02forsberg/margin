@@ -247,6 +247,7 @@ same keys. Terms are space-separated and must all match; `-` negates one:
 | `file:inbox` | File name contains |
 | `due:today`, `due:<=+7d`, `scheduled:<=fri` | Date compared with `<` `<=` `>` `>=` (none: on that day); any date input works |
 | `due:none`, `scheduled:any` | Has no / has a date |
+| `closed:>=-7d`, `closed:today` | Done on that date (its `CLOSED:` stamp); searches done tasks too, so `closed:>=-7d` is a "Done this week" view |
 | other words, `"a phrase"` | Title contains |
 
 Values can be quoted too: `file:"my notes"`, `-tag:"x y"`.

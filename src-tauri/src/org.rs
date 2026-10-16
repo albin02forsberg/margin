@@ -459,12 +459,12 @@ pub fn todos(files: &[Arc<OrgFile>], kw: &Kw, done: bool, keep: impl Fn(&OrgFile
 type Filter = Box<dyn Fn(&OrgFile, &Headline) -> bool>;
 
 /// Parse a task query: space-separated terms, all of which must hold. `todo:NEXT`,
-/// `tag:work`, `pri:A`, `file:inbox` (file name contains), `scheduled:` / `due:` with
-/// an optional `<`, `<=`, `>`, `>=` before a read_date date (`due:<+7d`, `due:today`)
-/// or `none` / `any`; anything else (or a `"quoted phrase"`) must appear in the title.
-/// Values may be quoted too: `tag:"my tag"`, `file:"my notes"`.
+/// `tag:work`, `pri:A`, `file:inbox` (file name contains), `scheduled:` / `due:` /
+/// `closed:` with an optional `<`, `<=`, `>`, `>=` before a read_date date (`due:<+7d`,
+/// `closed:>=-7d`) or `none` / `any`; anything else (or a `"quoted phrase"`) must appear
+/// in the title. Values may be quoted too: `tag:"my tag"`, `file:"my notes"`.
 /// A leading `-` negates a term. The bool says whether done tasks should be searched
-/// too, i.e. the query asks for a done keyword (`todo:DONE`).
+/// too, i.e. the query asks for a done keyword (`todo:DONE`) or a `closed:` date.
 pub fn query(q: &str, today: NaiveDate, kw: &Kw) -> Result<(Filter, bool), String> {
     let mut words = vec![];
     let (mut cur, mut quoted) = (String::new(), false);
@@ -498,8 +498,13 @@ pub fn query(q: &str, today: NaiveDate, kw: &Kw) -> Result<(Filter, bool), Strin
             "tag" => Box::new(move |_, h| h.tags.iter().any(|t| t.to_lowercase() == v)),
             "pri" => Box::new(move |_, h| h.priority.as_ref().is_some_and(|p| p.to_lowercase() == v)),
             "file" => Box::new(move |f, _| f.path.file_stem().is_some_and(|s| s.to_string_lossy().to_lowercase().contains(&v))),
-            k @ ("scheduled" | "due") => {
-                let get: fn(&Headline) -> Option<NaiveDate> = if k == "due" { |h: &Headline| h.deadline.as_ref().map(|t| t.date) } else { |h: &Headline| h.scheduled.as_ref().map(|t| t.date) };
+            k @ ("scheduled" | "due" | "closed") => {
+                let get: fn(&Headline) -> Option<NaiveDate> = match k {
+                    "due" => |h: &Headline| h.deadline.as_ref().map(|t| t.date),
+                    "closed" => |h: &Headline| h.closed.map(|c| c.date()),
+                    _ => |h: &Headline| h.scheduled.as_ref().map(|t| t.date),
+                };
+                done |= k == "closed" && !neg && v != "none";
                 match v.as_str() {
                     "none" => Box::new(move |_, h| get(h).is_none()),
                     "any" => Box::new(move |_, h| get(h).is_some()),
@@ -1305,6 +1310,20 @@ mod tests {
         assert_eq!(q("todo:TODO tag:home scheduled:<+1m"), "Plan trip, Call mum");
         assert_eq!(q("report -pri:a"), "Report draft");
         assert!(query("due:<someday", t, &kw()).is_err());
+        // closed: (pre-CLOSED done tasks, like Old report, never match a date)
+        let fin = [Arc::new(parse(Path::new("/n/log.org"), "* DONE Shipped :work:\nCLOSED: [2026-09-29 Tue 10:00]\n\
+* DONE Ancient\nCLOSED: [2026-08-01 Sat]\n* DONE Today\nCLOSED: [2026-10-02 Fri 08:00]\n* DONE Unstamped\n* TODO Open\n", &kw()))];
+        let c = |s: &str| {
+            let (f, done) = query(s, t, &kw()).unwrap();
+            (todos(&fin, &kw(), done, f, t).into_iter().map(|i| i.title).collect::<Vec<_>>().join(", "), done)
+        };
+        assert_eq!(c("closed:>=-7d"), ("Shipped, Today".into(), true));
+        assert_eq!(c("closed:>=-7d tag:work"), ("Shipped".into(), true));
+        assert_eq!(c("closed:today"), ("Today".into(), true));
+        assert_eq!(c("closed:<2026-09-01"), ("Ancient".into(), true));
+        assert_eq!(c("-closed:any"), ("Open".into(), false));
+        assert_eq!(c("closed:none"), ("Open".into(), false));
+        assert_eq!(c("closed:none todo:DONE"), ("Unstamped".into(), true));
     }
 
     #[test]
