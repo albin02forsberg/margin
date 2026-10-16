@@ -46,6 +46,25 @@ pub fn ask(app: &AppHandle) {
     });
 }
 
+/// macOS Cmd+Q / Margin → Quit (#409): the default menu's predefined Quit (`terminate:`) can't be
+/// intercepted (tao has no `applicationShouldTerminate`), so swap it for an item with the tray's "quit"
+/// id; the tray's menu handler sees every menu event and already routes "quit" to `ask`.
+/// Compiled everywhere so CI type-checks it; only macOS calls it.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn app_menu(app: &AppHandle) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem, MenuItemKind};
+    let menu = Menu::default(app)?;
+    if let Some(MenuItemKind::Submenu(sub)) = menu.items()?.into_iter().next() {
+        let items = sub.items()?;
+        if matches!(items.last(), Some(MenuItemKind::Predefined(_))) {
+            sub.remove_at(items.len() - 1)?;
+        }
+        sub.append(&MenuItem::with_id(app, "quit", "Quit Margin", true, Some("CmdOrCtrl+Q"))?)?;
+    }
+    app.set_menu(menu)?;
+    Ok(())
+}
+
 /// The frontend's answer to `quit-requested`: "wait" (it is saving and checking), "show" (it needs the
 /// user: bring the window back from the tray), "go" (quit now) or "cancel".
 #[tauri::command]
