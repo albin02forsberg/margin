@@ -12,7 +12,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::SystemTime;
 
 static TS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"<(\d{4}-\d{2}-\d{2})(?:\s+[^\s>\d]+)?(?:\s+(\d{1,2}:\d{2})(?:-\d{1,2}:\d{2})?)?(?:\s+(\.\+|\+\+|\+)(\d+)([hdwmy])(?:/(\d+)([hdwmy]))?)?[^>]*>").unwrap()
+    Regex::new(r"<(\d{4}-\d{2}-\d{2})(?:\s+[^\s>\d]+)?(?:\s+(\d{1,2}:\d{2})(?:-\d{1,2}:\d{2})?)?(?:\s+(\.\+|\+\+|\+)(\d+)([hdwmy])(?:/(\d+)([hdwmy]))?)?(?:\s+--?(\d+)([dwmy]))?[^>]*>").unwrap()
 });
 static ALIAS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#""([^"]+)"|(\S+)"#).unwrap());
 static TS_HEAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<\d{4}-\d{2}-\d{2}(?:\s+[^\s>\d]+)?").unwrap());
@@ -45,6 +45,8 @@ pub struct Ts {
     pub repeater: Option<(String, u32, char)>,
     /// Habit max of `.+2d/3d`: (3, 'd').
     pub max: Option<(u32, char)>,
+    /// Deadline warning cookie of `<... -3d>` (or `--3d`): (3, 'd').
+    pub warn: Option<(u32, char)>,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -97,6 +99,7 @@ fn parse_ts(c: &regex::Captures) -> Option<Ts> {
         time: c.get(2).map(|m| m.as_str().to_string()),
         repeater: c.get(3).map(|k| (k.as_str().to_string(), c[4].parse().unwrap_or(1), c[5].chars().next().unwrap())),
         max: c.get(6).map(|m| (m.as_str().parse().unwrap_or(1), c[7].chars().next().unwrap())),
+        warn: c.get(8).map(|m| (m.as_str().parse().unwrap_or(0), c[9].chars().next().unwrap())),
     })
 }
 
@@ -419,9 +422,11 @@ pub fn agenda(files: &[Arc<OrgFile>], kw: &Kw, start: NaiveDate, days: i64, toda
                     out.push(item(f, h, d, "deadline", "Due".into(), dl.time.clone()));
                 }
                 let diff = (dl.date - today).num_days();
+                // Warning period: the deadline's own `-3d` cookie, else org's default 14 days.
+                let warn = dl.warn.map_or(14, |(n, u)| i64::from(n) * match u { 'w' => 7, 'm' => 30, 'y' => 365, _ => 1 });
                 if !done && today_in && diff < 0 {
                     out.push(item(f, h, today, "overdue", format!("Overdue {}d", -diff), None));
-                } else if !done && today_in && (1..=14).contains(&diff) {
+                } else if !done && today_in && (1..=warn).contains(&diff) {
                     out.push(item(f, h, today, "warning", format!("Due in {diff}d"), None));
                 }
             }
@@ -989,7 +994,14 @@ pub fn set_planning(text: &str, line: usize, kind: &str, date: Option<(NaiveDate
     let mut lines: Vec<String> = text.lines().map(String::from).collect();
     let Some(hl) = headline_at(&lines, line) else { return text.to_string() };
     let re = Regex::new(&format!(r"\s*{kind}:\s*<[^>]*>")).unwrap();
-    let new = date.map(|(d, t)| format!("{kind}: {}", ts_string(d, t.as_deref())));
+    // A new date keeps the old timestamp's warning cookie.
+    let old = lines.get(hl + 1).filter(|p| is_planning(p)).and_then(|p| p.find(&format!("{kind}:")).map(|i| &p[i..]));
+    let warn = old.and_then(|p| TS.captures(p)).and_then(|c| parse_ts(&c)).and_then(|t| t.warn);
+    let new = date.map(|(d, t)| {
+        let s = ts_string(d, t.as_deref());
+        let s = match warn { Some((n, u)) => format!("{} -{n}{u}>", &s[..s.len() - 1]), None => s };
+        format!("{kind}: {s}")
+    });
     if hl + 1 < lines.len() && is_planning(&lines[hl + 1]) {
         let p = &lines[hl + 1];
         let mut updated = match (&new, re.is_match(p)) {
@@ -1103,6 +1115,31 @@ mod tests {
         assert!(got.contains(&("2026-10-03".into(), "timestamp", "Meeting")));
         assert!(got.contains(&("2026-09-28".into(), "scheduled", "Water plants")));
         assert!(!got.iter().any(|g| g.0 == "2026-10-04")); // nothing on Sunday
+    }
+
+    #[test]
+    fn deadline_warning_cookie() {
+        let t = d("2026-10-02");
+        let warns = |dl: &str| {
+            let f = Arc::new(parse(Path::new("/n/x.org"), &format!("* TODO A\nDEADLINE: <{dl}>\n"), &kw()));
+            agenda(&[f], &kw(), t, 1, t).iter().find(|i| i.kind == "warning").map(|i| i.label.clone())
+        };
+        assert_eq!(warns("2026-10-05 Mon -3d"), Some("Due in 3d".into()));
+        assert_eq!(warns("2026-10-06 Tue -3d"), None);
+        assert_eq!(warns("2026-10-16 Fri"), Some("Due in 14d".into()));
+        assert_eq!(warns("2026-10-17 Sat"), None);
+        assert_eq!(warns("2026-10-03 Sat -0d"), None);
+        assert_eq!(warns("2026-10-16 Fri --2w"), Some("Due in 14d".into()));
+        assert_eq!(warns("2026-10-06 Tue 09:00 +1w -2d"), None);
+        assert_eq!(warns("2026-10-04 Sun 09:00 +1w -2d"), Some("Due in 2d".into()));
+        let h = &parse(Path::new("x.org"), "* TODO A\nDEADLINE: <2026-10-05 Mon +1w -2d>\n", &kw()).headlines[0];
+        let dl = h.deadline.as_ref().unwrap();
+        assert_eq!((dl.repeater.clone(), dl.warn), (Some(("+".into(), 1, 'w')), Some((2, 'd'))));
+        // Shifting or setting a new date keeps the cookie.
+        let s = "* TODO A\nDEADLINE: <2026-10-05 Mon -3d>\n";
+        assert_eq!(shift_date(s, 0, "DEADLINE", 1), "* TODO A\nDEADLINE: <2026-10-06 Tue -3d>\n");
+        assert_eq!(set_planning(s, 0, "DEADLINE", Some((d("2026-10-09"), Some("10:00".into())))), "* TODO A\nDEADLINE: <2026-10-09 Fri 10:00 -3d>\n");
+        assert_eq!(set_planning(s, 0, "SCHEDULED", Some((d("2026-10-01"), None))), "* TODO A\nDEADLINE: <2026-10-05 Mon -3d> SCHEDULED: <2026-10-01 Thu>\n");
     }
 
     #[test]
