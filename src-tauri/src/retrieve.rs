@@ -54,20 +54,32 @@ fn meta(l: &str) -> bool {
 /// F's score for TERMS (each counts 3 in the title, 2 in a heading, 1 in the text; more terms beat
 /// more repeats) and its best line, if any term occurs.
 fn score(f: &OrgFile, terms: &[String]) -> (usize, Option<usize>) {
-    let lines: Vec<String> = f.text.lines().map(str::to_lowercase).collect();
-    let heading = |i: usize| f.headlines.iter().any(|h| h.line == i);
+    let text = f.text.to_lowercase();
     let title = std::iter::once(&f.title).chain(&f.aliases).map(|t| t.to_lowercase()).collect::<Vec<_>>().join(" ");
+    // Most notes match nothing: skip them before splitting into lines.
+    if !terms.iter().any(|t| text.contains(t.as_str()) || title.contains(t.as_str())) {
+        return (0, None);
+    }
+    // The non-meta lines, each with its heading flag.
+    let mut heading = vec![false; f.text.lines().count()];
+    for h in &f.headlines {
+        if let Some(x) = heading.get_mut(h.line) {
+            *x = true;
+        }
+    }
+    let lines: Vec<(usize, &str, bool)> = text.lines().enumerate().filter(|(_, l)| !meta(l)).map(|(i, l)| (i, l, heading[i])).collect();
     let (mut sum, mut hits, mut best) = (0, 0, None::<(usize, usize)>);
     for t in terms {
         let mut w = if title.contains(t.as_str()) { 3 } else { 0 };
-        for (i, _) in lines.iter().enumerate().filter(|(_, l)| l.contains(t.as_str()) && !meta(l)) {
-            w = w.max(if heading(i) { 2 } else { 1 });
+        for &(_, _, h) in lines.iter().filter(|(_, l, _)| l.contains(t.as_str())) {
+            w = w.max(if h { 2 } else { 1 });
             hits += 1;
         }
         sum += w;
     }
-    for (i, l) in lines.iter().enumerate().filter(|(_, l)| !meta(l)) {
-        let n = terms.iter().filter(|t| l.contains(t.as_str())).count() * if heading(i) { 2 } else { 1 };
+    for &(i, l, h) in &lines {
+        let n = terms.iter().filter(|t| l.contains(t.as_str())).count();
+        let n = if h { n * 2 } else { n };
         if n > 0 && best.is_none_or(|(b, _)| n > b) {
             best = Some((n, i));
         }
@@ -214,6 +226,9 @@ mod tests {
         assert_eq!(names(&got), ["Alpha", "Misc", "Daily"]);
         assert!(retrieve(&files, "the and", None).is_empty());
         assert!(retrieve(&files, "zebra", None).is_empty());
+        // No term in text or title: no score; a title-only match still counts.
+        assert_eq!(score(&files[4], &terms("zebra")), (0, None));
+        assert_eq!(score(&files[4], &terms("lonely zebra")), (30, None));
     }
 
     #[test]
