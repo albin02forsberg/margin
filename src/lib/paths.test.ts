@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, relativeTo } from "./paths.ts";
+import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, relativeTo, resolvePath } from "./paths.ts";
+
+test("resolvePath", () => {
+  assert.equal(resolvePath("/n/sub", "../other/target.org"), "/n/other/target.org");
+  assert.equal(resolvePath("/n/sub/", "./a/../b.org"), "/n/sub/b.org");
+  assert.equal(resolvePath("/n", "x.org"), "/n/x.org");
+  assert.equal(resolvePath("/n", "../../../x.org"), "/x.org");
+  assert.equal(resolvePath("C:\\n\\daily", "../x.org", "\\"), "C:\\n\\x.org");
+  assert.equal(resolvePath("C:\\n", "..\\..\\x.org", "\\"), "C:\\x.org");
+});
 
 test("relativeTo", () => {
   assert.equal(relativeTo("/n/a.org", "/n/b.org"), "b.org");

@@ -7,6 +7,18 @@ export function relativeTo(from: string, to: string): string {
   return [...Array(a.length - i).fill(".."), ...b.slice(i)].join("/");
 }
 
+/** DIR (absolute) joined with the relative path P using SEP, "." and ".." steps resolved (never above the root),
+ *  since the backend rejects paths with "..". */
+export function resolvePath(dir: string, p: string, sep = "/"): string {
+  const [root, ...rest] = dir.split(/[\\/]/);
+  const out = rest.filter(Boolean);
+  for (const s of p.split(/[\\/]+/)) {
+    if (s === "..") out.pop();
+    else if (s && s !== ".") out.push(s);
+  }
+  return [root, ...out].join(sep);
+}
+
 /** The existing journal entry before (dir -1) or after (+1) DATE (YYYY-MM-DD, need not exist) among FILES (any separators) in DAILY ("a/b", any separators). */
 export function journalNeighbour(files: string[], daily: string, date: string, dir: 1 | -1): string | undefined {
   const d = daily.split(/[\\/]+/).filter(Boolean);
