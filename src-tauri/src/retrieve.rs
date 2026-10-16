@@ -60,7 +60,7 @@ fn score(f: &OrgFile, terms: &[String]) -> (usize, Option<usize>) {
     let (mut sum, mut hits, mut best) = (0, 0, None::<(usize, usize)>);
     for t in terms {
         let mut w = if title.contains(t.as_str()) { 3 } else { 0 };
-        for (i, l) in lines.iter().enumerate().filter(|(_, l)| l.contains(t.as_str()) && !meta(l)) {
+        for (i, _) in lines.iter().enumerate().filter(|(_, l)| l.contains(t.as_str()) && !meta(l)) {
             w = w.max(if heading(i) { 2 } else { 1 });
             hits += 1;
         }
