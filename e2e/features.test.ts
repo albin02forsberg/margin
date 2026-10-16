@@ -554,6 +554,7 @@ describe("Tables and attachments", () => {
   };
 
   it("Tab in a table aligns it and moves the cursor to the next cell", async () => {
+    await find(".agenda h1", "Today"); // the page listens for keys only once loaded
     await open("Tbl", "tbl.org");
     await type("3G");
     await browser.keys(Key.Tab);
