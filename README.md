@@ -407,13 +407,17 @@ off, flex ignored) are reached at the current pace, e.g. `Leave at 16:42 (2h 18m
 The Time view shows the same line under today's total. A clock still running past
 midnight counts toward today only from midnight (a finished session stays on the day it started).
 
-Time → Time off (or `Space t l`, from anywhere) logs vacation, sick leave or anything else for a day or a range
-of days: a full day, a few hours a day, or (sick) the rest of the day after what
-you worked. It lowers those days' expected hours like a public holiday does, so
+Time → Log time off… (or `Space t l`, from anywhere) logs vacation, sick leave or anything else
+the way you switch project: pick the kind (with its export code; type a new one + Ctrl+↵),
+the first and last day (No date or Esc: just that day), then a full day, a few hours a day,
+or (sick) the rest of the day after what you worked, and an optional note. The Time view lists
+all of it, with ✕ to remove an entry. It lowers those days' expected hours like a public holiday does, so
 work on a vacation day counts as flex; weekends and red days in a range are skipped.
 It's kept in `leave.jsonl` next to the time log, shows hatched in the week chart
 and in the day and week reports, and goes into the CSV export as one row per kind
-and working day (its export code, the note or kind, the hours it credits).
+and working day (its export code, the note or kind, the hours it credits). The export
+message counts the time off rows it wrote and names covered days that wrote none and why
+(a weekend or red day, or nothing left to credit after a full day's work).
 Time → Project settings (`Space t P`) opens a Projects page. It starts with a card per
 project (shown, or tracked this month): hours this week and this month, billable hours,
 its share of the week, **Track** to start the clock on it, and its open tasks, which are

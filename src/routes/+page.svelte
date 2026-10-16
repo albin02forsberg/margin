@@ -1366,6 +1366,34 @@
     if (end) await acceptSuggestion({ ...s, start, end });
   }
 
+  /** Log time off like a project switch: kind, first and last day, full day / hours / rest of the day, note. */
+  async function timeOff() {
+    const codes: Record<string, { export_code: string }> = await call("tc_leave_codes");
+    const items = Object.entries(codes).map(([k, c]) => ({ label: k, detail: c.export_code || "no export code", value: k }));
+    const kind = ((await pick({ prompt: "Kind of time off", items, allowCustom: true, hint: "type a kind + Ctrl+↵ for a new one" })) as string | null)?.trim().toLowerCase();
+    if (!kind) return;
+    const first = await datePick("First day off");
+    if (first == null) return;
+    if (first === "rm") return flash("Choose the first day off.");
+    const last = await datePick("Last day off (No date or Esc: just that day)");
+    const from = await call<string>("read_date", { input: first });
+    const to = last == null || last === "rm" ? from : await call<string>("read_date", { input: last });
+    const modes = [{ label: "Full day", value: "full" }, { label: "Hours a day", value: "hours" }, { label: "Rest of the day", detail: "after what you worked", value: "rest" }];
+    const mode = await pick({ prompt: "Hours off per day", items: kind === "sick" ? modes : modes.slice(0, 2) });
+    if (mode == null) return;
+    let hours: number | null = null; // null is a full day, so an empty or 0 answer must refuse (#228)
+    if (mode === "hours") {
+      const h = await ask("Hours off a day", "4");
+      if (h == null) return;
+      if (!((hours = +h.replace(",", ".")) > 0)) return flash("Enter the hours off per day.");
+    }
+    const note = (await ask("Note (optional)", "", "Esc to skip")) ?? "";
+    await call("tc_leave_add", { leave: { kind, from, to, hours, rest: mode === "rest", note } });
+    flash(`Time off logged: ${kind} ${from}${to !== from ? ` – ${to}` : ""}`);
+    await refreshTc();
+    reload++;
+  }
+
   async function importEmacs() {
     const dir = await ask(`Import Emacs timeclock files into “${tc.profile}” from`, "~/timeclock");
     if (dir) await tcDo("tc_import", { dir });
@@ -1399,16 +1427,7 @@
     weekly: () => report("weekly", "Week report"), doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
     backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), open: (loc) => openFile(loc.path, loc.line), import: importEmacs, acceptSuggestion, editSuggestion,
     flex: async () => flash(await call("tc_report", { kind: "flex" })), leave: async () => flash(await call("tc_leave_time")), diary: () => openFile(cfg.diary_path),
-    /** Open the Time view and focus its "Time off" form (the view may still be mounting, so retry briefly). */
-    timeOff: async () => {
-      await openView("time");
-      for (let n = 0; n < 10; n++) {
-        await tick();
-        const el = document.querySelector<HTMLInputElement>('input[aria-label="Kind of time off"]');
-        if (el) { el.scrollIntoView({ block: "center" }); return el.focus(); }
-        await new Promise((r) => setTimeout(r, 30));
-      }
-    },
+    timeOff,
   };
   const timeApi: TimeApi = { act, run: async (name, arg) => { await timeActions[name](arg); } };
   const agendaApi: AgendaApi = {

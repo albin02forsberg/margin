@@ -3,7 +3,7 @@
   export type Session = { date: string; project: string; desc: string; hours: number; start: string; end: string; line: number | null };
   export type TimeApi = {
     act: (f: () => unknown) => void;
-    /** Named actions: start, stop, pause, resume, switch, adjust, editSession, export, exportReport, projects,
+    /** Named actions: start, stop, pause, resume, switch, adjust, editSession, export, exportReport, projects, timeOff,
      *  open ({path, line?}), profile, holidays, daily, weekly, doctor, backup, backupLog, rawLog, import, acceptSuggestion, editSuggestion. */
     run: (name: string, arg?: unknown) => Promise<void>;
   };
@@ -71,18 +71,8 @@
   const projTotal = $derived(d ? d.projects.reduce((s: number, p: any) => s + p.worked, 0) : 0);
   const signed = (h: number) => `${h >= 0 ? "+" : "−"}${hm(Math.abs(h))}`;
 
-  // Time off: a range of days, full days, N hours a day, or the rest of the day after work (sick).
-  let off = $state({ kind: "vacation", from: new Date().toLocaleDateString("sv-SE"), to: "", mode: "full", hours: 4, note: "" });
-  const isoAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toLocaleDateString("sv-SE");
-  const recentOff = $derived(d ? d.leave.filter(([, l]: [number, any]) => l.to >= isoAgo(31)).sort((a: any, b: any) => (a[1].from < b[1].from ? -1 : 1)) : []);
-  const addOff = () =>
-    api.act(async () => {
-      if (off.mode === "hours" && !(off.hours > 0)) throw new Error("Enter the hours off per day"); // null would mean a full day
-      const leave = { kind: off.kind, from: off.from, to: off.to || off.from, hours: off.mode === "hours" ? off.hours : null, rest: off.mode === "rest", note: off.note };
-      await invoke("tc_leave_add", { leave });
-      [off.to, off.note] = ["", ""];
-      await refresh();
-    });
+  // Time off (logged through the timeOff flow), newest first.
+  const allOff = $derived(d ? [...d.leave].sort((a: any, b: any) => (a[1].from < b[1].from ? 1 : -1)) : []);
   const removeOff = (line: number) => api.act(async () => { await invoke("tc_leave_remove", { line }); await refresh(); });
   const offHours = (l: any) => (l.rest ? "rest of day" : l.hours ? `${hm(l.hours)}/day` : "full day");
 
@@ -253,25 +243,11 @@
 
         <section class="card timeoff">
           <h3>Time off <span class="dim">lowers the day's expected hours; work on those days is flex</span></h3>
-          <form onsubmit={(e) => { e.preventDefault(); addOff(); }}>
-            <input list="leave-kinds" bind:value={off.kind} aria-label="Kind of time off" size="10" required />
-            <datalist id="leave-kinds"><option>vacation</option><option>sick</option><option>other</option></datalist>
-            <input type="date" bind:value={off.from} aria-label="First day off" required />
-            <span class="dim">to</span>
-            <input type="date" bind:value={off.to} min={off.from} aria-label="Last day off (empty: one day)" />
-            <select bind:value={off.mode} aria-label="Hours off per day">
-              <option value="full">Full day</option>
-              <option value="hours">Hours a day</option>
-              {#if off.kind === "sick"}<option value="rest">Rest of the day</option>{/if}
-            </select>
-            {#if off.mode === "hours"}<input type="number" bind:value={off.hours} min="0.25" step="0.25" aria-label="Hours a day" required />{/if}
-            <input bind:value={off.note} placeholder="Note" aria-label="Time off note" />
-            <button type="submit">Add</button>
-          </form>
-          {#if recentOff.length}
+          <div><button onclick={() => run("timeOff")}>Log time off…</button></div>
+          {#if allOff.length}
             <table>
               <tbody>
-                {#each recentOff as [line, l] (line)}
+                {#each allOff as [line, l] (line)}
                   <tr>
                     <td><strong>{l.kind}</strong> <span class="dim">{l.note ?? ""}</span></td>
                     <td class="mono">{l.from}{l.to !== l.from ? ` – ${l.to}` : ""}</td>
@@ -331,9 +307,7 @@
   .num { text-align: right; font-family: var(--mono); white-space: nowrap; }
   .mono { font-family: var(--mono); font-size: var(--fs-md); white-space: nowrap; }
   .dim { color: var(--dim); font-weight: 400; }
-  .timeoff form { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; margin-bottom: var(--s2); }
-  input { background: var(--card); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s1) var(--s2); font: var(--fs-md) var(--sans); }
-  input[type="number"] { width: 5em; }
+  .timeoff > div { margin-bottom: var(--s2); }
   .flex { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
   .flex > div { background: var(--canvas); border-radius: 8px; padding: var(--s2) var(--s3); }
   .flex strong { font: 500 18px var(--mono); }

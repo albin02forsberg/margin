@@ -867,28 +867,49 @@ fn csv_field(v: &str) -> String {
 
 /// Import-template columns; `Project` is the export code, hours use a decimal comma (`1,5`).
 /// Time off adds a row per kind and working day: its code, note (or kind) and credited hours.
-pub fn csv(sessions: &[Session], projects: &Projects, (leave, codes): (&[Leave], &LeaveCodes), daily: f64, start: NaiveDate, end: NaiveDate) -> String {
+/// Also returns a summary: the time off rows written, and the covered days that wrote none and why.
+pub fn csv(sessions: &[Session], projects: &Projects, (leave, codes): (&[Leave], &LeaveCodes), daily: f64, start: NaiveDate, end: NaiveDate) -> (String, String) {
     let rounded = apply_carry(&prepare_report_sessions(sessions), projects).0;
     let mut worked: HashMap<NaiveDate, f64> = HashMap::new();
     rounded.iter().for_each(|s| *worked.entry(s.date).or_default() += s.hours);
-    let mut rows: Vec<(NaiveDate, String, String, f64)> =
-        rounded.iter().filter(|s| start <= s.date && s.date <= end).map(|s| (s.date, export_code(&s.project, projects), s.desc.clone(), s.hours)).collect();
+    let mut rows: Vec<(NaiveDate, String, String, f64, bool)> =
+        rounded.iter().filter(|s| start <= s.date && s.date <= end).map(|s| (s.date, export_code(&s.project, projects), s.desc.clone(), s.hours, false)).collect();
+    let mut skipped = vec![];
     for date in start.iter_days().take_while(|d| *d <= end) {
         let e = expected_hours(date, daily);
+        if e <= 0.0 && leave.iter().any(|l| l.from <= date && date <= l.to) {
+            skipped.push(format!("{date} (no expected hours)"));
+        }
         let mut left = e; // overlapping time off credits at most the day, as in flex
         for (l, h) in leave_on(leave, date, e, worked.get(&date).copied().unwrap_or(0.0)) {
             let h = h.min(left);
             left -= h;
-            rows.push((date, leave_code(&l.kind, codes), if l.note.is_empty() { l.kind.clone() } else { l.note.clone() }, h));
+            rows.push((date, leave_code(&l.kind, codes), if l.note.is_empty() { l.kind.clone() } else { l.note.clone() }, h, true));
         }
     }
     rows.sort_by_key(|r| r.0); // stable: a day's sessions, then its time off
-    let mut out = String::from("Project,Description,Date,Duration\n");
-    for (date, code, desc, h) in rows.into_iter().filter(|r| (r.3 * 100.0).round() > 0.0) {
+    let (mut out, mut off) = (String::from("Project,Description,Date,Duration\n"), 0);
+    for (date, code, desc, h, is_off) in rows {
+        if (h * 100.0).round() <= 0.0 {
+            if is_off {
+                skipped.push(format!("{date} (nothing left to credit)"));
+            }
+            continue;
+        }
+        off += is_off as usize;
         let f = [code, desc, date.to_string(), format!("{h:.2}").trim_end_matches('0').trim_end_matches('.').replace('.', ",")];
         out += &(f.iter().map(|x| csv_field(x)).collect::<Vec<_>>().join(",") + "\n");
     }
-    out
+    skipped.sort();
+    skipped.dedup();
+    let mut sum = format!("{off} time off row{}", if off == 1 { "" } else { "s" });
+    if !skipped.is_empty() {
+        sum += &format!("; none for {}", skipped[..skipped.len().min(3)].join(", "));
+        if skipped.len() > 3 {
+            sum += &format!(" and {} more", skipped.len() - 3);
+        }
+    }
+    (out, sum)
 }
 
 /// Port of `albin/timeclock--find-log-issues`, plus overlapping sessions: two machines clocked
@@ -1160,7 +1181,8 @@ mod tests {
         let codes = LeaveCodes::from([("vacation".into(), LeaveKind { export_code: "VAC".into() })]);
         // Fri 2026-10-09 .. Mon 10-12: no weekend rows; uncoded kinds fall back to the kind; work on the day stays its own row.
         let leave = [Leave { note: "trip".into(), ..l("vacation", "2026-10-09", "2026-10-12", None, false) }, l("sick", "2026-10-13", "2026-10-13", None, true)];
-        let out = csv(&[s("2026-10-12", 1.0), s("2026-10-13", 2.5)], &Projects::new(), (&leave, &codes), 8.0, d("2026-10-01"), d("2026-10-13"));
+        let (out, sum) = csv(&[s("2026-10-12", 1.0), s("2026-10-13", 2.5)], &Projects::new(), (&leave, &codes), 8.0, d("2026-10-01"), d("2026-10-13"));
+        assert_eq!(sum, "3 time off rows; none for 2026-10-10 (no expected hours), 2026-10-11 (no expected hours)");
         assert_eq!(
             out.lines().skip(1).collect::<Vec<_>>(),
             [
@@ -1172,10 +1194,28 @@ mod tests {
             ]
         );
         // Out of range: nothing; overlapping kinds never credit more than the day; partial hours.
-        assert_eq!(csv(&[], &Projects::new(), (&leave, &codes), 8.0, d("2026-10-14"), d("2026-10-20")).lines().count(), 1);
+        assert_eq!(csv(&[], &Projects::new(), (&leave, &codes), 8.0, d("2026-10-14"), d("2026-10-20")), ("Project,Description,Date,Duration\n".into(), "0 time off rows".into()));
         let both = [l("vacation", "2026-10-06", "2026-10-06", Some(6.0), false), l("other", "2026-10-06", "2026-10-06", Some(4.5), false)];
-        let out = csv(&[], &Projects::new(), (&both, &codes), 8.0, d("2026-10-06"), d("2026-10-06"));
+        let out = csv(&[], &Projects::new(), (&both, &codes), 8.0, d("2026-10-06"), d("2026-10-06")).0;
         assert!(out.ends_with("\"VAC\",\"vacation\",\"2026-10-06\",\"6\"\n\"other\",\"other\",\"2026-10-06\",\"2\"\n"), "{out}");
+    }
+
+    #[test]
+    fn csv_says_why_time_off_wrote_no_row() {
+        let l = |kind: &str, from: &str, to: &str, rest| Leave { from: d(from), to: d(to), kind: kind.into(), hours: None, rest, note: String::new() };
+        let s = |date: &str, h| Session { date: d(date), project: "A".into(), desc: "x".into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None };
+        let sum = |sessions: &[Session], leave: &[Leave], daily, end| csv(sessions, &Projects::new(), (leave, &LeaveCodes::new()), daily, d("2026-10-01"), d(end)).1;
+        // A lone Saturday, a red day (Christmas), rest of the day after a full day, no daily hours.
+        assert_eq!(sum(&[], &[l("vacation", "2026-10-10", "2026-10-10", false)], 8.0, "2026-10-31"), "0 time off rows; none for 2026-10-10 (no expected hours)");
+        assert_eq!(sum(&[], &[l("vacation", "2026-12-25", "2026-12-25", false)], 8.0, "2026-12-31"), "0 time off rows; none for 2026-12-25 (no expected hours)");
+        assert_eq!(sum(&[s("2026-10-13", 8.0)], &[l("sick", "2026-10-13", "2026-10-13", true)], 8.0, "2026-10-31"), "0 time off rows; none for 2026-10-13 (nothing left to credit)");
+        assert_eq!(sum(&[], &[l("vacation", "2026-10-12", "2026-10-12", false)], 0.0, "2026-10-31"), "0 time off rows; none for 2026-10-12 (no expected hours)");
+        // A full day on a working day is a row; long lists are cut short.
+        assert_eq!(sum(&[], &[l("vacation", "2026-10-12", "2026-10-12", false)], 8.0, "2026-10-31"), "1 time off row");
+        assert_eq!(
+            sum(&[], &[l("vacation", "2026-10-01", "2026-10-31", false)], 8.0, "2026-10-31"),
+            "22 time off rows; none for 2026-10-03 (no expected hours), 2026-10-04 (no expected hours), 2026-10-10 (no expected hours) and 6 more"
+        );
     }
 
     #[test]
@@ -1470,16 +1510,16 @@ mod tests {
     fn csv_quotes_and_comma() {
         let s = vec![Session { date: d("2026-10-01"), project: "A".into(), desc: "say \"hi\"".into(), hours: 1.5, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None }];
         let none = (&[][..], &LeaveCodes::new());
-        let out = csv(&s, &Projects::new(), none, 8.0, d("2026-10-01"), d("2026-10-01"));
+        let out = csv(&s, &Projects::new(), none, 8.0, d("2026-10-01"), d("2026-10-01")).0;
         assert_eq!(out.lines().nth(1).unwrap(), r#""A","say ""hi""","2026-10-01","1,5""#);
         let s = vec![Session { hours: 2.0, ..s[0].clone() }];
-        assert!(csv(&s, &Projects::new(), none, 8.0, d("2026-10-01"), d("2026-10-01")).ends_with(",\"2\"\n"));
+        assert!(csv(&s, &Projects::new(), none, 8.0, d("2026-10-01"), d("2026-10-01")).0.ends_with(",\"2\"\n"));
     }
 
     #[test]
     fn csv_skips_zero_rows() {
         let s = |h| vec![Session { date: d("2026-10-01"), project: "A".into(), desc: "x".into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None }];
-        let rows = |h| csv(&s(h), &Projects::new(), (&[], &LeaveCodes::new()), 8.0, d("2026-10-01"), d("2026-10-01")).lines().count();
+        let rows = |h| csv(&s(h), &Projects::new(), (&[], &LeaveCodes::new()), 8.0, d("2026-10-01"), d("2026-10-01")).0.lines().count();
         assert_eq!((rows(0.0), rows(0.2), rows(0.3)), (1, 1, 2)); // default rounding is 0.5 h
     }
 

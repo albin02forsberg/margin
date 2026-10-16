@@ -130,33 +130,32 @@ describe("Margin", () => {
     await answer("What did you do?", "leave checked");
   });
 
-  it("Space t l focuses the time-off form", async () => {
+  it("Space t l starts the time-off flow", async () => {
     await browser.keys([Key.Ctrl, "1"]);
     await find(".agenda h1", "Today");
     await browser.keys(" ");
     await type("tl");
-    await browser.waitUntil(async () => (await browser.execute(() => document.activeElement?.getAttribute("aria-label"))) === "Kind of time off", {
-      timeoutMsg: "time-off kind input not focused",
-    });
+    await find(".picker label span", "Kind of time off");
+    await find(".picker li", "vacation");
     await browser.keys(Key.Escape);
   });
 
   it("logs and removes time off in the Time view", async () => {
     const file = join(data, "work", "leave.jsonl");
-    await browser.$(`input[aria-label="Time off note"]`).click();
-    await type("e2e trip"); // letters that are Time view keys go to the field
-    await browser.$(`select[aria-label="Hours off per day"]`).selectByVisibleText("Hours a day");
-    const hours = await browser.$(`input[aria-label="Hours a day"]`);
-    await hours.click();
-    await browser.keys([Key.Ctrl, "a"]);
-    await browser.keys(Key.Backspace);
-    await (await find(".timeoff button", "Add")).click(); // empty hours must not become a full day
-    await browser.pause(300);
+    const flow = async (hours: string) => {
+      await (await find(".timeoff button", "Log time off")).click();
+      await answer("Kind of time off", "vacation");
+      await answer("First day off", "today");
+      await answer("Last day off", "No date"); // one day
+      await answer("Hours off per day", "Hours a day");
+      await answer("Hours off a day", hours);
+    };
+    await browser.keys([Key.Ctrl, "4"]);
+    await flow(""); // empty hours must not become a full day
+    await find(".status .msg", "Enter the hours off per day");
     assert.ok(!existsSync(file) || readFileSync(file, "utf8") === "", "empty hours added a time-off entry");
-    await hours.click();
-    await browser.keys([Key.Ctrl, "a"]);
-    await type("4");
-    await (await find(".timeoff button", "Add")).click();
+    await flow("4");
+    await answer("Note (optional)", "e2e trip");
     await fileMatches(file, (s) => /"kind":"vacation".*"hours":4\.0.*"note":"e2e trip"/.test(s), "time off not saved");
     await find(".timeoff td", "4h 00m/day");
     await (await browser.$(`.timeoff button[title="Remove time off"]`)).click();
