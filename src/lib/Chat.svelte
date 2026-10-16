@@ -1,16 +1,20 @@
 <script lang="ts" module>
-  export type ChatMsg = { role: "user" | "assistant"; content: string };
+  /** An excerpt of a note the answer drew on ("Use my notes", #304); LINE is 0-based. */
+  export type Source = { path: string; title: string; line: number; text: string };
+  /** SOURCES: what an answer was given, [] when no note matched (the backend ignores the field). */
+  export type ChatMsg = { role: "user" | "assistant"; content: string; sources?: Source[] };
 </script>
 
 <script lang="ts">
   import { tick } from "svelte";
   import { cleanChat } from "./chatctx";
 
-  /** Chat with the local model (#205). History lives here, in memory only; ASK sends it, with the open NOTE (its name) when ticked. INSERT (when a note is open) puts an answer at the cursor. */
-  let { ask, note, noteLabel, insert }: { ask: (msgs: ChatMsg[], withNote: boolean, onPiece: (piece: string) => void) => Promise<string>; note: string | null; noteLabel?: () => string; insert?: (text: string) => void } = $props();
+  /** Chat with the local model (#205). History lives here, in memory only; ASK sends it, with the open NOTE (its name) when ticked and the matching notes when USE_NOTES; it returns the answer and the notes it was given. INSERT (when a note is open) puts an answer at the cursor; OPEN shows a source. */
+  let { ask, note, noteLabel, insert, open }: { ask: (msgs: ChatMsg[], withNote: boolean, useNotes: boolean, onPiece: (piece: string) => void) => Promise<{ answer: string; sources?: Source[] }>; note: string | null; noteLabel?: () => string; insert?: (text: string) => void; open: (path: string, line: number) => void } = $props();
   let msgs = $state<ChatMsg[]>([]);
   let text = $state("");
   let withNote = $state(true);
+  let useNotes = $state(false);
   let busy = $state(false);
   /** The answer so far, while it streams in (#210). */
   let partial = $state("");
@@ -34,7 +38,8 @@
     [text, busy, error, partial] = ["", true, "", ""];
     await scroll();
     try {
-      msgs.push({ role: "assistant", content: await ask($state.snapshot(msgs), withNote && !!note, (p) => { partial += p; scroll(); }) });
+      const { answer, sources } = await ask($state.snapshot(msgs), withNote && !!note, useNotes, (p) => { partial += p; scroll(); });
+      msgs.push({ role: "assistant", content: answer, sources });
     } catch (e) {
       // Cancelled or failed midway: keep what came. Unanswered: back into the box, so the history stays question, answer, …
       const kept = cleanChat(partial);
@@ -57,6 +62,11 @@
   <div class="msgs" bind:this={list}>
     {#each msgs as m}
       <p class={m.role}>{m.content}</p>
+      {#if m.sources}
+        <div class="srcs">
+          {#each m.sources as s}<button title={s.text} onclick={() => open(s.path, s.line)}>{s.title}:{s.line + 1}</button>{:else}No note matched.{/each}
+        </div>
+      {/if}
       {#if m.role === "assistant"}
         <div class="acts">
           <button disabled={!insert} onclick={() => insert?.(m.content)}>Insert</button>
@@ -70,6 +80,7 @@
     {#if error}<p class="err">⚠ {error}</p>{/if}
   </div>
   {#if note}<label><input type="checkbox" bind:checked={withNote} /> Include {label || note}</label>{/if}
+  <label title="Send excerpts of the notes that match the question, and of the notes linked to them"><input type="checkbox" bind:checked={useNotes} /> Use my notes</label>
   <textarea bind:this={input} bind:value={text} {onkeydown} onfocus={refresh} rows="3" placeholder="Message (Enter sends, Shift+Enter new line)"></textarea>
 </div>
 
@@ -85,6 +96,8 @@
   .acts { display: flex; gap: var(--s2); margin: calc(-1 * var(--s1)) var(--s5) var(--s2) 0; justify-content: flex-end; }
   .acts button { background: none; border: 0; color: var(--link); font-size: var(--fs-sm); cursor: pointer; padding: 0; }
   .acts button:disabled { color: var(--dim); cursor: default; }
+  .srcs { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s2); margin: calc(-1 * var(--s1)) var(--s5) var(--s2) 0; color: var(--dim); font-size: var(--fs-sm); }
+  .srcs button { background: none; border: 0; color: var(--link); font-size: var(--fs-sm); cursor: pointer; padding: 0; }
   .dim { color: var(--dim); font-size: var(--fs-sm); }
   .err { color: var(--todo); font-size: var(--fs-sm); }
   label { color: var(--dim); font-size: var(--fs-sm); display: flex; gap: var(--s1); align-items: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

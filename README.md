@@ -564,6 +564,15 @@ either backend) and keeps what came so far. **Insert** under an answer puts it a
 (replacing the selection) in the open note; **Copy** copies it. The chat lives only in memory: **Clear** empties it,
 and it's gone when Margin quits.
 
+*Use my notes* (off by default) lets the chat answer from all your notes: the
+notes whose title, headings or text match the words of your question, plus the
+notes linked to or from them and from the open note (one hop in the graph), are
+sent as short excerpts (the matching section, about 3.5 KB in all), and the model
+is told to answer only from them. The notes it got are listed under the answer;
+click one to open it at that line, and *No note matched* means nothing was sent.
+Matching is by keyword, not meaning, so use the words your notes use. As with
+everything else here, the model runs on this machine (`ai_url` must be localhost).
+
 ## Export
 
 `Space e` exports the open note (including unsaved edits) as HTML (`e h`),

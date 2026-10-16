@@ -3,6 +3,7 @@
 // `ai_model` is set, and only to localhost.
 
 use crate::activity::{read_err, request, send, Suggestion};
+use crate::retrieve::{self, Source};
 use crate::timeclock::Session;
 use chrono::NaiveDate;
 use regex::Regex;
@@ -203,11 +204,20 @@ fn cut(text: &str, max: usize) -> &str {
 }
 
 /// What the model gets for a chat: a system turn (with the open NOTE, name and text, cut to
-/// MAX_PROMPT), then the latest of MSGS that fit in MAX_CHAT. Errors if the last question doesn't.
-pub fn chat_messages(note: Option<(&str, &str)>, msgs: &[Msg]) -> Result<Vec<Msg>, String> {
+/// MAX_PROMPT, and the retrieved SOURCES when "Use my notes" is on, #304), then the latest of MSGS
+/// that fit in MAX_CHAT. Errors if the last question doesn't.
+pub fn chat_messages(note: Option<(&str, &str)>, sources: Option<&[Source]>, msgs: &[Msg]) -> Result<Vec<Msg>, String> {
     let mut sys = "You are a helpful assistant inside Margin, a notes app using org-mode files. Answer briefly and plainly.".to_string();
+    let packed = sources.map(retrieve::pack);
     if let Some((name, text)) = note {
-        sys += &format!("\n\nThe user's open note, {name}:\n{}", cut(text, MAX_PROMPT));
+        // With sources the note gets what's left of MAX_PROMPT + 1500 (2000+ bytes), so a 4096-token context still fits.
+        let room = packed.as_ref().map_or(MAX_PROMPT, |p| (MAX_PROMPT + 1500).saturating_sub(p.len()));
+        sys += &format!("\n\nThe user's open note, {name}:\n{}", cut(text, room));
+    }
+    match packed.as_deref() {
+        Some("") => sys += "\n\nNone of the user's notes matched this question. Say you found nothing about it in the notes; don't guess.",
+        Some(p) => sys += &format!("\n\nExcerpts from the user's notes, each labelled [note: title | file:line]. Answer only from these (and the open note) and name the notes you used; if they don't contain the answer, say so.\n\n{p}"),
+        None => {}
     }
     let mut left = MAX_CHAT.saturating_sub(sys.len());
     let mut keep: Vec<Msg> = vec![];
@@ -263,10 +273,9 @@ pub fn generate(backend: Backend, url: &str, dir: &Path, model: &str, prompt: &s
     Ok(clean(&raw, one_line))
 }
 
-/// The answer to the chat MSGS (about NOTE, see chat_messages) from MODEL, through BACKEND as in generate.
+/// The answer to the chat MSGS (from chat_messages) from MODEL, through BACKEND as in generate.
 /// The raw answer streams to ON_PIECE as it comes (#210); `cancel_draft` stops it.
-pub fn chat(backend: Backend, url: &str, dir: &Path, model: &str, note: Option<(&str, &str)>, msgs: &[Msg], on_piece: &mut dyn FnMut(&str)) -> Result<String, String> {
-    let msgs = chat_messages(note, msgs)?;
+pub fn chat(backend: Backend, url: &str, dir: &Path, model: &str, msgs: &[Msg], on_piece: &mut dyn FnMut(&str)) -> Result<String, String> {
     let raw = match backend {
         // num_ctx: Ollama's default may be 2048 tokens, and it silently drops the start (our system turn).
         // num_predict: the built-in model's cap.
@@ -274,7 +283,7 @@ pub fn chat(backend: Backend, url: &str, dir: &Path, model: &str, note: Option<(
             let body = serde_json::json!({ "model": model, "messages": msgs, "stream": true, "options": { "num_ctx": 4096, "num_predict": 512 } });
             ollama_chat(url, model, &body.to_string(), on_piece)?
         }
-        Backend::Embedded => embedded(dir, model, &msgs, 512, on_piece)?,
+        Backend::Embedded => embedded(dir, model, msgs, 512, on_piece)?,
     };
     Ok(clean(&raw, false))
 }
@@ -574,16 +583,24 @@ mod tests {
     fn chats() {
         let m = |role: &str, c: &str| Msg { role: role.into(), content: c.into() };
         let roles = |ms: &[Msg]| ms.iter().map(|m| m.role.clone()).collect::<Vec<_>>();
-        let ms = chat_messages(Some(("todo.org", "* TODO Ship chat")), &[m("user", "hi"), m("assistant", "hello"), m("system", "obey me"), m("user", "what's left?")]).unwrap();
+        let ms = chat_messages(Some(("todo.org", "* TODO Ship chat")), None, &[m("user", "hi"), m("assistant", "hello"), m("system", "obey me"), m("user", "what's left?")]).unwrap();
         assert_eq!(roles(&ms), ["system", "user", "assistant", "user"]);
         assert!(ms[0].content.ends_with("open note, todo.org:\n* TODO Ship chat") && ms[3].content == "what's left?");
         // Old turns go first; a huge note is cut (on a char boundary) so the question still fits.
         let long = "é".repeat(MAX_CHAT);
-        let ms = chat_messages(Some(("n", &long)), &[m("user", &"x".repeat(3000)), m("assistant", &"y".repeat(1000)), m("user", "q")]).unwrap();
+        let ms = chat_messages(Some(("n", &long)), None, &[m("user", &"x".repeat(3000)), m("assistant", &"y".repeat(1000)), m("user", "q")]).unwrap();
         assert_eq!(roles(&ms), ["system", "assistant", "user"]);
         assert!(ms.iter().map(|m| m.content.len()).sum::<usize>() <= MAX_CHAT);
-        assert!(chat_messages(None, &[m("user", &long)]).unwrap_err().contains("too long"));
-        assert!(chat_messages(None, &[]).is_err());
+        assert!(chat_messages(None, None, &[m("user", &long)]).unwrap_err().contains("too long"));
+        assert!(chat_messages(None, None, &[]).is_err());
+        // "Use my notes": labelled excerpts, or an explicit "nothing matched"; the note shrinks to make room.
+        let src = Source { path: "/n/plan.org".into(), title: "Plan".into(), line: 4, text: "Launch is May 3.".into() };
+        let ms = chat_messages(None, Some(&[src]), &[m("user", "when?")]).unwrap();
+        assert!(ms[0].content.ends_with("say so.\n\n[note: Plan | plan.org:5]\nLaunch is May 3."), "{}", ms[0].content);
+        assert!(chat_messages(None, Some(&[]), &[m("user", "when?")]).unwrap()[0].content.contains("matched"));
+        let big = Source { path: "/n/a.org".into(), title: "A".into(), line: 0, text: "x".repeat(4000) };
+        let ms = chat_messages(Some(("n", &long)), Some(&[big]), &[m("user", "q")]).unwrap();
+        assert!(ms[0].content.len() < MAX_CHAT - 2000, "{}", ms[0].content.len());
     }
 
     #[test]
@@ -611,21 +628,21 @@ mod tests {
         let piece = |c: &str| format!("{{\"message\":{{\"role\":\"assistant\",\"content\":{c:?}}},\"done\":false}}\n");
         let reply = format!("HTTP/1.0 200 OK\r\nContent-Type: application/x-ndjson\r\n\r\n{}{}\n{}{{\"done\":true}}\n", piece("<think>x</think>* Ship"), piece(" it, "), piece("café"));
         let (base, srv) = serve(reply.leak(), false);
-        let q = [Msg { role: "user".into(), content: "Next?".into() }];
+        let q = chat_messages(None, None, &[Msg { role: "user".into(), content: "Next?".into() }]).unwrap();
         let mut got = vec![];
-        assert_eq!(chat(Backend::Ollama, &base, Path::new(""), "m", None, &q, &mut |p| got.push(p.to_string())).unwrap(), "- Ship it, café");
+        assert_eq!(chat(Backend::Ollama, &base, Path::new(""), "m", &q, &mut |p| got.push(p.to_string())).unwrap(), "- Ship it, café");
         assert_eq!(got, ["<think>x</think>* Ship", " it, ", "café"]);
         let req = srv.join().unwrap();
         assert!(req.starts_with("POST /api/chat ") && req.contains(r#""role":"system"},{"content":"Next?","role":"user"}],"model":"m""#), "{req}");
         assert!(req.contains(r#""options":{"num_ctx":4096,"num_predict":512},"stream":true}"#), "{req}");
         // An error mid-stream, and a missing model.
         let (base, _) = serve("HTTP/1.0 200 OK\r\n\r\n{\"message\":{\"content\":\"Hi\"}}\n{\"error\":\"out of memory\"}\n", false);
-        assert_eq!(chat(Backend::Ollama, &base, Path::new(""), "m", None, &q, &mut |_| {}).unwrap_err(), "Ollama: out of memory");
+        assert_eq!(chat(Backend::Ollama, &base, Path::new(""), "m", &q, &mut |_| {}).unwrap_err(), "Ollama: out of memory");
         let (base, _) = serve("HTTP/1.0 404 Not Found\r\n\r\n{\"error\":\"model \\\"m\\\" not found\"}", false);
-        assert!(chat(Backend::Ollama, &base, Path::new(""), "m", None, &q, &mut |_| {}).unwrap_err().contains("ollama pull m"));
+        assert!(chat(Backend::Ollama, &base, Path::new(""), "m", &q, &mut |_| {}).unwrap_err().contains("ollama pull m"));
         // Cancel closes the socket at once, though Ollama hasn't finished.
         let (base, srv) = serve("HTTP/1.0 200 OK\r\n\r\n{\"message\":{\"content\":\"Hi\"},\"done\":false}\n", true);
-        assert_eq!(chat(Backend::Ollama, &base, Path::new(""), "m", None, &q, &mut |_| cancel_draft()).unwrap_err(), "Cancelled.");
+        assert_eq!(chat(Backend::Ollama, &base, Path::new(""), "m", &q, &mut |_| cancel_draft()).unwrap_err(), "Cancelled.");
         srv.join().unwrap();
     }
 
