@@ -38,9 +38,11 @@ describe("Margin", () => {
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "scratch");
     await find(".status .file", "scratch.org");
+    await find(".status .words", "4 words");
     await type("Go");
     await type("Typed by e2e");
     await browser.keys(Key.Escape);
+    await find(".status .words", "7 words");
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(join(notes, "scratch.org"), (s) => /First line\.\n\s*Typed by e2e/.test(s), "note wasn't saved");
   });

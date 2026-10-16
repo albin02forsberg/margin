@@ -881,7 +881,7 @@ const theme = EditorView.theme({
   ".cm-org-pipe": { color: "var(--border)" },
 });
 
-export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; path?: string; onChange: () => void }) {
+export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; path?: string; onChange: () => void; onUpdate?: (s: EditorState, docChanged: boolean) => void }) {
   const ext: Extension[] = [
     vim({ status: true }),
     history(),
@@ -893,7 +893,10 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
     keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
     theme,
     EditorState.readOnly.of(opts.readOnly),
-    EditorView.updateListener.of((u) => { if (u.docChanged) opts.onChange(); }),
+    EditorView.updateListener.of((u) => {
+      if (u.docChanged) opts.onChange();
+      if (u.docChanged || u.selectionSet) opts.onUpdate?.(u.state, u.docChanged);
+    }),
   ];
   if (opts.org) {
     ext.push(
