@@ -157,10 +157,15 @@
     now = new Date();
     items = mode === "agenda" ? await invoke("agenda", { start: iso(start), days: span })
       : query != null ? await invoke("search_todos", { query }) : await invoke("todos");
-    const wk = iso(monday(now));
-    doneItems = boardOn && query == null && done[0]
-      ? (await invoke<AgendaItem[]>("search_todos", { query: `todo:"${done[0]}"` }))
-        .filter((i) => (i.closed ?? "").slice(0, 10) >= wk || doneHere.has(keyOf(i))) : [];
+    // Done column: filtered on the backend (#437); the full DONE list only for tasks done here this session.
+    if (boardOn && query == null && done[0]) {
+      const [week, here] = await Promise.all([
+        invoke<AgendaItem[]>("search_todos", { query: `closed:>=${iso(monday(now))}` }),
+        doneHere.size ? invoke<AgendaItem[]>("search_todos", { query: `todo:"${done[0]}"` }) : [],
+      ]);
+      const ws = week.filter(isDone), seen = new Set(ws.map(keyOf));
+      doneItems = [...ws, ...here.filter((i) => doneHere.has(keyOf(i)) && !seen.has(keyOf(i)))];
+    } else doneItems = [];
     logItems = logShown && logDone
       ? doneLog((await invoke<AgendaItem[]>("search_todos", { query: `closed:>=${iso(start)} closed:<=${iso(addDays(start, span - 1))}` })).filter(isDone)) : [];
     sel = Math.min(sel, Math.max(0, shown.length - 1));
