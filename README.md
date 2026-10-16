@@ -336,7 +336,7 @@ Vim keys everywhere. On top of that:
 | Alt+J / Alt+K | Move heading down / up |
 | Shift+← / → | Change task status, or move a date by a day |
 | Shift+↑ / ↓ | Change priority, or the date part under the cursor |
-| Enter, gf, Ctrl+click | Follow a link |
+| Enter, gf, Ctrl+click | Follow a link (relative `file:` links like `../other/note.org` resolve from the note's folder) |
 | click `[ ]` | Toggle a checkbox |
 | Space x … | Task commands for the heading at the cursor |
 | Space n b | Notes linking here, plus unlinked mentions of this note's title (**Link** turns one into an `[[id:]]` link; Space n u undoes) |

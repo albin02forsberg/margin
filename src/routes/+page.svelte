@@ -12,7 +12,7 @@
   import { EditorView } from "@codemirror/view";
   import type { EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
-  import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, relativeTo } from "$lib/paths";
+  import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, relativeTo, resolvePath } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
@@ -796,7 +796,7 @@
     if (/^https?:\/\//.test(target)) return openUrl(target);
     const p = target.replace(/^file:/, "").replace(/::.*$/, "");
     const dir = tab?.path ? tab.path.replace(/[\\/][^\\/]*$/, "") : cfg.notes;
-    await openFile(/^([\\/]|[A-Za-z]:)/.test(p) ? p : join(dir, p));
+    await openFile(/^([\\/]|[A-Za-z]:)/.test(p) ? p : resolvePath(dir, p, sep()));
   }
 
   async function noteItems() {

@@ -661,7 +661,9 @@ describe("Note navigation", () => {
     await browser.keys(Key.Escape);
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(join(d.notes, "sub", "writer.org"), (s) => s.includes("[[file:../other/target.org][Target Note]]"), "link not relative to the note");
-    // gf on a ../ link is not covered: the backend rejects `..` paths, so it can't open (filed as a follow-up).
+    await type("gf"); // the cursor is on the link just inserted
+    await find(".status .file", "target.org");
+    await find(".cm-content", "Target text.");
   });
 
   it("Ctrl+Shift+O jumps to the picked heading", async () => {
