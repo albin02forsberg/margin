@@ -122,6 +122,35 @@ jobs:
           gh release download "$tag" -p '*_amd64.deb' -D out
           docker run --rm -v "$PWD:/w" -w /w archlinux:latest packaging/arch/build.sh "${tag#v}" out
 
+  # macOS-only Rust (`cfg(target_os = "macos")`, #418) otherwise first compiles in the nightly.
+  # Type-check only (no link, default features; embedded-ai.yml builds that), on PRs touching src-tauri.
+  # Warnings are reported, not fatal: Linux clippy enforces those.
+  macos:
+    if: github.event_name == 'pull_request'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr diff ${{ github.event.pull_request.number }} -R ${{ github.repository }} --name-only | grep -qE '^(src-tauri/|\.github/workflows/ci\.yml$)' && echo run=true >> "$GITHUB_OUTPUT" || true
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@v5
+      - if: steps.gate.outputs.run == 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: steps.gate.outputs.run == 'true'
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      # `tauri::generate_context!` needs the frontend dir to exist.
+      - if: steps.gate.outputs.run == 'true'
+        run: mkdir -p build && touch build/index.html
+      - if: steps.gate.outputs.run == 'true'
+        name: cargo check (macOS)
+        run: cargo check --color never --all-targets
+        working-directory: src-tauri
+
   # Coverage report (#252): per-file tables in the job summary, lcov files as an artifact,
   # and a ratchet that fails on a drop below coverage-baseline.json (not a required check).
   coverage:
