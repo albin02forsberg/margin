@@ -95,6 +95,8 @@ describe("Margin", () => {
     await answer("Track time on project", "Acme");
     await answer("What are you working on?", "e2e run");
     await find(".time .status h2", "Acme");
+    // Times are whole seconds and a zero-length session is dropped (no project card), so let a second pass.
+    await browser.pause(1100);
     await (await find(".time .buttons button", "Stop")).click();
     await answer("What did you do?", "e2e done");
     const log = join(data, "work", "timelog.jsonl");
