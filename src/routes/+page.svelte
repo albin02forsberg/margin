@@ -1970,7 +1970,7 @@
               {:else if v.kind === "settings"}
                 <Settings {version} active={v === tab} {reload} config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} missing={cfg.config_missing} save={saveSettings} recreate={recreateConfig} edit={() => act(editConfig)} />
               {:else}
-                <Agenda mode={v.kind as "agenda" | "todo"} api={agendaApi} active={v === tab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} time={timeApi} />
+                <Agenda mode={v.kind as "agenda" | "todo"} api={agendaApi} active={v === tab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} time={timeApi} logDone={!!cfg.config.log_done} />
               {/if}
             </div>
           {/each}
