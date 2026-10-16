@@ -162,7 +162,7 @@ profile clocks out first, and warns where old files stay (nothing is moved).
 
 - **Ctrl+K** — command palette: every action, with its shortcut.
 - **Space** (vim normal mode, or in any list view) — the same actions as a menu.
-- **Ctrl+=** / **Ctrl+-** (**Cmd** on macOS), or **Ctrl+mouse wheel** — zoom the whole UI
+- **Ctrl+=** / **Ctrl+-** (**Cmd** on macOS), or **Ctrl+mouse wheel** / touchpad pinch — zoom the whole UI
   in / out; reset with **Ctrl/Cmd+0** or `Space v 0`. The zoom level is remembered across restarts.
 - Top bar: **Today** (Ctrl+1), **Tasks** (Ctrl+2), **Inbox** (Ctrl+3),
   **Journal** (Ctrl+J), **Time** (Ctrl+4), **Notes** (Ctrl+P, recent notes first), your saved
