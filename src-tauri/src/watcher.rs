@@ -88,8 +88,9 @@ fn append(dir: &Path, r: &Rec) -> std::io::Result<()> {
     writeln!(f, "{}", serde_json::to_string(r)?)
 }
 
+/// Append R under the time-log lock, so a sync rebase (which holds it) can't rewrite the file mid-append.
 fn write(dir: &Path, r: &Rec) {
-    append(dir, r).unwrap_or_else(|e| eprintln!("activity log {}: {e}", dir.display()))
+    crate::timeclock::locked(|| append(dir, r)).unwrap_or_else(|e| eprintln!("activity log {}: {e}", dir.display()))
 }
 
 /// Write the open record to DIR, ended when its window was last seen (on quit or when the
@@ -240,6 +241,36 @@ mod tests {
         flush(&dir);
         let text = std::fs::read_to_string(dir.join("2026-10-01.jsonl")).unwrap();
         assert_eq!(text.lines().map(|l| serde_json::from_str::<Rec>(l).unwrap()).collect::<Vec<_>>(), vec![r]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn locked_rewrite_keeps_activity_appends() {
+        let dir = std::env::temp_dir().join(format!("margin-watch-race-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let file = dir.join("2026-10-01.jsonl");
+        let go = std::sync::Barrier::new(2);
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                go.wait();
+                for i in 0..20 {
+                    write(&dir, &Rec { start: t("09:00:00"), end: t("09:00:05") + Duration::seconds(i), app: "Code".into(), title: "x".into() });
+                }
+            });
+            s.spawn(|| {
+                go.wait();
+                for _ in 0..20 {
+                    // A rebase-like read-then-rewrite of the same file under the lock.
+                    crate::timeclock::locked(|| {
+                        let text = std::fs::read_to_string(&file).unwrap_or_default();
+                        std::thread::sleep(std::time::Duration::from_millis(1));
+                        std::fs::create_dir_all(&dir).unwrap();
+                        std::fs::write(&file, text).unwrap();
+                    });
+                }
+            });
+        });
+        assert_eq!(spans(&dir, t("09:00:00").date()).len(), 20);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
