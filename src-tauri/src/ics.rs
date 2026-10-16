@@ -34,7 +34,9 @@ pub fn feed(files: &[Arc<OrgFile>], kw: &Kw) -> String {
 
 fn event(out: &mut String, uid: &str, ts: &Ts, summary: &str, category: &str) {
     let day = ts.date.format("%Y%m%d");
-    let start = ts.time.as_deref().and_then(|t| chrono::NaiveTime::parse_from_str(t, "%H:%M").ok()).map(|t| ts.date.and_time(t));
+    let hm = |t: &Option<String>| t.as_deref().and_then(|t| chrono::NaiveTime::parse_from_str(t, "%H:%M").ok());
+    let start = hm(&ts.time).map(|t| ts.date.and_time(t));
+    let last = ts.end.unwrap_or(ts.date);
     let mut lines = vec![
         "BEGIN:VEVENT".to_string(),
         // Hashing keeps the UID short and free of characters calendars dislike.
@@ -44,11 +46,13 @@ fn event(out: &mut String, uid: &str, ts: &Ts, summary: &str, category: &str) {
     match start {
         Some(t) => {
             lines.push(format!("DTSTART:{}", t.format("%Y%m%dT%H%M%S")));
-            lines.push(format!("DTEND:{}", (t + chrono::Duration::hours(1)).format("%Y%m%dT%H%M%S")));
+            // A time or date range ends at its end; otherwise an hour later.
+            let fin = hm(&ts.end_time).map(|e| last.and_time(e)).filter(|e| *e > t).unwrap_or(last.and_time(t.time()) + chrono::Duration::hours(1));
+            lines.push(format!("DTEND:{}", fin.format("%Y%m%dT%H%M%S")));
         }
         None => {
             lines.push(format!("DTSTART;VALUE=DATE:{day}"));
-            lines.push(format!("DTEND;VALUE=DATE:{}", (ts.date + chrono::Duration::days(1)).format("%Y%m%d")));
+            lines.push(format!("DTEND;VALUE=DATE:{}", (last + chrono::Duration::days(1)).format("%Y%m%d")));
         }
     }
     if let Some((_, n, unit)) = &ts.repeater {
@@ -344,6 +348,15 @@ mod tests {
         assert_eq!(ics.matches("BEGIN:VEVENT").count(), 4);
         assert!(ics.ends_with("END:VCALENDAR\r\n"));
         assert_eq!(feed(&[Arc::new(crate::org::parse(Path::new("/n/a.org"), doc, &kw))], &kw), ics, "stable output");
+
+        // Time and date ranges end where they say.
+        let doc = "* Talk\n<2026-10-16 Fri 10:00-11:30>\n* Trip\n<2026-10-19 Mon>--<2026-10-21 Wed>\n* Conf\n<2026-10-19 Mon 09:00>--<2026-10-20 Tue 17:00>\n";
+        let ics = feed(&[Arc::new(crate::org::parse(Path::new("/n/a.org"), doc, &kw))], &kw);
+        for s in ["DTSTART:20261016T100000\r\nDTEND:20261016T113000\r\n", "DTSTART;VALUE=DATE:20261019\r\nDTEND;VALUE=DATE:20261022\r\n",
+            "DTSTART:20261019T090000\r\nDTEND:20261020T170000\r\n"] {
+            assert!(ics.contains(s), "missing {s:?} in\n{ics}");
+        }
+        assert_eq!(ics.matches("BEGIN:VEVENT").count(), 3);
 
         let mut long = String::new();
         fold(&mut long, &format!("SUMMARY:{}", "é".repeat(60)));

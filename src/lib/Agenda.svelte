@@ -126,7 +126,7 @@
     const t = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     const timed = rows.filter((r) => r.it.time);
     if (!timed.length) return -1;
-    const i = rows.findIndex((r) => r.it.time && r.it.time.padStart(5, "0") > t);
+    const i = rows.findIndex((r) => r.it.time && r.it.time.split("-")[0].padStart(5, "0") > t);
     return i < 0 ? rows.indexOf(timed[timed.length - 1]) + 1 : i;
   }
 
