@@ -19,6 +19,7 @@ static TS_HEAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<\d{4}-\d{2}-\d
 pub(crate) static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[(id|file):([^\]]+)\](?:\[([^\]]*)\])?\]").unwrap());
 static TAGS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+(:[^\s]+:)\s*$").unwrap());
 static STATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^\s*- State "([^"]+)"\s+from .*?\[(\d{4}-\d{2}-\d{2})"#).unwrap());
+static CLOSED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"CLOSED:\s*\[(\d{4}-\d{2}-\d{2})(?:\s+[^\s\]\d]+)?(?:\s+(\d{1,2}:\d{2}))?[^\]]*\]\s*").unwrap());
 static PROP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*:([^:\s]+):\s*(.*?)\s*$").unwrap());
 
 #[derive(Clone, Debug)]
@@ -63,6 +64,8 @@ pub struct Headline {
     pub habit: bool,
     /// Dates of `- State "DONE" from ...` log entries (any done keyword).
     pub done_log: Vec<NaiveDate>,
+    /// `CLOSED: [date time]` on the planning line (midnight without a time).
+    pub closed: Option<NaiveDateTime>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -179,6 +182,10 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
             continue;
         };
         if is_planning(line) && i == h.line + 1 {
+            h.closed = CLOSED.captures(line).and_then(|c| {
+                let t = c.get(2).map_or(Some(Default::default()), |t| chrono::NaiveTime::parse_from_str(t.as_str(), "%H:%M").ok());
+                Some(c[1].parse::<NaiveDate>().ok()?.and_time(t?))
+            });
             for c in TS.captures_iter(line) {
                 let kw_before = &line[..c.get(0).unwrap().start()];
                 if kw_before.trim_end().ends_with("SCHEDULED:") {
@@ -276,6 +283,7 @@ pub struct Item {
     pub category: String,
     /// Set on today's agenda entry of a habit, and on its Tasks entry.
     pub habit: Option<Habit>,
+    pub closed: Option<NaiveDateTime>,
 }
 
 fn item(f: &OrgFile, h: &Headline, date: NaiveDate, kind: &'static str, label: String, time: Option<String>) -> Item {
@@ -292,6 +300,7 @@ fn item(f: &OrgFile, h: &Headline, date: NaiveDate, kind: &'static str, label: S
         tags: h.tags.clone(),
         category: h.category.clone(),
         habit: None,
+        closed: h.closed,
     }
 }
 
@@ -591,8 +600,10 @@ fn edit_heading(text: &str, line: usize, kw: &Kw, f: impl FnOnce(&mut Parts)) ->
 /// Set the TODO keyword (None clears it). Marking a repeating task done
 /// shifts its dates, sets `:LAST_REPEAT:`, logs `- State "DONE" from "TODO"
 /// [date time]` below the planning line and drawers (inside a LOGBOOK if
-/// there is one) and resets it, like org.
-pub fn set_keyword(text: &str, line: usize, kw: &Kw, new: Option<&str>, now: NaiveDateTime) -> String {
+/// there is one) and resets it, like org. Otherwise, with LOG, finishing a
+/// task stamps `CLOSED: [date time]` first on its planning line; reopening it
+/// (to an open keyword or none) always removes that stamp.
+pub fn set_keyword(text: &str, line: usize, kw: &Kw, new: Option<&str>, now: NaiveDateTime, log: bool) -> String {
     let today = now.date();
     let mut lines = to_lines(text);
     let Some(hl) = headline_at(&lines, line) else { return text.to_string() };
@@ -639,6 +650,26 @@ pub fn set_keyword(text: &str, line: usize, kw: &Kw, new: Option<&str>, now: Nai
         }
         lines.insert(i, log);
         next = p.keyword.clone().filter(|k| !kw.is_done(k)).or(kw.todo.first().cloned());
+    } else {
+        let done = |k: Option<&str>| k.is_some_and(|k| kw.is_done(k));
+        let is = done(next.as_deref());
+        if (log && is && !done(p.keyword.as_deref())) || (!is && planning && CLOSED.is_match(&lines[hl + 1])) {
+            let old = if planning { lines[hl + 1].clone() } else { String::new() };
+            let indent = &old[..old.len() - old.trim_start().len()];
+            let rest = CLOSED.replace(old.trim(), "").trim().to_string();
+            let new = if !is {
+                format!("{indent}{rest}")
+            } else {
+                format!("{indent}CLOSED: [{}]{}{rest}", now.format("%Y-%m-%d %a %H:%M"), if rest.is_empty() { "" } else { " " })
+            };
+            if !planning {
+                lines.insert(hl + 1, new);
+            } else if rest.is_empty() && !is {
+                lines.remove(hl + 1);
+            } else {
+                lines[hl + 1] = new;
+            }
+        }
     }
     p.keyword = next;
     lines[hl] = p.line();
@@ -646,11 +677,11 @@ pub fn set_keyword(text: &str, line: usize, kw: &Kw, new: Option<&str>, now: Nai
 }
 
 /// Cycle the TODO keyword of the headline at LINE by DIR (+1/-1).
-pub fn cycle_todo(text: &str, line: usize, kw: &Kw, dir: i32, now: NaiveDateTime) -> String {
+pub fn cycle_todo(text: &str, line: usize, kw: &Kw, dir: i32, now: NaiveDateTime, log: bool) -> String {
     let Some(p) = heading(text, line, kw) else { return text.to_string() };
     let seq: Vec<Option<&str>> = std::iter::once(None).chain(kw.todo.iter().chain(&kw.done).map(|s| Some(s.as_str()))).collect();
     let i = seq.iter().position(|k| *k == p.keyword.as_deref()).unwrap_or(0) as i32;
-    set_keyword(text, line, kw, seq[(i + dir).rem_euclid(seq.len() as i32) as usize], now)
+    set_keyword(text, line, kw, seq[(i + dir).rem_euclid(seq.len() as i32) as usize], now, log)
 }
 
 pub fn set_priority(text: &str, line: usize, kw: &Kw, prio: Option<&str>) -> String {
@@ -1073,22 +1104,47 @@ mod tests {
     fn cycle_and_repeat() {
         let log = |from: &str| format!(":PROPERTIES:\n:LAST_REPEAT: [2026-10-02 Fri 14:30]\n:END:\n- State \"DONE\"       from \"{from}\"       [2026-10-02 Fri 14:30]");
         let t = "* TODO Water plants\nSCHEDULED: <2026-09-28 Mon +1w>\n";
-        let next = cycle_todo(t, 0, &kw(), 1, at());
+        let next = cycle_todo(t, 0, &kw(), 1, at(), true);
         assert_eq!(next, "* NEXT Water plants\nSCHEDULED: <2026-09-28 Mon +1w>\n");
-        let done = cycle_todo(&next, 1, &kw(), 1, at());
+        let done = cycle_todo(&next, 1, &kw(), 1, at(), true);
         assert_eq!(done, format!("* NEXT Water plants\nSCHEDULED: <2026-10-05 Mon +1w>\n{}\n", log("NEXT")));
-        let catchup = cycle_todo("* NEXT X\nDEADLINE: <2026-09-01 Tue ++1w>", 0, &kw(), 1, at());
+        let catchup = cycle_todo("* NEXT X\nDEADLINE: <2026-09-01 Tue ++1w>", 0, &kw(), 1, at(), true);
         assert_eq!(catchup, format!("* NEXT X\nDEADLINE: <2026-10-06 Tue ++1w>\n{}", log("NEXT")));
         // LAST_REPEAT goes into an existing drawer (replacing an old one); log after it, inside a LOGBOOK.
         let t = "* TODO H\nSCHEDULED: <2026-10-01 Thu .+1d/3d>\n:PROPERTIES:\n:STYLE: habit\n:LAST_REPEAT: [2026-09-30 Wed 08:00]\n:END:\n:LOGBOOK:\n- State \"DONE\"       from \"TODO\"       [2026-09-30 Wed]\n:END:\n";
-        let done = set_keyword(t, 0, &kw(), Some("DONE"), at());
+        let done = set_keyword(t, 0, &kw(), Some("DONE"), at(), true);
         assert_eq!(done, "* TODO H\nSCHEDULED: <2026-10-03 Sat .+1d/3d>\n:PROPERTIES:\n:STYLE: habit\n:LAST_REPEAT: [2026-10-02 Fri 14:30]\n:END:\n:LOGBOOK:\n- State \"DONE\"       from \"TODO\"       [2026-10-02 Fri 14:30]\n- State \"DONE\"       from \"TODO\"       [2026-09-30 Wed]\n:END:\n");
         // Both timed and date-only entries are read.
         let h = &parse(Path::new("h.org"), &done, &kw()).headlines[0];
         assert_eq!(h.done_log, vec![d("2026-10-02"), d("2026-09-30")]);
         assert_eq!(h.scheduled.as_ref().unwrap().max, Some((3, 'd')));
         let t = "* TODO H\nSCHEDULED: <2026-10-01 Thu .+1d>\n:PROPERTIES:\n:STYLE: habit\n:END:\n";
-        assert!(set_keyword(t, 0, &kw(), Some("DONE"), at()).contains(":STYLE: habit\n:LAST_REPEAT: [2026-10-02 Fri 14:30]\n:END:\n- State"));
+        assert!(set_keyword(t, 0, &kw(), Some("DONE"), at(), true).contains(":STYLE: habit\n:LAST_REPEAT: [2026-10-02 Fri 14:30]\n:END:\n- State"));
+    }
+
+    #[test]
+    fn closed_stamp() {
+        let done = |t: &str| set_keyword(t, 0, &kw(), Some("DONE"), at(), true);
+        let c = "CLOSED: [2026-10-02 Fri 14:30]";
+        assert_eq!(done("* TODO A\nbody\n"), format!("* DONE A\n{c}\nbody\n"));
+        assert_eq!(done("* A"), format!("* DONE A\n{c}"));
+        assert_eq!(done("* TODO A\n  SCHEDULED: <2026-10-01 Thu>\n"), format!("* DONE A\n  {c} SCHEDULED: <2026-10-01 Thu>\n"));
+        // A stale stamp is replaced; done -> done leaves it alone.
+        assert_eq!(done("* TODO A\nSCHEDULED: <2026-10-01 Thu> CLOSED: [2026-01-01 Thu 09:00]\n"), format!("* DONE A\n{c} SCHEDULED: <2026-10-01 Thu>\n"));
+        let old = "* CANCELLED A\nCLOSED: [2026-01-01 Thu 09:00]\n";
+        let kw2 = Kw { done: vec!["DONE".into(), "CANCELLED".into()], ..kw() };
+        assert_eq!(set_keyword(old, 0, &kw2, Some("DONE"), at(), true), "* DONE A\nCLOSED: [2026-01-01 Thu 09:00]\n");
+        // Reopening removes it (even with logging off), dropping an emptied planning line.
+        let dl = done("* TODO A\nDEADLINE: <2026-10-09 Fri>\n");
+        assert_eq!(dl, format!("* DONE A\n{c} DEADLINE: <2026-10-09 Fri>\n"));
+        assert_eq!(set_keyword(&dl, 0, &kw(), Some("TODO"), at(), false), "* TODO A\nDEADLINE: <2026-10-09 Fri>\n");
+        assert_eq!(cycle_todo(&done("* TODO A\nbody\n"), 0, &kw(), 1, at(), true), "* A\nbody\n");
+        // Off: no stamp.
+        assert_eq!(set_keyword("* TODO A\n", 0, &kw(), Some("DONE"), at(), false), "* DONE A\n");
+        // Parsed, with or without a time; only on the planning line.
+        let f = parse(Path::new("x.org"), &format!("{}* DONE B\nCLOSED: [2026-09-30 Wed]\n* DONE C\nbody CLOSED: [2026-09-30 Wed]\n", done("* TODO A\n")), &kw());
+        let cl: Vec<_> = f.headlines.iter().map(|h| h.closed).collect();
+        assert_eq!(cl, vec![Some(at()), Some(d("2026-09-30").and_hms_opt(0, 0, 0).unwrap()), None]);
     }
 
     #[test]
@@ -1126,8 +1182,8 @@ mod tests {
         let items = agenda(&fs, &kw(), d("2026-10-02"), 2, d("2026-10-02"));
         assert_eq!(items.iter().map(|i| i.habit.as_ref().map(|h| &h.bar[19..])).collect::<Vec<_>>(), vec![Some(".!"), None]);
         assert!(todos(&fs, &kw(), false, |_, _| true, d("2026-10-02"))[0].habit.is_some());
-        assert_eq!(cycle_todo("* X :t:", 0, &kw(), 1, at()), "* TODO X :t:");
-        assert_eq!(cycle_todo("* DONE X", 0, &kw(), 1, at()), "* X");
+        assert_eq!(cycle_todo("* X :t:", 0, &kw(), 1, at(), false), "* TODO X :t:");
+        assert_eq!(cycle_todo("* DONE X", 0, &kw(), 1, at(), false), "* X");
     }
 
     #[test]
@@ -1138,7 +1194,7 @@ mod tests {
         assert_eq!(cycle_priority("* [#A] X", 0, &kw(), 1), "* X");
         assert_eq!(set_priority(t, 0, &kw(), None), "* TODO Task :a:\nbody\n");
         assert_eq!(set_tags(t, 0, &kw(), vec!["x".into(), "y".into()]), "* TODO [#B] Task :x:y:\nbody\n");
-        assert_eq!(set_keyword(t, 0, &kw(), None, at()), "* [#B] Task :a:\nbody\n");
+        assert_eq!(set_keyword(t, 0, &kw(), None, at(), false), "* [#B] Task :a:\nbody\n");
         assert_eq!(heading(t, 1, &kw()).unwrap().title, "Task");
         let s = "* TODO A\nSCHEDULED: <2026-10-02 Fri> DEADLINE: <2026-10-09 Fri +1w>\n";
         assert_eq!(shift_date(s, 0, "SCHEDULED", 1), "* TODO A\nSCHEDULED: <2026-10-03 Sat> DEADLINE: <2026-10-09 Fri +1w>\n");
