@@ -174,7 +174,6 @@ describe("Margin", () => {
     await find(".projects td", "Acme");
     await find(".projects .pcard h3", "Acme"); // a card per project, with its open tasks (category = file name)
     await find(".projects .pcard li", "Acme fixture task");
-    unlinkSync(acmeOrg);
     await browser.$(`select[aria-label="Rounding for Acme"]`).selectByVisibleText("Quarter hour");
     await browser.$(`input[aria-label="Export code for Acme"]`).click();
     await browser.keys([Key.Ctrl, "a"]);
@@ -191,6 +190,7 @@ describe("Margin", () => {
     await browser.keys(Key.Enter);
     await fileMatches(join(data, "work", "leave.toml"), (s) => /\[vacation\]\nexport_code = "VAC-1"/.test(s), "time off code not saved");
     assert.ok(!readFileSync(join(data, "work", "projects.toml"), "utf8").includes("vacation"), "time off leaked into projects.toml");
+    unlinkSync(acmeOrg); // last, so its file-change refresh can't re-render a row mid-edit (#405)
   });
 
   it("chooses the AI draft model in settings, keeping the rest of config.toml", async () => {
