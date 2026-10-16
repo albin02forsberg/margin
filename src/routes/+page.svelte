@@ -1573,6 +1573,7 @@
     { label: "Turn line into heading / back", leader: "x *", run: () => inFile() && ed.toggleHeading(view) },
     { label: "Toggle checkbox (or click it)", leader: "x c", run: () => inFile() && ed.toggleCheckbox(view) },
     { label: "Update progress cookies [2/5]", leader: "x u", run: () => inFile() && ed.updateCookies(view) },
+    { label: "List: renumber ordered list", leader: "x r", run: () => inFile() && ed.renumberList(view) },
     { label: "Go to heading…", keys: ["Ctrl+Shift+O"], leader: "n h", run: goToHeading },
     { label: "Promote heading / move table column left", keys: ["Alt+H"], ctx: "editor", run: tableOr("colLeft", () => ed.shiftHeading(view, -1)) },
     { label: "Demote heading / move table column right", keys: ["Alt+L"], ctx: "editor", run: tableOr("colRightMove", () => ed.shiftHeading(view, 1)) },
