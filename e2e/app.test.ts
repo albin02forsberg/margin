@@ -148,7 +148,11 @@ describe("Margin", () => {
       await answer("First day off", "today");
       await answer("Last day off", "No date"); // one day
       await answer("Hours off per day", "Hours a day");
-      await answer("Hours off a day", hours);
+      await find(".picker label span", "Hours off a day");
+      await browser.keys([Key.Ctrl, "a"]);
+      await browser.keys(Key.Backspace); // clear the suggested 4
+      await type(hours);
+      await browser.keys(Key.Enter);
     };
     await browser.keys([Key.Ctrl, "4"]);
     await flow(""); // empty hours must not become a full day
