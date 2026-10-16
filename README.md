@@ -200,6 +200,7 @@ key in your desktop's settings instead: it opens the same form in the running ap
 `Enter` open, `<`/`>` reschedule a day, `+`/`-` priority, `n` new task, `u` undo,
 `v` day/week, `h`/`l` previous/next, `.` today, `D` (or click the heading) go to a date, `/` filter, `?` all keys.
 Click the checkbox to complete a task.
+Subtrees archived in place with an `:ARCHIVE:` tag (Emacs's `C-c C-x a`) are left out of Today, Tasks, reminders and the calendar feed, as in org's agenda; they stay in the note and in search.
 
 Tasks has a **List / Board** switch (`v`). The board has a column per open
 keyword (`todo_keywords`, so a `DOING` column appears if you configure one)

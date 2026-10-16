@@ -13,7 +13,7 @@ pub fn feed(files: &[Arc<OrgFile>], kw: &Kw) -> String {
     let mut out = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Margin//Margin//EN\r\nX-WR-CALNAME:Margin\r\n");
     for f in files {
         for h in &f.headlines {
-            if h.keyword.as_deref().is_some_and(|k| kw.is_done(k)) {
+            if h.archived() || h.keyword.as_deref().is_some_and(|k| kw.is_done(k)) {
                 continue;
             }
             let base = h.id.clone().unwrap_or_else(|| format!("{}#{}", f.path.display(), h.title));
@@ -328,6 +328,7 @@ mod tests {
                    * TODO Water plants\nSCHEDULED: <2026-10-03 Sat +1w>\n\
                    * TODO Report\nDEADLINE: <2026-10-05 Mon>\n\
                    * DONE Old\nSCHEDULED: <2026-10-01 Thu>\n\
+                   * Shelved :ARCHIVE:\n** TODO Stale\nSCHEDULED: <2026-10-01 Thu>\n\
                    * Dentist\n<2026-10-07 Wed 09:30>\n";
         let f = Arc::new(crate::org::parse(Path::new("/n/a.org"), doc, &kw));
         let ics = feed(&[f], &kw);
@@ -339,7 +340,7 @@ mod tests {
         has("SUMMARY:Due: Report\r\n");
         has("DTSTART:20261007T093000\r\n");
         has("CATEGORIES:Work\r\n");
-        assert!(!ics.contains("Old"));
+        assert!(!ics.contains("Old") && !ics.contains("Stale"));
         assert_eq!(ics.matches("BEGIN:VEVENT").count(), 4);
         assert!(ics.ends_with("END:VCALENDAR\r\n"));
         assert_eq!(feed(&[Arc::new(crate::org::parse(Path::new("/n/a.org"), doc, &kw))], &kw), ics, "stable output");

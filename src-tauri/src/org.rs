@@ -72,6 +72,13 @@ pub struct Headline {
     pub closed: Option<NaiveDateTime>,
 }
 
+impl Headline {
+    /// In a subtree tagged `:ARCHIVE:` (archived in place), which org's agenda skips.
+    pub fn archived(&self) -> bool {
+        self.tags.iter().chain(&self.inherited).any(|t| t == "ARCHIVE")
+    }
+}
+
 #[derive(Serialize, Clone, Debug)]
 pub struct Link {
     /// An ID, or for `file:` links (FILE set) the raw path.
@@ -429,7 +436,7 @@ pub fn agenda(files: &[Arc<OrgFile>], kw: &Kw, start: NaiveDate, days: i64, toda
     let today_in = start <= today && today <= end;
     let mut out = vec![];
     for f in files {
-        for h in &f.headlines {
+        for h in f.headlines.iter().filter(|h| !h.archived()) {
             let done = h.keyword.as_deref().is_some_and(|k| kw.is_done(k));
             if let Some(s) = &h.scheduled {
                 let overdue = !done && s.date < today && today_in;
@@ -475,7 +482,7 @@ pub fn agenda(files: &[Arc<OrgFile>], kw: &Kw, start: NaiveDate, days: i64, toda
 pub fn todos(files: &[Arc<OrgFile>], kw: &Kw, done: bool, keep: impl Fn(&OrgFile, &Headline) -> bool, today: NaiveDate) -> Vec<Item> {
     let mut out = vec![];
     for f in files {
-        for h in &f.headlines {
+        for h in f.headlines.iter().filter(|h| !h.archived()) {
             if let Some(k) = h.keyword.as_deref().filter(|k| (done || !kw.is_done(k)) && keep(f, h)) {
                 let date = h.scheduled.as_ref().or(h.deadline.as_ref()).map_or(NaiveDate::MAX, |t| t.date);
                 out.push(Item { habit: habit(h, today), ..item(f, h, date, "todo", k.to_string(), None) });
@@ -1382,6 +1389,12 @@ mod tests {
         assert_eq!(iq("-tag:work"), "Lunch");
         assert_eq!(iq("tag:client"), "Invoice, Send, Lunch");
         assert_eq!(all_tags(&inh), vec!["client", "money", "work"]);
+        // Subtrees archived in place (:ARCHIVE:) are skipped by todos() and agenda().
+        let arc = [Arc::new(parse(Path::new("/n/a.org"), "* Old :ARCHIVE:\n** TODO Stale\nSCHEDULED: <2026-10-02 Fri>\n*** TODO Deeper\n\
+* TODO Done here :ARCHIVE:\n* Live\n** TODO Fresh\nSCHEDULED: <2026-10-02 Fri>\n", &kw()))];
+        let all = |_: &OrgFile, _: &Headline| true;
+        assert_eq!(todos(&arc, &kw(), true, all, t).into_iter().map(|i| i.title).collect::<Vec<_>>(), vec!["Fresh"]);
+        assert_eq!(agenda(&arc, &kw(), t, 1, t).into_iter().map(|i| i.title).collect::<Vec<_>>(), vec!["Fresh"]);
         assert_eq!(q("pri:A"), "Write report");
         assert_eq!(q("file:proj"), "Report draft");
         assert_eq!(q("-file:inbox"), "Report draft");
