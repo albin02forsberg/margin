@@ -57,6 +57,8 @@ pub struct Headline {
     pub priority: Option<String>,
     pub title: String,
     pub tags: Vec<String>,
+    /// Tags from `#+FILETAGS:` and ancestor headings, minus its own.
+    pub inherited: Vec<String>,
     pub scheduled: Option<Ts>,
     pub deadline: Option<Ts>,
     pub timestamps: Vec<Ts>,
@@ -147,6 +149,8 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
     let mut f = OrgFile { path: path.to_path_buf(), title: stem.clone(), text: text.to_string(), ..Default::default() };
     let mut file_cat = stem;
     let mut cats: Vec<(usize, String)> = vec![]; // (level, category) stack
+    let mut file_tags: Vec<String> = vec![];
+    let mut tag_stack: Vec<(usize, Vec<String>)> = vec![]; // (level, own + inherited tags)
     let mut cur: Option<Headline> = None;
     let mut in_drawer = false;
     for (i, &line) in lines.iter().enumerate() {
@@ -156,14 +160,24 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
         if let Some((level, keyword, priority, title, tags)) = split_headline(line, kw) {
             if let Some(h) = cur.take() {
                 cats.push((h.level, h.category.clone()));
+                tag_stack.push((h.level, h.inherited.iter().chain(&h.tags).cloned().collect()));
                 f.headlines.push(h);
             }
             in_drawer = false;
             while cats.last().is_some_and(|(l, _)| *l >= level) {
                 cats.pop();
             }
+            while tag_stack.last().is_some_and(|(l, _)| *l >= level) {
+                tag_stack.pop();
+            }
             let category = cats.last().map_or(file_cat.clone(), |(_, c)| c.clone());
-            cur = Some(Headline { line: i, level, keyword, priority, title, tags, category, ..Default::default() });
+            let mut inherited: Vec<String> = vec![];
+            for t in tag_stack.last().map_or(&file_tags, |(_, t)| t) {
+                if !tags.contains(t) && !inherited.contains(t) {
+                    inherited.push(t.clone());
+                }
+            }
+            cur = Some(Headline { line: i, level, keyword, priority, title, tags, inherited, category, ..Default::default() });
             continue;
         }
         let lower = line.trim_start().to_lowercase();
@@ -173,6 +187,8 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
                 f.title = line.trim_start()[8..].trim().to_string();
             } else if lower.starts_with("#+category:") {
                 file_cat = line.trim_start()[11..].trim().to_string();
+            } else if lower.starts_with("#+filetags:") {
+                file_tags.extend(line.trim_start()[11..].split(':').map(str::trim).filter(|t| !t.is_empty()).map(String::from));
             } else if let Some(c) = PROP.captures(line) {
                 if c[1].eq_ignore_ascii_case("ID") {
                     f.id = Some(c[2].to_string());
@@ -283,6 +299,7 @@ pub struct Item {
     pub priority: Option<String>,
     pub title: String,
     pub tags: Vec<String>,
+    pub inherited: Vec<String>,
     pub category: String,
     /// Set on today's agenda entry of a habit, and on its Tasks entry.
     pub habit: Option<Habit>,
@@ -301,6 +318,7 @@ fn item(f: &OrgFile, h: &Headline, date: NaiveDate, kind: &'static str, label: S
         priority: h.priority.clone(),
         title: h.title.clone(),
         tags: h.tags.clone(),
+        inherited: h.inherited.clone(),
         category: h.category.clone(),
         habit: None,
         closed: h.closed,
@@ -500,7 +518,7 @@ pub fn query(q: &str, today: NaiveDate, kw: &Kw) -> Result<(Filter, bool), Strin
                 done |= !neg && kw.done.iter().any(|k| k.to_lowercase() == v);
                 Box::new(move |_, h| h.keyword.as_ref().is_some_and(|k| k.to_lowercase() == v))
             }
-            "tag" => Box::new(move |_, h| h.tags.iter().any(|t| t.to_lowercase() == v)),
+            "tag" => Box::new(move |_, h| h.tags.iter().chain(&h.inherited).any(|t| t.to_lowercase() == v)),
             "pri" => Box::new(move |_, h| h.priority.as_ref().is_some_and(|p| p.to_lowercase() == v)),
             "file" => Box::new(move |f, _| f.path.file_stem().is_some_and(|s| s.to_string_lossy().to_lowercase().contains(&v))),
             k @ ("scheduled" | "due" | "closed") => {
@@ -969,7 +987,7 @@ pub fn targets(files: &[Arc<OrgFile>], root: &Path) -> Vec<Target> {
 }
 
 pub fn all_tags(files: &[Arc<OrgFile>]) -> Vec<String> {
-    let mut t: Vec<String> = files.iter().flat_map(|f| f.headlines.iter().flat_map(|h| h.tags.clone())).collect();
+    let mut t: Vec<String> = files.iter().flat_map(|f| f.headlines.iter().flat_map(|h| h.tags.iter().chain(&h.inherited).cloned())).collect();
     t.sort();
     t.dedup();
     t
@@ -1313,6 +1331,17 @@ mod tests {
         assert_eq!(q("todo:next"), "Write report");
         assert_eq!(q("tag:work"), "Write report, Plan trip");
         assert_eq!(q("-tag:home"), "Write report, Report draft");
+        // Inherited tags: #+FILETAGS and ancestors, popped on a sibling.
+        let inh = [Arc::new(parse(Path::new("/n/acme.org"), "#+FILETAGS: :client:\n* Acme :work:\n** TODO Invoice :money:\n*** TODO Send\n\
+* TODO Lunch\n", &kw()))];
+        let h = &inh[0].headlines;
+        assert_eq!((h[0].inherited.clone(), h[1].tags.clone(), h[1].inherited.clone()), (vec!["client".into()], vec!["money".into()], vec!["client".into(), "work".into()]));
+        assert_eq!((h[2].inherited.clone(), h[3].inherited.clone()), (vec!["client".to_string(), "work".into(), "money".into()], vec!["client".to_string()]));
+        let iq = |s: &str| todos(&inh, &kw(), false, query(s, t, &kw()).unwrap().0, t).into_iter().map(|i| i.title).collect::<Vec<_>>().join(", ");
+        assert_eq!(iq("tag:work"), "Invoice, Send");
+        assert_eq!(iq("-tag:work"), "Lunch");
+        assert_eq!(iq("tag:client"), "Invoice, Send, Lunch");
+        assert_eq!(all_tags(&inh), vec!["client", "money", "work"]);
         assert_eq!(q("pri:A"), "Write report");
         assert_eq!(q("file:proj"), "Report draft");
         assert_eq!(q("-file:inbox"), "Report draft");

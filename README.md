@@ -246,7 +246,7 @@ same keys. Terms are space-separated and must all match; `-` negates one:
 | | |
 |---|---|
 | `todo:NEXT` | Status; a done status (`todo:DONE`) searches done tasks too |
-| `tag:work`, `-tag:home` | Has / hasn't the tag |
+| `tag:work`, `-tag:home` | Has / hasn't the tag (its own, a parent heading's or the file's `#+FILETAGS:`; inherited tags show dimmed) |
 | `pri:A` | Priority |
 | `file:inbox` | File name contains |
 | `due:today`, `due:<=+7d`, `scheduled:<=fri` | Date compared with `<` `<=` `>` `>=` (none: on that day); any date input works |
