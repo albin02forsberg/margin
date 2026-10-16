@@ -31,6 +31,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
   { name: "Tasks", fields: [
     { key: "todo_keywords", label: "Open keywords", kind: "list", hint: "one per line" },
     { key: "done_keywords", label: "Done keywords", kind: "list", hint: "one per line" },
+    { key: "log_done", label: "Record when tasks are done", kind: "bool", hint: "adds CLOSED: [date time] below the heading, as org-log-done does; the board's Done column shows this week's" },
     { key: "calendar_file", label: "Calendar feed (.ics)", hint: "kept up to date with scheduled tasks and deadlines; empty = off" },
   ] },
   { name: "Integrations", fields: [

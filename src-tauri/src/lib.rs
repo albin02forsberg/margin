@@ -583,17 +583,17 @@ fn org_heading(s: State<App>, text: String, line: usize) -> Option<org::Parts> {
 /// | priority-cycle (±1) | tags ("a:b") | shift ("SCHEDULED 1").
 #[tauri::command]
 fn org_edit(s: State<App>, text: String, line: usize, op: String, value: Option<String>) -> R<String> {
-    org_edit_op(&text, line, &op, value, &s.kw(), timeclock::now())
+    org_edit_op(&text, line, &op, value, &s.kw(), timeclock::now(), s.cfg().log_done)
 }
 
-/// `org_edit` without app state or clock.
-fn org_edit_op(text: &str, line: usize, op: &str, value: Option<String>, kw: &org::Kw, now: NaiveDateTime) -> R<String> {
+/// `org_edit` without app state or clock; LOG stamps `CLOSED:` on done (config `log_done`).
+fn org_edit_op(text: &str, line: usize, op: &str, value: Option<String>, kw: &org::Kw, now: NaiveDateTime, log: bool) -> R<String> {
     let v = value.unwrap_or_default();
     let n = || v.trim().parse::<i32>().map_err(|_| format!("bad number: {v}"));
     let opt = || Some(v.trim()).filter(|x| !x.is_empty());
     Ok(match op {
-        "cycle" => org::cycle_todo(text, line, kw, n()?, now),
-        "keyword" => org::set_keyword(text, line, kw, opt(), now),
+        "cycle" => org::cycle_todo(text, line, kw, n()?, now, log),
+        "keyword" => org::set_keyword(text, line, kw, opt(), now, log),
         "priority" => org::set_priority(text, line, kw, opt()),
         "priority-cycle" => org::cycle_priority(text, line, kw, n()?),
         "tags" => org::set_tags(text, line, kw, v.split(':').map(|t| t.trim().to_string()).collect()),
@@ -1666,7 +1666,7 @@ mod tests {
 
     fn edit(text: &str, op: &str, v: Option<&str>) -> R<String> {
         let now = "2026-01-08T09:00:00".parse::<NaiveDateTime>().unwrap();
-        org_edit_op(text, 0, op, v.map(String::from), &kw(), now)
+        org_edit_op(text, 0, op, v.map(String::from), &kw(), now, false)
     }
 
     #[test]

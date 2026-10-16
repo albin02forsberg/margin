@@ -200,7 +200,12 @@ Click the checkbox to complete a task.
 Tasks has a **List / Board** switch (`v`). The board has a column per open
 keyword (`todo_keywords`, so a `DOING` column appears if you configure one)
 and a Done column; `H`/`L` move the selected card to the column left/right,
-`x` moves it to Done (the Done column shows what you finished from the board).
+`x` moves it to Done (the Done column shows tasks closed this week, from anywhere).
+
+Marking a task done stamps `CLOSED: [date time]` on its planning line, like
+org's `org-log-done 'time`; reopening it removes the stamp. Turn this off with
+**Record when tasks are done** (`log_done = false`); the board's Done column
+then only shows what you finished from the board in this session.
 
 Today has a **Clock** column next to the agenda: the running clock (project,
 task, time since you clocked in, Pause / Switch / Stop or Start), **Worked

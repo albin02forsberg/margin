@@ -18,6 +18,8 @@ pub struct Config {
     pub journal_template: String,
     /// Where new tasks go by default, relative to notes_dir.
     pub inbox: String,
+    /// Stamp `CLOSED: [date time]` on tasks when they are marked done (org-log-done 'time).
+    pub log_done: bool,
     /// Closing the window while a timer runs hides it to the tray instead of quitting.
     pub close_to_tray: bool,
     /// System-wide shortcut for quick capture, e.g. "Super+Shift+N"; empty to disable.
@@ -128,6 +130,7 @@ impl Default for Config {
             daily_dir: "daily".into(),
             journal_template: String::new(),
             inbox: "inbox.org".into(),
+            log_done: true,
             close_to_tray: true,
             capture_shortcut: "Super+Shift+N".into(),
             idle_threshold_minutes: 10,

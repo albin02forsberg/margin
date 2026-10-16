@@ -71,13 +71,14 @@ describe("Margin", () => {
   it("marks a task done with x in Today", async () => {
     await (await find(".agenda .row .title", "Fixture task")).click();
     await browser.keys("x");
-    await fileMatches(join(notes, "tasks.org"), (s) => s.startsWith("* DONE Fixture task"), "task not marked done");
+    await fileMatches(join(notes, "tasks.org"), (s) => /^\* DONE Fixture task\nCLOSED: \[\d{4}-\d\d-\d\d \S+ \d\d:\d\d\] SCHEDULED: </.test(s), "task not marked done");
   });
 
   it("moves a task across the Tasks board", async () => {
     await browser.keys([Key.Ctrl, "2"]);
     await (await find(".agenda .seg button", "Board")).click();
     await find(".board .kcol h2", "NEXT"); // a column per open keyword
+    await find(".board .kcol.donecol .kcard .title", "Fixture task"); // closed this week, from Today
     await (await find(".board .kcol:first-child .kcard .title", "Water the e2e plants")).click();
     await browser.keys("L");
     await fileMatches(join(notes, "inbox.org"), (s) => s.includes("* NEXT Water the e2e plants"), "card not moved to NEXT");

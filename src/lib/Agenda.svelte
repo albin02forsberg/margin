@@ -4,6 +4,8 @@
     keyword: string | null; priority: string | null; title: string; tags: string[]; category: string;
     /** Habits (today's entry, Tasks): last 21 days ('x' done, '-' due within `.+2d/3d` max, '!' overdue, '.' not due) and streak. */
     habit?: { bar: string; streak: number } | null;
+    /** `CLOSED:` stamp ("2026-10-14T10:12:00"), set when a task is marked done (config `log_done`). */
+    closed?: string | null;
   };
   export type AgendaApi = {
     /** Run a task operation on IT (see ACTIONS; `keyword` sets ARG); resolves when the files are written. */
@@ -73,7 +75,8 @@
   let root = $state<HTMLDivElement>();
   let filterInput = $state<HTMLInputElement>();
   let now = $state(new Date());
-  /** Tasks as a board (todo mode); the Done column holds tasks done from the board (path + title), re-read on refresh. */
+  /** Tasks as a board (todo mode); the Done column holds tasks closed this week, plus those done from the
+   *  board this session (path + title) for when `log_done` is off or a task has no stamp. */
   let board = $state(stored("tasks-layout", "list") === "board");
   const boardOn = $derived(mode === "todo" && board);
   const doneHere = new Set<string>();
@@ -146,8 +149,10 @@
     now = new Date();
     items = mode === "agenda" ? await invoke("agenda", { start: iso(start), days: span })
       : query != null ? await invoke("search_todos", { query }) : await invoke("todos");
-    doneItems = boardOn && query == null && doneHere.size && done[0]
-      ? (await invoke<AgendaItem[]>("search_todos", { query: `todo:"${done[0]}"` })).filter((i) => doneHere.has(keyOf(i))) : [];
+    const wk = iso(monday(now));
+    doneItems = boardOn && query == null && done[0]
+      ? (await invoke<AgendaItem[]>("search_todos", { query: `todo:"${done[0]}"` }))
+        .filter((i) => (i.closed ?? "").slice(0, 10) >= wk || doneHere.has(keyOf(i))) : [];
     sel = Math.min(sel, Math.max(0, shown.length - 1));
     await loadClock();
   }
