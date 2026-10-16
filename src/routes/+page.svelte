@@ -25,6 +25,7 @@
   import { bugReportUrl, isError, osName } from "$lib/bugreport";
   import { naive, parseWhen } from "$lib/clock";
   import { parseSession, type Entry } from "$lib/session";
+  import { nextZoom, parseZoom } from "$lib/zoom";
   import Chat, { type ChatMsg } from "$lib/Chat.svelte";
 
   type View = "agenda" | "todo" | "time" | "projects" | "settings";
@@ -82,10 +83,26 @@
   const niceName = (p: string) => base(p).replace(/\.org(_archive)?$/, "").replace(/^\d{14}-/, "").replace(/_/g, " ");
   const pad = (n: number) => String(n).padStart(2, "0");
   const kw = () => ({ todo: cfg.config.todo_keywords as string[], done: cfg.config.done_keywords as string[] });
-  /** Reset zoom. Tauri's hotkey script keeps its own zoom counter, so replay its Ctrl/Cmd+0 (resets counter and webview); setZoom covers Windows, which has no script. */
-  function resetZoom() {
-    setTimeout(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "0", ctrlKey: true, metaKey: true })), 0);
-    getCurrentWebview().setZoom(1);
+  /** UI zoom, owned here (not Tauri's hotkey script) so it survives restarts. */
+  let zoom = parseZoom(stored("zoom", "1"));
+  function zoomBy(dir: "in" | "out" | "reset") {
+    zoom = nextZoom(zoom, dir);
+    store("zoom", String(zoom));
+    getCurrentWebview().setZoom(zoom).catch((e) => flash(`⚠ ${e}`));
+  }
+  const resetZoom = () => zoomBy("reset");
+  /** Ctrl/Cmd + = / + / - / 0 by e.key (layouts differ on Shift), ahead of onKey so it works with a picker or dialog open. */
+  function onZoomKey(e: KeyboardEvent) {
+    const dir = !(e.ctrlKey || e.metaKey) || e.altKey ? null : e.key === "=" || e.key === "+" ? "in" : e.key === "-" ? "out" : e.key === "0" ? "reset" : null;
+    if (!dir) return;
+    e.preventDefault();
+    e.stopPropagation();
+    zoomBy(dir);
+  }
+  function onZoomWheel(e: WheelEvent) {
+    if (!e.ctrlKey || !e.deltaY) return;
+    e.preventDefault();
+    zoomBy(e.deltaY < 0 ? "in" : "out");
   }
   const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 
@@ -1832,6 +1849,9 @@
       act(() => attach((note) => paths.map((src) => call<string>("attach_file", { note, src })), view.posAtCoords(at) ?? undefined));
     });
     editorEl!.addEventListener("paste", onPaste, true);
+    if (zoom !== 1) getCurrentWebview().setZoom(zoom).catch(() => {});
+    window.addEventListener("keydown", onZoomKey, true);
+    window.addEventListener("wheel", onZoomWheel, { passive: false });
     window.addEventListener("keydown", onKey, true);
     window.addEventListener("blur", blur);
     window.addEventListener("beforeunload", saveSession);
@@ -1846,6 +1866,8 @@
       unlistenIdle.then((f) => f());
       unlistenCapture.then((f) => f());
       unlistenDrop.then((f) => f());
+      window.removeEventListener("keydown", onZoomKey, true);
+      window.removeEventListener("wheel", onZoomWheel);
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("blur", blur);
       window.removeEventListener("beforeunload", saveSession);
