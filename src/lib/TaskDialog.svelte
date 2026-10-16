@@ -94,7 +94,7 @@
 
       <label for="due">Due</label>
       <div>
-        <input id="due" bind:value={spec.deadline} placeholder="optional deadline" spellcheck="false" />
+        <input id="due" bind:value={spec.deadline} placeholder="optional deadline, fri -3d warns early" spellcheck="false" />
         <span class="pv" class:bad={duePreview.startsWith("✗")}>{duePreview}</span>
       </div>
 

@@ -16,6 +16,8 @@ static TS: LazyLock<Regex> = LazyLock::new(|| {
 });
 /// A repeater cookie as typed after a date: `+1w`, `++1m`, `.+2d/3d`.
 pub static REPEATER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\.\+|\+\+|\+)(\d+)([hdwmy])(?:/\d+[hdwmy])?$").unwrap());
+/// A warning cookie as typed after a date: `-3d`, `-1w`.
+static WARN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^-\d+[dwmy]$").unwrap());
 static ALIAS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#""([^"]+)"|(\S+)"#).unwrap());
 static TS_HEAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<\d{4}-\d{2}-\d{2}(?:\s+[^\s>\d+\-.][^\s>\d]*)?").unwrap());
 pub(crate) static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[(id|file):([^\]]+)\](?:\[([^\]]*)\])?\]").unwrap());
@@ -609,9 +611,9 @@ pub fn headline_at(lines: &[String], line: usize) -> Option<usize> {
     (0..=line.min(lines.len().saturating_sub(1))).rev().find(|&i| heading_level(&lines[i]).is_some())
 }
 
-fn ts_string(d: NaiveDate, time: Option<&str>, repeater: Option<&str>) -> String {
+fn ts_string(d: NaiveDate, time: Option<&str>, repeater: Option<&str>, warn: Option<&str>) -> String {
     let mut s = format!("<{}", d.format("%Y-%m-%d %a"));
-    for p in [time, repeater].into_iter().flatten() {
+    for p in [time, repeater, warn].into_iter().flatten() {
         s += &format!(" {p}");
     }
     s + ">"
@@ -950,10 +952,10 @@ pub fn expand_template(body: &str, now: chrono::NaiveDateTime, sel: &str, mut as
         rest = &rest[i + 1..];
         let prompt = rest.strip_prefix("^{").and_then(|r| r.find('}').map(|e| &r[..e]));
         let (s, n) = match (rest.chars().next(), prompt) {
-            (Some('t'), _) => (ts_string(d, None, None), 1),
-            (Some('T'), _) => (ts_string(d, Some(&t), None), 1),
-            (Some('u'), _) => (inactive(ts_string(d, None, None)), 1),
-            (Some('U'), _) => (inactive(ts_string(d, Some(&t), None)), 1),
+            (Some('t'), _) => (ts_string(d, None, None, None), 1),
+            (Some('T'), _) => (ts_string(d, Some(&t), None, None), 1),
+            (Some('u'), _) => (inactive(ts_string(d, None, None, None)), 1),
+            (Some('U'), _) => (inactive(ts_string(d, Some(&t), None, None)), 1),
             (Some('i'), _) => {
                 let ind: String = out[out.rfind('\n').map_or(0, |j| j + 1)..].chars().take_while(|c| c.is_whitespace()).collect();
                 (sel.split('\n').enumerate().map(|(k, l)| if k == 0 || l.is_empty() { l.into() } else { format!("{ind}{l}") }).collect::<Vec<_>>().join("\n"), 1)
@@ -1002,7 +1004,7 @@ pub fn task_entry(title: &str, keyword: Option<&str>, priority: Option<&str>, ta
     let p = Parts { level: 1, keyword: keyword.map(String::from), priority: priority.map(String::from), title: title.trim().into(), tags };
     let planning: Vec<String> = [("SCHEDULED", scheduled), ("DEADLINE", deadline)]
         .into_iter()
-        .filter_map(|(k, d)| d.map(|(d, t, r)| format!("{k}: {}", ts_string(d, t.as_deref(), r.as_deref()))))
+        .filter_map(|(k, d)| d.map(|(d, t, r, w)| format!("{k}: {}", ts_string(d, t.as_deref(), r.as_deref(), w.as_deref()))))
         .collect();
     if planning.is_empty() { p.line() + "\n" } else { format!("{}\n{}\n", p.line(), planning.join(" ")) }
 }
@@ -1067,22 +1069,24 @@ pub fn set_planning(text: &str, line: usize, kind: &str, date: Option<When>) -> 
     let mut lines: Vec<String> = text.lines().map(String::from).collect();
     let Some(hl) = headline_at(&lines, line) else { return text.to_string() };
     let re = Regex::new(&format!(r"\s*{kind}:\s*<[^>]*>")).unwrap();
-    // A new date keeps the old timestamp's warning cookie, and its repeater unless it brings its own.
+    // A new date keeps the old timestamp's repeater and warning cookie unless it brings its own.
     let old = lines.get(hl + 1).filter(|p| is_planning(p)).and_then(|p| p.find(&format!("{kind}:")).map(|i| &p[i..]));
     let old = old.and_then(|p| TS.captures(p)).and_then(|c| parse_ts(&c));
-    let new = date.map(|(d, t, r)| {
-        let mut s = ts_string(d, t.as_deref(), r.as_deref());
+    let new = date.map(|(d, t, r, w)| {
+        let mut s = ts_string(d, t.as_deref(), r.as_deref(), None);
         s.pop();
-        if let Some(Ts { repeater, max, warn, .. }) = &old {
+        if let Some(Ts { repeater, max, .. }) = &old {
             if let (None, Some((k, n, u))) = (&r, repeater) {
                 s += &format!(" {k}{n}{u}");
                 if let Some((n, u)) = max {
                     s += &format!("/{n}{u}");
                 }
             }
-            if let Some((n, u)) = warn {
-                s += &format!(" -{n}{u}");
-            }
+        }
+        match (w, old.as_ref().and_then(|o| o.warn)) {
+            (Some(w), _) => s += &format!(" {w}"),
+            (None, Some((n, u))) => s += &format!(" -{n}{u}"),
+            _ => {}
         }
         format!("{kind}: {s}>")
     });
@@ -1107,13 +1111,13 @@ pub fn set_planning(text: &str, line: usize, kind: &str, date: Option<When>) -> 
 
 /// Parse org-read-date style input: "", "today", "tomorrow", "+3d", "-1w",
 /// "mon".."sun", "2026-10-02", "10-02", "15" (day of month), each optionally
-/// followed by a time "14:00" or range "9:00-10:30" and/or a repeater "+1w",
-/// ".+2d/3d"; anything else is rejected.
+/// followed by a time "14:00" or range "9:00-10:30", a repeater "+1w",
+/// ".+2d/3d" and/or a warning cookie "-3d"; anything else is rejected.
 pub fn read_date(input: &str, today: NaiveDate) -> Option<When> {
     let mut parts = input.split_whitespace();
     let first = parts.next().unwrap_or("").to_lowercase();
     let mut first = first.as_str();
-    let (mut time, mut rep) = (None, None);
+    let (mut time, mut rep, mut warn) = (None, None, None);
     if first.contains(':') {
         time = Some(norm_time(first)?);
         first = "";
@@ -1122,6 +1126,7 @@ pub fn read_date(input: &str, today: NaiveDate) -> Option<When> {
         match norm_time(p) {
             Some(t) if time.is_none() => time = Some(t),
             _ if rep.is_none() && REPEATER.is_match(p) => rep = Some(p.to_string()),
+            _ if warn.is_none() && WARN.is_match(p) => warn = Some(p.to_string()),
             _ => return None,
         }
     }
@@ -1159,11 +1164,11 @@ pub fn read_date(input: &str, today: NaiveDate) -> Option<When> {
     } else {
         return None;
     };
-    Some((date, time, rep))
+    Some((date, time, rep, warn))
 }
 
-/// A date input as `read_date` reads it: date, time, repeater.
-pub type When = (NaiveDate, Option<String>, Option<String>);
+/// A date input as `read_date` reads it: date, time, repeater, warning cookie.
+pub type When = (NaiveDate, Option<String>, Option<String>, Option<String>);
 
 /// "9:30" -> "09:30", "9:00-10:30" -> "09:00-10:30"; None unless every part is a valid clock time.
 fn norm_time(t: &str) -> Option<String> {
@@ -1246,12 +1251,12 @@ mod tests {
         // Shifting or setting a new date keeps the cookie.
         let s = "* TODO A\nDEADLINE: <2026-10-05 Mon -3d>\n";
         assert_eq!(shift_date(s, 0, "DEADLINE", 1), "* TODO A\nDEADLINE: <2026-10-06 Tue -3d>\n");
-        assert_eq!(set_planning(s, 0, "DEADLINE", Some((d("2026-10-09"), Some("10:00".into()), None))), "* TODO A\nDEADLINE: <2026-10-09 Fri 10:00 -3d>\n");
-        assert_eq!(set_planning(s, 0, "SCHEDULED", Some((d("2026-10-01"), None, None))), "* TODO A\nDEADLINE: <2026-10-05 Mon -3d> SCHEDULED: <2026-10-01 Thu>\n");
+        assert_eq!(set_planning(s, 0, "DEADLINE", Some((d("2026-10-09"), Some("10:00".into()), None, None))), "* TODO A\nDEADLINE: <2026-10-09 Fri 10:00 -3d>\n");
+        assert_eq!(set_planning(s, 0, "SCHEDULED", Some((d("2026-10-01"), None, None, None))), "* TODO A\nDEADLINE: <2026-10-05 Mon -3d> SCHEDULED: <2026-10-01 Thu>\n");
         // An explicit repeater replaces the old one (and its max), keeping the warning cookie (#449).
         let s = "* TODO A\nDEADLINE: <2026-10-05 Mon .+1w/2w -3d>\n";
-        assert_eq!(set_planning(s, 0, "DEADLINE", Some((d("2026-10-09"), None, Some("+1m".into())))), "* TODO A\nDEADLINE: <2026-10-09 Fri +1m -3d>\n");
-        assert_eq!(set_planning(s, 0, "DEADLINE", Some((d("2026-10-09"), None, None))), "* TODO A\nDEADLINE: <2026-10-09 Fri .+1w/2w -3d>\n");
+        assert_eq!(set_planning(s, 0, "DEADLINE", Some((d("2026-10-09"), None, Some("+1m".into()), None))), "* TODO A\nDEADLINE: <2026-10-09 Fri +1m -3d>\n");
+        assert_eq!(set_planning(s, 0, "DEADLINE", Some((d("2026-10-09"), None, None, None))), "* TODO A\nDEADLINE: <2026-10-09 Fri .+1w/2w -3d>\n");
     }
 
     #[test]
@@ -1288,9 +1293,13 @@ mod tests {
     #[test]
     fn set_planning_keeps_repeater() {
         let s = "* TODO A\nSCHEDULED: <2026-10-05 Mon .+2d/3d> DEADLINE: <2026-10-09 Fri +1w -2d>\n";
-        let s = set_planning(s, 0, "SCHEDULED", Some((d("2026-10-06"), Some("09:00".into()), None)));
-        let s = set_planning(&s, 0, "DEADLINE", Some((d("2026-10-16"), None, None)));
+        let s = set_planning(s, 0, "SCHEDULED", Some((d("2026-10-06"), Some("09:00".into()), None, None)));
+        let s = set_planning(&s, 0, "DEADLINE", Some((d("2026-10-16"), None, None, None)));
         assert_eq!(s, "* TODO A\nSCHEDULED: <2026-10-06 Tue 09:00 .+2d/3d> DEADLINE: <2026-10-16 Fri +1w -2d>\n");
+        // An explicit warning cookie replaces the old one (#461).
+        let s = set_planning(&s, 0, "DEADLINE", Some((d("2026-10-23"), None, None, Some("-1w".into()))));
+        assert_eq!(s, "* TODO A\nSCHEDULED: <2026-10-06 Tue 09:00 .+2d/3d> DEADLINE: <2026-10-23 Fri +1w -1w>\n");
+        assert_eq!(set_planning("* TODO B\n", 0, "DEADLINE", Some((d("2026-10-23"), None, Some("+1m".into()), Some("-3d".into())))), "* TODO B\nDEADLINE: <2026-10-23 Fri +1m -3d>\n");
     }
 
     #[test]
@@ -1412,10 +1421,10 @@ mod tests {
         assert_eq!(capture_insert("", None, "* TODO x\n[2026-10-02 Fri]\n\n", &kw()), "* TODO x\n[2026-10-02 Fri]\n");
         assert_eq!(fmt_time(now, "daily/%Y-%m-%d.org").unwrap(), "daily/2026-10-02.org");
         assert_eq!(fmt_time(now, "%Q"), None);
-        assert_eq!(task_entry("Call", Some("TODO"), Some("A"), vec!["home".into()], Some((d("2026-10-02"), None, None)), Some((d("2026-10-05"), Some("09:00".into()), None))),
+        assert_eq!(task_entry("Call", Some("TODO"), Some("A"), vec!["home".into()], Some((d("2026-10-02"), None, None, None)), Some((d("2026-10-05"), Some("09:00".into()), None, None))),
             "* TODO [#A] Call :home:\nSCHEDULED: <2026-10-02 Fri> DEADLINE: <2026-10-05 Mon 09:00>\n");
         assert_eq!(task_entry("x", Some("TODO"), None, vec![], None, None), "* TODO x\n");
-        assert_eq!(task_entry("x", Some("TODO"), None, vec![], Some((d("2026-10-02"), Some("09:00".into()), Some(".+2d/3d".into()))), None), "* TODO x\nSCHEDULED: <2026-10-02 Fri 09:00 .+2d/3d>\n");
+        assert_eq!(task_entry("x", Some("TODO"), None, vec![], Some((d("2026-10-02"), Some("09:00".into()), Some(".+2d/3d".into()), None)), None), "* TODO x\nSCHEDULED: <2026-10-02 Fri 09:00 .+2d/3d>\n");
     }
 
     #[test]
@@ -1442,9 +1451,9 @@ mod tests {
     #[test]
     fn planning() {
         let t = "* TODO A\nbody\n";
-        let s = set_planning(t, 1, "SCHEDULED", Some((d("2026-10-02"), None, None)));
+        let s = set_planning(t, 1, "SCHEDULED", Some((d("2026-10-02"), None, None, None)));
         assert_eq!(s, "* TODO A\nSCHEDULED: <2026-10-02 Fri>\nbody\n");
-        let s = set_planning(&s, 0, "DEADLINE", Some((d("2026-10-09"), Some("09:00".into()), None)));
+        let s = set_planning(&s, 0, "DEADLINE", Some((d("2026-10-09"), Some("09:00".into()), None, None)));
         assert_eq!(s, "* TODO A\nSCHEDULED: <2026-10-02 Fri> DEADLINE: <2026-10-09 Fri 09:00>\nbody\n");
         let s = set_planning(&s, 0, "SCHEDULED", None);
         assert_eq!(s, "* TODO A\nDEADLINE: <2026-10-09 Fri 09:00>\nbody\n");
@@ -1535,9 +1544,9 @@ mod tests {
     #[test]
     fn dates() {
         let t = d("2026-10-02"); // Friday
-        assert_eq!(read_date("", t), Some((t, None, None)));
+        assert_eq!(read_date("", t), Some((t, None, None, None)));
         assert_eq!(read_date("+3d", t).unwrap().0, d("2026-10-05"));
-        assert_eq!(read_date("+1w 14:00", t), Some((d("2026-10-09"), Some("14:00".into()), None)));
+        assert_eq!(read_date("+1w 14:00", t), Some((d("2026-10-09"), Some("14:00".into()), None, None)));
         assert_eq!(read_date("mon", t).unwrap().0, d("2026-10-05"));
         assert_eq!(read_date("fri", t).unwrap().0, d("2026-10-09"));
         assert_eq!(read_date("12-24", t).unwrap().0, d("2026-12-24"));
@@ -1550,13 +1559,20 @@ mod tests {
         }
         assert_eq!(read_date("fri 9:30", t).unwrap().1.as_deref(), Some("09:30"));
         assert_eq!(read_date("fri 10:00-11:30", t).unwrap().1.as_deref(), Some("10:00-11:30"));
-        assert_eq!(read_date("8:15", t), Some((t, Some("08:15".into()), None)));
+        assert_eq!(read_date("8:15", t), Some((t, Some("08:15".into()), None, None)));
         // One repeater may follow the date and/or time (#449).
-        assert_eq!(read_date("fri +1w", t), Some((d("2026-10-09"), None, Some("+1w".into()))));
-        assert_eq!(read_date("mon 9:00 .+1d", t), Some((d("2026-10-05"), Some("09:00".into()), Some(".+1d".into()))));
-        assert_eq!(read_date("today ++1m", t), Some((t, None, Some("++1m".into()))));
+        assert_eq!(read_date("fri +1w", t), Some((d("2026-10-09"), None, Some("+1w".into()), None)));
+        assert_eq!(read_date("mon 9:00 .+1d", t), Some((d("2026-10-05"), Some("09:00".into()), Some(".+1d".into()), None)));
+        assert_eq!(read_date("today ++1m", t), Some((t, None, Some("++1m".into()), None)));
         assert_eq!(read_date("today .+2d/3d", t).unwrap().2.as_deref(), Some(".+2d/3d"));
-        for bad in ["fri +1w +1d", "fri +1x", "fri -1w", "fri 9:00 9:30"] {
+        for bad in ["fri +1w +1d", "fri +1x", "fri 9:00 9:30"] {
+            assert_eq!(read_date(bad, t), None, "{bad}");
+        }
+        // One warning cookie may follow too (#461); a leading "-3d" stays a date.
+        assert_eq!(read_date("fri -3d", t), Some((d("2026-10-09"), None, None, Some("-3d".into()))));
+        assert_eq!(read_date("fri 14:00 +1w -2d", t), Some((d("2026-10-09"), Some("14:00".into()), Some("+1w".into()), Some("-2d".into()))));
+        assert_eq!(read_date("-3d", t), Some((d("2026-09-29"), None, None, None)));
+        for bad in ["fri -3d -1w", "fri -3x", "fri -3", "fri --3d"] {
             assert_eq!(read_date(bad, t), None, "{bad}");
         }
     }
