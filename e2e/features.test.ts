@@ -428,7 +428,7 @@ describe("Task keys", () => {
   before(async () => {
     d = await launch({
       files: ({ notes }) => {
-        writeFileSync(join(notes, "keys.org"), `* TODO Shift me\nSCHEDULED: ${day(0)}\n* TODO [#B] Rank me\nSCHEDULED: ${day(0)}\n* TODO Due me\nSCHEDULED: ${day(0)}\n`);
+        writeFileSync(join(notes, "keys.org"), `* TODO Shift me\nSCHEDULED: ${day(0)}\n* TODO [#B] Rank me\nSCHEDULED: ${day(0)}\n* TODO Due me\nSCHEDULED: ${day(0)}\n* TODO Finish me\nSCHEDULED: ${day(0)}\n`);
         writeFileSync(join(notes, "minutes.org"), "#+title: Minutes\n\nIntro line.\nThe quarterly budget review happened on Tuesday.\nOutro line.\n");
       },
     });
@@ -468,6 +468,18 @@ describe("Task keys", () => {
     await find(".agenda h1", t.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" }));
     await browser.keys(".");
     await find(".agenda h1", "Today");
+  });
+
+  it("x then c lists the task under today's Done group, with its close time", async () => {
+    await select("Finish me");
+    await browser.keys("x");
+    await fileMatches(file(), (s) => /\* DONE Finish me\n[^*]*CLOSED: \[/.test(s), "task not closed");
+    await browser.keys("c");
+    await find(".agenda .logh", "Done");
+    await browser.waitUntil(async () => (await texts(".agenda .logh ~ .row")).some((t) => /Finish me[\s\S]*\d\d:\d\d/.test(t)), { timeoutMsg: "done task not under Done with its time" });
+    assert.equal((await texts(".agenda .row .title")).filter((t) => t === "Finish me").length, 1, "done task listed twice");
+    await browser.keys("c");
+    await browser.waitUntil(async () => !(await texts(".agenda .logh")).length, { timeoutMsg: "c didn't hide the Done group" });
   });
 
   it("Ctrl+Shift+F finds a line by words in any order and opens the note there", async () => {

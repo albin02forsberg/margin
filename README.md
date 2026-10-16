@@ -211,6 +211,11 @@ org's `org-log-done 'time`; reopening it removes the stamp. Turn this off with
 **Record when tasks are done** (`log_done = false`); the board's Done column
 then only shows what you finished from the board in this session.
 
+`c` (or the **Done** button) in Today adds a **Done** group under each day:
+the tasks closed that day and when, like org agenda's log mode. In the week
+view that is a log of the week's work. It reads the `CLOSED:` stamps, so it
+needs **Record when tasks are done**.
+
 Today warns about a deadline ("Due in 5d") 14 days ahead. A warning cookie
 sets a deadline's own period, as in org: `DEADLINE: <2026-10-30 Fri -3d>`
 warns 3 days ahead, `-2w` two weeks, `-0d` only on the day. Rescheduling keeps it (and any repeater).

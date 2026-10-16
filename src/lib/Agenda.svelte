@@ -46,7 +46,7 @@
   ];
   const MORE: [string, string][] = [
     ["j / k", "Move selection"], ["< / >", "Reschedule a day earlier / later"], ["+ / -", "Raise / lower priority"],
-    ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["H / L", "Board: move to the column left / right"], ["h / l", "Previous / next period"],
+    ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["H / L", "Board: move to the column left / right"], ["h / l", "Previous / next period"],
     [".", "Jump to today"], ["D", "Go to a date"], ["/", "Filter"], ["r", "Refresh"], ["?", "Toggle this help"],
   ];
 </script>
@@ -59,10 +59,12 @@
   import { hm, worked } from "./clock";
   import { columns, moveTo } from "./board";
   import { chips } from "./chips";
+  import { doneLog, withLog } from "./donelog";
 
-  /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions. */
-  let { mode, api, active, reload, todo, done, query, title, time }: {
-    mode: "agenda" | "todo"; api: AgendaApi; active: boolean; reload: number; todo: string[]; done: string[]; query?: string; title?: string; time?: TimeApi;
+  /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions.
+   *  LOGDONE: config `log_done` (the Done log needs its CLOSED: stamps). */
+  let { mode, api, active, reload, todo, done, query, title, time, logDone = false }: {
+    mode: "agenda" | "todo"; api: AgendaApi; active: boolean; reload: number; todo: string[]; done: string[]; query?: string; title?: string; time?: TimeApi; logDone?: boolean;
   } = $props();
 
   const stored = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -84,13 +86,17 @@
   const doneHere = new Set<string>();
   const keyOf = (it: AgendaItem) => `${it.path}\n${it.title}`;
   let doneItems = $state.raw<AgendaItem[]>([]);
+  /** Today's Done log (key c, #424): a "Done" group per day of the tasks closed that day. */
+  let logOn = $state(stored("agenda-log", "") === "1");
+  const logShown = $derived(mode === "agenda" && logOn);
+  let logItems = $state.raw<AgendaItem[]>([]);
 
   const today = $derived(iso(now));
   const isDone = (it: AgendaItem) => !!it.keyword && done.includes(it.keyword);
   const days = $derived(Array.from({ length: span }, (_, i) => addDays(start, i)));
   const shown = $derived.by(() => {
     const f = filter.toLowerCase();
-    const all = boardOn ? [...items, ...doneItems] : items;
+    const all = boardOn ? [...items, ...doneItems] : logShown ? withLog(items, logItems) : items;
     let xs = f ? all.filter((i) => `${i.keyword ?? ""} ${i.title} ${i.tags.join(" ")} ${(i.inherited ?? []).join(" ")} ${i.category}`.toLowerCase().includes(f)) : all;
     if (mode === "todo") {
       const rank = (k: string | null) => { const r = todo.indexOf(k ?? ""); return r < 0 ? 99 : r; };
@@ -144,7 +150,7 @@
   const tcRun = (name: string) => api.act(async () => { await time!.run(name); root?.focus(); });
   /** Chips strip (Day view): the day's timed items and the running clock; a chip's `i` indexes `shown`. */
   const strip = $derived(mode === "agenda" && span === 1
-    ? chips(shown, iso(start), today, `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`, isDone, tc?.project != null ? tc : null) : []);
+    ? chips(shown.filter((i) => i.kind !== "closed"), iso(start), today, `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`, isDone, tc?.project != null ? tc : null) : []);
   const elapsed = (since: string) => hm(Math.max(0, now.getTime() - Date.parse(since)) / 3_600_000);
 
   async function refresh() {
@@ -155,12 +161,14 @@
     doneItems = boardOn && query == null && done[0]
       ? (await invoke<AgendaItem[]>("search_todos", { query: `todo:"${done[0]}"` }))
         .filter((i) => (i.closed ?? "").slice(0, 10) >= wk || doneHere.has(keyOf(i))) : [];
+    logItems = logShown && logDone
+      ? doneLog((await invoke<AgendaItem[]>("search_todos", { query: `closed:>=${iso(start)} closed:<=${iso(addDays(start, span - 1))}` })).filter(isDone)) : [];
     sel = Math.min(sel, Math.max(0, shown.length - 1));
     await loadClock();
   }
 
   $effect(() => {
-    void reload, start, span, boardOn;
+    void reload, start, span, boardOn, logShown;
     if (active) api.act(refresh);
   });
   $effect(() => {
@@ -179,6 +187,10 @@
     span = n;
     start = n === 7 ? monday(start) : (iso(monday(new Date())) === iso(start) ? new Date() : start);
     try { localStorage.setItem("agenda-span", String(n)); } catch {}
+  }
+  function setLog(on: boolean) {
+    logOn = on;
+    try { localStorage.setItem("agenda-log", on ? "1" : ""); } catch {}
   }
   const move = (d: number) => (start = addDays(start, d * span));
   async function goTo() {
@@ -248,6 +260,7 @@
       case "-": op("priority-down"); break;
       case "n": api.newTask(dayInput()); break;
       case "u": api.act(async () => { await api.undo(); await refresh(); }); break;
+      case "c": if (mode === "agenda") setLog(!logOn); break;
       case "v": if (mode === "agenda") setSpan(span === 1 ? 7 : 1); else setBoard(!board); break;
       case "H": if (boardOn) shift(-1); break;
       case "L": if (boardOn) shift(1); break;
@@ -338,6 +351,7 @@
         <button onclick={() => move(-1)} title="Previous (h)">‹</button>
         <button onclick={goToday} title="Today (.)">Today</button>
         <button onclick={() => move(1)} title="Next (l)">›</button>
+        <button class="toggle" class:on={logOn} onclick={() => setLog(!logOn)} title="Show tasks done each day (c)" aria-pressed={logOn}>Done</button>
       {:else}
         <div class="seg" title="List / board (v)">
           <button class:on={!board} onclick={() => setBoard(false)}>List</button>
@@ -405,6 +419,7 @@
     </div>
   {:else}
   <div class="list">
+    {#if logShown && !logDone}<p class="hint">Turn on “Record when tasks are done” in Settings to list the tasks done each day here.</p>{/if}
     {#each groups as g (g.key)}
       {@const ni = g.today ? nowIndex(g.rows) : -1}
       {#if g.rows.length || (span === 7 && mode === "agenda")}
@@ -413,6 +428,7 @@
             <h2 class:today={g.today}>{g.title} <small>{g.sub}</small>{#if g.rows.length}<small class="n">{g.rows.length}</small>{/if}</h2>
           {/if}
           {#each g.rows as { it, i }, j (i)}
+            {#if it.kind === "closed" && g.rows[j - 1]?.it.kind !== "closed"}<h3 class="logh">Done</h3>{/if}
             {#if j === ni}<div class="now"><span>now {String(now.getHours()).padStart(2, "0")}:{String(now.getMinutes()).padStart(2, "0")}</span></div>{/if}
             {@render row(it, i)}
           {/each}
@@ -559,6 +575,9 @@
   .kmeta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); }
   .now { display: flex; align-items: center; gap: var(--s2); color: var(--accent); font-size: var(--fs-xs); margin: 2px 0; }
   .now::after { content: ""; flex: 1; border-top: 1px dashed var(--accent); }
+  .controls .toggle.on { background: var(--sel); font-weight: 500; }
+  .logh { font-size: var(--fs-sm); font-weight: 600; color: var(--done); margin: var(--s2) 0 2px; padding: 0 var(--s2); }
+  .hint { color: var(--dim); font-size: var(--fs-sm); margin: 0 0 0 var(--s2); }
   .none { color: var(--dim); margin: 0 0 0 var(--s2); font-size: var(--fs-sm); }
   .empty { color: var(--dim); text-align: center; margin-top: 15vh; }
   kbd { font: var(--fs-xs) var(--mono); background: var(--active); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--s1); margin-right: 5px; color: var(--fg); }
