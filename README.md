@@ -105,8 +105,8 @@ adding tests, raise the baseline with `npm run coverage:ratchet -- --write`
 The README screenshots come from the same setup: `npm run screenshots` (same
 requirements) starts the app on a made-up demo dataset and writes
 `docs/screenshots/*.png`; or run the **Screenshots** workflow (Actions → Run
-workflow) and download its artifact. Shrink them before committing, e.g.
-`magick mogrify -dither None -colors 256 -strip docs/screenshots/*.png`.
+workflow) and download its artifact, already shrunk. Shrink local ones before
+committing, e.g. `magick mogrify -dither None -colors 256 -strip docs/screenshots/*.png`.
 
 CI runs the checks and tests on every push and PR. To release, bump the
 version in `src-tauri/tauri.conf.json`, then push a tag (`git tag v0.2.0 &&

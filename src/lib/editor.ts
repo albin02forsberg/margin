@@ -759,7 +759,10 @@ const theme = EditorView.theme({
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": { backgroundColor: "var(--sel) !important" },
   ".cm-fat-cursor": { background: "var(--accent) !important", color: "var(--bg) !important" },
   "&:not(.cm-focused) .cm-fat-cursor": { outline: "1px solid var(--accent)", background: "none !important" },
-  ".cm-panels": { backgroundColor: "var(--panel)", color: "var(--fg)", fontFamily: "var(--mono)" },
+  // the Vim status line: part of the card (CodeMirror's light default draws a #ddd edge and its own fill)
+  ".cm-panels": { backgroundColor: "transparent", color: "var(--fg)", fontFamily: "var(--mono)" },
+  ".cm-panels.cm-panels-bottom": { borderTop: "1px solid var(--border)" },
+  ".cm-vim-panel": { padding: "2px 12px" },
   ".cm-vim-panel input": { color: "var(--fg)", fontFamily: "var(--mono)" },
 
   // headings

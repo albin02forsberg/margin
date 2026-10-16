@@ -287,7 +287,10 @@ try {
 
   await browser.keys([Key.Ctrl, "4"]);
   await browser.$(".time h1").waitForDisplayed();
+  // Taller, so the Clock / Balance / More lane fits without its last button row clipped.
+  await browser.setWindowSize(1280, 900).catch((e) => console.warn("setWindowSize:", e.message));
   await shot("time");
+  await browser.setWindowSize(1280, 800).catch((e) => console.warn("setWindowSize:", e.message));
 
   await browser.keys([Key.Ctrl, "1"]);
   await browser.keys([Key.Ctrl, "k"]);
