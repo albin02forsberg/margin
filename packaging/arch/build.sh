@@ -9,8 +9,9 @@ id builder &>/dev/null || useradd -m builder
 sed "s/^pkgver=.*/pkgver=$version/" "$(dirname "$0")/PKGBUILD" > "$dir/PKGBUILD"
 chown -R builder "$dir"
 cd "$dir"
-su builder -c 'updpkgsums && makepkg -f --noconfirm'
-namcap PKGBUILD ./*.pkg.tar.zst
-# Install it and check the binary finds every library the depends pull in.
+# --nodeps: nothing compiles, and the builder can't install them; `pacman -U` below pulls them in.
+su builder -c 'updpkgsums && makepkg -f --nodeps --noconfirm'
+# Install it (which proves the depends exist) and check the binary finds every library.
 pacman -U --noconfirm ./*.pkg.tar.zst
+namcap PKGBUILD ./*.pkg.tar.zst
 ! ldd /usr/bin/margin | grep 'not found'
