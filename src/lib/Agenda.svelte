@@ -39,6 +39,7 @@
     ["p", "Priority", "priority"],
     ["t", "Status", "state"],
     ["#", "Tags", "tags"],
+    ["e", "Rename", "title"],
     ["m", "Move to…", "move"],
     ["A", "Archive", "archive"],
     ["I", "Track time", "clockIn"],

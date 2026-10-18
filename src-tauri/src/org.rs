@@ -784,6 +784,11 @@ pub fn cycle_priority(text: &str, line: usize, kw: &Kw, dir: i32) -> String {
     })
 }
 
+/// Replace the title (keyword, priority, tags kept); a blank title is ignored.
+pub fn set_title(text: &str, line: usize, kw: &Kw, title: &str) -> String {
+    edit_heading(text, line, kw, |p| if !title.trim().is_empty() { p.title = title.trim().to_string() })
+}
+
 pub fn set_tags(text: &str, line: usize, kw: &Kw, tags: Vec<String>) -> String {
     edit_heading(text, line, kw, |p| p.tags = tags.into_iter().filter(|t| !t.is_empty()).collect())
 }
@@ -1426,6 +1431,8 @@ mod tests {
         assert_eq!(cycle_priority("* [#A] X", 0, &kw(), 1), "* X");
         assert_eq!(set_priority(t, 0, &kw(), None), "* TODO Task :a:\nbody\n");
         assert_eq!(set_tags(t, 0, &kw(), vec!["x".into(), "y".into()]), "* TODO [#B] Task :x:y:\nbody\n");
+        assert_eq!(set_title(t, 0, &kw(), " New name "), "* TODO [#B] New name :a:\nbody\n");
+        assert_eq!(set_title(t, 0, &kw(), "  "), t);
         assert_eq!(set_keyword(t, 0, &kw(), None, at(), false), "* [#B] Task :a:\nbody\n");
         assert_eq!(heading(t, 1, &kw()).unwrap().title, "Task");
         let s = "* TODO A\nSCHEDULED: <2026-10-02 Fri> DEADLINE: <2026-10-09 Fri +1w>\n";

@@ -453,6 +453,13 @@ describe("Task keys", () => {
     await fileMatches(file(), (s) => s.includes("* TODO [#B] Rank me\n"), "priority not lowered");
   });
 
+  it("e renames a task and keeps its status and priority", async () => {
+    await select("Rank me");
+    await browser.keys("e");
+    await answer("Task title", "Rank me higher");
+    await fileMatches(file(), (s) => s.includes("* TODO [#B] Rank me higher\n"), "task not renamed");
+  });
+
   it("d sets the due date from +3d", async () => {
     await select("Due me");
     await browser.keys("d");
