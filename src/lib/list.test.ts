@@ -1,7 +1,33 @@
 // Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renumber } from "./list.ts";
+import { renumber, itemSwap } from "./list.ts";
+
+/** itemSwap at 1-based line I of TEXT, direction D. */
+const swap = (text: string, i: number, d: -1 | 1) => { const l = text.split("\n"); return itemSwap((j) => l[j - 1], i, d); };
+
+test("itemSwap: item with its nested lines swaps with its sibling", () => {
+  assert.deepEqual(swap("- a\n  - a1\n  text\n- b", 1, 1), [[1, 3], [4, 4]]);
+  assert.deepEqual(swap("- a\n  - a1\n- b\n  - b1", 3, -1), [[1, 2], [3, 4]]);
+});
+
+test("itemSwap: a nested item only moves among its siblings", () => {
+  assert.equal(swap("- a\n  - a1\n  - a2\n- b", 3, 1), "end");
+  assert.deepEqual(swap("- a\n  - a1\n  - a2\n- b", 2, 1), [[2, 2], [3, 3]]);
+});
+
+test("itemSwap: ends, headings, non-items and continuation lines", () => {
+  assert.equal(swap("- a\n- b", 1, -1), "end");
+  assert.equal(swap("- a\n- b", 2, 1), "end");
+  assert.equal(swap("* H\n- a", 1, 1), null);
+  assert.equal(swap("- a\n* H\n- b", 1, 1), "end");
+  assert.equal(swap("- a\n  more\n- b", 2, 1), null);
+});
+
+test("itemSwap: one blank line between items is fine, two end the list", () => {
+  assert.deepEqual(swap("- a\n\n- b", 1, 1), [[1, 1], [3, 3]]);
+  assert.equal(swap("- a\n\n\n- b", 1, 1), "end");
+});
 
 /** Apply renumber at line I of TEXT, return the new text. */
 function fix(text: string, i: number) {

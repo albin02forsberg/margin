@@ -12,7 +12,7 @@ import { highlightTree, classHighlighter } from "@lezer/highlight";
 import { vim, Vim, getCM } from "@replit/codemirror-vim";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import * as tbl from "./orgtable";
-import { renumber } from "./list";
+import { renumber, itemSwap } from "./list";
 import { EMPH, toggleEmphasis } from "./emphasis";
 
 /** Set by the app; vim ex commands, mappings and clicks call through these. */
@@ -522,6 +522,24 @@ export function moveSubtree(v: EditorView, d: -1 | 1): boolean {
   const offset = s.selection.main.head - s.doc.line(h).from;
   const newStart = d > 0 ? from + text(b).length + 1 : from;
   v.dispatch({ changes: { from, to, insert: text(b) + "\n" + text(a) }, selection: { anchor: newStart + offset } });
+  return true;
+}
+
+/** Swap the list item at the cursor (with its nested lines) with its next/previous
+ *  sibling, renumbering ordered lists. false off an item line (a continuation line
+ *  included) so the caller can fall back to moveSubtree; true (no-op) at either end. */
+export function moveItem(v: EditorView, d: -1 | 1): boolean {
+  const s = v.state, ln = curLine(v);
+  const r = itemSwap((i) => (i >= 1 && i <= s.doc.lines ? s.doc.line(i).text : undefined), ln.number, d);
+  if (r === null) return false;
+  if (r === "end") return true;
+  const [a, b] = r;
+  const slice = (x: [number, number]) => s.sliceDoc(s.doc.line(x[0]).from, s.doc.line(x[1]).to);
+  const from = s.doc.line(a[0]).from;
+  const gap = s.sliceDoc(s.doc.line(a[1]).to, s.doc.line(b[0]).from);
+  const insert = slice(b) + gap + slice(a);
+  const head = (d > 0 ? from + slice(b).length + gap.length : from) + s.selection.main.head - ln.from;
+  withRenumber(v, { changes: { from, to: s.doc.line(b[1]).to, insert }, selection: { anchor: head } }, a[0]);
   return true;
 }
 
