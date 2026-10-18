@@ -470,10 +470,12 @@ pub fn agenda(files: &[Arc<OrgFile>], kw: &Kw, start: NaiveDate, days: i64, toda
         for h in f.headlines.iter().filter(|h| !h.archived()) {
             let done = h.keyword.as_deref().is_some_and(|k| kw.is_done(k));
             if let Some(s) = &h.scheduled {
-                let overdue = !done && s.date < today && today_in;
+                // A `-Nd` cookie on SCHEDULED is org's delay: hide the first occurrence until N days after its date.
+                let delay = warn_days(s).unwrap_or(0).max(0);
+                let overdue = !done && s.date < today && today_in && today >= s.date + Duration::days(delay);
                 let hb = |d| habit(h, today).filter(|_| d == today);
                 for d in occurrences(s, start, end) {
-                    if !(overdue && d == today) {
+                    if !(overdue && d == today) && !(delay > 0 && d == s.date) {
                         out.push(Item { habit: hb(d), ..item(f, h, d, "scheduled", String::new(), s.span()) });
                     }
                 }
@@ -1228,6 +1230,22 @@ mod tests {
         assert!(got.contains(&("2026-10-03".into(), "timestamp", "Meeting")));
         assert!(got.contains(&("2026-09-28".into(), "scheduled", "Water plants")));
         assert!(!got.iter().any(|g| g.0 == "2026-10-04")); // nothing on Sunday
+    }
+
+    #[test]
+    fn scheduled_delay_cookie() {
+        let sched = |ts: &str, today: &str| {
+            let f = Arc::new(parse(Path::new("/n/x.org"), &format!("* TODO A\nSCHEDULED: <{ts}>\n"), &kw()));
+            let t = d(today);
+            agenda(&[f], &kw(), t, 1, t).iter().filter(|i| i.kind == "scheduled").map(|i| i.label.clone()).collect::<Vec<_>>()
+        };
+        assert_eq!(sched("2026-10-02 Fri -3d", "2026-10-02"), Vec::<String>::new()); // on its date: hidden
+        assert_eq!(sched("2026-10-02 Fri -3d", "2026-10-04"), Vec::<String>::new());
+        assert_eq!(sched("2026-10-02 Fri -3d", "2026-10-05"), vec!["Scheduled 3d ago"]);
+        assert_eq!(sched("2026-10-02 Fri", "2026-10-02"), vec![""]); // no cookie
+        assert_eq!(sched("2026-10-02 Fri -0d", "2026-10-02"), vec![""]);
+        // Only the first occurrence of a repeater is delayed.
+        assert_eq!(sched("2026-10-02 Fri +1w -3d", "2026-10-09"), vec!["Scheduled 7d ago"]);
     }
 
     #[test]
