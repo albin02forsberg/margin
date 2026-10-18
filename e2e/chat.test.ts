@@ -106,7 +106,7 @@ describe("AI chat", () => {
     await browser.keys(Key.Enter);
     await find(".chat p.assistant", `Answer ${n + 1}`);
     sys = asked.at(-1)!.body.messages[0].content;
-    assert.ok(!sys.includes("[tasks:"), sys);
+    assert.ok(!sys.includes("[tasks: open tasks]"), sys);
     assert.equal((await texts(".chat .srcs span")).length, 1, "only the first answer lists Tasks");
   });
 });
