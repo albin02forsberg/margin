@@ -1245,7 +1245,7 @@ mod tests {
         assert_eq!(sched("2026-10-02 Fri", "2026-10-02"), vec![""]); // no cookie
         assert_eq!(sched("2026-10-02 Fri -0d", "2026-10-02"), vec![""]);
         // Only the first occurrence of a repeater is delayed.
-        assert_eq!(sched("2026-10-02 Fri +1w -3d", "2026-10-09"), vec![""]);
+        assert_eq!(sched("2026-10-02 Fri +1w -3d", "2026-10-09"), vec!["Scheduled 7d ago"]);
     }
 
     #[test]
