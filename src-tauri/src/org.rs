@@ -474,7 +474,13 @@ pub fn agenda(files: &[Arc<OrgFile>], kw: &Kw, start: NaiveDate, days: i64, toda
                 let delay = warn_days(s).unwrap_or(0).max(0);
                 let overdue = !done && s.date < today && today_in && today >= s.date + Duration::days(delay);
                 let hb = |d| habit(h, today).filter(|_| d == today);
-                for d in occurrences(s, start, end) {
+                let mut ds = occurrences(s, start, end);
+                // The delayed first occurrence lands on date+N (unless a repeater already hits it).
+                let moved = s.date + Duration::days(delay);
+                if delay > 0 && (start..=end).contains(&moved) && !ds.contains(&moved) {
+                    ds.push(moved);
+                }
+                for d in ds {
                     if !(overdue && d == today) && !(delay > 0 && d == s.date) {
                         out.push(Item { habit: hb(d), ..item(f, h, d, "scheduled", String::new(), s.span()) });
                     }
@@ -1258,6 +1264,26 @@ mod tests {
         assert_eq!(sched("2026-10-02 Fri -0d", "2026-10-02"), vec![""]);
         // Only the first occurrence of a repeater is delayed.
         assert_eq!(sched("2026-10-02 Fri +1w -3d", "2026-10-09"), vec!["Scheduled 7d ago"]);
+    }
+
+    #[test]
+    fn scheduled_delay_future_range() {
+        let days = |ts: &str, start: &str, n: i64, today: &str| {
+            let f = Arc::new(parse(Path::new("/n/x.org"), &format!("* TODO A\nSCHEDULED: <{ts}>\n"), &kw()));
+            agenda(&[f], &kw(), d(start), n, d(today)).iter().filter(|i| i.kind == "scheduled").map(|i| (i.date.to_string(), i.label.clone())).collect::<Vec<_>>()
+        };
+        let p = |a: &str, l: &str| (a.to_string(), l.to_string());
+        // Week not containing today: shown on date+N, not on date.
+        assert_eq!(days("2026-10-12 Mon -3d", "2026-10-12", 7, "2026-10-01"), vec![p("2026-10-15", "")]);
+        // Date+N still ahead of today inside a range with today.
+        assert_eq!(days("2026-10-02 Fri -3d", "2026-10-02", 7, "2026-10-02"), vec![p("2026-10-05", "")]);
+        // Today == date+N: exactly one (overdue label) item.
+        assert_eq!(days("2026-10-02 Fri -3d", "2026-10-02", 7, "2026-10-05"), vec![p("2026-10-05", "Scheduled 3d ago")]);
+        // Repeater: first on date+3, then date+7, date+14.
+        let r = days("2026-10-02 Fri +1w -3d", "2026-10-01", 21, "2026-09-01");
+        assert_eq!(r, vec![p("2026-10-05", ""), p("2026-10-09", ""), p("2026-10-16", "")]);
+        // Moved date coinciding with a repeat occurrence is not doubled.
+        assert_eq!(days("2026-10-02 Fri +1d -1d", "2026-10-02", 3, "2026-09-01"), vec![p("2026-10-03", ""), p("2026-10-04", "")]);
     }
 
     #[test]
