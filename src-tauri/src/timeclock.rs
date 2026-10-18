@@ -406,10 +406,20 @@ impl Tc {
 
     /// Change a completed session's description and duration. The end time
     /// moves by the duration delta, which stays correct across breaks and midnight.
+    /// A moved end must stay after the previous event, not pass the next one or now.
     pub fn edit_session(&self, line: usize, note: &str, old_hours: f64, new_hours: f64) -> Result<(), String> {
-        let ev = self.events().into_iter().find(|(i, _)| *i == line).map(|(_, e)| e);
-        let Some(Event::Out { t, .. }) = ev else { return Err("not a clock-out line".into()) };
-        let t = t + Duration::seconds(((new_hours - old_hours) * 3600.0).round() as i64);
+        let events = self.events();
+        let Some(pos) = events.iter().position(|(i, _)| *i == line) else { return Err("not a clock-out line".into()) };
+        let Event::Out { t: old, .. } = &events[pos].1 else { return Err("not a clock-out line".into()) };
+        let t = *old + Duration::seconds(((new_hours - old_hours) * 3600.0).round() as i64);
+        if t != *old {
+            if new_hours.is_nan() || new_hours <= 0.0 || pos == 0 || t <= events[pos - 1].1.t() {
+                return Err("A session must last longer than zero hours.".into());
+            }
+            if t > now() || events.get(pos + 1).is_some_and(|(_, e)| t > e.t()) {
+                return Err("That would end in the future or overlap the next entry.".into());
+            }
+        }
         self.rewrite_line(line, &Event::Out { t, note: note.trim().into() })
     }
 
@@ -1474,6 +1484,29 @@ mod tests {
         // Back to back is fine, and the running session stays last.
         tc.add_session(dt("2024-10-02 07:00"), dt("2024-10-02 08:00"), "A", None, "").unwrap();
         assert_eq!(tc.current().unwrap().1, "B");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn edit_session_bounds() {
+        let dir = std::env::temp_dir().join(format!("tc-edit-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), expected: 8.0 };
+        let i = |t: &str| Event::In { t: dt(t), project: "A".into(), task: String::new() };
+        let o = |t: &str| Event::Out { t: dt(t), note: "x".into() };
+        let log = [i("2024-10-01 09:00"), Event::Break { t: dt("2024-10-01 10:00") }, i("2024-10-01 11:00"), o("2024-10-01 12:00"), i("2024-10-01 13:00"), o("2024-10-01 14:00")];
+        log.iter().for_each(|e| tc.append(e).unwrap());
+        let out_t = |l| tc.events().into_iter().find(|(i, _)| *i == l).unwrap().1.t();
+        for h in [0.0, -1.0, 0.5] {
+            assert!(tc.edit_session(3, "x", 2.0, h).is_err(), "{h}"); // 0.5 h ends at 10:30, before the resume
+        }
+        assert!(tc.edit_session(3, "x", 2.0, 3.5).is_err()); // past the 13:00 clock-in
+        assert!(tc.edit_session(5, "x", 1.0, 1e6).is_err()); // future
+        assert_eq!(out_t(3), dt("2024-10-01 12:00"));
+        tc.edit_session(3, "x", 2.0, 1.5).unwrap(); // shortening
+        assert_eq!(out_t(3), dt("2024-10-01 11:30"));
+        tc.edit_session(3, "x", 1.5, 3.0).unwrap(); // back to back with the next in
+        assert_eq!(out_t(3), dt("2024-10-01 13:00"));
         let _ = fs::remove_dir_all(&dir);
     }
 

@@ -1398,7 +1398,7 @@
     const note = await ask("Description", s.desc);
     if (note == null) return;
     const h = await ask(`Duration in hours (now ${s.hours.toFixed(2)})`, s.hours.toFixed(2));
-    if (h == null || isNaN(+h)) return;
+    if (h == null || h.trim() === "" || isNaN(+h)) return;
     await tcDo("tc_edit_session", { line: s.line, note, oldHours: s.hours, newHours: +h });
   }
 
