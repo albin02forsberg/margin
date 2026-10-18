@@ -682,14 +682,15 @@ fn task_text(todo: &[String], title: &str, priority: Option<&str>, tags: Vec<Str
 
 /// Human preview of a date input, for live feedback while typing.
 #[tauri::command]
-fn date_preview(input: String) -> String {
-    date_preview_at(&input, today())
+fn date_preview(input: String, kind: Option<String>) -> String {
+    date_preview_at(&input, today(), kind.as_deref() == Some("SCHEDULED"))
 }
 
-fn date_preview_at(input: &str, today: NaiveDate) -> String {
+/// SCHEDULED: a `-3d` cookie delays the entry instead of warning ahead.
+fn date_preview_at(input: &str, today: NaiveDate, scheduled: bool) -> String {
     match opt_date_at(input, today) {
         Ok(None) => String::new(),
-        Ok(Some((d, t, r, w))) => [Some(d.format("%A %-d %B %Y").to_string()), t, r.as_deref().and_then(repeat_text), w.as_deref().and_then(warn_text)]
+        Ok(Some((d, t, r, w))) => [Some(d.format("%A %-d %B %Y").to_string()), t, r.as_deref().and_then(repeat_text), w.as_deref().and_then(|w| warn_text(w, scheduled))]
             .into_iter().flatten().collect::<Vec<_>>().join(", "),
         Err(_) => "✗ can't read this date".into(),
     }
@@ -708,12 +709,13 @@ fn repeat_text(r: &str) -> Option<String> {
     })
 }
 
-/// "-3d" -> "warn 3 days before", "-1w" -> "warn 1 week before".
-fn warn_text(w: &str) -> Option<String> {
+/// "-3d" -> "warn 3 days before", "-1w" -> "warn 1 week before"; SCHEDULED: "show 3 days later".
+fn warn_text(w: &str, scheduled: bool) -> Option<String> {
     let w = w.strip_prefix('-')?;
     let (n, u) = w.split_at(w.len().checked_sub(1)?);
     let unit = match u { "d" => "day", "w" => "week", "m" => "month", _ => "year" };
-    Some(format!("warn {n} {unit}{} before", if n == "1" { "" } else { "s" }))
+    let (verb, rel) = if scheduled { ("show", "later") } else { ("warn", "before") };
+    Some(format!("{verb} {n} {unit}{} {rel}", if n == "1" { "" } else { "s" }))
 }
 
 #[tauri::command]
@@ -2033,16 +2035,17 @@ mod tests {
         assert_eq!((opt_date_at("", t), opt_date_at("  ", t)), (Ok(None), Ok(None)));
         assert_eq!(opt_date_at("+1d 14:00", t), Ok(Some((iso("2026-10-13"), Some("14:00".into()), None, None))));
         assert_eq!(opt_date_at("soon", t), Err("can't read date \"soon\"".into()));
-        assert_eq!(date_preview_at(" ", t), "");
-        assert_eq!(date_preview_at("fri", t), "Friday 16 October 2026");
-        assert_eq!(date_preview_at("fri 14:00", t), "Friday 16 October 2026, 14:00");
-        assert_eq!(date_preview_at("soon", t), "✗ can't read this date");
-        assert_eq!(date_preview_at("fri 2pm", t), "✗ can't read this date");
-        assert_eq!(date_preview_at("fri +1w", t), "Friday 16 October 2026, every week");
-        assert_eq!(date_preview_at("fri 9:00 ++2d", t), "Friday 16 October 2026, 09:00, every 2 days, catching up");
-        assert_eq!(date_preview_at("today .+1m", t), "Monday 12 October 2026, 1 month after done");
-        assert_eq!(date_preview_at("fri -3d", t), "Friday 16 October 2026, warn 3 days before");
-        assert_eq!(date_preview_at("fri 9:00 +1w -1w", t), "Friday 16 October 2026, 09:00, every week, warn 1 week before");
+        assert_eq!(date_preview_at(" ", t, false), "");
+        assert_eq!(date_preview_at("fri", t, false), "Friday 16 October 2026");
+        assert_eq!(date_preview_at("fri 14:00", t, false), "Friday 16 October 2026, 14:00");
+        assert_eq!(date_preview_at("soon", t, false), "✗ can't read this date");
+        assert_eq!(date_preview_at("fri 2pm", t, false), "✗ can't read this date");
+        assert_eq!(date_preview_at("fri +1w", t, false), "Friday 16 October 2026, every week");
+        assert_eq!(date_preview_at("fri 9:00 ++2d", t, false), "Friday 16 October 2026, 09:00, every 2 days, catching up");
+        assert_eq!(date_preview_at("today .+1m", t, false), "Monday 12 October 2026, 1 month after done");
+        assert_eq!(date_preview_at("fri -3d", t, false), "Friday 16 October 2026, warn 3 days before");
+        assert_eq!(date_preview_at("fri -3d", t, true), "Friday 16 October 2026, show 3 days later");
+        assert_eq!(date_preview_at("fri 9:00 +1w -1w", t, false), "Friday 16 October 2026, 09:00, every week, warn 1 week before");
     }
 
     #[test]

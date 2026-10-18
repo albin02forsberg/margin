@@ -50,10 +50,10 @@
     }
   }
 
-  const preview = (s: string) => invoke<string>("date_preview", { input: s }).catch(() => "");
+  const preview = (s: string, kind?: string) => invoke<string>("date_preview", { input: s, kind }).catch(() => "");
   $effect(() => {
     const s = spec.scheduled;
-    const t = setTimeout(async () => (schedPreview = await preview(s)), 100);
+    const t = setTimeout(async () => (schedPreview = await preview(s, "SCHEDULED")), 100);
     return () => clearTimeout(t);
   });
   $effect(() => {

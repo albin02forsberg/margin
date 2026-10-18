@@ -224,6 +224,8 @@ Today warns about a deadline ("Due in 5d") 14 days ahead. A warning cookie
 sets a deadline's own period, as in org: `DEADLINE: <2026-10-30 Fri -3d>`
 warns 3 days ahead, `-2w` two weeks, `-0d` only on the day. Type it after the
 date (`fri -3d`, `fri +1w -2d`) to set one; rescheduling without one keeps it (and any repeater).
+On SCHEDULED the same cookie is org's delay: `fri -3d` hides the task until 3
+days after its date (first occurrence only).
 
 Today has a **Clock** column next to the agenda: the running clock (project,
 task, time since you clocked in, Pause / Switch / Stop or Start), **Worked
