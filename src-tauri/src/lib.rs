@@ -1320,7 +1320,7 @@ fn ai_chat(app: AppHandle, s: State<App>, messages: Vec<ai::Msg>, note: Option<(
     }
     let root = c.notes();
     let ex = |p: &Path| retrieve::excluded(p, &root, &c.ai_exclude);
-    let note = note.filter(|_| !open.as_deref().is_some_and(&ex));
+    let note = note.filter(|_| !open.as_deref().is_some_and(ex));
     if let Some(v) = &mut sources {
         v.retain(|s| s.kind != "note" || !ex(s.path.as_path()));
     }
