@@ -636,6 +636,7 @@
       const t = await ask("Task title", h.title);
       if (t?.trim()) await edit(loc, "title", t);
     },
+    link: (loc) => copyHeadingLink(loc),
     move: (loc) => moveTask(loc),
     archive: (loc) => archiveTask(loc),
     later: (loc, it) => edit(loc, "shift", `${dateKind(it)} 1`),
@@ -643,6 +644,16 @@
     clockIn: async (loc, it) => clockIn(it?.category ?? (await call("org_context", { path: loc.path, text: await textOf(loc.path), line: loc.line })).category),
     open: (loc) => openFile(loc.path, loc.line),
   };
+
+  /** Copy an `[[id:…][Heading]]` link to the heading at LOC, adding an :ID: property when it has none. */
+  async function copyHeadingLink(loc: Loc) {
+    let id = "", title = "";
+    await toFile(loc.path, async (text) => { const [t, i, ti] = await call<[string, string, string]>("notes_heading_id", { text, line: loc.line }); id = i; title = ti; return t; });
+    try {
+      await navigator.clipboard.writeText(`[[id:${id}][${(title || loc.path.split("/").pop()!).replace(/\]/g, ")")}]]`);
+      flash(`Copied link to ${title || "note"}`);
+    } catch { flash("Couldn't copy to the clipboard."); }
+  }
 
   function atCursor(op: string, arg?: number) {
     const loc = editorLoc();
@@ -1567,10 +1578,7 @@
     { label: "Note: copy file path", leader: "n y", run: () => act(async () => { if (!inFile()) return flash("Open a note first."); await navigator.clipboard.writeText(tab.path!); flash(`Copied ${tab.path}`); }) },
     { label: "Note: copy link to heading at cursor", leader: "n w", run: () => act(async () => {
       if (!inFile()) return flash("Open a note first.");
-      let id = "", title = "";
-      await toFile(tab.path!, async (text) => { const [t, i, ti] = await call<[string, string, string]>("notes_heading_id", { text, line: curLine0() }); id = i; title = ti; return t; });
-      await navigator.clipboard.writeText(`[[id:${id}][${(title || tab.path!.split("/").pop()!).replace(/\]/g, ")")}]]`);
-      flash(`Copied link to ${title || "note"}`);
+      await copyHeadingLink({ path: tab.path!, line: curLine0() });
     }) },
     { label: "Today's journal", keys: ["Ctrl+J"], leader: "j", run: () => journal() },
     { label: "Journal for another day…", leader: "n J", run: journalPick },

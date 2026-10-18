@@ -460,6 +460,12 @@ describe("Task keys", () => {
     await fileMatches(file(), (s) => s.includes("* TODO [#B] Rank me higher\n"), "task not renamed");
   });
 
+  it("y copies a link to the task, which gives it an :ID:", async () => {
+    await select("Finish me");
+    await browser.keys("y");
+    await fileMatches(file(), (s) => /\* TODO Finish me\n[^*]*:PROPERTIES:\n:ID: +\S+\n:END:/.test(s), "task got no :ID: drawer");
+  });
+
   it("d sets the due date from +3d", async () => {
     await select("Due me");
     await browser.keys("d");
