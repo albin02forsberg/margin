@@ -336,7 +336,7 @@ Vim keys everywhere. On top of that:
 | Alt+Enter | New heading, or next list item |
 | Alt+Shift+Enter | New task heading |
 | Alt+H / Alt+L (+Shift) | Promote / demote heading (with children) |
-| Alt+J / Alt+K | Move heading down / up |
+| Alt+J / Alt+K | Move heading, list item (with nested lines; renumbers) or table row down / up |
 | Shift+← / → | Change task status, or move a date by a day |
 | Shift+↑ / ↓ | Change priority, or the date part under the cursor |
 | Enter, gf, Ctrl+click | Follow a link (relative `file:` links like `../other/note.org` resolve from the note's folder) |
