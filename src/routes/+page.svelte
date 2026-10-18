@@ -596,7 +596,7 @@
       items: [
         { label: "Today", value: "today" }, { label: "Tomorrow", value: "tomorrow" }, { label: "Next Monday", value: "mon" },
         { label: "In a week", value: "+1w" },
-        ...(repeat ? [{ label: "Every day", value: "today +1d", detail: "repeats" }, { label: "Every week", value: "today +1w", detail: "repeats" }] : []),
+        ...(repeat ? [{ label: "Every day", value: "today +1d", detail: "repeats" }, { label: "Every week", value: "today +1w", detail: "repeats" }, { label: "Stop repeating", value: "norepeat", detail: "keeps the date" }] : []),
         { label: "No date", value: "rm", detail: "remove" },
       ],
       allowCustom: true,

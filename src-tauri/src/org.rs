@@ -1066,18 +1066,30 @@ fn join(lines: Vec<String>, original: &str) -> String {
     s
 }
 
+/// Sentinel repeater for `set_planning`: write no repeater, drop the old one.
+pub const NO_REPEAT: &str = "norepeat";
+
+/// The KIND (SCHEDULED/DEADLINE) timestamp of the headline at LINE, if any.
+pub fn planning_ts(text: &str, line: usize, kind: &str) -> Option<Ts> {
+    let lines: Vec<String> = text.lines().map(String::from).collect();
+    let hl = headline_at(&lines, line)?;
+    let p = lines.get(hl + 1).filter(|p| is_planning(p))?;
+    TS.captures(&p[p.find(&format!("{kind}:"))?..]).and_then(|c| parse_ts(&c))
+}
+
 /// Set (or with DATE None, remove) SCHEDULED/DEADLINE on the headline at LINE.
 pub fn set_planning(text: &str, line: usize, kind: &str, date: Option<When>) -> String {
     let mut lines: Vec<String> = text.lines().map(String::from).collect();
     let Some(hl) = headline_at(&lines, line) else { return text.to_string() };
     let re = Regex::new(&format!(r"\s*{kind}:\s*<[^>]*>")).unwrap();
     // A new date keeps the old timestamp's repeater and warning cookie unless it brings its own.
-    let old = lines.get(hl + 1).filter(|p| is_planning(p)).and_then(|p| p.find(&format!("{kind}:")).map(|i| &p[i..]));
-    let old = old.and_then(|p| TS.captures(p)).and_then(|c| parse_ts(&c));
+    let old = planning_ts(text, line, kind);
     let new = date.map(|(d, t, r, w)| {
+        let stop = r.as_deref() == Some(NO_REPEAT);
+        let r = r.filter(|_| !stop);
         let mut s = ts_string(d, t.as_deref(), r.as_deref(), None);
         s.pop();
-        if let Some(Ts { repeater, max, .. }) = &old {
+        if let Some(Ts { repeater, max, .. }) = old.as_ref().filter(|_| !stop) {
             if let (None, Some((k, n, u))) = (&r, repeater) {
                 s += &format!(" {k}{n}{u}");
                 if let Some((n, u)) = max {

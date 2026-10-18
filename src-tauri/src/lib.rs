@@ -683,7 +683,14 @@ fn task_text(todo: &[String], title: &str, priority: Option<&str>, tags: Vec<Str
 /// Human preview of a date input, for live feedback while typing.
 #[tauri::command]
 fn date_preview(input: String, kind: Option<String>) -> String {
-    date_preview_at(&input, today(), kind.as_deref() == Some("SCHEDULED"))
+    let scheduled = kind.as_deref() == Some("SCHEDULED");
+    // Planning prompts (kind given) also take a `norepeat` word.
+    if kind.is_some() && input.split_whitespace().any(|w| w == org::NO_REPEAT) {
+        let rest = input.split_whitespace().filter(|w| *w != org::NO_REPEAT).collect::<Vec<_>>().join(" ");
+        let d = date_preview_at(&rest, today(), scheduled);
+        return if d.is_empty() { "no repeat, keeps the date".into() } else if d.starts_with('✗') { d } else { format!("{d}, no repeat") };
+    }
+    date_preview_at(&input, today(), scheduled)
 }
 
 /// SCHEDULED: a `-3d` cookie delays the entry instead of warning ahead.
@@ -796,14 +803,33 @@ fn capture_file(notes: &Path, file: &str, date_input: Option<&str>, now: NaiveDa
     Ok(notes.join(org::fmt_time(t, file).ok_or_else(|| format!("bad date format in {file}"))?))
 }
 
-/// INPUT is org-read-date style; "rm" removes the entry.
+/// INPUT is org-read-date style; "rm" removes the entry; a `norepeat` word drops the
+/// repeater (alone: keeps the date and time).
 #[tauri::command]
 fn org_planning(text: String, line: usize, kind: String, input: String) -> R<String> {
     planning_at(&text, line, &kind, &input, today())
 }
 
 fn planning_at(text: &str, line: usize, kind: &str, input: &str, today: NaiveDate) -> R<String> {
-    let d = if input.trim() == "rm" { None } else { Some(org::read_date(input, today).ok_or("can't parse date")?) };
+    let stop = org::NO_REPEAT;
+    let words: Vec<&str> = input.split_whitespace().collect();
+    let d = if input.trim() == "rm" {
+        None
+    } else if words.contains(&stop) {
+        let rest = words.iter().filter(|w| **w != stop).copied().collect::<Vec<_>>().join(" ");
+        let (date, time, _, warn) = if rest.is_empty() {
+            let old = org::planning_ts(text, line, kind);
+            match old {
+                Some(o) => (o.date, o.span(), None, None),
+                None => return Ok(text.to_string()),
+            }
+        } else {
+            org::read_date(&rest, today).ok_or("can't parse date")?
+        };
+        Some((date, time, Some(stop.to_string()), warn))
+    } else {
+        Some(org::read_date(input, today).ok_or("can't parse date")?)
+    };
     Ok(org::set_planning(text, line, kind, d))
 }
 
@@ -2061,6 +2087,13 @@ mod tests {
         assert_eq!(planning_at("* TODO A\n", 0, "DEADLINE", "+1d", t), Ok(set.into()));
         assert_eq!(planning_at(set, 0, "DEADLINE", " rm ", t), Ok("* TODO A\n".into()));
         assert_eq!(planning_at(set, 0, "DEADLINE", "soon", t), Err("can't parse date".into()));
+        // `norepeat` drops the repeater (#474); alone it keeps date, time and warning cookie.
+        let rep = "* TODO A\nSCHEDULED: <2026-10-05 Mon 09:00 .+1w/2w -3d>\n";
+        assert_eq!(planning_at(rep, 0, "SCHEDULED", "norepeat", t), Ok("* TODO A\nSCHEDULED: <2026-10-05 Mon 09:00 -3d>\n".into()));
+        assert_eq!(planning_at(rep, 0, "SCHEDULED", "fri norepeat", t), Ok("* TODO A\nSCHEDULED: <2026-10-16 Fri -3d>\n".into()));
+        assert_eq!(planning_at(set, 0, "DEADLINE", "norepeat", t), Ok(set.into())); // nothing to drop
+        assert_eq!(planning_at("* TODO A\n", 0, "DEADLINE", "norepeat", t), Ok("* TODO A\n".into()));
+        assert!(org::read_date("norepeat", t).is_none()); // other date prompts still reject it
     }
 
     #[test]
