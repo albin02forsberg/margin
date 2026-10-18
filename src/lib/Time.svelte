@@ -4,7 +4,7 @@
   export type TimeApi = {
     act: (f: () => unknown) => void;
     /** Named actions: start, stop, pause, resume, switch, adjust, editSession, export, exportReport, projects, timeOff,
-     *  open ({path, line?}), profile, holidays, daily, weekly, doctor, backup, backupLog, rawLog, import, acceptSuggestion, editSuggestion. */
+     *  open ({path, line?}), profile, holidays, daily, weekly, doctor, backup, backupLog, rawLog, import, acceptSuggestion, editSuggestion, logSession. */
     run: (name: string, arg?: unknown) => Promise<void>;
   };
   import { hm } from "./clock";
@@ -76,7 +76,7 @@
   const removeOff = (line: number) => api.act(async () => { await invoke("tc_leave_remove", { line }); await refresh(); });
   const offHours = (l: any) => (l.rest ? "rest of day" : l.hours ? `${hm(l.hours)}/day` : "full day");
 
-  const KEYS: Record<string, string> = { i: "start", o: "stop", p: "pause", r: "resume", c: "switch", a: "adjust", e: "export", E: "exportReport", t: "daily", w: "weekly" };
+  const KEYS: Record<string, string> = { i: "start", o: "stop", p: "pause", r: "resume", c: "switch", a: "adjust", n: "logSession", e: "export", E: "exportReport", t: "daily", w: "weekly" };
   function key(e: KeyboardEvent) {
     if (e.ctrlKey || e.metaKey || e.altKey || (e.target as HTMLElement).closest("input, select")) return;
     if (sugg && (e.key === "h" || e.key === "l")) return shiftDay(e.key === "h" ? -1 : 1);
@@ -131,6 +131,7 @@
             {:else}
               <button class="primary" onclick={() => run("start")}><kbd>i</kbd>Start tracking</button>
             {/if}
+            <button onclick={() => run("logSession")}><kbd>n</kbd>Log a past session…</button>
           </div>
         </section>
         {#if work}

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { worked, parseWhen, naive } from "./clock.ts";
+import { worked, parseWhen, naive, dayTime } from "./clock.ts";
 
 const day = (date: string, hours: number, expected: number) => ({ date, hours, expected, leave: "", leave_hours: 0 });
 
@@ -22,4 +22,10 @@ test("parseWhen: minutes ago, HH:MM today, yesterday rollover, garbage", () => {
   assert.equal(naive(parseWhen(" 9:05 ", now)!), "2026-10-14T09:05:00");
   assert.equal(naive(parseWhen("23:30", now)!), "2026-10-13T23:30:00");
   for (const bad of ["", "abc", "25:00", "10:75", "-5", "1.5"]) assert.equal(parseWhen(bad, now), null, bad);
+});
+
+test("dayTime: HH:MM or HHMM on a day, else null", () => {
+  assert.equal(dayTime("2026-10-13", "9:30"), "2026-10-13T09:30:00");
+  assert.equal(dayTime("2026-10-13", " 0930 "), "2026-10-13T09:30:00");
+  for (const bad of ["", "9", "24:00", "12:60", "ab:cd", "9:3"]) assert.equal(dayTime("2026-10-13", bad), null, bad);
 });

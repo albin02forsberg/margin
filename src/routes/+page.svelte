@@ -23,7 +23,7 @@
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
   import { chatContext } from "$lib/chatctx";
   import { bugReportUrl, isError, osName } from "$lib/bugreport";
-  import { naive, parseWhen } from "$lib/clock";
+  import { dayTime, naive, parseWhen } from "$lib/clock";
   import { parseSession, type Entry } from "$lib/session";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
   import { wordCount, wordsLabel } from "$lib/words";
@@ -1417,14 +1417,35 @@
       await call("activity_learn", { title: s.titles[0], project: p.project, editor: s.editor }).catch((e) => flash(`Logged, but couldn't remember the project: ${e}`));
   }
 
+  /** Log a finished session on a past day: day, start, end, project, note (the backend refuses overlaps, the future and midnight crossings). */
+  async function logSession() {
+    const d = await datePick("Log a session on");
+    if (d == null || d === "rm") return;
+    const day = await call<string>("read_date", { input: d });
+    const time = async (what: string) => {
+      const v = await ask(`${what} (HH:MM)`);
+      if (v == null) return null;
+      const t = dayTime(day, v);
+      if (!t) throw new Error(`“${v}” isn't a time like 09:30`);
+      return t;
+    };
+    const start = await time("Start");
+    const end = start && (await time("End"));
+    if (!end) return;
+    const p = await pickProject(`Log ${start.slice(11, 16)}–${end.slice(11, 16)} to project`);
+    if (!p) return;
+    const note = await ask("What did you do? (optional)", "", "goes into the work diary");
+    if (note != null) await tcDo("tc_add_session", { start, end, project: p.project, exportCode: p.code, note });
+  }
+
   /** Accept S after changing its start and end (HH:MM on its day). */
   async function editSuggestion(s: Suggestion) {
     const time = async (what: string, iso: string) => {
       const v = await ask(`${what} (HH:MM)`, iso.slice(11, 16));
       if (v == null) return null;
-      const m = v.trim().match(/^(\d{1,2}):?(\d\d)$/);
-      if (!m) throw new Error(`“${v}” isn't a time like 09:30`);
-      return `${s.start.slice(0, 10)}T${m[1].padStart(2, "0")}:${m[2]}:00`;
+      const t = dayTime(s.start.slice(0, 10), v);
+      if (!t) throw new Error(`“${v}” isn't a time like 09:30`);
+      return t;
     };
     const start = await time("Start", s.start);
     const end = start && (await time("End", s.end));
@@ -1493,7 +1514,7 @@
     weekly: () => report("weekly", "Week report"), doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
     backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), open: (loc) => openFile(loc.path, loc.line), import: importEmacs, acceptSuggestion, editSuggestion,
     flex: async () => flash(await call("tc_report", { kind: "flex" })), leave: async () => flash(await call("tc_leave_time")), diary: () => openFile(cfg.diary_path),
-    timeOff,
+    timeOff, logSession,
   };
   const timeApi: TimeApi = { act, run: async (name, arg) => { await timeActions[name](arg); } };
   const agendaApi: AgendaApi = {
@@ -1645,6 +1666,7 @@
     { label: "Time: check log for problems", leader: "t D", run: t("doctor") },
     { label: "Time: backup log", leader: "t L", run: t("backupLog") },
     { label: "Time: log time off…", leader: "t l", run: t("timeOff") },
+    { label: "Time: log a past session…", leader: "t n", run: t("logSession") },
     { label: "Time: import from Emacs…", leader: "t M", run: t("import") },
 
     { label: "Export: note as HTML", leader: "e h", run: () => exportNote("html") },
