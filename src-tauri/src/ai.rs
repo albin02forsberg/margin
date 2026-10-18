@@ -216,7 +216,7 @@ pub fn chat_messages(note: Option<(&str, &str)>, sources: Option<&[Source]>, msg
     }
     match packed.as_deref() {
         Some("") => sys += "\n\nNone of the user's notes matched this question. Say you found nothing about it in the notes; don't guess.",
-        Some(p) => sys += &format!("\n\nExcerpts from the user's notes, each labelled [note: title | file:line]. Answer only from these (and the open note) and name the notes you used; if they don't contain the answer, say so.\n\n{p}"),
+        Some(p) => sys += &format!("\n\nExcerpts from the user's notes, each labelled [note: title | file:line], and maybe their open tasks [tasks: …], agenda [agenda: …] and time log [time: …]. Answer only from these (and the open note) and name the notes you used; if they don't contain the answer, say so.\n\n{p}"),
         None => {}
     }
     let mut left = MAX_CHAT.saturating_sub(sys.len());
@@ -594,11 +594,11 @@ mod tests {
         assert!(chat_messages(None, None, &[m("user", &long)]).unwrap_err().contains("too long"));
         assert!(chat_messages(None, None, &[]).is_err());
         // "Use my notes": labelled excerpts, or an explicit "nothing matched"; the note shrinks to make room.
-        let src = Source { path: "/n/plan.org".into(), title: "Plan".into(), line: 4, text: "Launch is May 3.".into() };
+        let src = Source { kind: "note".into(), path: "/n/plan.org".into(), title: "Plan".into(), line: 4, text: "Launch is May 3.".into() };
         let ms = chat_messages(None, Some(&[src]), &[m("user", "when?")]).unwrap();
         assert!(ms[0].content.ends_with("say so.\n\n[note: Plan | plan.org:5]\nLaunch is May 3."), "{}", ms[0].content);
         assert!(chat_messages(None, Some(&[]), &[m("user", "when?")]).unwrap()[0].content.contains("matched"));
-        let big = Source { path: "/n/a.org".into(), title: "A".into(), line: 0, text: "x".repeat(4000) };
+        let big = Source { kind: "note".into(), path: "/n/a.org".into(), title: "A".into(), line: 0, text: "x".repeat(4000) };
         let ms = chat_messages(Some(("n", &long)), Some(&[big]), &[m("user", "q")]).unwrap();
         assert!(ms[0].content.len() < MAX_CHAT - 2000, "{}", ms[0].content.len());
     }

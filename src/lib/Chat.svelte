@@ -1,6 +1,7 @@
 <script lang="ts" module>
-  /** An excerpt of a note the answer drew on ("Use my notes", #304); LINE is 0-based. */
-  export type Source = { path: string; title: string; line: number; text: string };
+  /** An excerpt the answer drew on ("Use my notes", #304): of a note (LINE is 0-based), or of the open tasks, agenda or time log (#468). */
+  export type Source = { kind: "note" | "tasks" | "agenda" | "time"; path: string; title: string; line: number; text: string };
+  const KINDS = { tasks: "Tasks", agenda: "Agenda", time: "Time log" };
   /** SOURCES: what an answer was given, [] when no note matched (the backend ignores the field). */
   export type ChatMsg = { role: "user" | "assistant"; content: string; sources?: Source[] };
 </script>
@@ -9,8 +10,8 @@
   import { tick } from "svelte";
   import { cleanChat } from "./chatctx";
 
-  /** Chat with the local model (#205). History lives here, in memory only; ASK sends it, with the open NOTE (its name) when ticked and the matching notes when USE_NOTES; it returns the answer and the notes it was given. INSERT (when a note is open) puts an answer at the cursor; OPEN shows a source. */
-  let { ask, note, noteLabel, insert, open }: { ask: (msgs: ChatMsg[], withNote: boolean, useNotes: boolean, onPiece: (piece: string) => void) => Promise<{ answer: string; sources?: Source[] }>; note: string | null; noteLabel?: () => string; insert?: (text: string) => void; open: (path: string, line: number) => void } = $props();
+  /** Chat with the local model (#205). History lives here, in memory only; ASK sends it, with the open NOTE (its name) when ticked and the matching notes when USE_NOTES; it returns the answer and the notes it was given. INSERT (when a note is open) puts an answer at the cursor; OPEN shows a source. EXCLUDED: the open note is in ai_exclude, so it isn't offered. */
+  let { ask, note, noteLabel, insert, open, excluded = false }: { ask: (msgs: ChatMsg[], withNote: boolean, useNotes: boolean, onPiece: (piece: string) => void) => Promise<{ answer: string; sources?: Source[] }>; note: string | null; noteLabel?: () => string; insert?: (text: string) => void; open: (path: string, line: number) => void; excluded?: boolean } = $props();
   let msgs = $state<ChatMsg[]>([]);
   let text = $state("");
   let withNote = $state(true);
@@ -38,7 +39,7 @@
     [text, busy, error, partial] = ["", true, "", ""];
     await scroll();
     try {
-      const { answer, sources } = await ask($state.snapshot(msgs), withNote && !!note, useNotes, (p) => { partial += p; scroll(); });
+      const { answer, sources } = await ask($state.snapshot(msgs), withNote && !!note && !excluded, useNotes, (p) => { partial += p; scroll(); });
       msgs.push({ role: "assistant", content: answer, sources });
     } catch (e) {
       // Cancelled or failed midway: keep what came. Unanswered: back into the box, so the history stays question, answer, …
@@ -64,7 +65,7 @@
       <p class={m.role}>{m.content}</p>
       {#if m.sources}
         <div class="srcs">
-          {#each m.sources as s}<button title={s.text} onclick={() => open(s.path, s.line)}>{s.title}:{s.line + 1}</button>{:else}No note matched.{/each}
+          {#each m.sources as s}{#if s.kind === "note"}<button title={s.text} onclick={() => open(s.path, s.line)}>{s.title}:{s.line + 1}</button>{:else}<span title={s.text}>{KINDS[s.kind as keyof typeof KINDS] ?? s.kind}</span>{/if}{:else}No note matched.{/each}
         </div>
       {/if}
       {#if m.role === "assistant"}
@@ -79,8 +80,8 @@
     {#if busy}<p class={shown ? "assistant" : "dim"}>{shown || "Thinking…"}</p>{/if}
     {#if error}<p class="err">⚠ {error}</p>{/if}
   </div>
-  {#if note}<label><input type="checkbox" bind:checked={withNote} /> Include {label || note}</label>{/if}
-  <label title="Send excerpts of the notes that match the question, and of the notes linked to them"><input type="checkbox" bind:checked={useNotes} /> Use my notes</label>
+  {#if note && excluded}<p class="dim">{note} is excluded from AI (AI chat settings).</p>{:else if note}<label><input type="checkbox" bind:checked={withNote} /> Include {label || note}</label>{/if}
+  <label title="Send excerpts of the notes that match the question and of the notes linked to them, and your tasks, agenda or time log when the question asks about them"><input type="checkbox" bind:checked={useNotes} /> Use my notes</label>
   <textarea bind:this={input} bind:value={text} {onkeydown} onfocus={refresh} rows="3" placeholder="Message (Enter sends, Shift+Enter new line)"></textarea>
 </div>
 

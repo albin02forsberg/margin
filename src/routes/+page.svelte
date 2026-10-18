@@ -1085,13 +1085,21 @@
     try {
       const open = tab?.kind === "file" ? tab.path : null;
       const sources = useNotes ? await call<Source[]>("ai_retrieve", { question: messages[messages.length - 1].content, open }) : undefined;
-      const answer = await call<string>("ai_chat", { messages, note: withNote && tab?.kind === "file" ? chatNote() : null, sources: sources ?? null, onPiece: ch });
+      const answer = await call<string>("ai_chat", { messages, note: withNote && tab?.kind === "file" ? chatNote() : null, open, sources: sources ?? null, onPiece: ch });
       return { answer, sources };
     } finally {
       drafting--;
       chatting = false;
     }
   }
+
+  /** Whether ai_exclude keeps the open note from the chat; rechecked when the tab or config changes. */
+  let chatExcluded = $state(false);
+  $effect(() => {
+    const path = cfg && tab?.kind === "file" ? tab.path : null;
+    if (path) call<boolean>("ai_excluded", { path }).then((v) => (chatExcluded = v), () => (chatExcluded = false));
+    else chatExcluded = false;
+  });
 
   /** Put a chat answer at the cursor (replacing the selection) in the open note. */
   function insertAtCursor(text: string) {
@@ -2034,7 +2042,7 @@
         </aside>
       {/if}
       <!-- hidden, not removed, so the chat survives closing the panel -->
-      <aside class="links chat" style:display={showChat ? null : "none"}><Chat bind:this={chat} ask={chatAsk} open={(p, l) => openFile(p, l)} note={tab?.kind === "file" ? tab.title : null} noteLabel={() => chatPart().label} insert={tab?.kind === "file" ? insertAtCursor : undefined} /></aside>
+      <aside class="links chat" style:display={showChat ? null : "none"}><Chat bind:this={chat} ask={chatAsk} open={(p, l) => openFile(p, l)} note={tab?.kind === "file" ? tab.title : null} noteLabel={() => chatPart().label} insert={tab?.kind === "file" ? insertAtCursor : undefined} excluded={chatExcluded} /></aside>
       {#if showBacklinks}
         <aside class="links">
           <h3>Linked from <small>{backlinks.length}</small></h3>

@@ -44,6 +44,12 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "activity_calendar", label: "Meeting calendar (.ics)", hint: "a file or an https:// URL; names meeting suggestions; empty = off" },
     { key: "ai_url", label: "Ollama server", hint: "local addresses only; pick the model with Space f a" },
   ] },
+  { name: "AI chat", fields: [
+    { key: "ai_source_notes", label: "Send matching notes", kind: "bool", hint: "these switches apply while “Use my notes” is ticked in the chat; excerpts of the notes that match the question and of the notes linked to them" },
+    { key: "ai_source_tasks", label: "Send open tasks and the agenda", kind: "bool", hint: "when the question asks about tasks, today, the week, deadlines or meetings" },
+    { key: "ai_source_time", label: "Send the time log", kind: "bool", hint: "the last 7 days, when the question asks about hours, time or projects" },
+    { key: "ai_exclude", label: "Notes the AI never sees", kind: "list", hint: "one per line; a note whose path in the notes folder contains one (any case, e.g. private/ or diary) is never sent: not as a match, a linked note, the open note or for tasks" },
+  ] },
 ];
 
 /** The settings page's category chips: all, each field group, then the list cards. */
