@@ -362,7 +362,7 @@ date (and time) makes the task repeat, as in org: `fri +1w` (every week),
 completion), `.+2d/3d` for habits. Setting a new date without one keeps the old repeater.
 A warning cookie last, as in `fri -3d` or `fri 14:00 +1w -2d`, warns that long before a
 deadline (the first word `-3d` is still "3 days ago").
-The `s`/`d` prompts offer *Every day* / *Every week* picks (the New task dialog an *Every week* chip).
+The `s`/`d` prompts offer *Every day* / *Every week* picks (the New task dialog an *Every week* chip). On a repeating task the prompts also offer *Stop repeating* (`norepeat`, alone or after a date like `fri norepeat`): the repeater goes, the date, time and warning cookie stay.
 
 ## Writing in org
 
