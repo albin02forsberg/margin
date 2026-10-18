@@ -628,6 +628,12 @@
     "priority-up": (loc) => edit(loc, "priority-cycle", "1"),
     "priority-down": (loc) => edit(loc, "priority-cycle", "-1"),
     tags: (loc) => editTags(loc),
+    async title(loc) {
+      const h = await heading(loc);
+      if (!h) return flash("Not on a task.");
+      const t = await ask("Task title", h.title);
+      if (t?.trim()) await edit(loc, "title", t);
+    },
     move: (loc) => moveTask(loc),
     archive: (loc) => archiveTask(loc),
     later: (loc, it) => edit(loc, "shift", `${dateKind(it)} 1`),
@@ -1609,6 +1615,7 @@
     { label: "Task: set priority…", leader: "x p", run: () => atCursor("priority") },
     { label: "Task: schedule…", leader: "x s", run: () => atCursor("schedule") },
     { label: "Task: due date…", leader: "x d", run: () => atCursor("deadline") },
+    { label: "Task: rename…", leader: "x e", run: () => atCursor("title") },
     { label: "Task: tags…", leader: "x g", run: () => atCursor("tags") },
     { label: "Task: move to…", leader: "x m", run: () => atCursor("move") },
     { label: "Task: archive", leader: "x A", run: () => atCursor("archive") },

@@ -608,7 +608,7 @@ fn org_heading(s: State<App>, text: String, line: usize) -> Option<org::Parts> {
 }
 
 /// Headline edits. OP: cycle (VALUE ±1) | keyword (VALUE or none) | priority (letter or none)
-/// | priority-cycle (±1) | tags ("a:b") | shift ("SCHEDULED 1").
+/// | priority-cycle (±1) | tags ("a:b") | title (new text) | shift ("SCHEDULED 1").
 #[tauri::command]
 fn org_edit(s: State<App>, text: String, line: usize, op: String, value: Option<String>) -> R<String> {
     org_edit_op(&text, line, &op, value, &s.kw(), timeclock::now(), s.cfg().log_done)
@@ -624,6 +624,8 @@ fn org_edit_op(text: &str, line: usize, op: &str, value: Option<String>, kw: &or
         "keyword" => org::set_keyword(text, line, kw, opt(), now, log),
         "priority" => org::set_priority(text, line, kw, opt()),
         "priority-cycle" => org::cycle_priority(text, line, kw, n()?),
+        "title" if v.trim().is_empty() => return Err("A task needs a title.".into()),
+        "title" => org::set_title(text, line, kw, &v),
         "tags" => org::set_tags(text, line, kw, v.split(':').map(|t| t.trim().to_string()).collect()),
         "shift" => {
             let (kind, days) = v.split_once(' ').ok_or("shift needs \"KIND DAYS\"")?;
@@ -1823,6 +1825,8 @@ mod tests {
         // An empty value reaches set_tags as one empty tag, which it drops: clears the tags.
         assert_eq!(edit("* Task :a:\n", "tags", Some("")).unwrap(), "* Task\n");
         assert_eq!(edit("* Task :a:\n", "tags", None).unwrap(), "* Task\n");
+        assert_eq!(edit("* TODO [#B] Task :a:\n", "title", Some("New")).unwrap(), "* TODO [#B] New :a:\n");
+        assert!(edit("* Task\n", "title", Some(" ")).is_err());
         let sched = "* Task\nSCHEDULED: <2026-01-08 Thu>\n";
         assert_eq!(edit(sched, "shift", Some("SCHEDULED 3")).unwrap(), "* Task\nSCHEDULED: <2026-01-11 Sun>\n");
         assert_eq!(edit(sched, "shift", Some("SCHEDULED -1")).unwrap(), "* Task\nSCHEDULED: <2026-01-07 Wed>\n");
