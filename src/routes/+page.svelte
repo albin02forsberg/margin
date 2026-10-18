@@ -12,6 +12,7 @@
   import { EditorView } from "@codemirror/view";
   import type { EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
+  import { linkFor, asUrl } from "$lib/weblink";
   import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, relativeTo, resolvePath } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
@@ -667,11 +668,13 @@
 
   async function insertWebLink() {
     if (!inFile()) return flash("Open a note first.");
+    const sel = ed.lineSelection(view); // a one-line selection becomes the link text
     const url = await ask("Link address (URL)");
     if (!url) return;
-    const desc = await ask("Link text (optional)");
+    const desc = await ask("Link text (optional)", sel?.text);
     if (desc == null) return;
-    ed.insertText(view, desc ? `[[${url}][${desc}]]` : `[[${url}]]`);
+    if (sel) ed.replaceRange(view, sel.from, sel.to, linkFor(url, desc));
+    else ed.insertText(view, linkFor(url, desc));
     view.focus();
   }
 
@@ -956,6 +959,7 @@
   async function insertLink() {
     if (!inFile()) return flash("Open a note first.");
     const loc = { path: tab.path!, pos: view.state.selection.main.head };
+    const sel = ed.lineSelection(view); // a one-line selection becomes the link text and is replaced
     const { nodes, sorted, titles } = await noteItems();
     const withId = new Set(nodes.filter((n) => n.line === 0).map((n) => n.path));
     const items = [
@@ -965,14 +969,15 @@
     const r = await pick({ prompt: "Link to note — or type a title to create one", items, allowCustom: true, hint: "Ctrl+↵ creates a new note" });
     if (r == null || r === "") return;
     let link: string;
-    if (typeof r === "object") link = `[[id:${r.id}][${r.title}]]`;
-    else if (sorted.includes(r)) link = `[[file:${relativeTo(loc.path, r)}][${titles.get(r) ?? niceName(r)}]]`; // org resolves file: links from the note's folder
+    if (typeof r === "object") link = linkFor(`id:${r.id}`, sel?.text ?? r.title);
+    else if (sorted.includes(r)) link = linkFor(`file:${relativeTo(loc.path, r)}`, sel?.text ?? titles.get(r) ?? niceName(r)); // org resolves file: links from the note's folder
     else {
       const n: NoteNode = await call("notes_new", { title: r });
-      link = `[[id:${n.id}][${n.title}]]`;
+      link = linkFor(`id:${n.id}`, sel?.text ?? n.title);
       flash(`Created note “${r}”`);
     }
-    view.dispatch({ changes: { from: loc.pos, insert: link }, selection: { anchor: loc.pos + link.length } });
+    if (sel) ed.replaceRange(view, sel.from, sel.to, link);
+    else view.dispatch({ changes: { from: loc.pos, insert: link }, selection: { anchor: loc.pos + link.length } });
     view.focus();
   }
 
@@ -1846,6 +1851,16 @@
   /** Pasted images are saved as pasted-YYYYMMDD-HHMMSS.png next to the note's other attachments. */
   function onPaste(e: ClipboardEvent) {
     const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith("image/"));
+    if (!file && inFile()) {
+      // A URL pasted over a one-line selection links the selection (Ctrl/Cmd+V only; vim's p fires no paste event).
+      const url = asUrl(e.clipboardData?.getData("text/plain") ?? ""), sel = ed.lineSelection(view);
+      if (url && sel) {
+        e.preventDefault();
+        e.stopPropagation();
+        ed.replaceRange(view, sel.from, sel.to, linkFor(url, sel.text));
+      }
+      return;
+    }
     if (!file || !inFile()) return;
     e.preventDefault();
     e.stopPropagation();

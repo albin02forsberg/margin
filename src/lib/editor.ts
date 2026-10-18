@@ -771,6 +771,20 @@ export function insertText(v: EditorView, text: string, at = v.state.selection.m
   v.dispatch({ changes: { from: at, insert: text }, selection: { anchor: at + text.length } });
 }
 
+/** The non-empty, single-line selection ({from, to, text}), else null. */
+export function lineSelection(v: EditorView) {
+  const { from, to } = v.state.selection.main;
+  const text = v.state.sliceDoc(from, to);
+  return text.trim() && !text.includes("\n") ? { from, to, text } : null;
+}
+
+/** Replace [FROM, TO) with TEXT, cursor after it, leaving vim visual mode. */
+export function replaceRange(v: EditorView, from: number, to: number, text: string) {
+  const cm = getCM(v) as any;
+  if (cm?.state.vim?.visualMode) Vim.handleKey(cm, "<Esc>", "mapping");
+  v.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length } });
+}
+
 /** Bold / italic / … (MARK) the selection or the word at the cursor, or remove
  *  the mark around it; an empty pair puts the cursor between in insert mode. */
 export function emphasis(v: EditorView, mark: string): boolean {

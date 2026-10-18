@@ -182,7 +182,7 @@ profile clocks out first, and warns where old files stay (nothing is moved).
 | Ctrl+P | Open a note — or type a title to create one |
 | Ctrl+Shift+N | New note |
 | Ctrl+Shift+F | Search all notes as you type (lines with every word, in any order; `"quote"` a phrase) |
-| Ctrl+L | Insert a link to another note |
+| Ctrl+L | Insert a link to another note (a one-line selection becomes the link text; pasting a URL over a selection links it too) |
 | Ctrl+S / `:w` | Save (also saves automatically) |
 | Ctrl+Shift+T / `Space b u` | Reopen the last closed tab, at the line you left (up to 20) |
 | Middle-click a tab / `Space b o` / `Space b D` | Close that tab / close the other tabs / close all tabs (each goes on the reopen stack, which keeps the last 20; tabs with unresolved conflicts stay open). Hover a tab for its file path |
