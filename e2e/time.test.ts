@@ -4,14 +4,14 @@ import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { answer, browser, close, fileMatches, find, isoDay, Key, launch, noPicker, pad, palette, read, type Dirs } from "./setup.ts";
+import { answer, browser, close, fileMatches, find, isoDay, Key, launch, noPicker, pad, palette, read, texts, type Dirs } from "./setup.ts";
 
 let d: Dirs, log: string;
 type Ev = { ev: string; t: string; project?: string; note?: string };
 const events = (s: string): Ev[] => s.split("\n").filter(Boolean).map((l) => JSON.parse(l));
 const evs = (s: string) => events(s).map((e) => e.ev + (e.ev === "in" ? ":" + e.project : "")).join(" ");
 const hm = (t: Date) => `${pad(t.getHours())}:${pad(t.getMinutes())}`;
-/** Within a minute of T (the start is moved back by whole minutes from a clock-in with seconds). */
+/** Within a minute of T (minute-truncated; the clock-in keeps its seconds, so it lands <30 s off after rounding). */
 const near = (iso: string, t: Date) => Math.abs(Date.parse(iso) - t.getTime()) < 60_000;
 
 before(async () => {
@@ -24,6 +24,12 @@ after(close, { timeout: 30_000 });
 async function start(project: string, task: string) {
   await noPicker();
   await browser.keys([Key.Ctrl, "4"]);
+  // A failed earlier test may leave a timer running; stop it so one failure doesn't cascade.
+  if ((await texts(".time .buttons button")).some((t) => t.includes("Stop"))) {
+    await (await find(".time .buttons button", "Stop")).click();
+    await answer("What did you do?", "leftover");
+    await fileMatches(log, (s) => events(s).at(-1)?.ev === "out", "leftover session not stopped");
+  }
   await (await find(".time button", "Start tracking")).click();
   await answer("Track time on project", project);
   await answer("What are you working on?", task);
@@ -32,7 +38,8 @@ async function start(project: string, task: string) {
 
 describe("Time tracking", () => {
   it("moves the start back with I started earlier… and stops at an earlier time", async () => {
-    const [from, to] = [new Date(Date.now() - 60 * 60_000), new Date(Date.now() - 30 * 60_000)];
+    const minute = (ms: number) => new Date(new Date(Date.now() - ms).setSeconds(0, 0)); // what the test types, exactly
+    const [from, to] = [minute(60 * 60_000), minute(30 * 60_000)];
     await start("Acme", "earlier");
     await noPicker();
     await palette("Time: I started earlier");
