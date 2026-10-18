@@ -63,6 +63,13 @@ pub struct Config {
     pub ai_model: String,
     /// The Ollama server; only local addresses are allowed.
     pub ai_url: String,
+    /// What the chat's "Use my notes" sends: matching notes, open tasks and the agenda, the time log.
+    pub ai_source_notes: bool,
+    pub ai_source_tasks: bool,
+    pub ai_source_time: bool,
+    /// Notes the AI never sees (not retrieved, linked, sent as the open note, or read for tasks):
+    /// case-insensitive substrings of their path below notes_dir.
+    pub ai_exclude: Vec<String>,
     /// Reopen the last session's tabs on startup.
     pub restore_tabs: bool,
     /// Update from the daily builds of main (the `nightly` prerelease) instead of stable releases.
@@ -158,6 +165,10 @@ impl Default for Config {
             ai_backend: Default::default(),
             ai_model: String::new(),
             ai_url: "http://localhost:11434".into(),
+            ai_source_notes: true,
+            ai_source_tasks: true,
+            ai_source_time: true,
+            ai_exclude: vec![],
             restore_tabs: true,
             nightly_updates: false,
         }

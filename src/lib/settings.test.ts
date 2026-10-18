@@ -60,7 +60,7 @@ test("category chips and the filter narrow the settings shown", () => {
   assert.equal(shown("All", "").length, GROUPS.flatMap((g) => g.fields).length);
   assert.deepEqual(shown("Time", ""), ["expected_daily_hours", "idle_threshold_minutes", "profiles"]);
   assert.deepEqual(shown("All", "IDLE"), ["idle_threshold_minutes"]);
-  assert.deepEqual(shown("All", "tasks"), ["inbox", "todo_keywords", "done_keywords", "log_done", "calendar_file"]); // inbox by hint, Tasks by group name
+  assert.deepEqual(shown("All", "tasks"), ["inbox", "todo_keywords", "done_keywords", "log_done", "calendar_file", "ai_source_tasks", "ai_exclude"]); // inbox and the AI ones by label or hint, Tasks by group name
   assert.deepEqual(shown("Time", "keywords"), []);
   assert.ok(shows("All", "view", "Saved views") && !shows("Time", "", "Saved views"));
 });

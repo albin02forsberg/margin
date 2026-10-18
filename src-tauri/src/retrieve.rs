@@ -1,19 +1,29 @@
 // "Use my notes" in the AI chat (#304): the notes that answer a question, found by keyword and
-// one hop of links, as excerpts small enough for a local model's context.
+// one hop of links, as excerpts small enough for a local model's context; plus the open tasks,
+// the agenda and the time log when the question asks about them (#468).
 
 use crate::notes::adjacency;
-use crate::org::OrgFile;
+use crate::org::{Item, OrgFile};
+use crate::timeclock::{format_hm, Session};
+use chrono::{Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-/// An excerpt of a note sent to the model; LINE (0-based) is where TEXT starts.
+/// An excerpt sent to the model: of a note (LINE, 0-based, is where TEXT starts), or of the open
+/// tasks, the agenda or the time log (KIND tasks/agenda/time, no path).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Source {
+    #[serde(default = "note_kind")]
+    pub kind: String,
     pub path: PathBuf,
     pub title: String,
     pub line: usize,
     pub text: String,
+}
+
+fn note_kind() -> String {
+    "note".into()
 }
 
 /// Bytes of packed sources (labels included) a chat gets.
@@ -25,6 +35,8 @@ const MAX_SOURCES: usize = 8;
 const EXCERPT: usize = 1000;
 /// Don't bother with a cut excerpt smaller than this.
 const MIN_PART: usize = 200;
+/// One tasks/agenda/time source's size, so notes still fit.
+const APP: usize = 700;
 
 const STOP: &[&str] = &[
     "the", "and", "for", "are", "was", "were", "what", "when", "where", "which", "who", "whom", "why", "how", "does", "did", "has", "have",
@@ -127,8 +139,16 @@ fn cut(text: &str, max: usize) -> &str {
 }
 
 fn label(s: &Source) -> String {
+    if s.kind != "note" {
+        return format!("[{}: {}]\n", s.kind, s.title);
+    }
     let file = s.path.file_name().map_or_else(|| s.path.display().to_string(), |n| n.to_string_lossy().into_owned());
     format!("[note: {} | {file}:{}]\n", s.title, s.line + 1)
+}
+
+/// Bytes S takes once packed.
+pub fn cost(s: &Source) -> usize {
+    label(s).len() + s.text.len() + 2
 }
 
 /// SOURCES as the model reads them: each labelled, at most BUDGET bytes in all.
@@ -144,8 +164,8 @@ pub fn pack(sources: &[Source]) -> String {
 
 /// The notes of FILES that answer QUESTION: the SEEDS best matches, then the notes linked to or from
 /// them or the OPEN note (one hop), most-linked to good matches first; the open note itself is left
-/// out (the chat sends it on its own). As many excerpts as fit in BUDGET once packed.
-pub fn retrieve(files: &[Arc<OrgFile>], question: &str, open: Option<&Path>) -> Vec<Source> {
+/// out (the chat sends it on its own). As many excerpts as fit in LEFT bytes once packed.
+pub fn retrieve(files: &[Arc<OrgFile>], question: &str, open: Option<&Path>, mut left: usize) -> Vec<Source> {
     let terms = terms(question);
     if terms.is_empty() {
         return vec![];
@@ -167,13 +187,12 @@ pub fn retrieve(files: &[Arc<OrgFile>], question: &str, open: Option<&Path>) -> 
         .collect();
     near.sort_by_key(|&(s, n, i)| (std::cmp::Reverse(s), std::cmp::Reverse(n), i));
     let mut out = vec![];
-    let mut left = BUDGET;
     for i in seeds.into_iter().chain(near.into_iter().map(|(.., i)| i)).take(MAX_SOURCES) {
         let (line, text) = excerpt(&files[i], scored[i].1);
         if text.is_empty() {
             continue;
         }
-        let mut s = Source { path: files[i].path.clone(), title: files[i].title.clone(), line, text };
+        let mut s = Source { kind: note_kind(), path: files[i].path.clone(), title: files[i].title.clone(), line, text };
         let need = label(&s).len() + 2;
         if need + s.text.len() > left {
             if left < need + MIN_PART {
@@ -183,6 +202,88 @@ pub fn retrieve(files: &[Arc<OrgFile>], question: &str, open: Option<&Path>) -> 
         }
         left -= need + s.text.len();
         out.push(s);
+    }
+    out
+}
+
+/// Whether PATH (under ROOT, the notes folder) matches one of `ai_exclude`'s PATTERNS: a
+/// case-insensitive substring of its `/`-separated path below ROOT.
+pub fn excluded(path: &Path, root: &Path, patterns: &[String]) -> bool {
+    let p = path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/").to_lowercase();
+    patterns.iter().map(|x| x.trim().to_lowercase()).any(|x| !x.is_empty() && p.contains(&x))
+}
+
+/// Which of the open tasks, the agenda and the time log QUESTION asks about, by word prefixes.
+pub fn wants(question: &str) -> [bool; 3] {
+    const KEYS: [&[&str]; 3] = [
+        &["task", "todo", "project", "deadline", "priorit", "uppgift"],
+        &["today", "tomorrow", "week", "agenda", "deadline", "schedul", "meeting", "calendar", "idag", "imorgon", "vecka", "möte"],
+        &["hour", "time", "tracked", "worked", "project", "week", "timmar", "jobbat", "vecka"],
+    ];
+    let q = question.to_lowercase();
+    let words: Vec<&str> = q.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    KEYS.map(|keys| words.iter().any(|w| keys.iter().any(|k| w.starts_with(k))))
+}
+
+/// LINES as one source of KIND, whole lines up to APP bytes; EMPTY when there are none.
+fn app_source(kind: &str, title: &str, lines: impl Iterator<Item = String>, empty: &str) -> Source {
+    let mut text = String::new();
+    for l in lines {
+        if text.len() + l.len() + 1 > APP {
+            break;
+        }
+        text += &l;
+        text.push('\n');
+    }
+    let text = if text.is_empty() { empty.to_string() } else { text.trim_end().to_string() };
+    Source { kind: kind.into(), path: PathBuf::new(), title: title.into(), line: 0, text }
+}
+
+fn file_name(p: &Path) -> String {
+    p.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned())
+}
+
+/// The open TASKS, the AGENDA (both from org) and SESSIONS of the 7 days up to TODAY as sources,
+/// one line per entry, at most APP bytes each; None is left out (switched off or not asked about).
+pub fn app_sources(tasks: Option<&[Item]>, agenda: Option<&[Item]>, sessions: Option<&[Session]>, today: NaiveDate) -> Vec<Source> {
+    let head = |i: &Item| {
+        let k = i.keyword.as_deref().map(|k| format!("{k} ")).unwrap_or_default();
+        let p = i.priority.as_deref().map(|p| format!("[#{p}] ")).unwrap_or_default();
+        let tags = if i.tags.is_empty() { String::new() } else { format!(" :{}:", i.tags.join(":")) };
+        format!("{k}{p}{}{tags} ({})", i.title, file_name(&i.path))
+    };
+    let mut out = vec![];
+    if let Some(t) = tasks {
+        let lines = t.iter().map(|i| {
+            let date = if i.date == NaiveDate::MAX { String::new() } else { format!(", dated {}", i.date) };
+            format!("- {}{date}", head(i))
+        });
+        out.push(app_source("tasks", "open tasks", lines, "No open tasks."));
+    }
+    if let Some(a) = agenda {
+        let lines = a.iter().map(|i| {
+            let what = if !i.label.is_empty() { i.label.clone() } else if i.kind == "timestamp" { "Event".into() } else { i.kind.to_string() };
+            let time = i.time.as_deref().map(|t| format!(" {t}")).unwrap_or_default();
+            format!("- {}{time} {what}: {}", i.date.format("%Y-%m-%d %a"), head(i))
+        });
+        out.push(app_source("agenda", "next 7 days", lines, "Nothing scheduled in the next 7 days."));
+    }
+    if let Some(s) = sessions {
+        let week: Vec<&Session> = s.iter().filter(|s| s.date > today - Duration::days(7) && s.date <= today).collect();
+        let mut totals: Vec<(&str, f64)> = vec![];
+        for s in &week {
+            match totals.iter_mut().find(|(p, _)| *p == s.project) {
+                Some(t) => t.1 += s.hours,
+                None => totals.push((s.project.as_str(), s.hours)),
+            }
+        }
+        totals.sort_by(|a, b| b.1.total_cmp(&a.1));
+        let total = (!totals.is_empty()).then(|| format!("Totals: {}", totals.iter().map(|(p, h)| format!("{p} {}", format_hm(*h))).collect::<Vec<_>>().join(", ")));
+        let lines = week.iter().rev().map(|s| {
+            let desc = if s.desc.is_empty() { String::new() } else { format!(" ({})", s.desc) };
+            format!("- {} {}–{} {}{desc}: {}", s.date.format("%Y-%m-%d %a"), s.start.format("%H:%M"), s.end.format("%H:%M"), s.project, format_hm(s.hours))
+        });
+        out.push(app_source("time", "last 7 days", total.into_iter().chain(lines), "Nothing tracked in the last 7 days."));
     }
     out
 }
@@ -214,7 +315,7 @@ mod tests {
             note("d", "#+title: Daily\nnothing here, but see [[file:b.org][the plan]]\n"),
             note("e", "#+title: Lonely\nno match, no link\n"),
         ];
-        let got = retrieve(&files, "When is the launch budget due?", None);
+        let got = retrieve(&files, "When is the launch budget due?", None, BUDGET);
         // Budget has both terms (one in a heading) > Alpha, Misc (one term each); Daily only links to Budget.
         assert_eq!(names(&got), ["Budget", "Alpha", "Misc", "Daily"]);
         // The matching section only, without the drawer or keywords.
@@ -222,10 +323,10 @@ mod tests {
         assert_eq!(got[1].text, "The launch date is May 3.");
         assert_eq!(got[3].text, "nothing here, but see [[file:b.org][the plan]]");
         // The open note is left out, but its links count.
-        let got = retrieve(&files, "launch", Some(Path::new("/n/b.org")));
+        let got = retrieve(&files, "launch", Some(Path::new("/n/b.org")), BUDGET);
         assert_eq!(names(&got), ["Alpha", "Misc", "Daily"]);
-        assert!(retrieve(&files, "the and", None).is_empty());
-        assert!(retrieve(&files, "zebra", None).is_empty());
+        assert!(retrieve(&files, "the and", None, BUDGET).is_empty());
+        assert!(retrieve(&files, "zebra", None, BUDGET).is_empty());
         // No term in text or title: no score; a title-only match still counts.
         assert_eq!(score(&files[4], &terms("zebra")), (0, None));
         assert_eq!(score(&files[4], &terms("lonely zebra")), (30, None));
@@ -235,14 +336,81 @@ mod tests {
     fn stays_in_budget() {
         let big = format!("#+title: Big\n{}", "ålpha ".repeat(2000));
         let files: Vec<_> = (0..6).map(|i| note(&format!("n{i}"), &big)).collect();
-        let got = retrieve(&files, "ålpha", None);
+        let got = retrieve(&files, "ålpha", None, BUDGET);
         let packed = pack(&got);
         assert!(packed.len() <= BUDGET, "{}", packed.len());
         assert!(got.len() >= 3 && got.iter().all(|s| s.text.len() <= EXCERPT));
         assert!(packed.starts_with("[note: Big | n0.org:2]\nålpha"));
         // a long section: the lines around the match
         let long = note("l", &format!("#+title: L\n* H\n{}needle here\n{}", "filler line\n".repeat(200), "more\n".repeat(200)));
-        let got = retrieve(&[long], "needle", None);
+        let got = retrieve(&[long], "needle", None, BUDGET);
         assert!(got[0].text.contains("needle here") && got[0].text.len() <= EXCERPT && got[0].line > 100);
+    }
+
+    #[test]
+    fn wants_by_keyword() {
+        assert_eq!(wants("Which tasks are open?"), [true, false, false]);
+        assert_eq!(wants("What's on my agenda today?"), [false, true, false]);
+        assert_eq!(wants("How many hours did I log on Margin?"), [false, false, true]);
+        assert_eq!(wants("What did I do this week?"), [false, true, true]);
+        assert_eq!(wants("Hur många timmar idag?"), [false, true, true]);
+        assert_eq!(wants("When is the launch?"), [false, false, false]);
+    }
+
+    #[test]
+    fn app_sources_and_mixed_packing() {
+        let kw = Kw { todo: vec!["TODO".into()], done: vec!["DONE".into()] };
+        let day = NaiveDate::from_ymd_opt(2026, 10, 18).unwrap();
+        let files = [Arc::new(parse(Path::new("/n/work.org"), "* TODO [#A] Ship it :work:\nDEADLINE: <2026-10-20 Tue>\n* TODO Later\n* DONE Old\n", &kw))];
+        let tasks = crate::org::todos(&files, &kw, false, |_, _| true, day);
+        let agenda = crate::org::agenda(&files, &kw, day, 7, day);
+        let t = |d: u32, p: &str, h: f64| Session {
+            date: NaiveDate::from_ymd_opt(2026, 10, d).unwrap(),
+            project: p.into(),
+            desc: if p == "Margin" { "chat".into() } else { String::new() },
+            hours: h,
+            start: chrono::NaiveTime::from_hms_opt(9, 0, 0).unwrap(),
+            end: chrono::NaiveTime::from_hms_opt(10, 30, 0).unwrap(),
+            line: None,
+        };
+        // the 11th is more than 7 days back
+        let sessions = [t(11, "Old", 5.0), t(16, "Margin", 1.5), t(17, "Other", 0.5), t(18, "Margin", 1.5)];
+        let got = app_sources(Some(tasks.as_slice()), Some(agenda.as_slice()), Some(&sessions[..]), day);
+        assert_eq!(got[0].text, "- TODO [#A] Ship it :work: (work.org), dated 2026-10-20\n- TODO Later (work.org)");
+        assert_eq!(got[1].text, "- 2026-10-18 Sun Due in 2d: TODO [#A] Ship it :work: (work.org)\n- 2026-10-20 Tue Due: TODO [#A] Ship it :work: (work.org)");
+        assert_eq!(
+            got[2].text,
+            "Totals: Margin 3h 00m, Other 30m\n- 2026-10-18 Sun 09:00–10:30 Margin (chat): 1h 30m\n- 2026-10-17 Sat 09:00–10:30 Other: 30m\n- 2026-10-16 Fri 09:00–10:30 Margin (chat): 1h 30m"
+        );
+        assert!(pack(&got[2..]).starts_with("[time: last 7 days]\nTotals:"));
+        // empty data says so; switched off is left out
+        let got = app_sources(Some(&[][..]), Some(&[][..]), None, day);
+        assert_eq!(got.iter().map(|s| (s.kind.as_str(), s.text.as_str())).collect::<Vec<_>>(), [("tasks", "No open tasks."), ("agenda", "Nothing scheduled in the next 7 days.")]);
+        // a long list is cut on whole lines; notes fill the rest of the budget
+        let many: Vec<_> = (0..100).map(|i| Session { desc: "é".repeat(i % 7), ..t(18, "Margin", 1.0) }).collect();
+        let mut got = app_sources(None, None, Some(&many[..]), day);
+        assert!(got[0].text.len() <= APP && got[0].text.ends_with(": 1h 00m"));
+        let big = format!("#+title: Big\n{}", "ålpha ".repeat(2000));
+        let notes: Vec<_> = (0..6).map(|i| note(&format!("n{i}"), &big)).collect();
+        let used: usize = got.iter().map(cost).sum();
+        got.extend(retrieve(&notes, "ålpha", None, BUDGET - used));
+        assert!(got.len() >= 3 && got.iter().map(cost).sum::<usize>() <= BUDGET);
+        assert!(pack(&got).starts_with("[time: last 7 days]\nTotals: Margin 100h 00m\n"));
+    }
+
+    #[test]
+    fn exclude_patterns() {
+        let root = Path::new("/n");
+        let ex = ["Private/".to_string(), " ".into()];
+        assert!(excluded(Path::new("/n/private/diary.org"), root, &ex));
+        assert!(!excluded(Path::new("/n/work.org"), root, &ex));
+        // only the path below the notes folder counts
+        assert!(!excluded(Path::new("/n/work.org"), root, &["n/".to_string()]));
+        assert!(!excluded(Path::new("/n/work.org"), root, &[]));
+        // an excluded note isn't found, nor reached as a linked note
+        let files = [note("plan", "#+title: Plan\nlaunch soon, see [[file:secret.org][s]]\n"), note("secret", "#+title: Secret\ncodes\n")];
+        let kept: Vec<_> = files.iter().filter(|f| !excluded(&f.path, root, &["secret".to_string()])).cloned().collect();
+        assert_eq!(names(&retrieve(&kept, "launch", None, BUDGET)), ["Plan"]);
+        assert_eq!(names(&retrieve(&files, "launch", None, BUDGET)), ["Plan", "Secret"]);
     }
 }

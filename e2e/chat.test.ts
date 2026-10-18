@@ -5,10 +5,11 @@ import type { AddressInfo } from "node:net";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { answer, browser, close, find, Key, launch, type } from "./setup.ts";
+import { answer, browser, close, fileMatches, find, Key, launch, texts, type, type Dirs } from "./setup.ts";
 
 describe("AI chat", () => {
   let ollama: Server;
+  let d: Dirs;
   const asked: { path: string; body: any }[] = [];
   before(async () => {
     ollama = createServer((req, res) => {
@@ -25,7 +26,7 @@ describe("AI chat", () => {
       });
     });
     await new Promise<void>((r) => ollama.listen(0, "127.0.0.1", r));
-    await launch({
+    d = await launch({
       config: [`ai_backend = "ollama"`, `ai_model = "m"`, `ai_url = "http://127.0.0.1:${(ollama.address() as AddressInfo).port}"`],
       files: ({ notes }) => {
         writeFileSync(join(notes, "plans.org"), "#+title: Plans\n\n* TODO Ship the chat\nSee [[file:launch.org][the launch]].\n");
@@ -82,5 +83,30 @@ describe("AI chat", () => {
     assert.ok(sys.includes("[note: Launch | launch.org:3]\n* Date\nThe rollout happens on May 3."), sys);
     await (await find(".chat .srcs button", "Launch:3")).click();
     await find(".status .file", "launch.org");
+  });
+
+  it("sends open tasks when asked about them, unless switched off in Settings (#468)", async () => {
+    await (await find(".chat textarea", "")).click();
+    await type("Which tasks are open?");
+    await browser.keys(Key.Enter);
+    await find(".chat .srcs span", "Tasks");
+    let sys = asked.at(-1)!.body.messages[0].content;
+    assert.ok(sys.includes("[tasks: open tasks]\n- TODO Ship the chat (plans.org)"), sys);
+    await browser.keys([Key.Ctrl, ","]);
+    await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Send open tasks")]]/input`)).click();
+    await (await find(".settings button", "Save ai chat")).click();
+    await fileMatches(join(d.cfgDir, "config.toml"), (s) => /^ai_source_tasks = false$/m.test(s), "switch not saved");
+    await find(".status .msg", "Settings saved");
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Plans");
+    await find(".status .file", "plans.org");
+    await (await find(".chat textarea", "")).click();
+    const n = asked.length;
+    await type("Which tasks are left?");
+    await browser.keys(Key.Enter);
+    await find(".chat p.assistant", `Answer ${n + 1}`);
+    sys = asked.at(-1)!.body.messages[0].content;
+    assert.ok(!sys.includes("[tasks: open tasks]"), sys);
+    assert.equal((await texts(".chat .srcs span")).length, 1, "only the first answer lists Tasks");
   });
 });

@@ -615,6 +615,18 @@ click one to open it at that line, and *No note matched* means nothing was sent.
 Matching is by keyword, not meaning, so use the words your notes use. As with
 everything else here, the model runs on this machine (`ai_url` must be localhost).
 
+When the question asks about your tasks or projects (*task*, *todo*, *deadline*…),
+your day or week (*today*, *week*, *agenda*, *meeting*…) or your time (*hours*,
+*time*, *worked*…), *Use my notes* also sends the open tasks, the next 7 days of
+the agenda or the last 7 days of the time log with per-project totals; they're
+listed as *Tasks*, *Agenda* and *Time log* under the answer. Window titles and
+other activity are never sent. **Settings → AI chat** has a switch for each kind
+of source (`ai_source_notes`, `ai_source_tasks`, `ai_source_time`; they apply
+while *Use my notes* is ticked) and **Notes the AI never sees** (`ai_exclude`):
+any note whose path in the notes folder contains one of these (any case, e.g.
+`private/` or `diary`) is never sent, not as a match, a linked note, the open
+note (the chat says so instead of offering it) or for its tasks.
+
 ## Export
 
 `Space e` exports the open note (including unsaved edits) as HTML (`e h`),
