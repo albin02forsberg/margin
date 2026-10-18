@@ -370,7 +370,9 @@ Notes render like a document: markup (stars, link brackets, `*bold*` markers,
 checkbox brackets, block delimiters) is hidden except on the line you're on, so
 the file stays plain org text. Prose uses a proportional font; tables, code and
 dates stay monospace (`Space v m` switches everything to monospace). The status
-bar counts the note's words (`38 of 412 words` while text is selected).
+bar counts the note's words (`38 of 412 words` while text is selected);
+markup does not count: punctuation-only tokens, and in org files planning lines,
+drawers, `#+KEY:` names and heading `:tags:`.
 
 | | |
 |---|---|
