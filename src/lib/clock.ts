@@ -35,3 +35,9 @@ export function parseWhen(input: string, now: Date): Date | null {
   } else return null;
   return t > now ? null : t;
 }
+
+/** "HH:MM" or "HHMM" on DAY (yyyy-mm-dd) as a naive ISO datetime; null when it isn't a time of day. */
+export function dayTime(day: string, v: string): string | null {
+  const m = v.trim().match(/^(\d{1,2}):?(\d\d)$/);
+  return m && +m[1] < 24 && +m[2] < 60 ? `${day}T${m[1].padStart(2, "0")}:${m[2]}:00` : null;
+}

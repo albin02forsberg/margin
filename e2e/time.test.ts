@@ -80,4 +80,16 @@ describe("Time tracking", () => {
     const rows = read(csv).trim().split("\n").slice(1);
     assert.ok(!rows.some((r) => r.endsWith(',"0"') || r.startsWith('"BETA"')), `0 h rows in the CSV:\n${read(csv)}`); // Beta only has seconds
   });
+
+  it("logs a past session on an earlier day", async () => {
+    const day = isoDay(new Date(Date.now() - 3 * 86_400_000));
+    await noPicker();
+    await palette("Time: log a past session");
+    await answer("Log a session on", day);
+    await answer("Start", "09:00");
+    await answer("End", "10:30");
+    await answer("Log 09:00–10:30 to project", "Acme");
+    await answer("What did you do?", "late entry");
+    await fileMatches(log, (s) => events(s).some((e) => e.ev === "out" && e.t === `${day}T10:30:00` && e.note === "late entry"), "past session not logged");
+  });
 });
