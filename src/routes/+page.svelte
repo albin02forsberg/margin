@@ -135,9 +135,10 @@
 
   /** Status-bar word count of S; the whole note is only recounted when its text changed. */
   function countWords(s: EditorState, docChanged = true) {
-    if (docChanged) docWords = wordCount(s.doc.toString());
+    const t = tabs[cur], org = !t?.path || /\.org(_archive)?$/.test(t.path);
+    if (docChanged) docWords = wordCount(s.doc.toString(), org);
     const r = s.selection.main;
-    words = wordsLabel(docWords, r.empty ? undefined : wordCount(s.sliceDoc(r.from, r.to)));
+    words = wordsLabel(docWords, r.empty ? undefined : wordCount(s.sliceDoc(r.from, r.to), org));
   }
 
   function newState(key: string, text: string, path?: string, readOnly = false) {
