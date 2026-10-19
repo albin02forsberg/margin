@@ -746,8 +746,7 @@ describe("Note navigation", () => {
 describe("Org structure keys", () => {
   let d: Dirs;
   // No tables: Alt+H/J/K/L act on tables when the cursor is in one.
-  // "* Z" keeps B off the last line: the last subtree takes in the trailing newline.
-  const org = "* TODO A [0/2]\n- [ ] one\n- [ ] two\n** Child\n* B\n* Z\n"; // lines 3-8 after the title
+  const org = "* TODO A [0/2]\n- [ ] one\n- [ ] two\n** Child\n* B\n"; // lines 3-7 after the title
   const notes = ["moves", "items", "levels", "status", "newitem", "fold", "boxes"]; // one per test, so a failure can't cascade
   const f = (n: string) => join(d.notes, `${n}.org`);
   const title = (n: string) => `#+title: ${n}\n\n`;
@@ -781,7 +780,7 @@ describe("Org structure keys", () => {
   it("Alt+J moves a heading below its sibling with its children, Alt+K moves it back", async () => {
     await open("moves", 3);
     await browser.keys([Key.Alt, "j"]);
-    await saved("moves", "* B\n* TODO A [0/2]\n- [ ] one\n- [ ] two\n** Child\n* Z\n", "subtree not moved down");
+    await saved("moves", "* B\n* TODO A [0/2]\n- [ ] one\n- [ ] two\n** Child\n", "subtree not moved down");
     await browser.keys([Key.Alt, "k"]);
     await saved("moves", org, "subtree not moved back up");
   });
@@ -789,7 +788,7 @@ describe("Org structure keys", () => {
   it("Alt+J / Alt+K on a list item move only the item, not its heading (#472)", async () => {
     await open("items", 4);
     await browser.keys([Key.Alt, "j"]);
-    await saved("items", "* TODO A [0/2]\n- [ ] two\n- [ ] one\n** Child\n* B\n* Z\n", "item not moved down");
+    await saved("items", "* TODO A [0/2]\n- [ ] two\n- [ ] one\n** Child\n* B\n", "item not moved down");
     await browser.keys([Key.Alt, "k"]);
     await saved("items", org, "item not moved back up");
   });
@@ -797,12 +796,12 @@ describe("Org structure keys", () => {
   it("Alt+L / Alt+H demote and promote a heading, with Shift its children too", async () => {
     await open("levels", 7);
     await browser.keys([Key.Alt, "l"]);
-    await saved("levels", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n** Child\n** B\n* Z\n", "heading not demoted");
+    await saved("levels", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n** Child\n** B\n", "heading not demoted");
     await browser.keys([Key.Alt, "h"]);
     await saved("levels", org, "heading not promoted");
     await type("3G0");
     await browser.keys([Key.Alt, Key.Shift, "l"]);
-    await saved("levels", "** TODO A [0/2]\n- [ ] one\n- [ ] two\n*** Child\n* B\n* Z\n", "subtree not demoted");
+    await saved("levels", "** TODO A [0/2]\n- [ ] one\n- [ ] two\n*** Child\n* B\n", "subtree not demoted");
     await browser.keys([Key.Alt, Key.Shift, "h"]);
     await saved("levels", org, "subtree not promoted");
   });
@@ -810,7 +809,7 @@ describe("Org structure keys", () => {
   it("Shift+Right / Shift+Left cycle the heading's status", async () => {
     await open("status", 7);
     await browser.keys([Key.Shift, Key.ArrowRight]);
-    await fileMatches(f("status"), (s) => s.includes("\n* TODO B\n* Z\n"), "status not set to TODO");
+    await fileMatches(f("status"), (s) => s.includes("\n* TODO B\n"), "status not set to TODO");
     await browser.keys([Key.Shift, Key.ArrowLeft]);
     await fileMatches(f("status"), (s) => s === title("status") + org, "status not cleared");
   });
@@ -833,7 +832,7 @@ describe("Org structure keys", () => {
   it("clicking a checkbox ticks it and updates the heading's [n/m] cookie", async () => {
     await open("boxes", 7); // off the item lines, so they show the checkbox widget
     await (await (await find(".cm-line", "one")).$(".cm-org-check")).click();
-    await saved("boxes", "* TODO A [1/2]\n- [X] one\n- [ ] two\n** Child\n* B\n* Z\n", "checkbox or cookie not updated");
+    await saved("boxes", "* TODO A [1/2]\n- [X] one\n- [ ] two\n** Child\n* B\n", "checkbox or cookie not updated");
   });
 
   // Last: in e2e, a note opened after this one drops "3" and "0" of "3G0" and inserts the "G".
@@ -841,10 +840,10 @@ describe("Org structure keys", () => {
     await open("newitem", 5);
     await browser.keys([Key.Alt, Key.Enter]);
     await type("three");
-    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n* Z\n", "list item not added");
-    await type("8G0"); // * B
+    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n", "list item not added");
+    await type("7G0"); // * B
     await browser.keys([Key.Alt, Key.Shift, Key.Enter]);
     await type("C");
-    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n* TODO C\n* Z\n", "task heading not added");
+    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n* TODO C\n", "task heading not added");
   });
 });
