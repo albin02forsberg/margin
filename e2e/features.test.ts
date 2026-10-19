@@ -732,7 +732,7 @@ describe("Org structure keys", () => {
   // No tables: Alt+H/J/K/L act on tables when the cursor is in one.
   // "* Z" keeps B off the last line: the last subtree takes in the trailing newline.
   const org = "* TODO A [0/2]\n- [ ] one\n- [ ] two\n** Child\n* B\n* Z\n"; // lines 3-8 after the title
-  const notes = ["moves", "items", "levels", "status", "newitem", "fold", "boxes"]; // one per test, so a failure can't cascade
+  const notes = ["moves", "items", "levels", "status", "newitem", "fold", "boxes", "probe"]; // one per test, so a failure can't cascade
   const f = (n: string) => join(d.notes, `${n}.org`);
   const title = (n: string) => `#+title: ${n}\n\n`;
   /** Open note N in normal mode with the cursor at the start of LINE. */
@@ -760,7 +760,7 @@ describe("Org structure keys", () => {
   before(async () => {
     d = await launch({ files: ({ notes: dir }) => { for (const n of notes) writeFileSync(join(dir, `${n}.org`), title(n) + org); } });
     await find(".agenda h1", "Today"); // the page listens for keys only once loaded
-    await browser.execute(() => addEventListener("keydown", (e) => (window as any).__keys?.push(`${e.ctrlKey ? "C-" : ""}${e.altKey ? "A-" : ""}${e.shiftKey ? "S-" : ""}${e.key}@${(e.target as HTMLElement).className}`), true));
+    await browser.execute(() => addEventListener("keydown", (e) => (window as any).__keys?.push(`${e.ctrlKey ? "C-" : ""}${e.altKey ? "A-" : ""}${e.shiftKey ? "S-" : ""}${e.key}@${(e.target as HTMLElement).className}/${document.querySelector(".status .mode")?.textContent}`), true));
   });
   after(close, { timeout: 30_000 });
 
@@ -801,17 +801,6 @@ describe("Org structure keys", () => {
     await fileMatches(f("status"), (s) => s === title("status") + org, "status not cleared");
   });
 
-  it("Alt+Enter continues a checkbox list, Alt+Shift+Enter adds a task heading after the subtree", async () => {
-    await open("newitem", 5);
-    await browser.keys([Key.Alt, Key.Enter]);
-    await type("three");
-    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n* Z\n", "list item not added");
-    await type("8G0"); // * B
-    await browser.keys([Key.Alt, Key.Shift, Key.Enter]);
-    await type("C");
-    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n* TODO C\n* Z\n", "task heading not added");
-  });
-
   it("Tab on a heading folds its subtree and Tab again unfolds it", async () => {
     await open("fold", 3);
     const shown = async () => (await texts(".cm-line")).some((t) => t.includes("Child"));
@@ -831,5 +820,17 @@ describe("Org structure keys", () => {
     await open("boxes", 7); // off the item lines, so they show the checkbox widget
     await (await (await find(".cm-line", "one")).$(".cm-org-check")).click();
     await saved("boxes", "* TODO A [1/2]\n- [X] one\n- [ ] two\n** Child\n* B\n* Z\n", "checkbox or cookie not updated");
+  });
+
+  it("Alt+Enter continues a checkbox list, Alt+Shift+Enter adds a task heading after the subtree", async () => {
+    await open("newitem", 5);
+    await browser.keys([Key.Alt, Key.Enter]);
+    await type("three");
+    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n* Z\n", "list item not added");
+    await type("8G0"); // * B
+    await browser.keys([Key.Alt, Key.Shift, Key.Enter]);
+    await type("C");
+    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n* TODO C\n* Z\n", "task heading not added");
+    await open("probe", 3); // DIAG: does the next note take keys normally?
   });
 });
