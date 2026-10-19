@@ -13,6 +13,7 @@
   import type { EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
   import { linkFor, asUrl } from "$lib/weblink";
+  import { findTarget, splitTarget } from "$lib/links";
   import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, relativeTo, resolvePath } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
@@ -848,9 +849,14 @@
       return n ? openFile(n.path, n.line) : flash(`No note with ${target}`);
     }
     if (/^https?:\/\//.test(target)) return openUrl(target);
-    const p = target.replace(/^file:/, "").replace(/::.*$/, "");
+    const { file, search } = splitTarget(target);
     const dir = tab?.path ? tab.path.replace(/[\\/][^\\/]*$/, "") : cfg.notes;
-    await openFile(/^([\\/]|[A-Za-z]:)/.test(p) ? p : resolvePath(dir, p, sep()));
+    if (file) await openFile(/^([\\/]|[A-Za-z]:)/.test(file) ? file : resolvePath(dir, file, sep()));
+    if (!search) return;
+    const line = findTarget(view.state.doc.toString(), search);
+    if (line == null) return flash(`No match for "${search}" in ${tab?.title ?? "note"}`);
+    const pos = view.state.doc.line(line + 1).from;
+    view.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: "center" }) });
   }
 
   async function noteItems() {
