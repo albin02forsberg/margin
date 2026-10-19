@@ -50,6 +50,9 @@ pub struct Config {
     pub templates_dir: String,
     /// Dropped and pasted files go to <attachments_dir>/<note name>/, relative to notes_dir.
     pub attachments_dir: String,
+    /// Dropped and pasted images go to <images_dir>/ in the note's own folder, shared by the
+    /// notes there (Emacs org style); empty = attachments_dir like other files.
+    pub images_dir: String,
     /// ActivityWatch server to suggest sessions from, e.g. "http://localhost:5600"; empty = off.
     pub activitywatch_url: String,
     /// Regexes (case-insensitive) over app names and window titles that suggestions ignore.
@@ -196,6 +199,7 @@ impl Default for Config {
             ],
             templates_dir: "templates".into(),
             attachments_dir: "attachments".into(),
+            images_dir: "images".into(),
             activitywatch_url: String::new(),
             activity_exclude: v(&["KeePass", "1Password", "Bitwarden", "Private Browsing", "Incognito", "InPrivate"]),
             activity_calendar: String::new(),

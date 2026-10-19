@@ -394,11 +394,16 @@ drawers, `#+KEY:` names and heading `:tags:`.
 Image links (`[[file:pic.png]]`, `[[https://…/pic.jpg]]`) show the image inline.
 
 Drop files onto a note, or paste an image (saved as `pasted-YYYYMMDD-HHMMSS.png`),
-and Margin copies them into `attachments/<note name>/` in your notes folder and
-inserts a relative `[[file:…]]` link, so notes stay portable. Same-named files get
-`-1`, `-2` suffixes; set `attachments_dir` to use another folder.
-**Clean up unused attachments…** in the palette lists files in that folder no note
-links to and moves the ones you pick to `attachments/.trash/` (nothing is deleted).
+and Margin copies them into your notes folder and inserts a relative `[[file:…]]`
+link, so notes stay portable. Images (png, jpg, gif, webp, svg) go to an `images/`
+folder next to the note, shared by all notes in that folder, like in Emacs org
+(`[[file:images/pic.png]]`); other files go to `attachments/<note name>/` in your
+notes folder. Same-named files get `-1`, `-2` suffixes (nothing is overwritten); set
+`images_dir` (empty = images go to the attachments folder too) or `attachments_dir`
+to use other folders. Images already under `attachments/` stay where they are.
+**Clean up unused attachments…** in the palette lists files in those folders no note
+links to and moves the ones you pick to `attachments/.trash/` or `images/.trash/`
+(nothing is deleted).
 
 Code blocks (`#+begin_src python` …) are syntax highlighted for any language
 CodeMirror knows (python, rust, js/ts, sh, sql, go, java, c, html, css, yaml, …).

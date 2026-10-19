@@ -587,7 +587,10 @@ describe("Tables, lists and attachments", () => {
         writeFileSync(join(notes, "calc.org"), "#+title: Calc\n\n| item | qty | price | total |\n|-\n| a | 2 | 3 | |\n| b | 4 | 5 | |\n");
         writeFileSync(join(notes, "emph.org"), "#+title: Emph\n\nsay hello now\n");
         writeFileSync(join(notes, "list.org"), "#+title: List\n\n1. a\n2. b\n3. c\n");
-        writeFileSync(join(notes, "pics.org"), "#+title: Pics\n\n[[file:attachments/pics/used.txt][used]]\n");
+        writeFileSync(join(notes, "pics.org"), "#+title: Pics\n\n[[file:attachments/pics/used.txt][used]]\n[[file:images/used.png]]\n");
+        mkdirSync(join(notes, "images"));
+        writeFileSync(join(notes, "images", "used.png"), "used");
+        writeFileSync(join(notes, "images", "stray.png"), "stray");
         mkdirSync(join(notes, "attachments", "pics"), { recursive: true });
         writeFileSync(join(notes, "attachments", "pics", "used.txt"), "used");
         writeFileSync(join(notes, "attachments", "pics", "orphan.txt"), "orphan");
@@ -644,6 +647,32 @@ describe("Tables, lists and attachments", () => {
     await browser.keys(Key.Escape);
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(join(d.notes, "emph.org"), (s) => s.includes("say *hello* now *x*\n"), "word not bolded");
+  });
+
+  it("a pasted image goes to the shared images/ folder, linked and shown inline", async () => {
+    await open("Pics", "pics.org");
+    await type("G");
+    await browser.execute(() => {
+      const png = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0));
+      const dt = new DataTransfer();
+      dt.items.add(new File([png], "x.png", { type: "image/png" }));
+      document.querySelector(".cm-content")!.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+    await find(".status .msg", "Attached 1 file");
+    await browser.keys([Key.Ctrl, "s"]);
+    let link = "";
+    await fileMatches(join(d.notes, "pics.org"), (s) => !!(link = /\[\[file:(images\/pasted-\d{8}-\d{6}\.png)\]\]/.exec(s)?.[1] ?? ""), "no images/ link inserted");
+    assert.ok(existsSync(join(d.notes, link)), `${link} not saved`);
+    await browser.waitUntil(async () => (await browser.execute(() => [...document.querySelectorAll(".cm-org-img img")].map((i) => decodeURIComponent((i as HTMLImageElement).src)))).some((s) => s.includes(link)), { timeoutMsg: "pasted image not shown inline" });
+  });
+
+  it("cleans up an unlinked image into images/.trash, keeping linked ones", async () => {
+    await palette("Clean up unused attachments");
+    await answer("Unused attachments", "stray");
+    await find(".status .msg", "Moved 1 file");
+    assert.equal(read(join(d.notes, "images", ".trash", "stray.png")), "stray");
+    assert.ok(!existsSync(join(d.notes, "images", "stray.png")), "stray image not moved");
+    assert.equal(read(join(d.notes, "images", "used.png")), "used", "linked image touched");
   });
 
   it("cleans up only the unlinked attachment, then reports there is nothing left", async () => {
