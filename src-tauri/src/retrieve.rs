@@ -207,10 +207,11 @@ pub fn retrieve(files: &[Arc<OrgFile>], question: &str, open: Option<&Path>, mut
 }
 
 /// Whether PATH (under ROOT, the notes folder) matches one of `ai_exclude`'s PATTERNS: a
-/// case-insensitive substring of its `/`-separated path below ROOT.
+/// case-insensitive substring of its `/`-separated path below ROOT, which starts with `/` so
+/// `/private/` anchors at the top. PATTERNS may use `\` or `/`; a lone `/` is ignored.
 pub fn excluded(path: &Path, root: &Path, patterns: &[String]) -> bool {
-    let p = path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/").to_lowercase();
-    patterns.iter().map(|x| x.trim().to_lowercase()).any(|x| !x.is_empty() && p.contains(&x))
+    let p = format!("/{}", path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/").to_lowercase());
+    patterns.iter().map(|x| x.trim().replace('\\', "/").to_lowercase()).any(|x| !x.is_empty() && x != "/" && p.contains(&x))
 }
 
 /// Which of the open tasks, the agenda and the time log QUESTION asks about, by word prefixes.
@@ -407,6 +408,12 @@ mod tests {
         // only the path below the notes folder counts
         assert!(!excluded(Path::new("/n/work.org"), root, &["n/".to_string()]));
         assert!(!excluded(Path::new("/n/work.org"), root, &[]));
+        // a leading `/` is fine, `\` works as a separator, the root itself and a lone `/` never match
+        let top = |p: &str| excluded(Path::new(p), root, &["/Private/".to_string()]);
+        assert!(top("/n/private/diary.org") && top("/n/a/private/d.org") && !top("/n/privates/d.org"));
+        assert!(excluded(Path::new("/n/private/d.org"), root, &["private\\".to_string()]));
+        assert!(!excluded(Path::new("/n/x.org"), root, &["/n/".to_string()]));
+        assert!(!excluded(Path::new("/n/x.org"), root, &["/".to_string()]));
         // an excluded note isn't found, nor reached as a linked note
         let files = [note("plan", "#+title: Plan\nlaunch soon, see [[file:secret.org][s]]\n"), note("secret", "#+title: Secret\ncodes\n")];
         let kept: Vec<_> = files.iter().filter(|f| !excluded(&f.path, root, &["secret".to_string()])).cloned().collect();

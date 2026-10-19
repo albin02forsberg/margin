@@ -626,7 +626,7 @@ other activity are never sent. **Settings → AI chat** has a switch for each ki
 of source (`ai_source_notes`, `ai_source_tasks`, `ai_source_time`; they apply
 while *Use my notes* is ticked) and **Notes the AI never sees** (`ai_exclude`):
 any note whose path in the notes folder contains one of these (any case, e.g.
-`private/` or `diary`) is never sent, not as a match, a linked note, the open
+`private/`, `/private/` or `diary`; `\` works as `/` too) is never sent, not as a match, a linked note, the open
 note (the chat says so instead of offering it) or for its tasks.
 
 ## Export
