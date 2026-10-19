@@ -607,6 +607,21 @@
     }) as Promise<string | null>;
   }
 
+  /** Past-day picker (log a session): Today, Yesterday and the last days by weekday; weekday names look back. */
+  function pastDatePick(prompt: string) {
+    const day = (n: number) => new Date(Date.now() - n * 86_400_000);
+    return pick({
+      prompt,
+      items: [
+        { label: "Today", value: "today" }, { label: "Yesterday", value: "-1d" },
+        ...[2, 3, 4, 5, 6].map((n) => ({ label: day(n).toLocaleDateString("en-GB", { weekday: "long" }), value: `-${n}d`, detail: day(n).toLocaleDateString("sv-SE") })),
+      ],
+      allowCustom: true,
+      preview: (q) => call("date_preview", { input: q, kind: "past" }),
+      hint: "or type fri, -2d, 2026-10-12",
+    }) as Promise<string | null>;
+  }
+
   const taskOps: Record<string, (loc: Loc, it?: AgendaItem, arg?: number | string) => Promise<unknown>> = {
     async done(loc) {
       const h = await heading(loc);
@@ -1450,9 +1465,10 @@
 
   /** Log a finished session on a past day: day, start, end, project, note (the backend refuses overlaps, the future and midnight crossings). */
   async function logSession() {
-    const d = await datePick("Log a session on");
-    if (d == null || d === "rm") return;
-    const day = await call<string>("read_date", { input: d });
+    const d = await pastDatePick("Log a session on");
+    if (d == null) return;
+    const day = await call<string>("read_past_date", { input: d }).catch((e) => { flash(String(e)); return null; });
+    if (!day) return;
     const time = async (what: string) => {
       const v = await ask(`${what} (HH:MM)`);
       if (v == null) return null;

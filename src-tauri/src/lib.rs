@@ -123,6 +123,10 @@ fn date(input: &str) -> R<NaiveDate> {
     date_at(input, today())
 }
 
+fn past_date(input: &str) -> R<NaiveDate> {
+    org::read_past_date(input, today()).map(|d| d.0).ok_or_else(|| format!("can't read a past date: {input}"))
+}
+
 fn date_at(input: &str, today: NaiveDate) -> R<NaiveDate> {
     org::read_date(input, today).map(|d| d.0).ok_or_else(|| format!("can't parse date: {input}"))
 }
@@ -685,6 +689,9 @@ fn task_text(todo: &[String], title: &str, priority: Option<&str>, tags: Vec<Str
 /// Human preview of a date input, for live feedback while typing.
 #[tauri::command]
 fn date_preview(input: String, kind: Option<String>) -> String {
+    if kind.as_deref() == Some("past") {
+        return preview_when(if input.trim().is_empty() { Ok(None) } else { org::read_past_date(&input, today()).map(Some).ok_or(String::new()) }, false);
+    }
     let scheduled = kind.as_deref() == Some("SCHEDULED");
     // Planning prompts (kind given) also take a `norepeat` word.
     if kind.is_some() && input.split_whitespace().any(|w| w == org::NO_REPEAT) {
@@ -697,7 +704,11 @@ fn date_preview(input: String, kind: Option<String>) -> String {
 
 /// SCHEDULED: a `-3d` cookie delays the entry instead of warning ahead.
 fn date_preview_at(input: &str, today: NaiveDate, scheduled: bool) -> String {
-    match opt_date_at(input, today) {
+    preview_when(opt_date_at(input, today), scheduled)
+}
+
+fn preview_when(when: R<Option<org::When>>, scheduled: bool) -> String {
+    match when {
         Ok(None) => String::new(),
         Ok(Some((d, t, r, w))) => [Some(d.format("%A %-d %B %Y").to_string()), t, r.as_deref().and_then(repeat_text), w.as_deref().and_then(|w| warn_text(w, scheduled))]
             .into_iter().flatten().collect::<Vec<_>>().join(", "),
@@ -838,6 +849,12 @@ fn planning_at(text: &str, line: usize, kind: &str, input: &str, today: NaiveDat
 #[tauri::command]
 fn read_date(input: String) -> R<String> {
     date(&input).map(|d| d.to_string())
+}
+
+/// Like `read_date` for past days: weekday names look back, the future is refused.
+#[tauri::command]
+fn read_past_date(input: String) -> R<String> {
+    past_date(&input).map(|d| d.to_string())
 }
 
 /// Category and title of the heading at LINE (for clock-in suggestions).
@@ -1721,7 +1738,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             watcher::gnome_extension, watcher::screen_recording,
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
-            agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, org_context,
+            agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, read_past_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,

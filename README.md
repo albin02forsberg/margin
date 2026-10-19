@@ -436,7 +436,7 @@ billable hours, its share of the week, and **Track** to start the clock on it). 
 Space t … has every timeclock command (same letters as the old Emacs menu).
 `Space t a` ("I started earlier") and `Space t O` ("I stopped earlier", for when you forgot to stop) take minutes ago (`25`) or a time (`14:05`). A start can't move before the previous session's end.
 
-`Space t n` (or `n` in the Time view) logs a finished session after the fact: pick a day, a start and end (`09:00`), a project and a note. It must not overlap logged time, reach into the future or cross midnight.
+`Space t n` (or `n` in the Time view) logs a finished session after the fact: pick a day (Today, Yesterday, the last days by name, or type `fri`, `-2d`, `2026-10-12`; a weekday name means its most recent past occurrence), a start and end (`09:00`), a project and a note. It must not overlap logged time, reach into the future or cross midnight.
 `Space t w` says when to leave today: the time today's expected hours (less time
 off, flex ignored) are reached at the current pace, e.g. `Leave at 16:42 (2h 18m left)`.
 The Time view shows the same line under today's total. A clock still running past

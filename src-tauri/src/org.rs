@@ -1192,6 +1192,21 @@ pub fn read_date(input: &str, today: NaiveDate) -> Option<When> {
     Some((date, time, rep, warn))
 }
 
+/// `read_date` for past days: a bare weekday name is the latest such day before today
+/// (a name equal to today's weekday is 7 days back), `yesterday` works, and a future date is rejected.
+pub fn read_past_date(input: &str, today: NaiveDate) -> Option<When> {
+    let first = input.split_whitespace().next().unwrap_or("").to_lowercase();
+    let input = if first == "yesterday" { input.to_lowercase().replacen("yesterday", "-1d", 1) } else { input.to_string() };
+    let mut r = read_date(&input, today)?;
+    if first.starts_with(|c: char| c.is_ascii_alphabetic()) && first != "today" && first != "tomorrow" && first != "yesterday" {
+        r.0 -= Duration::days(7); // read_date walked forward to today+1..today+7
+        if r.0 >= today {
+            r.0 -= Duration::days(7);
+        }
+    }
+    (r.0 <= today).then_some(r)
+}
+
 /// A date input as `read_date` reads it: date, time, repeater, warning cookie.
 pub type When = (NaiveDate, Option<String>, Option<String>, Option<String>);
 
@@ -1638,6 +1653,20 @@ mod tests {
         for bad in ["fri -3d -1w", "fri -3x", "fri -3", "fri --3d"] {
             assert_eq!(read_date(bad, t), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn reads_past_dates() {
+        let t = d("2026-10-05"); // Monday
+        assert_eq!(read_past_date("fri", t).unwrap().0, d("2026-10-02"));
+        assert_eq!(read_past_date("mon", t).unwrap().0, d("2026-09-28"));
+        assert_eq!(read_past_date("tue 9:00", t).unwrap().0, d("2026-09-29"));
+        assert_eq!(read_past_date("yesterday", t).unwrap().0, d("2026-10-04"));
+        assert_eq!(read_past_date("today", t).unwrap().0, t);
+        assert_eq!(read_past_date("-2d", t).unwrap().0, d("2026-10-03"));
+        assert_eq!(read_past_date("2026-10-05", t).unwrap().0, t);
+        assert_eq!(read_past_date("2026-10-06", t), None);
+        assert_eq!(read_past_date("tomorrow", t), None);
     }
 
     #[test]
