@@ -726,3 +726,95 @@ describe("Note navigation", () => {
     await find(".cm-content", "Sort the mail");
   });
 });
+
+describe("Org structure keys", () => {
+  let d: Dirs;
+  // No tables: Alt+H/J/K/L act on tables when the cursor is in one.
+  const org = "* TODO A [0/2]\n- [ ] one\n- [ ] two\n** Child\n* B\n"; // lines 3-7 after the title
+  const notes = ["moves", "items", "levels", "status", "newitem", "fold", "boxes"]; // one per test, so a failure can't cascade
+  const f = (n: string) => join(d.notes, `${n}.org`);
+  const title = (n: string) => `#+title: ${n}\n\n`;
+  /** Open note N in normal mode with the cursor at the start of LINE. */
+  const open = async (n: string, line: number) => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", n);
+    await find(".status .file", `${n}.org`);
+    await browser.keys(Key.Escape);
+    await type(`${line}G0`);
+  };
+  /** Save and wait until N's text after the title is WANT. */
+  const saved = async (n: string, want: string, msg: string) => {
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(f(n), (s) => s === title(n) + want, msg);
+  };
+  before(async () => {
+    d = await launch({ files: ({ notes: dir }) => { for (const n of notes) writeFileSync(join(dir, `${n}.org`), title(n) + org); } });
+    await find(".agenda h1", "Today"); // the page listens for keys only once loaded
+  });
+  after(close, { timeout: 30_000 });
+
+  it("Alt+J moves a heading below its sibling with its children, Alt+K moves it back", async () => {
+    await open("moves", 3);
+    await browser.keys([Key.Alt, "j"]);
+    await saved("moves", "* B\n* TODO A [0/2]\n- [ ] one\n- [ ] two\n** Child\n", "subtree not moved down");
+    await browser.keys([Key.Alt, "k"]);
+    await saved("moves", org, "subtree not moved back up");
+  });
+
+  it("Alt+J / Alt+K on a list item move only the item, not its heading (#472)", async () => {
+    await open("items", 4);
+    await browser.keys([Key.Alt, "j"]);
+    await saved("items", "* TODO A [0/2]\n- [ ] two\n- [ ] one\n** Child\n* B\n", "item not moved down");
+    await browser.keys([Key.Alt, "k"]);
+    await saved("items", org, "item not moved back up");
+  });
+
+  it("Alt+L / Alt+H demote and promote a heading, with Shift its children too", async () => {
+    await open("levels", 7);
+    await browser.keys([Key.Alt, "l"]);
+    await saved("levels", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n** Child\n** B\n", "heading not demoted");
+    await browser.keys([Key.Alt, "h"]);
+    await saved("levels", org, "heading not promoted");
+    await type("3G0");
+    await browser.keys([Key.Alt, Key.Shift, "l"]);
+    await saved("levels", "** TODO A [0/2]\n- [ ] one\n- [ ] two\n*** Child\n* B\n", "subtree not demoted");
+    await browser.keys([Key.Alt, Key.Shift, "h"]);
+    await saved("levels", org, "subtree not promoted");
+  });
+
+  it("Shift+Right / Shift+Left cycle the heading's status", async () => {
+    await open("status", 7);
+    await browser.keys([Key.Shift, Key.ArrowRight]);
+    await fileMatches(f("status"), (s) => s.endsWith("\n* TODO B\n"), "status not set to TODO");
+    await browser.keys([Key.Shift, Key.ArrowLeft]);
+    await fileMatches(f("status"), (s) => s === title("status") + org, "status not cleared");
+  });
+
+  it("Alt+Enter continues a checkbox list, Alt+Shift+Enter adds a task heading after the subtree", async () => {
+    await open("newitem", 5);
+    await browser.keys([Key.Alt, Key.Enter]);
+    await type("three");
+    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n", "list item not added");
+    await type("8G0"); // * B
+    await browser.keys([Key.Alt, Key.Shift, Key.Enter]);
+    await type("C");
+    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n* TODO C\n", "task heading not added");
+  });
+
+  it("Tab on a heading folds its subtree and Tab again unfolds it", async () => {
+    await open("fold", 3);
+    const shown = async () => (await texts(".cm-line")).some((t) => t.includes("Child"));
+    await browser.waitUntil(shown, { timeoutMsg: "child heading not shown before folding" });
+    await browser.keys(Key.Tab);
+    await browser.waitUntil(async () => !(await shown()), { timeoutMsg: "Tab didn't fold the subtree" });
+    await browser.keys(Key.Tab);
+    await browser.waitUntil(shown, { timeoutMsg: "Tab didn't unfold the subtree" });
+  });
+
+  it("clicking a checkbox ticks it and updates the heading's [n/m] cookie", async () => {
+    await open("boxes", 7); // off the item lines, so they show the checkbox widget
+    await (await (await find(".cm-line", "one")).$(".cm-org-check")).click();
+    await saved("boxes", "* TODO A [1/2]\n- [X] one\n- [ ] two\n** Child\n* B\n", "checkbox or cookie not updated");
+  });
+});
