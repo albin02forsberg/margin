@@ -8,6 +8,9 @@ pub struct Config {
     pub data_dir: String,
     pub export_dir: String,
     pub expected_daily_hours: f64,
+    /// Expected hours Monday to Sunday (7 values), e.g. a 4-day week; empty = expected_daily_hours Mon–Fri.
+    #[serde(deserialize_with = "weekday_hours")]
+    pub weekday_hours: Vec<f64>,
     pub profiles: Vec<String>,
     pub todo_keywords: Vec<String>,
     pub done_keywords: Vec<String>,
@@ -126,6 +129,15 @@ impl Template {
     }
 }
 
+/// `weekday_hours`: empty, or 7 hours from 0 to 24.
+fn weekday_hours<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<f64>, D::Error> {
+    let v = Vec::<f64>::deserialize(d)?;
+    if !v.is_empty() && (v.len() != 7 || v.iter().any(|h| !(0.0..=24.0).contains(h))) {
+        return Err(serde::de::Error::custom("weekday_hours needs 7 numbers from 0 to 24, Monday first, or none"));
+    }
+    Ok(v)
+}
+
 impl Default for Config {
     fn default() -> Self {
         let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect();
@@ -134,6 +146,7 @@ impl Default for Config {
             data_dir: "~/timeclock".into(),
             export_dir: "~/Desktop".into(),
             expected_daily_hours: 8.0,
+            weekday_hours: vec![],
             profiles: v(&["Work", "Personal"]),
             todo_keywords: v(&["TODO", "NEXT", "WAIT"]),
             done_keywords: v(&["DONE", "CANCELLED"]),
@@ -468,6 +481,11 @@ mod tests {
         assert!(save(mine, t("idle_threshold_minutes = 1.5"), &[]).is_err()); // wrong type
         assert!(save(mine, t("nope = 1"), &[]).is_err() && save(mine, t("views = []"), &[]).is_err());
         assert!(save(mine, t("profiles = []"), &[]).is_err()); // keep at least one profile
+        assert_eq!(save(mine, t("weekday_hours = [8, 8, 8, 8.5, 0, 0, 0]"), &[]).unwrap().1.weekday_hours, [8.0, 8.0, 8.0, 8.5, 0.0, 0.0, 0.0]);
+        for bad in ["[8, 8, 8, 8, 8]", "[8, 8, 8, 8, 8, 0, -1]", "[8, 8, 8, 8, 8, 0, 25]"] {
+            assert!(save(mine, t(&format!("weekday_hours = {bad}")), &[]).unwrap_err().contains("7 numbers"), "{bad}");
+        }
+        assert!(toml::from_str::<Config>("weekday_hours = [1]").is_err()); // on load too
         assert!(save("profiles = [\n  \"A\",\n]\n", t("profiles = [\"B\"]"), &[]).is_err()); // multi-line: by hand
     }
 

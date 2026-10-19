@@ -13,6 +13,17 @@ test("only changed fields are sent, parsed", () => {
   assert.throws(() => changes(fields, { ...form, expected_daily_hours: "" }, config), /not a number/);
 });
 
+test("weekday hours are numbers on one line", () => {
+  const f = GROUPS.flatMap((g) => g.fields).find((f) => f.key === "weekday_hours")!;
+  const cfg = { weekday_hours: [8, 8, 8, 8, 6.5, 0, 0] };
+  const [form] = refresh({}, {}, cfg);
+  assert.equal(form.weekday_hours, "8 8 8 8 6.5 0 0");
+  assert.deepEqual(changes([f], { weekday_hours: "8, 8,8 8 6 0 0 " }, cfg), { weekday_hours: [8, 8, 8, 8, 6, 0, 0] });
+  assert.deepEqual(changes([f], { weekday_hours: " " }, cfg), { weekday_hours: [] });
+  assert.equal(refresh({}, {}, {})[0].weekday_hours, "");
+  assert.throws(() => changes([f], { weekday_hours: "8 x" }, cfg), /x is not a number/);
+});
+
 test("a reload keeps unsaved edits and refreshes the rest", () => {
   const [form, base] = refresh({}, {}, config);
   const edited = { ...form, notes_dir: "typing", reminders: false };
@@ -58,7 +69,7 @@ test("the macOS watcher dialog shows once, only when turning it on without the p
 test("category chips and the filter narrow the settings shown", () => {
   const shown = (cat: string, q: string) => GROUPS.flatMap((g) => g.fields.filter((f) => shows(cat, q, g.name, f.label, f.hint, f.key)).map((f) => f.key));
   assert.equal(shown("All", "").length, GROUPS.flatMap((g) => g.fields).length);
-  assert.deepEqual(shown("Time", ""), ["expected_daily_hours", "idle_threshold_minutes", "profiles"]);
+  assert.deepEqual(shown("Time", ""), ["expected_daily_hours", "weekday_hours", "idle_threshold_minutes", "profiles"]);
   assert.deepEqual(shown("All", "IDLE"), ["idle_threshold_minutes"]);
   assert.deepEqual(shown("All", "tasks"), ["inbox", "todo_keywords", "done_keywords", "log_done", "calendar_file", "ai_source_tasks", "ai_exclude"]); // inbox and the AI ones by label or hint, Tasks by group name
   assert.deepEqual(shown("Time", "keywords"), []);

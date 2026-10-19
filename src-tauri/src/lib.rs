@@ -54,7 +54,7 @@ impl App {
     fn tc(&self) -> Tc {
         let c = self.cfg();
         let p = self.profile().to_lowercase();
-        Tc { dir: c.data().join(&p), diary: c.notes().join(format!("dagbok-{p}.org")), expected: c.expected_daily_hours }
+        Tc { dir: c.data().join(&p), diary: c.notes().join(format!("dagbok-{p}.org")), cal: timeclock::Calendar::new(c.expected_daily_hours, &c.weekday_hours) }
     }
     fn kw(&self) -> org::Kw {
         let c = self.cfg();
@@ -997,7 +997,7 @@ fn status_json(profile: &str, (cur, on_break, today): Status, backup_error: Opti
 /// When to leave today (see timeclock::leave_time), for the open clock and today's hours.
 fn leave_time(tc: &Tc, running: bool, on_break: bool, today_h: f64) -> String {
     let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
-    timeclock::leave_time(timeclock::now(), today_h, tc.expected, &leave, running, on_break)
+    timeclock::leave_time(timeclock::now(), today_h, &tc.cal, &leave, running, on_break)
 }
 
 /// Whether the clock runs and today's hours are worked (timeclock::day_done), for the reminder thread.
@@ -1005,7 +1005,7 @@ pub(crate) fn day_done_now(s: &App) -> bool {
     let tc = s.tc();
     let (cur, on_break, today_h) = tc.status();
     let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
-    timeclock::day_done(timeclock::now(), today_h, tc.expected, &leave, cur.is_some(), on_break.is_some())
+    timeclock::day_done(timeclock::now(), today_h, &tc.cal, &leave, cur.is_some(), on_break.is_some())
 }
 
 #[tauri::command]
@@ -1022,7 +1022,7 @@ fn tc_dashboard(s: State<App>) -> Value {
     let (cur, on_break, today_hours) = tc.status();
     let leave_time = leave_time(&tc, cur.is_some(), on_break.is_some(), today_hours);
     dashboard(DashIn {
-        today: today(), today_hours, sessions: tc.sessions(), projects: tc.projects(), leave: tc.leave(), expected: tc.expected,
+        today: today(), today_hours, sessions: tc.sessions(), projects: tc.projects(), leave: tc.leave(), cal: tc.cal.clone(),
         status: (cur, on_break), profile: s.profile(), profiles: s.cfg().profiles, leave_time, backup_error: backup::last_failure(),
     })
 }
@@ -1034,7 +1034,7 @@ struct DashIn {
     sessions: Vec<timeclock::Session>,
     projects: timeclock::Projects,
     leave: Vec<(usize, timeclock::Leave)>,
-    expected: f64,
+    cal: timeclock::Calendar,
     status: (Option<(NaiveDateTime, String, String)>, Option<String>),
     profile: String,
     profiles: Vec<String>,
@@ -1044,8 +1044,8 @@ struct DashIn {
 
 fn dashboard(inp: DashIn) -> Value {
     use chrono::Datelike;
-    let DashIn { today: t, today_hours: today_h, sessions, projects, leave, expected, status: (cur, on_break), .. } = &inp;
-    let (t, today_h, expected) = (*t, *today_h, *expected);
+    let DashIn { today: t, today_hours: today_h, sessions, projects, leave, cal, status: (cur, on_break), .. } = &inp;
+    let (t, today_h) = (*t, *today_h);
     let leave_only: Vec<_> = leave.iter().map(|x| x.1.clone()).collect();
     let monday = t - Duration::days(t.weekday().num_days_from_monday() as i64);
     let sunday = monday + Duration::days(6);
@@ -1054,7 +1054,7 @@ fn dashboard(inp: DashIn) -> Value {
         .map(|i| {
             let d = monday + Duration::days(i);
             let h: f64 = if d == t { today_h } else { sessions.iter().filter(|x| x.date == d).map(|x| x.hours).sum() };
-            let e = timeclock::expected_hours(d, expected);
+            let e = timeclock::expected_hours(d, cal);
             let off = timeclock::leave_on(&leave_only, d, e, h);
             let kinds: Vec<&str> = off.iter().map(|x| x.0.kind.as_str()).collect();
             json!({ "date": d, "hours": h, "expected": e - timeclock::leave_credit(&leave_only, d, e, h), "leave": kinds.join(", "), "leave_hours": off.iter().map(|x| x.1).sum::<f64>() })
@@ -1076,7 +1076,7 @@ fn dashboard(inp: DashIn) -> Value {
         .map(|(p, (w, b))| json!({ "project": if p.is_empty() { "Other".to_string() } else { p.clone() }, "code": timeclock::export_code(&p, projects), "worked": w, "billable": b, "month": month(&p) }))
         .collect();
     per_project.sort_by(|a, b| b["worked"].as_f64().unwrap_or(0.0).total_cmp(&a["worked"].as_f64().unwrap_or(0.0)));
-    let (flex_total, flex_week, _) = timeclock::flex(sessions, projects, &leave_only, expected, Some((monday, t)));
+    let (flex_total, flex_week, _) = timeclock::flex(sessions, projects, &leave_only, cal, Some((monday, t)));
     json!({
         "profile": inp.profile, "profiles": inp.profiles,
         "project": cur.as_ref().map(|c| &c.1), "since": cur.as_ref().map(|c| c.0), "task": cur.as_ref().map(|c| &c.2), "on_break": on_break,
@@ -1483,13 +1483,13 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
     let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
     let codes = tc.leave_codes().unwrap_or_default();
     Ok(match kind.as_str() {
-        "daily" => timeclock::daily_report(&tc.sessions(), &tc.projects(), (&leave, &codes), tc.expected, date(date_input.as_deref().unwrap_or(""))?, &profile),
-        "weekly" => timeclock::weekly_report(&tc.sessions(), &tc.projects(), (&leave, &codes), tc.expected, today() - Duration::days(7), today(), &profile),
+        "daily" => timeclock::daily_report(&tc.sessions(), &tc.projects(), (&leave, &codes), &tc.cal, date(date_input.as_deref().unwrap_or(""))?, &profile),
+        "weekly" => timeclock::weekly_report(&tc.sessions(), &tc.projects(), (&leave, &codes), &tc.cal, today() - Duration::days(7), today(), &profile),
         "holidays" => timeclock::holidays_report(date(date_input.as_deref().unwrap_or(""))?.format("%Y").to_string().parse().unwrap()),
         "flex" => {
             let t = today();
             let week = (t - Duration::days(7), t);
-            let (total, period, days) = timeclock::flex(&tc.sessions(), &tc.projects(), &leave, tc.expected, Some(week));
+            let (total, period, days) = timeclock::flex(&tc.sessions(), &tc.projects(), &leave, &tc.cal, Some(week));
             format!("Flex ({profile}): total {total:+.2} h, last 7 days {period:+.2} h over {days} worked days")
         }
         "doctor" => {
@@ -1509,7 +1509,7 @@ fn tc_csv(s: State<App>, start: String, end: String, path: PathBuf) -> R<String>
     csv_dest(&path, &[s.cfg().data(), s.cfg_path.parent().unwrap().to_path_buf()])?;
     let tc = s.tc();
     let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
-    let (csv, off) = timeclock::csv(&tc.sessions(), &tc.load_projects()?, (&leave, &tc.leave_codes()?), tc.expected, date(&start)?, date(&end)?);
+    let (csv, off) = timeclock::csv(&tc.sessions(), &tc.load_projects()?, (&leave, &tc.leave_codes()?), &tc.cal, date(&start)?, date(&end)?);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?; // the export dir may not exist yet
     }
@@ -1593,7 +1593,7 @@ fn export_report(s: State<App>, start: String, end: String, print: bool, overwri
     let tc = s.tc();
     let (start, end) = (date(&start)?, date(&end)?);
     let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
-    let org = timeclock::weekly_report(&tc.sessions(), &tc.load_projects()?, (&leave, &tc.leave_codes()?), tc.expected, start, end, &s.profile());
+    let org = timeclock::weekly_report(&tc.sessions(), &tc.load_projects()?, (&leave, &tc.leave_codes()?), &tc.cal, start, end, &s.profile());
     let html = export::html(&export::parse(&org, &s.kw()), "Time report", Path::new(""), &export::Ids::new(), print);
     write_export(&s, &format!("time_report_{}_{start}_{end}.html", s.profile().to_lowercase()), html, overwrite)
 }
@@ -2006,7 +2006,7 @@ mod tests {
             ],
             projects: [("Acme".to_string(), Project::new("A-1"))].into(),
             leave: vec![(0, off("2026-01-09", "Vacation")), (1, off("2026-01-06", "Vab"))],
-            expected: 8.0,
+            cal: timeclock::Calendar::new(8.0, &[]),
             status,
             profile: "Work".into(),
             profiles: vec!["Work".into(), "Home".into()],
@@ -2055,7 +2055,7 @@ mod tests {
         assert_eq!((v["flex_total"].clone(), v["flex_week"].clone()), (json!(-15.0), json!(-16.0)));
         let fx = dash_fixture("2026-01-08", (None, None));
         let leave: Vec<_> = fx.leave.iter().map(|x| x.1.clone()).collect();
-        let (total, week, _) = timeclock::flex(&fx.sessions, &fx.projects, &leave, 8.0, Some((fx.today - Duration::days(3), fx.today)));
+        let (total, week, _) = timeclock::flex(&fx.sessions, &fx.projects, &leave, &fx.cal, Some((fx.today - Duration::days(3), fx.today)));
         assert_eq!((f(v["flex_total"].clone()), f(v["flex_week"].clone())), (total, week));
         let today: Vec<_> = v["today"].as_array().unwrap().iter().map(|s| s["desc"].clone()).collect();
         assert_eq!(today, [json!("c")]);
@@ -2306,7 +2306,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let (n1, d1, n2, d2) = (dir.join("n1"), dir.join("d1"), dir.join("n2"), dir.join("d2"));
         let old = cfg(&n1, &d1, "\"Work\", \"Home\"");
-        let tc = Tc { dir: d1.join("work"), diary: n1.join("dagbok-work.org"), expected: 8.0 };
+        let tc = Tc { dir: d1.join("work"), diary: n1.join("dagbok-work.org"), cal: timeclock::Calendar::new(8.0, &[]) };
         tc.clock_in("Acme", "", None).unwrap();
         // Same folders, profile kept: nothing happens.
         assert!(!clock_out_before_setup(&tc, &old, &cfg(&n1, &d1, "\"Work\""), "Work").unwrap());
