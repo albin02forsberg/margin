@@ -47,6 +47,15 @@ describe("Margin", () => {
     await fileMatches(join(notes, "scratch.org"), (s) => /First line\.\n\s*Typed by e2e/.test(s), "note wasn't saved");
   });
 
+  it(":set number shows the line-number gutter and :set nonumber hides it", async () => {
+    await type(":set number");
+    await browser.keys(Key.Enter);
+    await find(".cm-lineNumbers", "");
+    await type(":set nonumber");
+    await browser.keys(Key.Enter);
+    await browser.waitUntil(async () => (await browser.$$(".cm-lineNumbers")).length === 0);
+  });
+
   it("keeps a note deleted outside the app on screen, flagged", async () => {
     const file = join(notes, "scratch.org");
     unlinkSync(file);

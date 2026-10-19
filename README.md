@@ -328,7 +328,7 @@ template captured with the window hidden is filed without opening it.
 
 ## Editing notes
 
-Vim keys everywhere. On top of that:
+Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`, `no` prefix to turn off) show line numbers in every editor until you quit. On top of that:
 
 | | |
 |---|---|
