@@ -1,19 +1,16 @@
-// README screenshots: start the e2e build through tauri-driver on a demo dataset
-// in a temp dir and save PNGs to docs/screenshots/. `npm run screenshots`
-// (under `xvfb-run` without a display; CI: the manual "Screenshots" workflow).
-// All content below is made up.
-import { spawn } from "node:child_process";
+// README media: start the e2e build through tauri-driver (e2e/setup.ts) on a demo dataset in a
+// temp dir, save PNGs to docs/screenshots/ (dark), then record GIFs to docs/gifs/ (light; frames
+// assembled by ffmpeg). `npm run screenshots` (under `xvfb-run` without a display; CI: the
+// manual "Screenshots" workflow). All content below is made up.
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { remote, Key } from "webdriverio";
+import { browser, close, find, Key, launch, texts, type Dirs } from "./setup.ts";
+import { GIFS } from "../scripts/media-size.ts";
 
-const app = resolve("src-tauri/target/debug/margin");
 const out = resolve(process.env.SCREENSHOTS_DIR ?? "docs/screenshots");
-const root = mkdtempSync(join(tmpdir(), "margin-shots-"));
-const notes = join(root, "notes");
-const data = join(root, "data");
+const gifOut = resolve(process.env.GIFS_DIR ?? "docs/gifs");
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const day = (offset: number) => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + offset); return d; };
@@ -28,25 +25,10 @@ function write(path: string, text: string) {
   writeFileSync(path, text.replace(/^\n/, ""));
 }
 
-function fixtures() {
-  const cfgDir = join(root, "config", "dev.albin.margin.e2e");
-  write(join(cfgDir, "config.toml"), `
-notes_dir = ${JSON.stringify(notes)}
-data_dir = ${JSON.stringify(data)}
-export_dir = ${JSON.stringify(join(root, "export"))}
-profiles = ["Work"]
-capture_shortcut = ""
-reminders = false
-idle_threshold_minutes = 0
-close_to_tray = false
-templates = []
+/** config.toml lines on top of setup.ts's. */
+const config = [`templates = []`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`];
 
-[[views]]
-name = "Work this week"
-query = "tag:work due:<=+7d"
-`);
-  write(join(cfgDir, "tutorial.org"), ""); // not a first run
-
+function fixtures({ notes, data }: Dirs) {
   write(join(notes, "orchard.org"), `
 :PROPERTIES:
 :ID: orchard
@@ -218,58 +200,56 @@ export_code = "INT"
   write(join(data, "work", "timelog.jsonl"), ev.map((e) => JSON.stringify(e)).join("\n") + "\n");
 }
 
-async function waitForPort(port: number) {
-  for (let i = 0; i < 50; i++) {
-    const up = await new Promise<boolean>((r) => { const s = connect(port, "127.0.0.1").once("connect", () => { s.end(); r(true); }).once("error", () => r(false)); });
-    if (up) return;
-    await new Promise((r) => setTimeout(r, 200));
+const pause = (ms = 600) => browser.pause(ms);
+const type = async (s: string) => { for (const c of s) await browser.keys(c); };
+const size = (h = 800) => browser.setWindowSize(1280, h).catch((e) => console.warn("setWindowSize:", e.message));
+
+/** Start the app on fresh demo data in GTK_THEME, run FN, close it. */
+async function session(theme: string, fn: () => Promise<void>) {
+  process.env.GTK_THEME = theme; // launch() passes process.env on
+  // The app's git backup of the demo dirs needs an identity (HOME is a temp dir), or the top bar says it failed.
+  for (const k of ["AUTHOR", "COMMITTER"]) Object.assign(process.env, { [`GIT_${k}_NAME`]: "Margin demo", [`GIT_${k}_EMAIL`]: "demo@example.invalid" });
+  await launch({ config, files: fixtures });
+  try {
+    await size();
+    await browser.$(".agenda h1").waitForDisplayed();
+    await fn();
+  } finally {
+    await close();
   }
-  throw new Error("tauri-driver didn't start");
 }
 
-// Mid-afternoon in the screenshots whenever this runs: the UTC offset that makes it about 15:00
-// (Node and the app both follow TZ).
-const off = ((15 - new Date().getUTCHours() + 36) % 24) - 12;
-process.env.TZ = `Etc/GMT${off > 0 ? "-" : "+"}${Math.abs(off)}`;
-fixtures();
-mkdirSync(out, { recursive: true });
-// Dark is the app's default look; GTK_THEME keeps WebKit from reporting a light preference.
-const env = { ...process.env, GTK_THEME: "Adwaita:dark", XDG_CONFIG_HOME: join(root, "config"), XDG_DATA_HOME: join(root, "share"), XDG_CACHE_HOME: join(root, "cache") };
-const driver = spawn("tauri-driver", [], { stdio: "inherit", env });
-let failed = false;
-try {
-  await waitForPort(4444);
-  const browser = await remote({
-    hostname: "127.0.0.1",
-    port: 4444,
-    logLevel: "warn",
-    waitforTimeout: 10_000,
-    capabilities: { "tauri:options": { application: app }, "wdio:enforceWebDriverClassic": true } as WebdriverIO.Capabilities,
-  });
-  const pause = (ms = 600) => browser.pause(ms);
-  const type = async (s: string) => { for (const c of s) await browser.keys(c); };
+/** Press KEYS until the picker labelled PROMPT shows (a keypress can be lost while the page settles). */
+async function picker(keys: string | string[], prompt: string) {
+  const shown = async () => (await texts(".picker label span")).some((t) => t.includes(prompt));
+  await browser.waitUntil(async () => {
+    if (await shown()) return true;
+    await browser.keys(keys);
+    await pause(400);
+    return shown();
+  }, { timeoutMsg: `no “${prompt}” picker` });
+}
+
+/** Wait until the open tab is FILE. */
+const opened = (file: string) => browser.waitUntil(async () => (await browser.$(".status .file").getText()) === file, { timeoutMsg: `${file} didn't open` });
+
+async function pngs() {
   const shot = async (name: string) => { await pause(); await browser.saveScreenshot(join(out, `${name}.png`)); console.log(`saved ${name}.png`); };
   const open = async (q: string, file: string) => {
-    await browser.keys([Key.Ctrl, "p"]);
-    await browser.$(".picker input").waitForDisplayed();
+    await picker([Key.Ctrl, "p"], "Open a note");
     await type(q);
     await pause(300);
     await browser.keys(Key.Enter);
-    // Guard: an unmatched title would create a new empty note instead.
-    await browser.waitUntil(async () => (await browser.$(".status .file").getText()) === file, { timeoutMsg: `${q} didn't open ${file}` });
+    await opened(file); // an unmatched title would create a new empty note instead
     await pause();
   };
   const command = async (q: string) => {
-    await browser.keys([Key.Ctrl, "k"]);
-    await browser.$(".picker input").waitForDisplayed();
+    await picker([Key.Ctrl, "k"], "Run a command");
     await type(q);
     await pause(300);
     await browser.keys(Key.Enter);
     await pause();
   };
-
-  await browser.setWindowSize(1280, 800).catch((e) => console.warn("setWindowSize:", e.message));
-  await browser.$(".agenda h1").waitForDisplayed();
 
   // Open a few notes first so the tabs and Ctrl P look lived in.
   for (const [q, file] of [["Reading list", "reading.org"], ["Offline sync", "sync-design.org"], ["Harbor app", "harbor.org"], ["Orchard platform", "orchard.org"]]) await open(q, file);
@@ -287,24 +267,199 @@ try {
 
   await browser.keys([Key.Ctrl, "4"]);
   await browser.$(".time h1").waitForDisplayed();
-  // Taller, so the Clock / Balance / More lane fits without its last button row clipped.
-  await browser.setWindowSize(1280, 900).catch((e) => console.warn("setWindowSize:", e.message));
+  await size(900); // taller, so the Clock / Balance / More lane fits without its last button row clipped
   await shot("time");
-  await browser.setWindowSize(1280, 800).catch((e) => console.warn("setWindowSize:", e.message));
+  await size();
 
   await browser.keys([Key.Ctrl, "1"]);
-  await browser.keys([Key.Ctrl, "k"]);
-  await browser.$(".picker input").waitForDisplayed();
+  await picker([Key.Ctrl, "k"], "Run a command");
   await type("task");
   await shot("palette");
   await browser.keys(Key.Escape);
+}
 
-  await browser.deleteSession().catch(() => {});
+// GIFs: each frame is a screenshot shown for a fixed time, so a clip doesn't depend on how fast
+// the machine took it; ffmpeg turns the list into an 800 px wide GIF.
+let frames: string[] = [], frameDir = "";
+
+/** A frame shown for HOLD ms, taken WAIT ms after the last action. */
+async function frame(hold = 120, wait = 100) {
+  await pause(wait);
+  const f = join(frameDir, `${String(frames.length / 2).padStart(4, "0")}.png`);
+  await browser.saveScreenshot(f);
+  frames.push(`file '${f}'`, `duration ${hold / 1000}`);
+}
+
+/** Type S as key presses, with a frame every EVERY of them. */
+async function typed(s: string, every = 2) {
+  for (let i = 0; i < s.length; i++) {
+    await browser.keys(s[i]);
+    if (i % every === every - 1 || i === s.length - 1) await frame(90, 0);
+  }
+}
+
+/** Run FN, recording the frames it takes, and save them as NAME.gif. */
+async function clip(name: string, fn: () => Promise<void>) {
+  frameDir = mkdtempSync(join(tmpdir(), `margin-gif-${name}-`));
+  frames = [];
+  try {
+    await fn();
+    await frame(2500, 600); // the end, held before the loop restarts
+    const n = frames.length / 2;
+    frames.push(frames.at(-2)!); // the concat demuxer drops the last file's duration unless it's listed again
+    writeFileSync(join(frameDir, "list.txt"), frames.join("\n") + "\n");
+    const r = spawnSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", join(frameDir, "list.txt"),
+      "-vf", "scale=800:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse=dither=none:diff_mode=rectangle",
+      "-fps_mode", "vfr", "-loop", "0", join(gifOut, `${name}.gif`)], { stdio: "inherit" });
+    if (r.status !== 0) throw new Error(`ffmpeg failed on ${name}.gif${r.error ? `: ${r.error.message}` : ""}`);
+    console.log(`saved ${name}.gif (${n} frames)`);
+  } finally {
+    rmSync(frameDir, { recursive: true, force: true });
+  }
+}
+
+/** Click the Today row titled TITLE. */
+const row = async (title: string) => { await (await find(".agenda .row .title", title)).click(); await frame(500, 300); };
+/** Click the Time view button labelled LABEL. */
+const button = async (label: string) => { await (await find(".time .buttons button", label)).click(); };
+
+const clips: Record<string, () => Promise<void>> = {
+  capture: async () => {
+    await frame(900);
+    await picker([Key.Ctrl, "k"], "Run a command");
+    await frame(300);
+    await typed("new task");
+    await frame(600);
+    await browser.keys(Key.Enter);
+    await browser.$(".dialog input.title").waitForDisplayed();
+    await frame(300);
+    await typed("Call the venue about the offsite", 3);
+    await browser.$(".dialog #sched").click();
+    await typed("today");
+    await frame(800);
+    await browser.keys(Key.Enter);
+    await find(".agenda .row .title", "Call the venue about the offsite");
+  },
+  today: async () => {
+    await frame(1200);
+    await row("Fix the crash when a photo upload is cancelled");
+    await browser.keys("+"); // priority up
+    await frame(900, 600);
+    await row("Review the release checklist");
+    await browser.keys("x"); // done
+    await frame(900, 600);
+    await row("Book a dentist appointment");
+    await browser.keys(">"); // a day later
+    await frame(900, 600);
+    await row("Write the partner onboarding guide");
+    await browser.keys("s");
+    await find(".picker label span", "Schedule for");
+    await frame(400);
+    await browser.keys([Key.Ctrl, "a"]);
+    await typed("+3d");
+    await frame(600);
+    await browser.keys(Key.Enter);
+  },
+  time: async () => {
+    await browser.keys([Key.Ctrl, "4"]);
+    await browser.$(".time h1").waitForDisplayed();
+    await frame(1500, 600);
+    await button("Pause");
+    await find(".time .status small", "On a break");
+    await frame(1200, 300);
+    await button("Resume");
+    await find(".time .status small", "Tracking since");
+    await frame(1000, 300);
+    await button("Switch project");
+    await find(".picker label span", "What did you do on");
+    await frame(900, 300);
+    await browser.keys(Key.Enter); // keep the task as the note
+    await find(".picker label span", "Switch to project");
+    await frame(400, 300);
+    await typed("orch");
+    await frame(600);
+    await browser.keys(Key.Enter);
+    await find(".time .status h2", "Orchard");
+  },
+  links: async () => {
+    await frame(600);
+    await picker([Key.Ctrl, "p"], "Open a note");
+    await typed("offline");
+    await frame(500, 300);
+    await browser.keys(Key.Enter);
+    await opened("sync-design.org");
+    await browser.keys(Key.Escape);
+    await frame(1000, 400);
+    await browser.keys(" "); await type("nb"); // notes linking here
+    await find(".links h3", "Linked from");
+    await frame(1200, 400);
+    await browser.keys(" "); await type("ng"); // the local graph
+    await find(".links h3", "Graph");
+    await frame(1500, 800);
+    await type("/ADR");
+    await frame(400);
+    await browser.keys(Key.Enter);
+    await frame(700, 300);
+    await browser.keys(Key.Enter); // follow the link under the cursor
+    await opened("adr.org");
+    await frame(1500, 800);
+  },
+  vim: async () => {
+    await picker([Key.Ctrl, "p"], "Open a note");
+    await type("Orchard platform");
+    await pause(300);
+    await browser.keys(Key.Enter);
+    await opened("orchard.org");
+    await browser.keys(Key.Escape);
+    await browser.keys(" "); await type("nb"); // the links clip's panels off again
+    await browser.keys(" "); await type("ng");
+    await type("gg");
+    await frame(900, 600);
+    await type("/200");
+    await frame(400);
+    await browser.keys(Key.Enter);
+    await frame(600, 300);
+    await type("ciw");
+    await frame(500, 300);
+    await typed("150");
+    await browser.keys(Key.Escape);
+    await frame(700, 300);
+    await type("o");
+    await frame(300, 200);
+    await typed("- [ ] Load test at twice the partner traffic", 4);
+    await browser.keys(Key.Escape);
+    await frame(700, 300);
+    await type("dd");
+    await frame(700, 300);
+    await type("u");
+    await frame(700, 300);
+    await type(":w");
+    await frame(500);
+    await browser.keys(Key.Enter);
+  },
+};
+
+async function gifs() {
+  for (const name of GIFS) {
+    await browser.keys([Key.Ctrl, "1"]); // every clip starts on Today
+    await find(".agenda h1", "Today");
+    await pause(800);
+    await clip(name, clips[name]);
+  }
+}
+
+// Mid-afternoon in the screenshots whenever this runs: the UTC offset that makes it about 15:00
+// (Node and the app both follow TZ).
+const off = ((15 - new Date().getUTCHours() + 36) % 24) - 12;
+process.env.TZ = `Etc/GMT${off > 0 ? "-" : "+"}${Math.abs(off)}`;
+for (const d of [out, gifOut]) mkdirSync(d, { recursive: true });
+let failed = false;
+try {
+  // Dark is the app's default look; GTK_THEME keeps WebKit from reporting a light preference.
+  await session("Adwaita:dark", pngs);
+  await session("Adwaita", gifs); // the GIFs in light, on fresh data
 } catch (e) {
   console.error(e);
   failed = true;
-} finally {
-  driver.kill();
-  rmSync(root, { recursive: true, force: true, maxRetries: 5 }); // the app may still be writing
 }
 process.exit(failed ? 1 : 0);
