@@ -72,6 +72,8 @@ pub struct Config {
     pub ai_exclude: Vec<String>,
     /// Reopen the last session's tabs on startup.
     pub restore_tabs: bool,
+    /// Underline misspelled words in org notes (the webview's own spell checker).
+    pub spellcheck: bool,
     /// Update from the daily builds of main (the `nightly` prerelease) instead of stable releases.
     pub nightly_updates: bool,
 }
@@ -170,6 +172,7 @@ impl Default for Config {
             ai_source_time: true,
             ai_exclude: vec![],
             restore_tabs: true,
+            spellcheck: false,
             nightly_updates: false,
         }
     }
@@ -440,6 +443,12 @@ pub fn remove_key(text: &str, key: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spellcheck_off_by_default() {
+        assert!(!Config::default().spellcheck);
+        assert!(toml::from_str::<Config>("spellcheck = true").unwrap().spellcheck);
+    }
 
     #[test]
     fn setup_answers() {
