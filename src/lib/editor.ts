@@ -1,8 +1,8 @@
 // CodeMirror 6 setup: vim, org styling (decorations that hide markup except on
 // the line being edited), folding, tables, blocks and the structure-editing ops.
-import { EditorState, Facet, Prec, StateEffect, type Extension, type Range, type TransactionSpec } from "@codemirror/state";
+import { Compartment, EditorState, Facet, Prec, StateEffect, type Extension, type Range, type TransactionSpec } from "@codemirror/state";
 import {
-  Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, highlightActiveLine, keymap, type DecorationSet, type ViewUpdate,
+  Decoration, EditorView, GutterMarker, ViewPlugin, WidgetType, drawSelection, gutter, highlightActiveLine, keymap, lineNumbers, type DecorationSet, type ViewUpdate,
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
@@ -13,6 +13,7 @@ import { vim, Vim, getCM } from "@replit/codemirror-vim";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import * as tbl from "./orgtable";
 import { renumber, itemSwap } from "./list";
+import { applySet, type NumOpts } from "./setopt";
 import { EMPH, toggleEmphasis } from "./emphasis";
 
 /** Set by the app; vim ex commands, mappings and clicks call through these. */
@@ -26,6 +27,36 @@ export const hooks = {
 Vim.defineEx("write", "w", () => hooks.save());
 Vim.defineEx("quit", "q", () => hooks.close());
 Vim.defineEx("wq", "wq", () => { hooks.save(); hooks.close(); });
+
+// `:set number` / `relativenumber`: one session-wide option set, a compartment per view.
+let numOpts: NumOpts = { number: false, relativenumber: false };
+const numConf = new Compartment();
+const views = new Set<EditorView>();
+class Num extends GutterMarker {
+  constructor(readonly n: string) { super(); }
+  eq(o: Num) { return o.n === this.n; }
+  toDOM() { return document.createTextNode(this.n); }
+}
+function numExt(o: NumOpts): Extension {
+  if (!o.relativenumber) return o.number ? lineNumbers() : [];
+  return gutter({
+    class: "cm-lineNumbers",
+    lineMarker(v, line) {
+      const cur = v.state.doc.lineAt(v.state.selection.main.head).number, n = v.state.doc.lineAt(line.from).number;
+      return new Num(String(n === cur ? (o.number ? n : 0) : Math.abs(n - cur)));
+    },
+    lineMarkerChange: (u) => u.selectionSet || u.docChanged,
+    initialSpacer: () => new Num("9999"),
+  });
+}
+const trackViews = ViewPlugin.fromClass(class {
+  constructor(readonly v: EditorView) { views.add(v); }
+  destroy() { views.delete(this.v); }
+});
+Vim.defineEx("set", "se", (_cm: unknown, p: { args?: string[] }) => {
+  numOpts = applySet(numOpts, p.args ?? []);
+  for (const v of views) v.dispatch({ effects: numConf.reconfigure(numExt(numOpts)) });
+});
 Vim.defineAction("orgFollow", () => hooks.follow());
 Vim.mapCommand("gf", "action", "orgFollow", {}, { context: "normal" });
 Vim.defineAction("nextTab", () => hooks.tab(1));
@@ -916,6 +947,8 @@ const theme = EditorView.theme({
 export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; path?: string; onChange: () => void; onUpdate?: (s: EditorState, docChanged: boolean) => void }) {
   const ext: Extension[] = [
     vim({ status: true }),
+    numConf.of(numExt(numOpts)),
+    trackViews,
     history(),
     drawSelection(),
     highlightActiveLine(),
