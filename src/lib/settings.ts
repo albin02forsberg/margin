@@ -18,6 +18,8 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
   { name: "Time", fields: [
     { key: "expected_daily_hours", label: "Expected hours per day", kind: "number", step: "any" },
     { key: "weekday_hours", label: "Expected hours per weekday", kind: "numbers", hint: "7 numbers, Monday to Sunday, e.g. 8 8 8 8 6 0 0 for a short Friday; empty = the hours per day Monday to Friday" },
+    { key: "public_holidays", label: "Public holidays", hint: "se = Swedish red days count as 0 expected hours; none = no holidays" },
+    { key: "extra_days_off", label: "Extra days off", kind: "list", hint: "one date per line, e.g. 2026-12-24; 0 expected hours like a holiday" },
     { key: "idle_threshold_minutes", label: "Ask about idle time after (minutes)", kind: "number", step: 1, hint: "0 = never" },
     { key: "profiles", label: "Profiles", kind: "list", hint: "one per line; each has its own time log" },
   ] },

@@ -54,7 +54,7 @@ impl App {
     fn tc(&self) -> Tc {
         let c = self.cfg();
         let p = self.profile().to_lowercase();
-        Tc { dir: c.data().join(&p), diary: c.notes().join(format!("dagbok-{p}.org")), cal: timeclock::Calendar::new(c.expected_daily_hours, &c.weekday_hours) }
+        Tc { dir: c.data().join(&p), diary: c.notes().join(format!("dagbok-{p}.org")), cal: timeclock::Calendar::new(c.expected_daily_hours, &c.weekday_hours).with_days(&c.public_holidays, &c.extra_days_off) }
     }
     fn kw(&self) -> org::Kw {
         let c = self.cfg();
@@ -1485,7 +1485,7 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
     Ok(match kind.as_str() {
         "daily" => timeclock::daily_report(&tc.sessions(), &tc.projects(), (&leave, &codes), &tc.cal, date(date_input.as_deref().unwrap_or(""))?, &profile),
         "weekly" => timeclock::weekly_report(&tc.sessions(), &tc.projects(), (&leave, &codes), &tc.cal, today() - Duration::days(7), today(), &profile),
-        "holidays" => timeclock::holidays_report(date(date_input.as_deref().unwrap_or(""))?.format("%Y").to_string().parse().unwrap()),
+        "holidays" => timeclock::holidays_report(date(date_input.as_deref().unwrap_or(""))?.format("%Y").to_string().parse().unwrap(), &tc.cal),
         "flex" => {
             let t = today();
             let week = (t - Duration::days(7), t);

@@ -704,12 +704,28 @@ pub fn swedish_red_days(year: i32) -> Vec<(NaiveDate, &'static str)> {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Calendar {
     pub hours: [f64; 7],
+    /// Swedish red days count as days off (config `public_holidays = "se"`).
+    pub swedish: bool,
+    /// Extra days off (config `extra_days_off`).
+    pub extra: Vec<NaiveDate>,
 }
 
 impl Calendar {
     /// WEEKDAY (7 values, Monday first) when set, else DAILY Monday to Friday.
     pub fn new(daily: f64, weekday: &[f64]) -> Calendar {
-        Calendar { hours: weekday.try_into().unwrap_or([daily, daily, daily, daily, daily, 0.0, 0.0]) }
+        Calendar { hours: weekday.try_into().unwrap_or([daily, daily, daily, daily, daily, 0.0, 0.0]), swedish: true, extra: vec![] }
+    }
+
+    /// Day-off rules: HOLIDAYS `"se"` or `"none"` (config `public_holidays`) plus EXTRA ISO dates (bad ones are skipped).
+    pub fn with_days(mut self, holidays: &str, extra: &[String]) -> Calendar {
+        self.swedish = holidays != "none";
+        self.extra = extra.iter().filter_map(|d| d.parse().ok()).collect();
+        self
+    }
+
+    /// Whether DATE is a public holiday or extra day off.
+    pub fn is_day_off(&self, date: NaiveDate) -> bool {
+        self.extra.contains(&date) || (self.swedish && swedish_red_days(date.year()).iter().any(|(d, _)| *d == date))
     }
 
     /// DATE's hours by weekday alone, red days included.
@@ -718,9 +734,9 @@ impl Calendar {
     }
 }
 
-/// DATE's expected hours: its weekday's in CAL, 0 on red days.
+/// DATE's expected hours: its weekday's in CAL, 0 on days off.
 pub fn expected_hours(date: NaiveDate, cal: &Calendar) -> f64 {
-    if swedish_red_days(date.year()).iter().any(|(d, _)| *d == date) { 0.0 } else { cal.weekday(date) }
+    if cal.is_day_off(date) { 0.0 } else { cal.weekday(date) }
 }
 
 /// Time off covering DATE with the hours each credits, given EXPECTED (before leave) and WORKED.
@@ -893,10 +909,19 @@ pub fn weekly_report(sessions: &[Session], projects: &Projects, leave: (&[Leave]
     o
 }
 
-pub fn holidays_report(year: i32) -> String {
-    let mut o = format!("#+TITLE: Swedish Public Holidays {year}\n\n");
-    for (d, name) in swedish_red_days(year) {
-        o += &format!("- {d}  {}  {name}\n", d.format("%a"));
+pub fn holidays_report(year: i32, cal: &Calendar) -> String {
+    let mut o = format!("#+TITLE: {}Public Holidays {year}\n\n", if cal.swedish { "Swedish " } else { "" });
+    if cal.swedish {
+        for (d, name) in swedish_red_days(year) {
+            o += &format!("- {d}  {}  {name}\n", d.format("%a"));
+        }
+    }
+    let mut extra: Vec<_> = cal.extra.iter().filter(|d| d.year() == year).collect();
+    extra.sort();
+    extra.dedup();
+    if !extra.is_empty() {
+        o += "\n* Extra days off\n";
+        extra.iter().for_each(|d| o += &format!("- {d}  {}\n", d.format("%a")));
     }
     o + "\n(These days contribute 0h expected time in the flex calculation)\n"
 }
@@ -1133,6 +1158,20 @@ mod tests {
         assert!(swedish_red_days(2025).contains(&(d("2025-11-01"), "All Saints' Day")));
         assert_eq!(expected_hours(d("2026-04-06"), &w(8.0)), 0.0); // Easter Monday
         assert_eq!(expected_hours(d("2026-04-07"), &w(8.0)), 8.0);
+    }
+
+    #[test]
+    fn day_off_rules() {
+        let none = w(8.0).with_days("none", &[]);
+        assert_eq!(expected_hours(d("2026-04-06"), &none), 8.0); // Easter Monday works
+        let extra = w(8.0).with_days("se", &["2026-04-07".into(), "2026-04-07".into(), "bad".into(), "2026-04-11".into()]);
+        assert_eq!((expected_hours(d("2026-04-07"), &extra), expected_hours(d("2026-04-06"), &extra)), (0.0, 0.0));
+        assert_eq!(expected_hours(d("2026-04-08"), &extra), 8.0);
+        let both = w(8.0).with_days("none", &["2026-04-07".into()]);
+        assert_eq!((expected_hours(d("2026-04-07"), &both), expected_hours(d("2026-04-06"), &both)), (0.0, 8.0));
+        let r = holidays_report(2026, &both);
+        assert!(r.starts_with("#+TITLE: Public Holidays 2026") && !r.contains("Easter") && r.contains("* Extra days off\n- 2026-04-07  Tue"), "{r}");
+        assert!(holidays_report(2026, &w(8.0)).contains("Swedish") && !holidays_report(2026, &extra).contains("2027"));
     }
 
     #[test]

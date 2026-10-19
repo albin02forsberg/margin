@@ -436,7 +436,10 @@ billable hours, its share of the week, and **Track** to start the clock on it).
 `expected_daily_hours` counts Monday to Friday; for a 4-day week or short Fridays set
 `weekday_hours` (Settings → Time), Monday to Sunday, e.g. `weekday_hours = [8, 8, 8, 8, 6, 0, 0]`
 (empty = `expected_daily_hours` on weekdays). Flex, "when to leave", the week chart and the
-"day done" reminder all use that day's hours; red days stay 0. Keys:
+"day done" reminder all use that day's hours; red days stay 0. `public_holidays` (`"se"`, the default,
+or `"none"`) picks which public holidays count as 0 hours, and `extra_days_off` (dates like `"2026-12-24"`,
+one per line in Settings → Time) adds your own; the holidays report lists them too. Changing either
+also changes the flex of past days. Keys:
 `i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV (import template: `Project` = export code, `Duration` in decimal hours, `1,5`; zero-hour rows are left out; a missing folder is created; a bare file name goes into the export folder; otherwise the path must be an absolute `.csv` path outside the app's data and config folders),
 `E` export a report as HTML/PDF.
 Space t … has every timeclock command (same letters as the old Emacs menu).
