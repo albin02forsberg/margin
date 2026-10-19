@@ -24,6 +24,31 @@ the editor has vim keys.
 
 ![A note with links, checkboxes, a table with a formula and a code block](docs/screenshots/note.png)
 
+## Features
+
+**Capture a task** — `Ctrl+N` (or "New task" in the `Ctrl+K` palette) asks for a title and
+a date; from anywhere, the global quick-capture shortcut does the same.
+
+<img src="docs/gifs/capture.gif" width="800" alt="Ctrl+K, New task, typing a title and today, and the task showing up in Today">
+
+**Triage Today** — select a task and press `+` for a higher priority, `x` for done, `>` to
+push it a day, or `s` to schedule it.
+
+<img src="docs/gifs/today.gif" width="800" alt="Raising a priority, finishing a task, pushing one to tomorrow and rescheduling another in Today">
+
+**Time clock** — pause, resume and switch projects; the note you type goes into the work diary.
+
+<img src="docs/gifs/time.gif" width="800" alt="The Time view: pausing, resuming and switching the running timer to another project">
+
+**Links and backlinks** — `Space n b` shows the notes linking here, `Space n g` the local
+graph, and `Enter` on a link follows it.
+
+<img src="docs/gifs/links.gif" width="800" alt="Opening a note, showing its backlinks and graph, and following a link with Enter">
+
+**Vim editing** — the editor has vim keys: search, `ciw`, `o`, `dd`, `u`, `:w`.
+
+<img src="docs/gifs/vim.gif" width="800" alt="Editing an org note with vim keys: search, change a word, add a checkbox line, delete and undo, save">
+
 ## Install
 
 Download the latest build from
@@ -106,11 +131,15 @@ entry point, editor DOM setup) is listed with a reason in
 adding tests, raise the baseline with `npm run coverage:ratchet -- --write`
 (or from the CI artifact, since the numbers differ slightly per OS).
 
-The README screenshots come from the same setup: `npm run screenshots` (same
-requirements) starts the app on a made-up demo dataset and writes
-`docs/screenshots/*.png`; or run the **Screenshots** workflow (Actions → Run
-workflow) and download its artifact, already shrunk. Shrink local ones before
-committing, e.g. `magick mogrify -dither None -colors 256 -strip docs/screenshots/*.png`.
+The README screenshots and GIFs come from the same setup: `npm run screenshots`
+(same requirements, plus `ffmpeg`) starts the app on a made-up demo dataset and
+writes `docs/screenshots/*.png` (dark) and `docs/gifs/*.gif` (light); or run the
+**Screenshots** workflow (Actions → Run workflow) and download its artifact,
+already shrunk. Shrink local PNGs before committing, e.g.
+`magick mogrify -dither None -colors 256 -strip docs/screenshots/*.png`.
+`node scripts/media-size.ts` checks the cap (each file under 1.5 MB, all of them
+under 10 MB); replace the files rather than adding new ones, and keep GIFs out of
+feature PRs.
 
 CI runs the checks and tests on every push and PR. To release, bump the
 version in `src-tauri/tauri.conf.json`, then push a tag (`git tag v0.2.0 &&

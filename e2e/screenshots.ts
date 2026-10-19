@@ -207,6 +207,8 @@ const size = (h = 800) => browser.setWindowSize(1280, h).catch((e) => console.wa
 /** Start the app on fresh demo data in GTK_THEME, run FN, close it. */
 async function session(theme: string, fn: () => Promise<void>) {
   process.env.GTK_THEME = theme; // launch() passes process.env on
+  // The app's git backup of the demo dirs needs an identity (HOME is a temp dir), or the top bar says it failed.
+  for (const k of ["AUTHOR", "COMMITTER"]) Object.assign(process.env, { [`GIT_${k}_NAME`]: "Margin demo", [`GIT_${k}_EMAIL`]: "demo@example.invalid" });
   await launch({ config, files: fixtures });
   try {
     await size();
