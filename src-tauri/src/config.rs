@@ -11,6 +11,12 @@ pub struct Config {
     /// Expected hours Monday to Sunday (7 values), e.g. a 4-day week; empty = expected_daily_hours Mon–Fri.
     #[serde(deserialize_with = "weekday_hours")]
     pub weekday_hours: Vec<f64>,
+    /// Public holidays that count as 0 expected hours: "se" (Swedish red days) or "none".
+    #[serde(deserialize_with = "public_holidays")]
+    pub public_holidays: String,
+    /// Extra days off (ISO dates, e.g. "2026-12-24"), 0 expected hours like a holiday.
+    #[serde(deserialize_with = "extra_days_off")]
+    pub extra_days_off: Vec<String>,
     pub profiles: Vec<String>,
     pub todo_keywords: Vec<String>,
     pub done_keywords: Vec<String>,
@@ -140,6 +146,24 @@ fn weekday_hours<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<f64>, D::
     Ok(v)
 }
 
+/// `public_holidays`: "se" or "none".
+fn public_holidays<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let v = String::deserialize(d)?.trim().to_lowercase();
+    if v != "se" && v != "none" {
+        return Err(serde::de::Error::custom("public_holidays must be \"se\" or \"none\""));
+    }
+    Ok(v)
+}
+
+/// `extra_days_off`: ISO dates (YYYY-MM-DD).
+fn extra_days_off<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    let v = Vec::<String>::deserialize(d)?;
+    match v.iter().find(|s| s.parse::<chrono::NaiveDate>().is_err()) {
+        Some(bad) => Err(serde::de::Error::custom(format!("extra_days_off: {bad:?} is not a date like 2026-12-24"))),
+        None => Ok(v),
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect();
@@ -149,6 +173,8 @@ impl Default for Config {
             export_dir: "~/Desktop".into(),
             expected_daily_hours: 8.0,
             weekday_hours: vec![],
+            public_holidays: "se".into(),
+            extra_days_off: vec![],
             profiles: v(&["Work", "Personal"]),
             todo_keywords: v(&["TODO", "NEXT", "WAIT"]),
             done_keywords: v(&["DONE", "CANCELLED"]),
@@ -495,6 +521,11 @@ mod tests {
             assert!(save(mine, t(&format!("weekday_hours = {bad}")), &[]).unwrap_err().contains("7 numbers"), "{bad}");
         }
         assert!(toml::from_str::<Config>("weekday_hours = [1]").is_err()); // on load too
+        assert_eq!(Config::default().public_holidays, "se");
+        let c = save(mine, t("public_holidays = \"none\"\nextra_days_off = [\"2026-12-24\"]"), &[]).unwrap().1;
+        assert_eq!((c.public_holidays.as_str(), c.extra_days_off), ("none", vec!["2026-12-24".to_string()]));
+        assert!(save(mine, t("public_holidays = \"us\""), &[]).unwrap_err().contains("\"se\" or \"none\""));
+        assert!(save(mine, t("extra_days_off = [\"24/12\"]"), &[]).unwrap_err().contains("not a date"));
         assert!(save("profiles = [\n  \"A\",\n]\n", t("profiles = [\"B\"]"), &[]).is_err()); // multi-line: by hand
     }
 
