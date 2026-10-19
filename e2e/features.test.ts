@@ -725,4 +725,20 @@ describe("Note navigation", () => {
     await find(".status .file", "inbox.org");
     await find(".cm-content", "Sort the mail");
   });
+
+  it("Settings > Editor > spell check toggles the editor's spellcheck attribute (#507)", async () => {
+    const spell = () => browser.execute(() => document.querySelector(".cm-content")?.getAttribute("spellcheck"));
+    assert.equal(await spell(), "false");
+    const toggle = async () => {
+      await browser.keys([Key.Ctrl, ","]);
+      await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Spell check")]]/input`)).click();
+      await (await find(".settings button", "Save editor")).click();
+      await find(".status .msg", "Settings saved");
+      await browser.keys(Key.Escape);
+    };
+    await toggle();
+    await browser.waitUntil(async () => (await spell()) === "true", { timeoutMsg: "spellcheck not on" });
+    await toggle();
+    await browser.waitUntil(async () => (await spell()) === "false", { timeoutMsg: "spellcheck not off" });
+  });
 });

@@ -28,6 +28,9 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "restore_tabs", label: "Reopen the last session's tabs on startup", kind: "bool" },
     { key: "nightly_updates", label: "Nightly updates", kind: "bool", hint: "update to daily, untested builds of the latest code; switching back waits for the next stable release" },
   ] },
+  { name: "Editor", fields: [
+    { key: "spellcheck", label: "Spell check org notes", kind: "bool", hint: "underlines misspelled words with the system spell checker; on Linux the webview needs a system checker (hunspell/enchant) installed" },
+  ] },
   { name: "Tasks", fields: [
     { key: "todo_keywords", label: "Open keywords", kind: "list", hint: "one per line" },
     { key: "done_keywords", label: "Done keywords", kind: "list", hint: "one per line" },

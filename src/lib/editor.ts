@@ -32,6 +32,15 @@ Vim.defineEx("wq", "wq", () => { hooks.save(); hooks.close(); });
 let numOpts: NumOpts = { number: false, relativenumber: false };
 const numConf = new Compartment();
 const views = new Set<EditorView>();
+// `spellcheck` setting: org notes only; one session-wide flag, a compartment per view.
+let spellOn = false;
+const spellConf = new Compartment();
+const spellExt = () => (spellOn ? EditorView.contentAttributes.of({ spellcheck: "true" }) : []);
+export function setSpellcheck(on: boolean) {
+  if (on === spellOn) return;
+  spellOn = on;
+  for (const v of views) v.dispatch({ effects: spellConf.reconfigure(spellExt()) });
+}
 class Num extends GutterMarker {
   constructor(readonly n: string) { super(); }
   eq(o: Num) { return o.n === this.n; }
@@ -965,7 +974,7 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
   ];
   if (opts.org) {
     ext.push(
-      orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path }), orgStyle, orgFold, clicks,
+      spellConf.of(spellExt()), orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path }), orgStyle, orgFold, clicks,
       Prec.high(keymap.of([{ key: "Tab", run: orgTab }, { key: "Shift-Tab", run: orgShiftTab }, { key: "Enter", run: smartEnter },
         // Insert mode only: in normal / visual mode Ctrl+B stays vim's page up.
         { key: "Mod-b", run: (v) => vimInsert(v) && emphasis(v, "*") }, { key: "Mod-i", run: (v) => vimInsert(v) && emphasis(v, "/") }])),

@@ -49,6 +49,7 @@
   type Cmd = { label: string; keys?: string[]; leader?: string; ctx?: "editor" | "normal"; run: () => unknown };
 
   let cfg = $state<any>(null);
+  $effect(() => ed.setSpellcheck(!!cfg?.config.spellcheck));
   let tabs = $state<Tab[]>([]);
   let cur = $state(-1);
   let editorEl = $state<HTMLDivElement>();
