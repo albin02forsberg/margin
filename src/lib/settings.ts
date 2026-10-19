@@ -1,5 +1,6 @@
-/** A config.toml setting on the settings page. KIND defaults to text; lists are edited one item per line. */
-export type Field = { key: string; label: string; kind?: "text" | "number" | "bool" | "list" | "multiline"; hint?: string; step?: number | "any" };
+/** A config.toml setting on the settings page. KIND defaults to text; lists are edited one item per line,
+ *  numbers (a list of them) on one line. */
+export type Field = { key: string; label: string; kind?: "text" | "number" | "numbers" | "bool" | "list" | "multiline"; hint?: string; step?: number | "any" };
 export type Form = Record<string, string | boolean>;
 
 const rel = "relative to the notes folder";
@@ -16,6 +17,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
   ] },
   { name: "Time", fields: [
     { key: "expected_daily_hours", label: "Expected hours per day", kind: "number", step: "any" },
+    { key: "weekday_hours", label: "Expected hours per weekday", kind: "numbers", hint: "7 numbers, Monday to Sunday, e.g. 8 8 8 8 6 0 0 for a short Friday; empty = the hours per day Monday to Friday" },
     { key: "idle_threshold_minutes", label: "Ask about idle time after (minutes)", kind: "number", step: 1, hint: "0 = never" },
     { key: "profiles", label: "Profiles", kind: "list", hint: "one per line; each has its own time log" },
   ] },
@@ -71,13 +73,18 @@ export const needsMacPrompt = (granted: boolean | null, before: boolean, after: 
 
 /** VALUE (from the config) as the form edits it. */
 export const toForm = (f: Field, v: unknown): string | boolean =>
-  f.kind === "bool" ? !!v : f.kind === "list" ? ((v ?? []) as string[]).join("\n") : String(v ?? "");
+  f.kind === "bool" ? !!v : f.kind === "list" ? ((v ?? []) as string[]).join("\n") : f.kind === "numbers" ? ((v ?? []) as number[]).join(" ") : String(v ?? "");
 
 /** The form's value V as config.toml stores it; throws on a bad number. */
 export function fromForm(f: Field, v: string | boolean): unknown {
   if (f.kind === "bool") return v;
   const s = String(v);
   if (f.kind === "list") return s.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (f.kind === "numbers") return s.split(/[\s,;]+/).filter(Boolean).map((x) => {
+    const n = Number(x);
+    if (!Number.isFinite(n)) throw new Error(`${f.label}: ${x} is not a number`);
+    return n;
+  });
   if (f.kind !== "number") return s.trim();
   const n = s.trim() === "" ? NaN : Number(s);
   if (!Number.isFinite(n)) throw new Error(`${f.label}: not a number`);

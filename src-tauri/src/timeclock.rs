@@ -2,7 +2,7 @@
 // <data_dir>/<profile>/{timelog.jsonl,projects.toml}; the diary is an org
 // file in the notes dir so it's searchable and linkable like any note.
 
-use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Weekday};
+use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -120,7 +120,7 @@ pub fn locked<T>(f: impl FnOnce() -> T) -> T {
 pub struct Tc {
     pub dir: PathBuf,
     pub diary: PathBuf,
-    pub expected: f64,
+    pub cal: Calendar,
 }
 
 impl Tc {
@@ -212,8 +212,13 @@ impl Tc {
         if l.from > l.to || l.kind.is_empty() {
             return Err("Time off needs a kind and must end on or after its first day.".into());
         }
-        if l.hours.is_some_and(|h| !(h > 0.0 && h <= self.expected)) || (l.rest && l.hours.is_some()) {
-            return Err(format!("Hours per day must be more than 0 and at most {}.", self.expected));
+        // The longest weekday in the range (red days aside) caps the hours; leave_on caps each day.
+        let max = l.from.iter_days().take_while(|d| *d <= l.to).take(7).map(|d| self.cal.weekday(d)).fold(0.0, f64::max);
+        if l.hours.is_some() && max <= 0.0 {
+            return Err("Those days have no expected hours; leave the hours out.".into());
+        }
+        if l.hours.is_some_and(|h| !(h > 0.0 && h <= max)) || (l.rest && l.hours.is_some()) {
+            return Err(format!("Hours per day must be more than 0 and at most {max}."));
         }
         let text = read_or_empty(&self.leave_path())?;
         let old: Vec<Leave> = text.lines().filter_map(|x| serde_json::from_str(x).ok()).collect();
@@ -695,9 +700,27 @@ pub fn swedish_red_days(year: i32) -> Vec<(NaiveDate, &'static str)> {
     v
 }
 
-pub fn expected_hours(date: NaiveDate, daily: f64) -> f64 {
-    let weekend = matches!(date.weekday(), Weekday::Sat | Weekday::Sun);
-    if weekend || swedish_red_days(date.year()).iter().any(|(d, _)| *d == date) { 0.0 } else { daily }
+/// Expected hours per weekday, Monday first (config `weekday_hours`, or `expected_daily_hours` Mon–Fri).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Calendar {
+    pub hours: [f64; 7],
+}
+
+impl Calendar {
+    /// WEEKDAY (7 values, Monday first) when set, else DAILY Monday to Friday.
+    pub fn new(daily: f64, weekday: &[f64]) -> Calendar {
+        Calendar { hours: weekday.try_into().unwrap_or([daily, daily, daily, daily, daily, 0.0, 0.0]) }
+    }
+
+    /// DATE's hours by weekday alone, red days included.
+    pub fn weekday(&self, date: NaiveDate) -> f64 {
+        self.hours[date.weekday().num_days_from_monday() as usize]
+    }
+}
+
+/// DATE's expected hours: its weekday's in CAL, 0 on red days.
+pub fn expected_hours(date: NaiveDate, cal: &Calendar) -> f64 {
+    if swedish_red_days(date.year()).iter().any(|(d, _)| *d == date) { 0.0 } else { cal.weekday(date) }
 }
 
 /// Time off covering DATE with the hours each credits, given EXPECTED (before leave) and WORKED.
@@ -705,7 +728,7 @@ pub fn leave_on(leave: &[Leave], date: NaiveDate, expected: f64, worked: f64) ->
     if expected <= 0.0 {
         return vec![]; // weekends and red days: nothing to take off
     }
-    let hours = |l: &Leave| if l.rest { (expected - worked).max(0.0) } else { l.hours.unwrap_or(expected) };
+    let hours = |l: &Leave| if l.rest { (expected - worked).max(0.0) } else { l.hours.unwrap_or(expected).min(expected) };
     leave.iter().filter(|l| l.from <= date && date <= l.to).map(|l| (l, hours(l))).collect()
 }
 
@@ -714,25 +737,25 @@ pub fn leave_credit(leave: &[Leave], date: NaiveDate, expected: f64, worked: f64
     leave_on(leave, date, expected, worked).iter().map(|x| x.1).sum::<f64>().min(expected)
 }
 
-/// Seconds of DAY's expected hours (DAILY, less LEAVE) left after WORKED; None without expected hours.
-fn remaining_secs(day: NaiveDate, worked: f64, daily: f64, leave: &[Leave]) -> Option<i64> {
-    let e = expected_hours(day, daily);
+/// Seconds of DAY's expected hours (CAL, less LEAVE) left after WORKED; None without expected hours.
+fn remaining_secs(day: NaiveDate, worked: f64, cal: &Calendar, leave: &[Leave]) -> Option<i64> {
+    let e = expected_hours(day, cal);
     (e > 0.0).then(|| ((e - leave_credit(leave, day, e, worked) - worked) * 3600.0).round() as i64)
 }
 
 /// Whether the clock is running and today's expected hours are worked, for the "day done" notification.
 /// False on a break, without expected hours, or with a rest/whole-day leave (nothing was worked off).
-pub fn day_done(now: NaiveDateTime, worked: f64, daily: f64, leave: &[Leave], running: bool, on_break: bool) -> bool {
+pub fn day_done(now: NaiveDateTime, worked: f64, cal: &Calendar, leave: &[Leave], running: bool, on_break: bool) -> bool {
     let day = now.date();
     let off = leave.iter().any(|l| l.from <= day && day <= l.to && (l.rest || l.hours.is_none()));
-    running && !on_break && !off && remaining_secs(day, worked, daily, leave).is_some_and(|s| s <= 0)
+    running && !on_break && !off && remaining_secs(day, worked, cal, leave).is_some_and(|s| s <= 0)
 }
 
-/// When to leave today, flex ignored: what is left of NOW's expected hours (DAILY, less LEAVE) after
+/// When to leave today, flex ignored: what is left of NOW's expected hours (CAL, less LEAVE) after
 /// WORKED, rounded up to whole minutes; with the clock RUNNING, the time it runs out.
-pub fn leave_time(now: NaiveDateTime, worked: f64, daily: f64, leave: &[Leave], running: bool, on_break: bool) -> String {
+pub fn leave_time(now: NaiveDateTime, worked: f64, cal: &Calendar, leave: &[Leave], running: bool, on_break: bool) -> String {
     let (day, hm) = (now.date(), |m: i64| if m >= 60 { format!("{}h {:02}m", m / 60, m % 60) } else { format!("{m}m") });
-    let Some(secs) = remaining_secs(day, worked, daily, leave) else {
+    let Some(secs) = remaining_secs(day, worked, cal, leave) else {
         return "No expected hours today.".into();
     };
     if secs <= 0 {
@@ -750,14 +773,14 @@ pub fn leave_time(now: NaiveDateTime, worked: f64, daily: f64, leave: &[Leave], 
 
 /// Port of `albin/calculate-flex`: (total, period, period_days). Only days with work count;
 /// time off lowers that day's expected hours, so work on a vacation day is flex.
-pub fn flex(sessions: &[Session], projects: &Projects, leave: &[Leave], daily: f64, range: Option<(NaiveDate, NaiveDate)>) -> (f64, f64, usize) {
+pub fn flex(sessions: &[Session], projects: &Projects, leave: &[Leave], cal: &Calendar, range: Option<(NaiveDate, NaiveDate)>) -> (f64, f64, usize) {
     let mut per_day: BTreeMap<NaiveDate, f64> = BTreeMap::new();
     for s in apply_carry(sessions, projects).0 {
         *per_day.entry(s.date).or_default() += s.hours;
     }
     let (mut total, mut period, mut n) = (0.0, 0.0, 0);
     for (date, h) in per_day {
-        let e = expected_hours(date, daily);
+        let e = expected_hours(date, cal);
         let f = h - e + leave_credit(leave, date, e, h);
         total += f;
         if range.is_some_and(|(a, b)| a <= date && date <= b) {
@@ -798,16 +821,16 @@ fn session_line(s: &Session, indent: &str) -> String {
 }
 
 /// "vacation [VAC] 8.00 h (note)" for each time off on DATE; the code only when one is set.
-fn time_off((leave, codes): (&[Leave], &LeaveCodes), date: NaiveDate, daily: f64, worked: f64) -> Vec<String> {
+fn time_off((leave, codes): (&[Leave], &LeaveCodes), date: NaiveDate, cal: &Calendar, worked: f64) -> Vec<String> {
     let note = |l: &Leave| if l.note.is_empty() { String::new() } else { format!(" ({})", l.note) };
     let code = |l: &Leave| match leave_code(&l.kind, codes) {
         c if c == l.kind => String::new(),
         c => format!(" [{c}]"),
     };
-    leave_on(leave, date, expected_hours(date, daily), worked).iter().map(|(l, h)| format!("{}{} {h:.2} h{}", l.kind, code(l), note(l))).collect()
+    leave_on(leave, date, expected_hours(date, cal), worked).iter().map(|(l, h)| format!("{}{} {h:.2} h{}", l.kind, code(l), note(l))).collect()
 }
 
-pub fn daily_report(sessions: &[Session], projects: &Projects, leave: (&[Leave], &LeaveCodes), daily: f64, date: NaiveDate, profile: &str) -> String {
+pub fn daily_report(sessions: &[Session], projects: &Projects, leave: (&[Leave], &LeaveCodes), cal: &Calendar, date: NaiveDate, profile: &str) -> String {
     let merged = prepare_report_sessions(sessions);
     let rounded = apply_carry(&merged, projects).0;
     let raw: f64 = merged.iter().filter(|s| s.date == date).map(|s| s.hours).sum();
@@ -815,7 +838,7 @@ pub fn daily_report(sessions: &[Session], projects: &Projects, leave: (&[Leave],
     let billable: f64 = day.iter().map(|s| s.hours).sum();
     let mut o = format!("#+TITLE: Daily Time Report ({profile})\n#+SUBTITLE: {date}\n\n* Summary\n");
     o += &format!("  - Hours worked: {raw:.2} h\n  - Billable: {billable:.2} h\n  - Sessions: {}\n", day.len());
-    time_off(leave, date, daily, raw).iter().for_each(|t| o += &format!("  - Time off: {t}\n"));
+    time_off(leave, date, cal, raw).iter().for_each(|t| o += &format!("  - Time off: {t}\n"));
     o += "\n* Detailed Log\n";
     if day.is_empty() {
         o += "  - No sessions found for this date.\n";
@@ -824,7 +847,7 @@ pub fn daily_report(sessions: &[Session], projects: &Projects, leave: (&[Leave],
     o
 }
 
-pub fn weekly_report(sessions: &[Session], projects: &Projects, leave: (&[Leave], &LeaveCodes), daily: f64, start: NaiveDate, end: NaiveDate, profile: &str) -> String {
+pub fn weekly_report(sessions: &[Session], projects: &Projects, leave: (&[Leave], &LeaveCodes), cal: &Calendar, start: NaiveDate, end: NaiveDate, profile: &str) -> String {
     let in_range = |s: &&Session| start <= s.date && s.date <= end;
     let merged = prepare_report_sessions(sessions);
     let rounded = apply_carry(&merged, projects).0;
@@ -856,7 +879,7 @@ pub fn weekly_report(sessions: &[Session], projects: &Projects, leave: (&[Leave]
         .take_while(|d| *d <= end)
         .flat_map(|d| {
             let worked = by_day.get(&d).map_or(0.0, |ss| ss.iter().map(|s| s.hours).sum());
-            time_off(leave, d, daily, worked).into_iter().map(move |t| format!("  - {d} {}: {t}\n", d.format("%a")))
+            time_off(leave, d, cal, worked).into_iter().map(move |t| format!("  - {d} {}: {t}\n", d.format("%a")))
         })
         .collect();
     if !off.is_empty() {
@@ -885,7 +908,7 @@ fn csv_field(v: &str) -> String {
 /// Import-template columns; `Project` is the export code, hours use a decimal comma (`1,5`).
 /// Time off adds a row per kind and working day: its code, note (or kind) and credited hours.
 /// Also returns a summary: the time off rows written, and the covered days that wrote none and why.
-pub fn csv(sessions: &[Session], projects: &Projects, (leave, codes): (&[Leave], &LeaveCodes), daily: f64, start: NaiveDate, end: NaiveDate) -> (String, String) {
+pub fn csv(sessions: &[Session], projects: &Projects, (leave, codes): (&[Leave], &LeaveCodes), cal: &Calendar, start: NaiveDate, end: NaiveDate) -> (String, String) {
     let rounded = apply_carry(&prepare_report_sessions(sessions), projects).0;
     let mut worked: HashMap<NaiveDate, f64> = HashMap::new();
     rounded.iter().for_each(|s| *worked.entry(s.date).or_default() += s.hours);
@@ -893,7 +916,7 @@ pub fn csv(sessions: &[Session], projects: &Projects, (leave, codes): (&[Leave],
         rounded.iter().filter(|s| start <= s.date && s.date <= end).map(|s| (s.date, export_code(&s.project, projects), s.desc.clone(), s.hours, false)).collect();
     let mut skipped = vec![];
     for date in start.iter_days().take_while(|d| *d <= end) {
-        let e = expected_hours(date, daily);
+        let e = expected_hours(date, cal);
         if e <= 0.0 && leave.iter().any(|l| l.from <= date && date <= l.to) {
             skipped.push(format!("{date} (no expected hours)"));
         }
@@ -1095,6 +1118,9 @@ mod tests {
     fn d(s: &str) -> NaiveDate {
         s.parse().unwrap()
     }
+    fn w(daily: f64) -> Calendar {
+        Calendar::new(daily, &[])
+    }
 
     #[test]
     fn holidays() {
@@ -1105,8 +1131,8 @@ mod tests {
         assert!(r.contains(&(d("2026-06-19"), "Midsummer Eve")));
         assert!(r.contains(&(d("2026-10-31"), "All Saints' Day")));
         assert!(swedish_red_days(2025).contains(&(d("2025-11-01"), "All Saints' Day")));
-        assert_eq!(expected_hours(d("2026-04-06"), 8.0), 0.0); // Easter Monday
-        assert_eq!(expected_hours(d("2026-04-07"), 8.0), 8.0);
+        assert_eq!(expected_hours(d("2026-04-06"), &w(8.0)), 0.0); // Easter Monday
+        assert_eq!(expected_hours(d("2026-04-07"), &w(8.0)), 8.0);
     }
 
     #[test]
@@ -1134,7 +1160,7 @@ mod tests {
         assert_eq!(merged.len(), 2);
         assert_eq!(merged[1].hours, 2.0); // empty-desc session folded into "Review"
         // Mon 8h on an 8h day => 0, Fri 2h => -6
-        assert_eq!(flex(&s, &Projects::new(), &[], 8.0, None).0, -6.0);
+        assert_eq!(flex(&s, &Projects::new(), &[], &w(8.0), None).0, -6.0);
         assert_eq!(task_suggestions(&s, Some("Acme"), d("2026-10-02")), vec!["Review", "Did stuff"]);
     }
 
@@ -1142,26 +1168,26 @@ mod tests {
     fn when_to_leave() {
         let l = |hours, rest| Leave { from: d("2026-10-12"), to: d("2026-10-12"), kind: "vacation".into(), hours, rest, note: String::new() };
         let mon = dt("2026-10-12 14:24");
-        assert_eq!(leave_time(mon, 5.7, 8.0, &[], true, false), "Leave at 16:42 (2h 18m left).");
-        assert_eq!(leave_time(mon, 5.7, 8.0, &[], false, true), "On a break: 2h 18m left; the leave time starts when you resume.");
-        assert_eq!(leave_time(mon, 7.5, 8.0, &[], false, false), "30m left today (not clocked in).");
-        assert_eq!(leave_time(mon, 7.99, 8.0, &[], true, false), "Leave at 14:25 (1m left)."); // rounded up
-        assert_eq!(leave_time(mon, 8.5, 8.0, &[], true, false), "Done for today, 30m over.");
-        assert_eq!(leave_time(mon, 8.0, 8.0, &[], true, false), "Done for today.");
-        assert!(day_done(mon, 8.0, 8.0, &[], true, false)); // exactly at the boundary
-        assert!(day_done(mon, 8.0 + 59.0 / 3600.0, 8.0, &[], true, false));
-        assert!(!day_done(mon, 7.99, 8.0, &[], true, false));
-        assert!(!day_done(mon, 9.0, 8.0, &[], false, false)); // not running
-        assert!(!day_done(mon, 9.0, 8.0, &[], false, true)); // on a break
-        assert!(!day_done(dt("2026-10-10 10:00"), 1.0, 8.0, &[], true, false)); // no expected hours
-        assert!(day_done(mon, 4.0, 8.0, &[l(Some(4.0), false)], true, false)); // half day off
-        assert!(!day_done(mon, 3.0, 8.0, &[l(None, true)], true, false)); // rest of the day off
-        assert!(!day_done(mon, 0.0, 8.0, &[l(None, false)], true, false)); // whole day off
-        assert_eq!(leave_time(dt("2026-10-10 10:00"), 1.0, 8.0, &[], true, false), "No expected hours today."); // Saturday
-        assert_eq!(leave_time(dt("2026-12-25 10:00"), 0.0, 8.0, &[], true, false), "No expected hours today."); // red day
-        assert_eq!(leave_time(mon, 2.0, 8.0, &[l(Some(4.0), false)], true, false), "Leave at 16:24 (2h 00m left)."); // half day off
-        assert_eq!(leave_time(mon, 3.0, 8.0, &[l(None, true)], true, false), "Done for today."); // rest of the day off
-        assert_eq!(leave_time(mon, 0.0, 8.0, &[l(None, false)], false, false), "Done for today."); // whole day off
+        assert_eq!(leave_time(mon, 5.7, &w(8.0), &[], true, false), "Leave at 16:42 (2h 18m left).");
+        assert_eq!(leave_time(mon, 5.7, &w(8.0), &[], false, true), "On a break: 2h 18m left; the leave time starts when you resume.");
+        assert_eq!(leave_time(mon, 7.5, &w(8.0), &[], false, false), "30m left today (not clocked in).");
+        assert_eq!(leave_time(mon, 7.99, &w(8.0), &[], true, false), "Leave at 14:25 (1m left)."); // rounded up
+        assert_eq!(leave_time(mon, 8.5, &w(8.0), &[], true, false), "Done for today, 30m over.");
+        assert_eq!(leave_time(mon, 8.0, &w(8.0), &[], true, false), "Done for today.");
+        assert!(day_done(mon, 8.0, &w(8.0), &[], true, false)); // exactly at the boundary
+        assert!(day_done(mon, 8.0 + 59.0 / 3600.0, &w(8.0), &[], true, false));
+        assert!(!day_done(mon, 7.99, &w(8.0), &[], true, false));
+        assert!(!day_done(mon, 9.0, &w(8.0), &[], false, false)); // not running
+        assert!(!day_done(mon, 9.0, &w(8.0), &[], false, true)); // on a break
+        assert!(!day_done(dt("2026-10-10 10:00"), 1.0, &w(8.0), &[], true, false)); // no expected hours
+        assert!(day_done(mon, 4.0, &w(8.0), &[l(Some(4.0), false)], true, false)); // half day off
+        assert!(!day_done(mon, 3.0, &w(8.0), &[l(None, true)], true, false)); // rest of the day off
+        assert!(!day_done(mon, 0.0, &w(8.0), &[l(None, false)], true, false)); // whole day off
+        assert_eq!(leave_time(dt("2026-10-10 10:00"), 1.0, &w(8.0), &[], true, false), "No expected hours today."); // Saturday
+        assert_eq!(leave_time(dt("2026-12-25 10:00"), 0.0, &w(8.0), &[], true, false), "No expected hours today."); // red day
+        assert_eq!(leave_time(mon, 2.0, &w(8.0), &[l(Some(4.0), false)], true, false), "Leave at 16:24 (2h 00m left)."); // half day off
+        assert_eq!(leave_time(mon, 3.0, &w(8.0), &[l(None, true)], true, false), "Done for today."); // rest of the day off
+        assert_eq!(leave_time(mon, 0.0, &w(8.0), &[l(None, false)], false, false), "Done for today."); // whole day off
     }
 
     #[test]
@@ -1173,21 +1199,21 @@ mod tests {
         let week = [l("2026-10-05", "2026-10-11", None, false)];
         assert_eq!(leave_credit(&week, d("2026-10-06"), 8.0, 0.0), 8.0);
         assert_eq!(leave_credit(&week, d("2026-10-10"), 0.0, 0.0), 0.0);
-        assert_eq!(flex(&[s("2026-10-06", 2.0)], &p, &week, 8.0, None).0, 2.0); // work on vacation is flex
-        assert_eq!(flex(&[], &p, &week, 8.0, None).0, 0.0); // and a vacation day without work is even
-        assert_eq!(flex(&[s("2026-10-12", 8.0)], &p, &week, 8.0, None).0, 0.0); // after it, back to normal
+        assert_eq!(flex(&[s("2026-10-06", 2.0)], &p, &week, &w(8.0), None).0, 2.0); // work on vacation is flex
+        assert_eq!(flex(&[], &p, &week, &w(8.0), None).0, 0.0); // and a vacation day without work is even
+        assert_eq!(flex(&[s("2026-10-12", 8.0)], &p, &week, &w(8.0), None).0, 0.0); // after it, back to normal
         // Half a day off plus 4 h worked is a full day; rest-of-day tops up to the target, never past it.
-        assert_eq!(flex(&[s("2026-10-06", 4.0)], &p, &[l("2026-10-06", "2026-10-06", Some(4.0), false)], 8.0, None).0, 0.0);
+        assert_eq!(flex(&[s("2026-10-06", 4.0)], &p, &[l("2026-10-06", "2026-10-06", Some(4.0), false)], &w(8.0), None).0, 0.0);
         let sick = [Leave { kind: "sick".into(), ..l("2026-10-06", "2026-10-06", None, true) }];
-        assert_eq!(flex(&[s("2026-10-06", 3.0)], &p, &sick, 8.0, None).0, 0.0);
-        assert_eq!(flex(&[s("2026-10-06", 9.0)], &p, &sick, 8.0, None).0, 1.0);
+        assert_eq!(flex(&[s("2026-10-06", 3.0)], &p, &sick, &w(8.0), None).0, 0.0);
+        assert_eq!(flex(&[s("2026-10-06", 9.0)], &p, &sick, &w(8.0), None).0, 1.0);
         // Overlapping entries never credit more than the day.
         assert_eq!(leave_credit(&[week[0].clone(), sick[0].clone()], d("2026-10-06"), 8.0, 3.0), 8.0);
         // Reports list it without counting it as worked.
         let codes = LeaveCodes::from([("vacation".into(), LeaveKind { export_code: "VAC".into() })]);
-        let r = daily_report(&[], &p, (&sick, &codes), 8.0, d("2026-10-06"), "Work");
+        let r = daily_report(&[], &p, (&sick, &codes), &w(8.0), d("2026-10-06"), "Work");
         assert!(r.contains("Sessions: 0\n  - Time off: sick 8.00 h\n"), "{r}");
-        let r = weekly_report(&[], &p, (&week, &codes), 8.0, d("2026-10-09"), d("2026-10-12"), "Work");
+        let r = weekly_report(&[], &p, (&week, &codes), &w(8.0), d("2026-10-09"), d("2026-10-12"), "Work");
         assert!(r.contains("- 2026-10-09 Fri: vacation [VAC] 8.00 h") && !r.contains("2026-10-10 Sat") && !r.contains("2026-10-12 Mon:"), "{r}");
     }
 
@@ -1198,7 +1224,7 @@ mod tests {
         let codes = LeaveCodes::from([("vacation".into(), LeaveKind { export_code: "VAC".into() })]);
         // Fri 2026-10-09 .. Mon 10-12: no weekend rows; uncoded kinds fall back to the kind; work on the day stays its own row.
         let leave = [Leave { note: "trip".into(), ..l("vacation", "2026-10-09", "2026-10-12", None, false) }, l("sick", "2026-10-13", "2026-10-13", None, true)];
-        let (out, sum) = csv(&[s("2026-10-12", 1.0), s("2026-10-13", 2.5)], &Projects::new(), (&leave, &codes), 8.0, d("2026-10-01"), d("2026-10-13"));
+        let (out, sum) = csv(&[s("2026-10-12", 1.0), s("2026-10-13", 2.5)], &Projects::new(), (&leave, &codes), &w(8.0), d("2026-10-01"), d("2026-10-13"));
         assert_eq!(sum, "3 time off rows; none for 2026-10-10 (no expected hours), 2026-10-11 (no expected hours)");
         assert_eq!(
             out.lines().skip(1).collect::<Vec<_>>(),
@@ -1211,9 +1237,9 @@ mod tests {
             ]
         );
         // Out of range: nothing; overlapping kinds never credit more than the day; partial hours.
-        assert_eq!(csv(&[], &Projects::new(), (&leave, &codes), 8.0, d("2026-10-14"), d("2026-10-20")), ("Project,Description,Date,Duration\n".into(), "0 time off rows".into()));
+        assert_eq!(csv(&[], &Projects::new(), (&leave, &codes), &w(8.0), d("2026-10-14"), d("2026-10-20")), ("Project,Description,Date,Duration\n".into(), "0 time off rows".into()));
         let both = [l("vacation", "2026-10-06", "2026-10-06", Some(6.0), false), l("other", "2026-10-06", "2026-10-06", Some(4.5), false)];
-        let out = csv(&[], &Projects::new(), (&both, &codes), 8.0, d("2026-10-06"), d("2026-10-06")).0;
+        let out = csv(&[], &Projects::new(), (&both, &codes), &w(8.0), d("2026-10-06"), d("2026-10-06")).0;
         assert!(out.ends_with("\"VAC\",\"vacation\",\"2026-10-06\",\"6\"\n\"other\",\"other\",\"2026-10-06\",\"2\"\n"), "{out}");
     }
 
@@ -1221,7 +1247,7 @@ mod tests {
     fn csv_says_why_time_off_wrote_no_row() {
         let l = |kind: &str, from: &str, to: &str, rest| Leave { from: d(from), to: d(to), kind: kind.into(), hours: None, rest, note: String::new() };
         let s = |date: &str, h| Session { date: d(date), project: "A".into(), desc: "x".into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None };
-        let sum = |sessions: &[Session], leave: &[Leave], daily, end| csv(sessions, &Projects::new(), (leave, &LeaveCodes::new()), daily, d("2026-10-01"), d(end)).1;
+        let sum = |sessions: &[Session], leave: &[Leave], daily: f64, end| csv(sessions, &Projects::new(), (leave, &LeaveCodes::new()), &w(daily), d("2026-10-01"), d(end)).1;
         // A lone Saturday, a red day (Christmas), rest of the day after a full day, no daily hours.
         assert_eq!(sum(&[], &[l("vacation", "2026-10-10", "2026-10-10", false)], 8.0, "2026-10-31"), "0 time off rows; none for 2026-10-10 (no expected hours)");
         assert_eq!(sum(&[], &[l("vacation", "2026-12-25", "2026-12-25", false)], 8.0, "2026-12-31"), "0 time off rows; none for 2026-12-25 (no expected hours)");
@@ -1239,7 +1265,7 @@ mod tests {
     fn leave_on_disk() {
         let dir = std::env::temp_dir().join(format!("tc-leave-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), expected: 8.0 };
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), cal: w(8.0) };
         let l = |from: &str, to: &str, kind: &str| Leave { from: d(from), to: d(to), kind: kind.into(), hours: None, rest: false, note: " trip ".into() };
         tc.add_leave(l("2026-07-01", "2026-07-14", " Vacation")).unwrap();
         tc.add_leave(l("2026-07-03", "2026-07-03", "sick")).unwrap(); // another kind may overlap
@@ -1297,7 +1323,7 @@ mod tests {
     fn clock_flow_on_disk() {
         let dir = std::env::temp_dir().join(format!("tc-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        let tc = Tc { dir: dir.join("work"), diary: dir.join("notes/dagbok-work.org"), expected: 8.0 };
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("notes/dagbok-work.org"), cal: w(8.0) };
         assert!(!tc.clock_in("Acme", "Review", Some("AC-1")).unwrap());
         assert_eq!(tc.projects()["Acme"].export_code, "AC-1");
         assert_eq!(tc.take_break().unwrap().as_deref(), Some("Acme"));
@@ -1325,7 +1351,7 @@ mod tests {
         assert_eq!(today_hours(&sessions, Some(dt("2026-10-02 00:15")), now), 1.25);
         assert_eq!(today_hours(&sessions, None, now), 0.5);
         // 1.5 h done at 01:00 of an 8 h day: 6.5 h left.
-        assert_eq!(leave_time(now, today_hours(&sessions, Some(dt("2026-10-01 22:00")), now), 8.0, &[], true, false), "Leave at 07:30 (6h 30m left).");
+        assert_eq!(leave_time(now, today_hours(&sessions, Some(dt("2026-10-01 22:00")), now), &w(8.0), &[], true, false), "Leave at 07:30 (6h 30m left).");
     }
 
     #[test]
@@ -1333,7 +1359,7 @@ mod tests {
         for i in 0..20 {
             let dir = std::env::temp_dir().join(format!("tc-race-{}-{i}", std::process::id()));
             let _ = fs::remove_dir_all(&dir);
-            let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), expected: 8.0 };
+            let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), cal: w(8.0) };
             tc.clock_in("Acme", "", None).unwrap();
             let go = std::sync::Barrier::new(2);
             std::thread::scope(|t| {
@@ -1362,7 +1388,7 @@ mod tests {
     fn locked_keeps_leave_added_during_a_dedupe() {
         let dir = std::env::temp_dir().join(format!("tc-leave-race-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        let tc = Tc { dir: dir.join("work"), diary: dir.join("d.org"), expected: 8.0 };
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("d.org"), cal: w(8.0) };
         let go = std::sync::Barrier::new(2);
         std::thread::scope(|t| {
             t.spawn(|| {
@@ -1384,10 +1410,36 @@ mod tests {
     }
 
     #[test]
+    fn expected_hours_per_weekday() {
+        let four = Calendar::new(8.0, &[8.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0]);
+        assert_eq!(Calendar::new(7.5, &[]).hours, [7.5, 7.5, 7.5, 7.5, 7.5, 0.0, 0.0]); // empty: Mon–Fri as before
+        assert_eq!((expected_hours(d("2026-10-15"), &four), expected_hours(d("2026-10-16"), &four)), (8.0, 0.0)); // Friday off
+        assert_eq!(expected_hours(d("2026-04-06"), &Calendar::new(8.0, &[8.0; 7])), 0.0); // red days stay 0
+        let s = |date: &str, h| Session { date: d(date), project: "A".into(), desc: "x".into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None };
+        let week: Vec<_> = ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15"].iter().map(|x| s(x, 8.0)).chain([s("2026-10-16", 2.0)]).collect();
+        assert_eq!(flex(&week, &Projects::new(), &[], &four, None).0, 2.0); // Friday's work is all flex
+        assert_eq!(leave_time(dt("2026-10-16 10:00"), 0.0, &four, &[], true, false), "No expected hours today.");
+        // A short Friday: 8 h a day off for the week credits Friday its 6 h, no more.
+        let short = Calendar::new(8.0, &[8.0, 8.0, 8.0, 8.0, 6.0, 0.0, 0.0]);
+        let l = |from: &str, to: &str, h| Leave { from: d(from), to: d(to), kind: "vacation".into(), hours: Some(h), rest: false, note: String::new() };
+        let vac = [l("2026-10-12", "2026-10-16", 8.0)];
+        assert_eq!(leave_on(&vac, d("2026-10-16"), expected_hours(d("2026-10-16"), &short), 0.0)[0].1, 6.0);
+        assert_eq!(flex(&[s("2026-10-16", 1.0)], &Projects::new(), &vac, &short, None).0, 1.0);
+        // Time off hours are capped by the range's longest day.
+        let dir = std::env::temp_dir().join(format!("tc-weekday-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("d.org"), cal: short };
+        assert!(tc.add_leave(l("2026-10-16", "2026-10-16", 7.0)).unwrap_err().contains("at most 6"));
+        assert!(tc.add_leave(l("2026-10-17", "2026-10-18", 2.0)).unwrap_err().contains("no expected hours"));
+        tc.add_leave(vac[0].clone()).unwrap(); // Monday's 8 h
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn adjust_start_refuses_to_overlap_the_previous_session() {
         let dir = std::env::temp_dir().join(format!("tc-adjust-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        let tc = Tc { dir: dir.join("work"), diary: dir.join("d.org"), expected: 8.0 };
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("d.org"), cal: w(8.0) };
         assert!(!tc.clock_in("A", "", None).unwrap());
         assert!(tc.clock_out("").unwrap());
         assert!(!tc.clock_in("A", "", None).unwrap());
@@ -1401,7 +1453,7 @@ mod tests {
     fn clock_out_earlier_refuses_before_the_start() {
         let dir = std::env::temp_dir().join(format!("tc-outat-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        let tc = Tc { dir: dir.join("work"), diary: dir.join("d.org"), expected: 8.0 };
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("d.org"), cal: w(8.0) };
         assert!(!tc.clock_out_earlier(dt("2026-10-01 08:00"), "").unwrap()); // not clocked in
         tc.append(&Event::In { t: dt("2026-10-01 09:00"), project: "A".into(), task: String::new() }).unwrap();
         let err = tc.clock_out_earlier(dt("2026-10-01 08:00"), "").unwrap_err();
@@ -1416,7 +1468,7 @@ mod tests {
     fn malformed_projects_are_reported() {
         let dir = std::env::temp_dir().join(format!("tc-proj-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), expected: 8.0 };
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), cal: w(8.0) };
         assert!(tc.file_issues().is_empty()); // missing files are fine
         fs::create_dir_all(&tc.dir).unwrap();
         fs::write(tc.projects_path(), "[Acme\nexport_code = ").unwrap();
@@ -1431,7 +1483,7 @@ mod tests {
     fn discard_idle_sessions() {
         let dir = std::env::temp_dir().join(format!("tc-idle-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), expected: 8.0 };
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), cal: w(8.0) };
         let start = |tc: &Tc| {
             let _ = fs::remove_file(tc.log_path());
             tc.append(&Event::In { t: dt("2026-10-01 09:00"), project: "Acme".into(), task: "Review".into() }).unwrap();
@@ -1462,7 +1514,7 @@ mod tests {
     fn add_past_sessions() {
         let dir = std::env::temp_dir().join(format!("tc-add-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), expected: 8.0 };
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), cal: w(8.0) };
         let log = [
             Event::In { t: dt("2024-10-01 08:00"), project: "A".into(), task: String::new() },
             Event::Out { t: dt("2024-10-01 09:00"), note: "a".into() },
@@ -1498,7 +1550,7 @@ mod tests {
     fn edit_session_bounds() {
         let dir = std::env::temp_dir().join(format!("tc-edit-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), expected: 8.0 };
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), cal: w(8.0) };
         let i = |t: &str| Event::In { t: dt(t), project: "A".into(), task: String::new() };
         let o = |t: &str| Event::Out { t: dt(t), note: "x".into() };
         let log = [i("2024-10-01 09:00"), Event::Break { t: dt("2024-10-01 10:00") }, i("2024-10-01 11:00"), o("2024-10-01 12:00"), i("2024-10-01 13:00"), o("2024-10-01 14:00")];
@@ -1523,7 +1575,7 @@ mod tests {
     fn unreadable_files_are_not_overwritten() {
         let dir = std::env::temp_dir().join(format!("tc-bad-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), expected: 8.0 };
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("dagbok.org"), cal: w(8.0) };
         fs::create_dir_all(&tc.dir).unwrap();
         // Malformed projects.toml: clock_in on a new project errors and leaves it alone.
         fs::write(tc.projects_path(), "[Acme\nexport_code = 1").unwrap();
@@ -1552,16 +1604,16 @@ mod tests {
     fn csv_quotes_and_comma() {
         let s = vec![Session { date: d("2026-10-01"), project: "A".into(), desc: "say \"hi\"".into(), hours: 1.5, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None }];
         let none = (&[][..], &LeaveCodes::new());
-        let out = csv(&s, &Projects::new(), none, 8.0, d("2026-10-01"), d("2026-10-01")).0;
+        let out = csv(&s, &Projects::new(), none, &w(8.0), d("2026-10-01"), d("2026-10-01")).0;
         assert_eq!(out.lines().nth(1).unwrap(), r#""A","say ""hi""","2026-10-01","1,5""#);
         let s = vec![Session { hours: 2.0, ..s[0].clone() }];
-        assert!(csv(&s, &Projects::new(), none, 8.0, d("2026-10-01"), d("2026-10-01")).0.ends_with(",\"2\"\n"));
+        assert!(csv(&s, &Projects::new(), none, &w(8.0), d("2026-10-01"), d("2026-10-01")).0.ends_with(",\"2\"\n"));
     }
 
     #[test]
     fn csv_skips_zero_rows() {
         let s = |h| vec![Session { date: d("2026-10-01"), project: "A".into(), desc: "x".into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None }];
-        let rows = |h| csv(&s(h), &Projects::new(), (&[], &LeaveCodes::new()), 8.0, d("2026-10-01"), d("2026-10-01")).0.lines().count();
+        let rows = |h| csv(&s(h), &Projects::new(), (&[], &LeaveCodes::new()), &w(8.0), d("2026-10-01"), d("2026-10-01")).0.lines().count();
         assert_eq!((rows(0.0), rows(0.2), rows(0.3)), (1, 1, 2)); // default rounding is 0.5 h
     }
 
@@ -1578,7 +1630,7 @@ mod tests {
         let sw = format!("{b}\n{}\n", r#"{"ev":"in","t":"2026-10-01T11:00:00","project":"C"}"#);
         assert_eq!(normalize_log(&sw), sw);
         let dir = std::env::temp_dir().join(format!("tc-norm-{}", std::process::id()));
-        let tc = Tc { dir: dir.clone(), diary: dir.join("d.org"), expected: 8.0 };
+        let tc = Tc { dir: dir.clone(), diary: dir.join("d.org"), cal: w(8.0) };
         assert_eq!(tc.normalize_log(), Ok(false)); // no log: nothing written
         assert!(!tc.log_path().exists());
         fs::create_dir_all(&dir).unwrap();

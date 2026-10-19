@@ -432,7 +432,11 @@ vmedian abs round floor ceil sqrt exp ln`; format with `;%.2f` or `;%d`.
 The Time view shows what you're tracking, today's sessions (click ✎ to edit),
 today's hours against the daily target (`expected_daily_hours`), the week's hours against expected,
 flex balance with the report buttons, and a card per project worked this week (hours this week and month,
-billable hours, its share of the week, and **Track** to start the clock on it). Keys:
+billable hours, its share of the week, and **Track** to start the clock on it).
+`expected_daily_hours` counts Monday to Friday; for a 4-day week or short Fridays set
+`weekday_hours` (Settings → Time), Monday to Sunday, e.g. `weekday_hours = [8, 8, 8, 8, 6, 0, 0]`
+(empty = `expected_daily_hours` on weekdays). Flex, "when to leave", the week chart and the
+"day done" reminder all use that day's hours; red days stay 0. Keys:
 `i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV (import template: `Project` = export code, `Duration` in decimal hours, `1,5`; zero-hour rows are left out; a missing folder is created; a bare file name goes into the export folder; otherwise the path must be an absolute `.csv` path outside the app's data and config folders),
 `E` export a report as HTML/PDF.
 Space t … has every timeclock command (same letters as the old Emacs menu).

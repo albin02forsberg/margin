@@ -190,7 +190,7 @@ fn normalize_logs(dir: &Path) -> Vec<String> {
     use crate::timeclock::Tc;
     let mut changed = vec![];
     for e in std::fs::read_dir(dir).into_iter().flatten().flatten().filter(|e| e.path().is_dir()) {
-        let tc = Tc { dir: e.path(), diary: PathBuf::new(), expected: 0.0 };
+        let tc = Tc { dir: e.path(), diary: PathBuf::new(), cal: crate::timeclock::Calendar::new(0.0, &[]) };
         type Fix = fn(&Tc) -> Result<bool, String>;
         let fixes: [(&str, Fix); 2] = [("timelog.jsonl", Tc::normalize_log), ("leave.jsonl", Tc::dedupe_leave)];
         for (file, fix) in fixes.into_iter().filter(|(f, _)| e.path().join(f).is_file()) {
