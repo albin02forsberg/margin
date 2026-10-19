@@ -1,7 +1,11 @@
 // Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { problems } from "./media-size.ts";
+import { problems, scan } from "./media-size.ts";
+
+test("the committed README media is all there and under the cap", () => {
+  assert.deepEqual(problems(scan()), []);
+});
 
 test("problems is empty when every clip is there and small", () => {
   assert.deepEqual(problems({ "docs/gifs/a.gif": 10, "docs/screenshots/x.png": 5 }, ["a"], 100, 1000), []);
