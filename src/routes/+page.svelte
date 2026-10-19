@@ -1895,7 +1895,7 @@
     flash(`📎 Attached ${links.length} file${links.length > 1 ? "s" : ""}`);
   }
 
-  /** Pasted images are saved as pasted-YYYYMMDD-HHMMSS.png next to the note's other attachments. */
+  /** Pasted images are saved as pasted-YYYYMMDD-HHMMSS.png in the note folder's images folder. */
   function onPaste(e: ClipboardEvent) {
     const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith("image/"));
     if (!file && inFile()) {
@@ -1920,7 +1920,7 @@
     });
   }
 
-  /** Lists attachments no note links to; the picked ones (or all) move to <attachments_dir>/.trash/. */
+  /** Lists attachments and images no note links to; the picked ones (or all) move to their folder's .trash/. */
   async function cleanAttachments() {
     const files = await call<string[]>("unused_attachments");
     if (!files.length) return flash("Every attachment is linked from a note.");

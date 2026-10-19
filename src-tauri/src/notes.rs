@@ -203,11 +203,13 @@ pub fn rename(files: &[Arc<OrgFile>], from: &Path, name: &str) -> Result<(PathBu
     move_to(files, from, &to).map_err(|e| format!("Nothing renamed: {e}"))
 }
 
-/// Can notes move into DIR? Only under NOTES, and not into a dot folder (unscanned, like `.trash`) or the attachments folder ATTACH.
-pub fn folder_ok(notes: &Path, attach: &str, dir: &Path) -> Result<(), String> {
+/// Can notes move into DIR? Only under NOTES, and not into a dot folder (unscanned, like `.trash`), the attachments folder
+/// ATTACH or an IMAGES folder.
+pub fn folder_ok(notes: &Path, attach: &str, images: &str, dir: &Path) -> Result<(), String> {
     let r = dir.strip_prefix(notes).map_err(|_| format!("{} isn't in the notes folder", dir.display()))?;
     let hidden = r.components().any(|c| !matches!(c, Component::Normal(n) if !n.to_string_lossy().starts_with('.')));
-    if hidden || (!attach.is_empty() && r.starts_with(attach)) {
+    let in_images = !images.is_empty() && r.ancestors().any(|a| a.ends_with(images));
+    if hidden || (!attach.is_empty() && r.starts_with(attach)) || in_images {
         return Err(format!("Notes can't go in {}", dir.display()));
     }
     Ok(())
@@ -574,11 +576,12 @@ mod tests {
     #[test]
     fn note_folders() {
         let n = Path::new("/n");
-        assert!(folder_ok(n, "attachments", Path::new("/n")).is_ok() && folder_ok(n, "attachments", Path::new("/n/projects/x")).is_ok());
-        for bad in ["/n/.trash", "/n/a/.hidden", "/n/attachments", "/n/attachments/x", "/elsewhere", "/n/../etc"] {
-            assert!(folder_ok(n, "attachments", Path::new(bad)).is_err(), "{bad}");
+        assert!(folder_ok(n, "attachments", "images", Path::new("/n")).is_ok() && folder_ok(n, "attachments", "images", Path::new("/n/projects/x")).is_ok());
+        for bad in ["/n/.trash", "/n/a/.hidden", "/n/attachments", "/n/attachments/x", "/elsewhere", "/n/../etc", "/n/images", "/n/work/images/x"] {
+            assert!(folder_ok(n, "attachments", "images", Path::new(bad)).is_err(), "{bad}");
         }
-        assert!(folder_ok(n, "files/att", Path::new("/n/files/att/x")).is_err() && folder_ok(n, "files/att", Path::new("/n/files")).is_ok());
+        assert!(folder_ok(n, "files/att", "", Path::new("/n/files/att/x")).is_err() && folder_ok(n, "files/att", "", Path::new("/n/files")).is_ok());
+        assert!(folder_ok(n, "attachments", "", Path::new("/n/images")).is_ok());
     }
 
     #[test]

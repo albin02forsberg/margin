@@ -435,7 +435,7 @@ fn write_file(app: AppHandle, s: State<App>, path: PathBuf, text: String, expect
 fn attach_file(s: State<App>, note: PathBuf, src: PathBuf) -> R<String> {
     let name = src.file_name().ok_or("not a file")?.to_string_lossy().to_string();
     let c = s.cfg();
-    attach_in(&c.notes(), &c.attachments_dir, &note, &name, |p| p.exists(), |dst| std::fs::copy(&src, dst).map(|_| ()))
+    attach_in(&c.notes(), &c.attachments_dir, &c.images_dir, &note, &name, |p| p.exists(), |dst| std::fs::copy(&src, dst).map(|_| ()))
 }
 
 /// Save the pasted bytes (raw body) as header `name` in header `note`'s attachment
@@ -448,7 +448,7 @@ fn attach_bytes(s: State<App>, request: tauri::ipc::Request) -> R<String> {
         Ok(percent_encoding::percent_decode_str(v).decode_utf8().map_err(|e| e.to_string())?.into_owned())
     };
     let c = s.cfg();
-    attach_in(&c.notes(), &c.attachments_dir, Path::new(&header("note")?), &header("name")?, |p| p.exists(), |dst| std::fs::write(dst, bytes))
+    attach_in(&c.notes(), &c.attachments_dir, &c.images_dir, Path::new(&header("note")?), &header("name")?, |p| p.exists(), |dst| std::fs::write(dst, bytes))
 }
 
 /// Reserves the name with `create_new`, so concurrent attaches of one name don't collide
@@ -456,13 +456,14 @@ fn attach_bytes(s: State<App>, request: tauri::ipc::Request) -> R<String> {
 fn attach_in(
     notes: &Path,
     dir: &str,
+    images: &str,
     note: &Path,
     name: &str,
     taken: impl Fn(&Path) -> bool,
     write: impl FnOnce(&Path) -> std::io::Result<()>,
 ) -> R<String> {
     loop {
-        let (dst, link) = attach::target(notes, dir, note, name, &taken)?;
+        let (dst, link) = attach::target(notes, dir, images, note, name, &taken)?;
         std::fs::create_dir_all(dst.parent().unwrap()).map_err(|e| e.to_string())?;
         match std::fs::File::create_new(&dst) {
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
@@ -487,11 +488,28 @@ fn attachment_files(root: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Files under the attachments folder (outside `.trash`) that no note links to.
+/// The IMAGES folders (see `Config::images_dir`) anywhere under NOTES, skipping dot folders.
+fn image_dirs(notes: &Path, images: &str) -> Vec<PathBuf> {
+    if images.is_empty() {
+        return vec![];
+    }
+    walkdir::WalkDir::new(notes)
+        .into_iter()
+        .filter_entry(|e| e.depth() == 0 || !e.file_name().to_string_lossy().starts_with('.'))
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_dir() && e.depth() > 0 && e.path().ends_with(images))
+        .map(|e| e.into_path())
+        .collect()
+}
+
+/// Files in the attachments and images folders (outside `.trash`) that no note links to.
 #[tauri::command]
 fn unused_attachments(s: State<App>) -> Vec<PathBuf> {
     let c = s.cfg();
-    let files = attachment_files(&c.notes().join(&c.attachments_dir));
+    let mut files = attachment_files(&c.notes().join(&c.attachments_dir));
+    files.extend(image_dirs(&c.notes(), &c.images_dir).into_iter().flat_map(|d| attachment_files(&d)));
+    files.sort();
+    files.dedup();
     let notes = org::scan(&c.notes(), &s.kw(), &s.cache);
     let notes: Vec<(&Path, &str)> = notes.iter().map(|f| (f.path.as_path(), f.text.as_str())).collect();
     let mut v = attach::unused(&notes, &files);
@@ -575,13 +593,27 @@ fn trashed_in(root: &Path) -> Vec<(PathBuf, u64)> {
     v
 }
 
-/// Move attachment FILES to `<attachments_dir>/.trash/`, keeping their subpaths.
+/// The folder whose `.trash` attachment F goes to: ATTACH (the attachments folder) when F is in it,
+/// else the nearest IMAGES folder under NOTES holding F.
+fn trash_root(notes: &Path, attach: &Path, images: &str, f: &Path) -> R<PathBuf> {
+    if f.starts_with(attach) {
+        return Ok(attach.to_path_buf());
+    }
+    f.ancestors()
+        .skip(1)
+        .take_while(|a| a.starts_with(notes) && *a != notes)
+        .find(|a| !images.is_empty() && a.ends_with(images))
+        .map(Path::to_path_buf)
+        .ok_or_else(|| format!("{} isn't an attachment", f.display()))
+}
+
+/// Move attachment FILES to `<attachments_dir>/.trash/` (images to `<their images folder>/.trash/`),
+/// keeping their subpaths.
 #[tauri::command]
 fn trash_attachments(s: State<App>, files: Vec<PathBuf>) -> R<()> {
     let c = s.cfg();
-    let root = c.notes().join(&c.attachments_dir);
     for f in files {
-        trash_to(&root, &f)?;
+        trash_to(&trash_root(&c.notes(), &c.notes().join(&c.attachments_dir), &c.images_dir, &f)?, &f)?;
     }
     Ok(())
 }
@@ -917,7 +949,7 @@ fn move_note(s: State<App>, from: PathBuf, dir: PathBuf) -> R<(PathBuf, Vec<Path
         s.check(p)?;
         in_notes(&c.notes(), p)?;
     }
-    notes::folder_ok(&c.notes(), &c.attachments_dir, &dir)?;
+    notes::folder_ok(&c.notes(), &c.attachments_dir, &c.images_dir, &dir)?;
     s.backup();
     let _lock = note_writes();
     notes::move_note(&s.files(), &from, &dir)
@@ -2260,7 +2292,7 @@ mod tests {
         let put = |dst: &Path| std::fs::write(dst, "x");
         let exists = |p: &Path| p.exists();
         let at = |taken: &dyn Fn(&Path) -> bool, w: &dyn Fn(&Path) -> std::io::Result<()>| {
-            attach_in(&notes, "att", &note, "a.png", taken, w)
+            attach_in(&notes, "att", "", &note, "a.png", taken, w)
         };
         assert_eq!(at(&exists, &put).unwrap(), "att/n/a.png");
         assert_eq!(at(&exists, &put).unwrap(), "att/n/a-1.png");
@@ -2293,6 +2325,27 @@ mod tests {
         let (n1, n2) = (root.join("one.org"), root.join("two.org"));
         let notes = [(n1.as_path(), "see [[file:att/a/x.png]]"), (n2.as_path(), "[[att/b/deep/z.png][pic]]")];
         assert_eq!(attach::unused(&notes, &files), [att.join("a/y.png")]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn image_dirs_and_trash_roots() {
+        let root = std::env::temp_dir().join(format!("margin-imgdirs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for d in ["images", "work/images", "work/images/.trash", ".hidden/images", "att", "imagesx"] {
+            std::fs::create_dir_all(root.join(d)).unwrap();
+        }
+        let mut dirs = image_dirs(&root, "images");
+        dirs.sort();
+        assert_eq!(dirs, [root.join("images"), root.join("work/images")]);
+        assert!(image_dirs(&root, "").is_empty());
+        let att = root.join("att");
+        let tr = |f: &str| trash_root(&root, &att, "images", &root.join(f));
+        assert_eq!(tr("att/n/a.png").unwrap(), att);
+        assert_eq!(tr("work/images/a.png").unwrap(), root.join("work/images"));
+        assert_eq!(tr("images/a.png").unwrap(), root.join("images"));
+        assert!(tr("work/a.png").is_err());
+        assert!(trash_root(&root, &att, "images", Path::new("/images/a.png")).is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 
