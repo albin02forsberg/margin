@@ -99,4 +99,17 @@ describe("Time tracking", () => {
     await answer("What did you do?", "late entry");
     await fileMatches(log, (s) => events(s).some((e) => e.ev === "out" && e.t === `${day}T10:30:00` && e.note === "late entry"), "past session not logged");
   });
+
+  it("reads a weekday name as the previous such day when logging a session", async () => {
+    const name = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][new Date(Date.now() - 2 * 86_400_000).getDay()];
+    const day = isoDay(new Date(Date.now() - 2 * 86_400_000));
+    await noPicker();
+    await palette("Time: log a past session");
+    await answer("Log a session on", name);
+    await answer("Start", "11:00");
+    await answer("End", "11:30");
+    await answer("Log 11:00–11:30 to project", "Acme");
+    await answer("What did you do?", "weekday entry");
+    await fileMatches(log, (s) => events(s).some((e) => e.ev === "out" && e.t === `${day}T11:30:00` && e.note === "weekday entry"), "weekday session not logged on the previous such day");
+  });
 });
