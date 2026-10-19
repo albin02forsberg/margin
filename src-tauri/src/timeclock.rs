@@ -1416,7 +1416,7 @@ mod tests {
         assert_eq!((expected_hours(d("2026-10-15"), &four), expected_hours(d("2026-10-16"), &four)), (8.0, 0.0)); // Friday off
         assert_eq!(expected_hours(d("2026-04-06"), &Calendar::new(8.0, &[8.0; 7])), 0.0); // red days stay 0
         let s = |date: &str, h| Session { date: d(date), project: "A".into(), desc: "x".into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None };
-        let week: Vec<_> = ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15"].iter().map(|x| s(*x, 8.0)).chain([s("2026-10-16", 2.0)]).collect();
+        let week: Vec<_> = ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15"].iter().map(|x| s(x, 8.0)).chain([s("2026-10-16", 2.0)]).collect();
         assert_eq!(flex(&week, &Projects::new(), &[], &four, None).0, 2.0); // Friday's work is all flex
         assert_eq!(leave_time(dt("2026-10-16 10:00"), 0.0, &four, &[], true, false), "No expected hours today.");
         // A short Friday: 8 h a day off for the week credits Friday its 6 h, no more.
