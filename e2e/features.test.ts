@@ -821,27 +821,6 @@ describe("Org structure keys", () => {
     await fileMatches(f("status"), (s) => s === title("status") + org, "status not cleared");
   });
 
-  it("Tab on a heading folds its subtree and Tab again unfolds it", async () => {
-    await open("fold", 3);
-    const shown = async () => (await texts(".cm-line")).some((t) => t.includes("Child"));
-    await browser.waitUntil(shown, { timeoutMsg: "child heading not shown before folding" });
-    await browser.keys(Key.Tab);
-    try {
-      await browser.waitUntil(async () => !(await shown()));
-    } catch {
-      const at = await browser.execute(() => `focus: ${document.activeElement?.className}; cursor line: ${document.querySelector(".cm-activeLine")?.textContent}`);
-      throw new Error(`Tab didn't fold the subtree; ${at}; lines: ${JSON.stringify(await texts(".cm-line"))}`);
-    }
-    await browser.keys(Key.Tab);
-    await browser.waitUntil(shown, { timeoutMsg: "Tab didn't unfold the subtree" });
-  });
-
-  it("clicking a checkbox ticks it and updates the heading's [n/m] cookie", async () => {
-    await open("boxes", 7); // off the item lines, so they show the checkbox widget
-    await (await (await find(".cm-line", "one")).$(".cm-org-check")).click();
-    await saved("boxes", "* TODO A [1/2]\n- [X] one\n- [ ] two\n** Child\n* B\n", "checkbox or cookie not updated");
-  });
-
   it("Shift+Up / Shift+Down cycle a heading's priority", async () => {
     await open("prio", 3);
     await browser.keys([Key.Shift, Key.ArrowUp]);
@@ -869,6 +848,27 @@ describe("Org structure keys", () => {
     await browser.keys(Key.Enter);
     await find(".status .file", "other.org");
     await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("* Other heading")), { timeoutMsg: "[[file:…::*heading]] link not followed" });
+  });
+
+  it("Tab on a heading folds its subtree and Tab again unfolds it", async () => {
+    await open("fold", 3);
+    const shown = async () => (await texts(".cm-line")).some((t) => t.includes("Child"));
+    await browser.waitUntil(shown, { timeoutMsg: "child heading not shown before folding" });
+    await browser.keys(Key.Tab);
+    try {
+      await browser.waitUntil(async () => !(await shown()));
+    } catch {
+      const at = await browser.execute(() => `focus: ${document.activeElement?.className}; cursor line: ${document.querySelector(".cm-activeLine")?.textContent}`);
+      throw new Error(`Tab didn't fold the subtree; ${at}; lines: ${JSON.stringify(await texts(".cm-line"))}`);
+    }
+    await browser.keys(Key.Tab);
+    await browser.waitUntil(shown, { timeoutMsg: "Tab didn't unfold the subtree" });
+  });
+
+  it("clicking a checkbox ticks it and updates the heading's [n/m] cookie", async () => {
+    await open("boxes", 7); // off the item lines, so they show the checkbox widget
+    await (await (await find(".cm-line", "one")).$(".cm-org-check")).click();
+    await saved("boxes", "* TODO A [1/2]\n- [X] one\n- [ ] two\n** Child\n* B\n", "checkbox or cookie not updated");
   });
 
   // Last: in e2e, a note opened after this one drops "3" and "0" of "3G0" and inserts the "G".
