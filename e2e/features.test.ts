@@ -741,8 +741,15 @@ describe("Org structure keys", () => {
     await answer("Open a note", n);
     await find(".status .file", `${n}.org`);
     await noPicker();
+    await browser.execute(() => { (window as any).__keys = []; });
     await browser.keys(Key.Escape);
     await type(`${line}G0`);
+    const want = read(f(n)).split("\n")[line - 1].replace(/^\*+ /, "");
+    try {
+      await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes(want)));
+    } catch {
+      throw new Error(`cursor not on line ${line} of ${n}; active: ${JSON.stringify(await texts(".cm-activeLine"))}; keys: ${await browser.execute(() => (window as any).__keys.join(" "))}`);
+    }
   };
   /** Save and wait until N's text after the title is WANT. */
   const saved = async (n: string, want: string, msg: string) => {
@@ -753,6 +760,7 @@ describe("Org structure keys", () => {
   before(async () => {
     d = await launch({ files: ({ notes: dir }) => { for (const n of notes) writeFileSync(join(dir, `${n}.org`), title(n) + org); } });
     await find(".agenda h1", "Today"); // the page listens for keys only once loaded
+    await browser.execute(() => addEventListener("keydown", (e) => (window as any).__keys?.push(`${e.ctrlKey ? "C-" : ""}${e.altKey ? "A-" : ""}${e.shiftKey ? "S-" : ""}${e.key}@${(e.target as HTMLElement).className}`), true));
   });
   after(close, { timeout: 30_000 });
 
