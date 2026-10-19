@@ -128,6 +128,8 @@ function subtreeEnd(state: EditorState, n: number): number {
     if (l && l <= lvl) break;
     i++;
   }
+  // The empty line after a final newline belongs to no subtree.
+  if (i > state.doc.lines && i - 1 > n && state.doc.line(i - 1).text === "") i--;
   return i - 1;
 }
 
