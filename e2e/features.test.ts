@@ -748,16 +748,19 @@ describe("Org structure keys", () => {
   // No tables: Alt+H/J/K/L act on tables when the cursor is in one.
   const org = "* TODO A [0/2]\n- [ ] one\n- [ ] two\n** Child\n* B\n"; // lines 3-7 after the title
   const notes = ["moves", "items", "levels", "status", "newitem", "fold", "boxes"]; // one per test, so a failure can't cascade
+  const prio = "* TODO [#B] x\n* y\n* TODO z\n"; // lines 3-5
+  // Link lines 3-6 start with the link, so the cursor at column 0 is on it; the targets follow.
+  const links = "[[*Target heading]]\n[[#custom-id]]\n[[file:other.org::*Other heading]]\n[[*Missing]]\n* Target heading\n* Another\n:PROPERTIES:\n:CUSTOM_ID: custom-id\n:END:\n* Trailing\n";
   const f = (n: string) => join(d.notes, `${n}.org`);
   const title = (n: string) => `#+title: ${n}\n\n`;
   /** Open note N in normal mode with the cursor at the start of LINE. */
-  const open = async (n: string, line: number) => {
+  const open = async (n: string, line: number, keys = `${line}G0`) => {
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", n);
     await find(".status .file", `${n}.org`);
     await noPicker();
     await browser.keys(Key.Escape);
-    await type(`${line}G0`);
+    await type(keys);
     const want = read(f(n)).split("\n")[line - 1].replace(/^\*+ /, "");
     try {
       await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes(want)));
@@ -772,7 +775,11 @@ describe("Org structure keys", () => {
     await fileMatches(f(n), (s) => s === title(n) + want, msg);
   };
   before(async () => {
-    d = await launch({ files: ({ notes: dir }) => { for (const n of notes) writeFileSync(join(dir, `${n}.org`), title(n) + org); } });
+    d = await launch({ files: ({ notes: dir }) => { for (const n of notes) writeFileSync(join(dir, `${n}.org`), title(n) + org);
+      writeFileSync(join(dir, "prio.org"), title("prio") + prio);
+      writeFileSync(join(dir, "links.org"), title("links") + links);
+      writeFileSync(join(dir, "other.org"), title("other") + "* Lead\n* Other heading\n* Tail\n");
+    } });
     await find(".agenda h1", "Today"); // the page listens for keys only once loaded
   });
   after(close, { timeout: 30_000 });
@@ -812,6 +819,35 @@ describe("Org structure keys", () => {
     await fileMatches(f("status"), (s) => s.includes("\n* TODO B\n"), "status not set to TODO");
     await browser.keys([Key.Shift, Key.ArrowLeft]);
     await fileMatches(f("status"), (s) => s === title("status") + org, "status not cleared");
+  });
+
+  it("Shift+Up / Shift+Down cycle a heading's priority", async () => {
+    await open("prio", 3, "ggjj0"); // no count: the digits of "3G0" get dropped here
+    await browser.keys([Key.Shift, Key.ArrowUp]);
+    await fileMatches(f("prio"), (s) => s.includes("\n* TODO [#A] x\n"), "priority not raised to A");
+    await browser.keys([Key.Shift, Key.ArrowDown]);
+    await fileMatches(f("prio"), (s) => s.includes("\n* TODO [#B] x\n"), "priority not lowered to B");
+    await browser.keys([Key.Shift, Key.ArrowDown]);
+    await fileMatches(f("prio"), (s) => s.includes("\n* TODO [#C] x\n"), "priority not lowered to C");
+    await type("j0"); // * y: no priority yet, Shift+Up gives C
+    await browser.keys([Key.Shift, Key.ArrowUp]);
+    await fileMatches(f("prio"), (s) => s.includes("\n* [#C] y\n"), "first press didn't set [#C]");
+  });
+
+  it("Enter on a link jumps to its heading, :CUSTOM_ID: or other note, and flashes when nothing matches", async () => {
+    await open("links", 3);
+    await browser.keys(Key.Enter);
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("* Target heading")), { timeoutMsg: "[[*heading]] link not followed" });
+    await type("4G0");
+    await browser.keys(Key.Enter);
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("* Another")), { timeoutMsg: "[[#custom-id]] link not followed" });
+    await type("6G0");
+    await browser.keys(Key.Enter);
+    await find(".status .msg", 'No match for "*Missing"');
+    await type("5G0");
+    await browser.keys(Key.Enter);
+    await find(".status .file", "other.org");
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("* Other heading")), { timeoutMsg: "[[file:…::*heading]] link not followed" });
   });
 
   it("Tab on a heading folds its subtree and Tab again unfolds it", async () => {
