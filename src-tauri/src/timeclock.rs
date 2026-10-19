@@ -413,8 +413,15 @@ impl Tc {
         let Event::Out { t: old, .. } = &events[pos].1 else { return Err("not a clock-out line".into()) };
         let t = *old + Duration::seconds(((new_hours - old_hours) * 3600.0).round() as i64);
         if t != *old {
-            if new_hours.is_nan() || new_hours <= 0.0 || pos == 0 || t <= events[pos - 1].1.t() {
+            if new_hours.is_nan() || new_hours <= 0.0 {
                 return Err("A session must last longer than zero hours.".into());
+            }
+            if pos == 0 {
+                return Err("This session has no start entry to measure from.".into());
+            }
+            let prev = events[pos - 1].1.t();
+            if t <= prev {
+                return Err(format!("This session started (or resumed after a break) at {}, so it can't end at or before that. Use Edit raw log (Space t E) to drop the break.", prev.format("%H:%M")));
             }
             if t > now() || events.get(pos + 1).is_some_and(|(_, e)| t > e.t()) {
                 return Err("That would end in the future or overlap the next entry.".into());
@@ -1497,9 +1504,11 @@ mod tests {
         let log = [i("2024-10-01 09:00"), Event::Break { t: dt("2024-10-01 10:00") }, i("2024-10-01 11:00"), o("2024-10-01 12:00"), i("2024-10-01 13:00"), o("2024-10-01 14:00")];
         log.iter().for_each(|e| tc.append(e).unwrap());
         let out_t = |l| tc.events().into_iter().find(|(i, _)| *i == l).unwrap().1.t();
-        for h in [0.0, -1.0, 0.5] {
-            assert!(tc.edit_session(3, "x", 2.0, h).is_err(), "{h}"); // 0.5 h ends at 10:30, before the resume
+        for h in [0.0, -1.0] {
+            assert!(tc.edit_session(3, "x", 2.0, h).unwrap_err().contains("longer than zero"), "{h}");
         }
+        // 0.5 h ends at 10:30, before the 11:00 resume
+        assert!(tc.edit_session(3, "x", 2.0, 0.5).unwrap_err().contains("11:00"));
         assert!(tc.edit_session(3, "x", 2.0, 3.5).is_err()); // past the 13:00 clock-in
         assert!(tc.edit_session(5, "x", 1.0, 1e6).is_err()); // future
         assert_eq!(out_t(3), dt("2024-10-01 12:00"));
