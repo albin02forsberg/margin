@@ -754,13 +754,13 @@ describe("Org structure keys", () => {
   const f = (n: string) => join(d.notes, `${n}.org`);
   const title = (n: string) => `#+title: ${n}\n\n`;
   /** Open note N in normal mode with the cursor at the start of LINE. */
-  const open = async (n: string, line: number) => {
+  const open = async (n: string, line: number, keys = `${line}G0`) => {
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", n);
     await find(".status .file", `${n}.org`);
     await noPicker();
     await browser.keys(Key.Escape);
-    await type(`${line}G0`);
+    await type(keys);
     const want = read(f(n)).split("\n")[line - 1].replace(/^\*+ /, "");
     try {
       await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes(want)));
@@ -822,14 +822,14 @@ describe("Org structure keys", () => {
   });
 
   it("Shift+Up / Shift+Down cycle a heading's priority", async () => {
-    await open("prio", 3);
+    await open("prio", 3, "ggjj0"); // no count: the digits of "3G0" get dropped here
     await browser.keys([Key.Shift, Key.ArrowUp]);
     await fileMatches(f("prio"), (s) => s.includes("\n* TODO [#A] x\n"), "priority not raised to A");
     await browser.keys([Key.Shift, Key.ArrowDown]);
     await fileMatches(f("prio"), (s) => s.includes("\n* TODO [#B] x\n"), "priority not lowered to B");
     await browser.keys([Key.Shift, Key.ArrowDown]);
     await fileMatches(f("prio"), (s) => s.includes("\n* TODO [#C] x\n"), "priority not lowered to C");
-    await type("4G0"); // * y: no priority yet, Shift+Up gives C
+    await type("j0"); // * y: no priority yet, Shift+Up gives C
     await browser.keys([Key.Shift, Key.ArrowUp]);
     await fileMatches(f("prio"), (s) => s.includes("\n* [#C] y\n"), "first press didn't set [#C]");
   });
