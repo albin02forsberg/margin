@@ -727,6 +727,36 @@ describe("Insert commands", () => {
   });
 });
 
+// Own launch: vim's jump list is shared by all tabs, so a jump from a longer note breaks G here.
+describe("Footnotes", () => {
+  let d: Dirs;
+  before(async () => { d = await launch({ files: ({ notes }) => writeFileSync(join(notes, "fn.org"), "#+title: Fn\nSee this.\n") }); });
+  after(close, { timeout: 30_000 });
+
+  it("Space i f adds a footnote; Enter jumps to its definition and Ctrl+O back", async () => {
+    await find(".agenda h1", "Today"); // the page listens for keys only once loaded
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Fn");
+    await find(".status .file", "fn.org");
+    await type("2G$"); // on the "." of "See this."
+    await browser.keys(" ");
+    await type("if");
+    await find(".status .mode", "INSERT");
+    await type("Def");
+    await browser.keys(Key.Escape);
+    await find(".status .mode", "NORMAL");
+    await type("2Gf["); // back on the reference
+    await browser.keys(Key.Enter); // to the definition's text
+    await type("iX");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "o"]); // and back to the reference
+    await type("iY");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "fn.org"), (s) => s.startsWith("#+title: Fn\nSee thisY[fn:1].\n\n* Footnotes\n[fn:1] XDef"), "footnote not inserted or followed");
+  });
+});
+
 describe("Tables, lists and attachments", () => {
   let d: Dirs;
   const att = (...p: string[]) => join(d.notes, "attachments", ...p);
