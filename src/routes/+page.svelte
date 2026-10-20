@@ -1044,6 +1044,20 @@
     if (r) await openFile(r as string);
   }
 
+  /** Pick a tag used in notes, then a note or heading carrying it (#609). */
+  async function browseTags() {
+    const tags = await call<[string, number][]>("notes_tags");
+    if (!tags.length) return flash("No tags in your notes");
+    const tag = await pick({ prompt: "Browse notes by tag", items: tags.map(([t, n]) => ({ label: `${t} · ${n}`, value: t as unknown })) });
+    if (!tag) return;
+    const hits = await call<[string, number, string][]>("notes_tagged", { tag });
+    const r = await pick({
+      prompt: `Tagged :${tag}:`,
+      items: hits.map(([p, line, title]) => ({ label: title || niceName(p), detail: line ? `heading in ${rel(p)}` : rel(p), value: [p, line] as unknown })),
+    });
+    if (r) await openFile(...(r as [string, number]));
+  }
+
   async function createNote(title: string) {
     const n: NoteNode = await call("notes_new", { title });
     await openFile(n.path);
@@ -1845,6 +1859,7 @@
     { label: "Show notes linking here", leader: "n b", run: () => { showBacklinks = !showBacklinks; return refreshBacklinks(); } },
     { label: "Jump to a note linking here…", leader: "n l", run: pickBacklink },
     { label: "Notes: find notes with no links…", leader: "n O", run: findOrphans },
+    { label: "Notes: browse by tag…", leader: "n T", run: browseTags },
     { label: "Show note graph", leader: "n g", run: () => { showGraph = !showGraph; return refreshBacklinks(); } },
     { label: "AI chat (local model)", leader: "n a", run: toggleChat },
     { label: "Undo last edit made from a task view or the links panel", leader: "n u", run: () => undo().then(refreshBacklinks) },

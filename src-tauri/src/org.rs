@@ -131,6 +131,8 @@ pub struct OrgFile {
     pub links: Vec<Link>,
     /// `:ROAM_ALIASES:` of the file ("quoted names" may contain spaces).
     pub aliases: Vec<String>,
+    /// `#+FILETAGS:` of the file.
+    pub tags: Vec<String>,
     /// The text it was parsed from, so searches needn't re-read the file.
     pub text: String,
 }
@@ -231,6 +233,7 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
                 file_cat = line.trim_start()[11..].trim().to_string();
             } else if lower.starts_with("#+filetags:") {
                 file_tags.extend(line.trim_start()[11..].split(':').map(str::trim).filter(|t| !t.is_empty()).map(String::from));
+                f.tags = file_tags.clone();
             } else if let Some(c) = PROP.captures(line) {
                 if c[1].eq_ignore_ascii_case("ID") {
                     f.id = Some(c[2].to_string());

@@ -326,6 +326,44 @@ pub fn orphans(files: &[Arc<OrgFile>], skip: impl Fn(&Path) -> bool) -> Vec<Arc<
     files.iter().zip(adj).filter(|(f, a)| a.is_empty() && !skip(&f.path)).map(|(f, _)| f.clone()).collect()
 }
 
+/// (file, line, title, tags) of one tagged place.
+type TagSite<'a> = (&'a OrgFile, usize, &'a str, Vec<&'a str>);
+
+/// Tagged places in notes: the file's `#+FILETAGS` (line 0) and each non-task heading's own tags
+/// (not inherited ones). `ARCHIVE` isn't a browsable tag.
+fn tag_sites<'a>(files: &'a [Arc<OrgFile>], skip: &'a impl Fn(&Path) -> bool) -> impl Iterator<Item = TagSite<'a>> {
+    let own = |t: &'a [String]| t.iter().map(String::as_str).filter(|t| *t != "ARCHIVE").collect::<Vec<_>>();
+    files.iter().filter(move |f| !skip(&f.path)).flat_map(move |f| {
+        let f: &'a OrgFile = f;
+        std::iter::once((f, 0, f.title.as_str(), own(f.tags.as_slice())))
+            .chain(f.headlines.iter().filter(|h| h.keyword.is_none()).map(move |h| (f, h.line, h.title.as_str(), own(h.tags.as_slice()))))
+            .filter(|s| !s.3.is_empty())
+    })
+}
+
+/// Tags used in notes with how many places carry each, matched case-insensitively (first spelling shown),
+/// most used first, then by name.
+pub fn tags(files: &[Arc<OrgFile>], skip: impl Fn(&Path) -> bool) -> Vec<(String, usize)> {
+    let mut m: HashMap<String, (String, usize)> = HashMap::new();
+    for (_, _, _, ts) in tag_sites(files, &skip) {
+        let mut seen = BTreeSet::new();
+        for t in ts {
+            if seen.insert(t.to_lowercase()) {
+                m.entry(t.to_lowercase()).or_insert_with(|| (t.to_string(), 0)).1 += 1;
+            }
+        }
+    }
+    let mut v: Vec<_> = m.into_values().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.to_lowercase().cmp(&b.0.to_lowercase())));
+    v
+}
+
+/// Places tagged TAG (any case) as (path, line, title); line 0 is a file tag.
+pub fn tagged(files: &[Arc<OrgFile>], tag: &str, skip: impl Fn(&Path) -> bool) -> Vec<(PathBuf, usize, String)> {
+    let tag = tag.to_lowercase();
+    tag_sites(files, &skip).filter(|s| s.3.iter().any(|t| t.to_lowercase() == tag)).map(|(f, l, t, _)| (f.path.clone(), l, t.to_string())).collect()
+}
+
 pub fn graph(files: &[Arc<OrgFile>], path: &Path, depth: usize) -> Graph {
     let Some(start) = files.iter().position(|f| f.path == path) else { return Graph::default() };
     let adj = adjacency(files);
@@ -506,6 +544,28 @@ mod tests {
         ]);
         let o = orphans(&fs, |p| p.starts_with("/n/daily"));
         assert_eq!(o.iter().map(|f| f.path.to_str().unwrap()).collect::<Vec<_>>(), ["/n/lone.org", "/n/self.org", "/n/dead.org"]);
+    }
+
+    #[test]
+    fn notes_tags_and_tagged() {
+        let kw = Kw { todo: vec!["TODO".into()], done: vec!["DONE".into()] };
+        let fs: Vec<_> = [
+            ("/n/acme.org", "#+title: Acme\n#+FILETAGS: :client:meeting:\n* Call :Client:\n* TODO Invoice :money:\n* Plain\n"),
+            ("/n/bare.org", "#+filetags: :CLIENT:\nno headings\n"),
+            ("/n/old.org", "* Gone :ARCHIVE:idea:\n"),
+            ("/n/daily/d.org", "#+filetags: :client:\n"),
+        ]
+        .iter()
+        .map(|(p, t)| Arc::new(parse(Path::new(p), t, &kw)))
+        .collect();
+        let skip = |p: &Path| p.starts_with("/n/daily");
+        assert_eq!(fs[1].tags, ["CLIENT"]); // heading-less note keeps its file tags
+        // Own tags only: "Plain" inherits client/meeting but isn't counted; TODO headings and ARCHIVE are left out.
+        assert_eq!(tags(&fs, skip), [("client".to_string(), 3), ("idea".into(), 1), ("meeting".into(), 1)]);
+        let t = tagged(&fs, "CLIENT", skip);
+        assert_eq!(t.iter().map(|(p, l, n)| (p.to_str().unwrap(), *l, n.as_str())).collect::<Vec<_>>(), [("/n/acme.org", 0, "Acme"), ("/n/acme.org", 2, "Call"), ("/n/bare.org", 0, "bare")]);
+        assert!(tagged(&fs, "money", skip).is_empty());
+        assert!(tagged(&fs, "archive", skip).is_empty());
     }
 
     #[test]
