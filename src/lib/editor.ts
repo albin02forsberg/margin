@@ -16,6 +16,7 @@ import { renumber, itemSwap } from "./list";
 import { applySet, type NumOpts } from "./setopt";
 import { EMPH, toggleEmphasis } from "./emphasis";
 import { FN, addFootnote, footnoteTarget } from "./footnote";
+import { headingAt, level, narrowField, subtreeEnd } from "./narrow";
 
 /** Set by the app; vim ex commands, mappings and clicks call through these. */
 export const hooks = {
@@ -79,7 +80,7 @@ const orgConf = Facet.define<OrgConf, OrgConf>({ combine: (v) => v[0] ?? { todo:
 
 // ---------------------------------------------------------------- document structure
 
-export const level = (text: string) => /^(\*+) /.exec(text)?.[1].length ?? 0;
+export { level, narrowToggle, narrowedTo } from "./narrow";
 const DRAWER = /^\s*:(PROPERTIES|LOGBOOK):\s*$/i;
 const CHECKBOX = /^(\s*(?:[-+]|\d+[.)])\s+\[)([ xX-])\]/;
 const ITEM = /^(\s*)([-+]|\d+[.)]|\*(?=\s))(\s+)(\[[ xX-]\]\s+)?/;
@@ -118,26 +119,6 @@ function scan(state: EditorState) {
     }
   }
   return { blocks, tables };
-}
-
-/** Last line number (1-based) of the subtree whose heading is on line N. */
-function subtreeEnd(state: EditorState, n: number): number {
-  const lvl = level(state.doc.line(n).text);
-  let i = n + 1;
-  while (i <= state.doc.lines) {
-    const l = level(state.doc.line(i).text);
-    if (l && l <= lvl) break;
-    i++;
-  }
-  // The empty line after a final newline belongs to no subtree.
-  if (i > state.doc.lines && i - 1 > n && state.doc.line(i - 1).text === "") i--;
-  return i - 1;
-}
-
-/** Line number of the heading at or above line N, or 0. */
-function headingAt(state: EditorState, n: number): number {
-  for (let i = n; i >= 1; i--) if (level(state.doc.line(i).text)) return i;
-  return 0;
 }
 
 function drawerRange(state: EditorState, n: number) {
@@ -1095,7 +1076,7 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
   ];
   if (opts.org) {
     ext.push(
-      spellConf.of(spellExt()), orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path }), orgStyle, orgFold, clicks, tableTools,
+      spellConf.of(spellExt()), orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path }), orgStyle, orgFold, clicks, tableTools, narrowField,
       Prec.high(keymap.of([{ key: "Tab", run: orgTab }, { key: "Shift-Tab", run: orgShiftTab }, { key: "Enter", run: smartEnter },
         // Insert mode only: in normal / visual mode Ctrl+B stays vim's page up.
         { key: "Mod-b", run: (v) => vimInsert(v) && emphasis(v, "*") }, { key: "Mod-i", run: (v) => vimInsert(v) && emphasis(v, "/") }])),
