@@ -2,6 +2,51 @@
 
 Grouped by `.github/scripts/changelog.sh`, the same generator that writes the GitHub release notes. The releaser agent adds a section here in each release PR.
 
+## v0.5.0 - 2026-10-20
+
+### Features
+- show release notes after a self-update (#513) (#527)
+- pasted and dropped images go to a shared images/ folder next to the note (#429) (#521)
+- public holiday setting and extra days off (#505) (#515)
+- expected hours per weekday (#506) (#511)
+- spell check setting for org notes (#507) (#512)
+- follow [[*Heading]], [[#custom-id]] and file::search links (#504) (#509)
+- weekday names look back when logging a past session (#497) (#503)
+- :set number / relativenumber in the editor (#496) (#500)
+- y copies a link to the selected task in Today/Tasks (#478) (#493)
+- rename a task from Today/Tasks (e) and the editor (Space x e) (#477) (#491)
+- selection becomes link text; paste a URL over a selection (#479) (#488)
+- AI chat sends tasks, agenda and time log; source switches and ai_exclude (#468) (#484)
+- 'Stop repeating' pick in the s/d date prompt (norepeat) (#474) (#486)
+- Alt+J/K moves a list item with its nested lines (#472) (#487)
+- log a past session from the Time view and Space t n (#476) (#485)
+- SCHEDULED delay cookie (-Nd) (#482)
+- word count (and selection count) in the editor status bar (#460) (#467)
+- Every day / Every week quick picks in the s/d date prompt (#462) (#465)
+- accept a warning cookie ('fri -3d') in date inputs (#461) (#466)
+- bold / italic / code / strike-through the selection or word (#451) (#457)
+- set a repeater from date inputs ('fri +1w', 'today .+1d') (#449) (#456)
+- renumber an ordered list after Enter / Alt+Enter adds an item (#450) (#454)
+
+### Fixes
+- skip full refresh for attachment/noise file changes (#524) (#528)
+- move-note picker hides the images folder; neutral .trash message (#522) (#525)
+- last subtree no longer takes in the trailing newline (#519)
+- name the real reason when a session edit ends before its start (#499) (#502)
+- ai_exclude patterns accept a leading / and backslashes (#498) (#501)
+- show delayed (-Nd) SCHEDULED on date+N in the agenda (#489) (#492)
+- word count skips org markup and punctuation (#473) (#490)
+- edit_session refuses zero, overlapping and future end times (#475) (#483)
+- resolve a relative CSV name against export_dir in tc_csv (#463) (#464)
+- validate the tc_csv destination path (#458) (#459)
+- reject non-time words after a date in read_date (#448) (#453)
+
+### Other
+- e2e for priority keys and Enter on links (#520)
+- e2e for org structure keys (#508) (#510)
+- de-flake the time e2e start-earlier check (#494) (#495)
+- e2e for Time break/resume, switch project, started/stopped earlier, CSV export (#455)
+
 ## v0.4.0 - 2026-10-16
 
 ### Features
