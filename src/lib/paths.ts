@@ -55,3 +55,6 @@ export const mergeChanged = (a?: string[], b?: string[]) => (a && b ? [...new Se
 
 /** Whether FILE is one of the changed PATHS or under one (a moved or deleted folder); no PATHS means everything changed. */
 export const changed = (file: string, paths?: string[]) => !paths || paths.some((p) => file === p || (file.startsWith(p) && /[\\/]/.test(file[p.length])));
+
+/** Whether a change to FILE can alter notes, agenda or timer: not a plain attachment (image, text file…) inside NOTES. Mirrors `needs_refresh` in lib.rs. */
+export const needsRefresh = (file: string, notes: string) => !file.startsWith(notes) || /(^|[\\/])[^.\\/]+$|\.(org|jsonl?|toml)$/.test(file);

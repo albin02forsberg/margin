@@ -281,13 +281,21 @@ fn orphan_warning(old: &Config, new: &Config) -> String {
     format!("Files stay in {} (nothing was moved); copy them over if you need them.", list.join(", "))
 }
 
-/// Whether CFG (the file or, for a symlink, its target CFG_REAL) is among PATHS, and the PATHS under ROOTS (minus .git), sorted and deduplicated.
+/// Whether CFG (the file or, for a symlink, its target CFG_REAL) is among PATHS, and the PATHS under ROOTS (minus .git),
+/// sorted and deduplicated. Under the first root (the notes) dot entries (.trash, lock files) and Emacs `#…#` autosaves are noise and dropped too.
 fn split_changes(paths: Vec<PathBuf>, cfg: &Path, cfg_real: &Path, roots: &[PathBuf]) -> (bool, Vec<PathBuf>) {
     let cfg_changed = paths.iter().any(|p| p == cfg || p == cfg_real);
-    let mut rest: Vec<PathBuf> = paths.into_iter().filter(|p| roots.iter().any(|r| p.starts_with(r)) && !p.components().any(|c| c.as_os_str() == ".git")).collect();
+    let noise = |p: &Path| p.strip_prefix(&roots[0]).is_ok_and(|r| r.components().any(|c| c.as_os_str().to_str().is_some_and(|n| n.starts_with('.') || (n.len() > 1 && n.starts_with('#') && n.ends_with('#')))));
+    let mut rest: Vec<PathBuf> = paths.into_iter().filter(|p| roots.iter().any(|r| p.starts_with(r)) && !p.components().any(|c| c.as_os_str() == ".git") && !noise(p)).collect();
     rest.sort();
     rest.dedup();
     (cfg_changed, rest)
+}
+
+/// Whether a change to P can alter notes, agenda or tray: anything outside the notes folder NOTES, a `.org` file, a folder (no extension) or a data file.
+/// Other files in the notes (images, attachments) only matter to an open tab. Mirrors `needsRefresh` in src/lib/paths.ts.
+fn needs_refresh(p: &Path, notes: &Path) -> bool {
+    !p.starts_with(notes) || p.extension().is_none_or(|e| ["org", "jsonl", "json", "toml"].contains(&e.to_str().unwrap_or("org")))
 }
 
 /// Watch the notes and data dirs; the UI gets an "fs-changed" event (with the
@@ -312,8 +320,10 @@ fn watch(app: &AppHandle) {
             }
         }
         if !paths.is_empty() {
-            tray::refresh(&handle);
-            write_calendar(&handle);
+            if paths.iter().any(|p| needs_refresh(p, &roots[0])) {
+                tray::refresh(&handle);
+                write_calendar(&handle);
+            }
             let _ = handle.emit("fs-changed", paths);
         }
     });
@@ -1938,6 +1948,19 @@ mod tests {
         // A symlinked config.toml: the target's events count too.
         let real = PathBuf::from("/dots/config.toml");
         assert_eq!(split_changes(p(&["/dots/config.toml"]), &cfg, &real, &roots), (true, vec![]));
+        // Noise under the notes is dropped; open non-.org files, folders and data files stay.
+        let noisy = p(&["/n/images/a.png", "/n/#a.org#", "/n/.#a.org", "/n/images/.trash/x.png", "/n/sub", "/n/notes.txt", "/n/v1.2", "/n/n.org", "/d/.hidden", "/n/.git/y"]);
+        assert_eq!(split_changes(noisy, &cfg, &cfg, &roots), (false, p(&["/d/.hidden", "/n/images/a.png", "/n/n.org", "/n/notes.txt", "/n/sub", "/n/v1.2"])));
+        // A notes folder under a dot folder still works.
+        assert_eq!(split_changes(p(&["/h/.cfg/n/a.org"]), &cfg, &cfg, &[PathBuf::from("/h/.cfg/n")]), (false, p(&["/h/.cfg/n/a.org"])));
+    }
+
+    #[test]
+    fn only_notes_changes_skip_the_refresh() {
+        let n = Path::new("/n");
+        let r = |s: &str| needs_refresh(Path::new(s), n);
+        assert!(r("/n/a.org") && r("/n/sub") && r("/d/timelog.jsonl") && r("/n/x/timelog.jsonl"));
+        assert!(!r("/n/images/a.png") && !r("/n/notes.txt"));
     }
 
     #[test]
