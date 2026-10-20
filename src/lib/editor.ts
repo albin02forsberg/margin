@@ -456,10 +456,16 @@ export function followFootnote(v: EditorView, pos = v.state.selection.main.head)
   const t = footnoteTarget(v.state.doc.toString(), pos);
   if (!t) return null;
   if (t.to == null) return { label: t.label, def: t.def, moved: false };
-  const cm = getCM(v) as any;
-  if (cm) Vim.getVimGlobalState_().jumpList.add(cm, cm.getCursor(), cm.posFromIndex(t.to));
+  recordJump(v);
   v.dispatch({ selection: { anchor: t.to }, effects: EditorView.scrollIntoView(t.to, { y: "center" }) });
   return { label: t.label, def: t.def, moved: true };
+}
+
+/** Put the cursor on vim's jump list (Ctrl+O comes back to it). The list is global
+ *  and keeps marks from other tabs' documents, which can be out of range here. */
+function recordJump(v: EditorView) {
+  const cm = getCM(v) as any;
+  try { if (cm) Vim.getVimGlobalState_().jumpList.add(cm, cm.getCursor(), cm.getCursor()); } catch { /* stale mark */ }
 }
 
 /** Insert the next numbered footnote at the cursor and type its definition under `* Footnotes`. */
@@ -467,7 +473,7 @@ export function insertFootnote(v: EditorView) {
   const r = addFootnote(v.state.doc.toString(), v.state.selection.main.head);
   const cm = getCM(v) as any;
   if (cm?.state.vim?.visualMode) Vim.handleKey(cm, "<Esc>", "mapping");
-  if (cm) Vim.getVimGlobalState_().jumpList.add(cm, cm.getCursor(), cm.getCursor());
+  recordJump(v);
   v.dispatch({ changes: r.changes, selection: { anchor: r.cursor }, effects: EditorView.scrollIntoView(r.cursor, { y: "center" }) });
   insertMode(v);
   return true;

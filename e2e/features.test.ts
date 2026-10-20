@@ -700,9 +700,7 @@ describe("Journal, archive and move", () => {
 // Own launch: in the Tables suite the first keys typed into this note, and into the next one opened, got garbled.
 describe("Insert commands", () => {
   let d: Dirs;
-  before(async () => {
-    d = await launch({ files: ({ notes }) => { writeFileSync(join(notes, "ins.org"), "#+title: Ins\n"); writeFileSync(join(notes, "fn.org"), "#+title: Fn\nSee this.\n"); } });
-  });
+  before(async () => { d = await launch({ files: ({ notes }) => writeFileSync(join(notes, "ins.org"), "#+title: Ins\n") }); });
   after(close, { timeout: 30_000 });
 
   it("Insert code block… and Insert table… add a src block and a sized table", async () => {
@@ -727,16 +725,22 @@ describe("Insert commands", () => {
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(join(d.notes, "ins.org"), (s) => /^#\+title: Ins\n#\+begin_src rust\n\n#\+end_src\n\| Column 1 \| Column 2 \| Column 3 \|\n\|[-+]+\|\n(\|( +\|){3}\n?){2}$/.test(s), "code block or 3x2 table not inserted");
   });
+});
+
+// Own launch: vim's jump list is shared by all tabs, so a jump from a longer note breaks G here.
+describe("Footnotes", () => {
+  let d: Dirs;
+  before(async () => { d = await launch({ files: ({ notes }) => writeFileSync(join(notes, "fn.org"), "#+title: Fn\nSee this.\n") }); });
+  after(close, { timeout: 30_000 });
 
   it("Space i f adds a footnote; Enter jumps to its definition and Ctrl+O back", async () => {
+    await find(".agenda h1", "Today"); // the page listens for keys only once loaded
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "Fn");
     await find(".status .file", "fn.org");
     await type("2G$"); // on the "." of "See this."
     await browser.keys(" ");
     await type("if");
-    await browser.pause(1500);
-    console.log("DEBUG fn", JSON.stringify(await texts(".status .msg")), JSON.stringify(await texts(".status .mode")), JSON.stringify(await texts(".cm-content")), JSON.stringify(await texts(".menu")));
     await find(".status .mode", "INSERT");
     await type("Def");
     await browser.keys(Key.Escape);
