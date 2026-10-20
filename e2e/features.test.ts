@@ -792,12 +792,16 @@ describe("Org structure keys", () => {
     const before = await panel(); // diagnostic for #517: vim state on arrival
     await browser.keys(Key.Escape);
     const after = await panel();
-    await type(keys);
+    const trace: string[] = [];
+    for (const c of keys) {
+      await browser.keys(c);
+      trace.push(`${c}:${await panel()}:${JSON.stringify(await texts(".cm-activeLine"))}`);
+    }
     const want = read(f(n)).split("\n")[line - 1].replace(/^\*+ /, "");
     try {
       await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes(want)));
     } catch {
-      throw new Error(`cursor not on line ${line} of ${n}; active: ${JSON.stringify(await texts(".cm-activeLine"))}; vim panel|focus before Esc ${before}, after ${after}`);
+      throw new Error(`cursor not on line ${line} of ${n}; active: ${JSON.stringify(await texts(".cm-activeLine"))}; vim panel|focus before Esc ${before}, after ${after}; trace ${trace.join(" ; ")}`);
     }
   };
   /** Save and wait until N's text after the title is WANT. */
