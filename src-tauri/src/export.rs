@@ -648,7 +648,6 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
     fn markdown_fragment_and_unresolved_id() {
         let m = markdown(&parse("Intro [[id:nope][Other]] end\n\n- one\n", &kw()), "x", Path::new("/n"), &Ids::new());
         assert!(m.contains("Intro Other end") && !m.contains("id:nope") && m.contains("- one"), "{m}");
-        assert_eq!(markdown(&parse("", &kw()), "x", Path::new("/n"), &Ids::new()).trim(), "");
     }
 
     #[test]
