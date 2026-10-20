@@ -956,7 +956,7 @@ describe("Org structure keys", () => {
   let d: Dirs;
   // No tables: Alt+H/J/K/L act on tables when the cursor is in one.
   const org = "* TODO A [0/2]\n- [ ] one\n- [ ] two\n** Child\n* B\n"; // lines 3-7 after the title
-  const notes = ["moves", "items", "levels", "status", "newitem", "fold", "boxes"]; // one per test, so a failure can't cascade
+  const notes = ["moves", "items", "levels", "status", "newitem", "fold", "boxes", "short"]; // one per test, so a failure can't cascade
   const prio = "* TODO [#B] x\n* y\n* TODO z\n"; // lines 3-5
   // Link lines 3-6 start with the link, so the cursor at column 0 is on it; the targets follow.
   const links = "[[*Target heading]]\n[[#custom-id]]\n[[file:other.org::*Other heading]]\n[[*Missing]]\n* Target heading\n* Another\n:PROPERTIES:\n:CUSTOM_ID: custom-id\n:END:\n* Trailing\n";
@@ -986,6 +986,7 @@ describe("Org structure keys", () => {
   };
   before(async () => {
     d = await launch({ files: ({ notes: dir }) => { for (const n of notes) writeFileSync(join(dir, `${n}.org`), title(n) + org);
+      writeFileSync(join(dir, "long.org"), title("long") + "x\n".repeat(40));
       writeFileSync(join(dir, "prio.org"), title("prio") + prio);
       writeFileSync(join(dir, "links.org"), title("links") + links);
       writeFileSync(join(dir, "sort.org"), title("sort") + sortOrg);
@@ -1009,6 +1010,24 @@ describe("Org structure keys", () => {
     await saved("items", "* TODO A [0/2]\n- [ ] two\n- [ ] one\n** Child\n* B\n", "item not moved down");
     await browser.keys([Key.Alt, "k"]);
     await saved("items", org, "item not moved back up");
+  });
+
+  it("Alt+Enter continues a checkbox list, Alt+Shift+Enter adds a task heading after the subtree", async () => {
+    await open("newitem", 5);
+    await browser.keys([Key.Alt, Key.Enter]);
+    await type("three");
+    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n", "list item not added");
+    await type("8G0"); // * B (one line down after "three")
+    await browser.keys([Key.Alt, Key.Shift, Key.Enter]);
+    await type("C");
+    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n* TODO C\n", "task heading not added");
+  });
+
+  it("jump marks from a longer note don't break 3G0 in a shorter one (#517)", async () => {
+    await open("long", 40);
+    await type("gg"); // records a jump mark far past the end of the next note
+    await open("short", 5); // open() asserts the cursor landed on line 5; a stale mark types a literal G instead
+    await saved("short", org, "stray text typed (a literal G?)");
   });
 
   it("Alt+L / Alt+H demote and promote a heading, with Shift its children too", async () => {
@@ -1092,17 +1111,5 @@ describe("Org structure keys", () => {
     await open("boxes", 7); // off the item lines, so they show the checkbox widget
     await (await (await find(".cm-line", "one")).$(".cm-org-check")).click();
     await saved("boxes", "* TODO A [1/2]\n- [X] one\n- [ ] two\n** Child\n* B\n", "checkbox or cookie not updated");
-  });
-
-  // Last: in e2e, a note opened after this one drops "3" and "0" of "3G0" and inserts the "G".
-  it("Alt+Enter continues a checkbox list, Alt+Shift+Enter adds a task heading after the subtree", async () => {
-    await open("newitem", 5);
-    await browser.keys([Key.Alt, Key.Enter]);
-    await type("three");
-    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n", "list item not added");
-    await type("8G0"); // * B (one line down after "three")
-    await browser.keys([Key.Alt, Key.Shift, Key.Enter]);
-    await type("C");
-    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n* TODO C\n", "task heading not added");
   });
 });

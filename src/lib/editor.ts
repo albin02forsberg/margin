@@ -468,6 +468,15 @@ function recordJump(v: EditorView) {
   try { if (cm) Vim.getVimGlobalState_().jumpList.add(cm, cm.getCursor(), cm.getCursor()); } catch { /* stale mark */ }
 }
 
+/** Forget vim's jump list after a tab switch (`setState` swaps the document under its marks, and `G`
+ *  then throws on a stale one). Registers, histories and the rest of vim's global state stay. */
+export function vimClearJumps() {
+  const keep = { ...Vim.getVimGlobalState_() };
+  Vim.resetVimGlobalState_();
+  const g = Vim.getVimGlobalState_();
+  Object.assign(g, keep, { jumpList: g.jumpList });
+}
+
 /** Insert the next numbered footnote at the cursor and type its definition under `* Footnotes`. */
 export function insertFootnote(v: EditorView) {
   const r = addFootnote(v.state.doc.toString(), v.state.selection.main.head);
