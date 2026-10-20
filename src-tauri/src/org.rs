@@ -1159,15 +1159,51 @@ pub fn ensure_heading_id(text: &str, line: usize, kw: &Kw) -> (String, String, S
 /// Move the subtree at LINE of SRC to the end of the archive file text DST, org style.
 pub fn archive(src: &str, line: usize, dst: &str, src_path: &str, now: chrono::NaiveDateTime) -> Result<(String, String), String> {
     let mut s = to_lines(src);
-    let mut sub = take_subtree(&mut s, line)?;
-    set_property(&mut sub, "ARCHIVE_TIME", &now.format("%Y-%m-%d %a %H:%M").to_string());
-    set_property(&mut sub, "ARCHIVE_FILE", src_path);
+    let sub = take_subtree(&mut s, line)?;
+    Ok((join(s, src), append_archived(dst, src_path, now, vec![sub])))
+}
+
+/// Archive every top-most done subtree of SRC (not repeaters or `:ARCHIVE:` subtrees),
+/// in source order; also returns how many. Nothing done: both texts unchanged.
+pub fn archive_done(src: &str, dst: &str, src_path: &str, now: chrono::NaiveDateTime, kw: &Kw) -> (String, String, usize) {
+    let f = parse(Path::new(src_path), src, kw);
+    let (mut picked, mut under): (Vec<usize>, Option<usize>) = (vec![], None);
+    for h in &f.headlines {
+        if under.is_some_and(|l| h.level > l) {
+            continue;
+        }
+        under = None;
+        let rep = [&h.scheduled, &h.deadline].into_iter().flatten().any(|t| t.repeater.is_some());
+        if h.keyword.as_deref().is_some_and(|k| kw.is_done(k)) && !h.archived() && !rep {
+            picked.push(h.line);
+            under = Some(h.level);
+        }
+    }
+    if picked.is_empty() {
+        return (src.into(), dst.into(), 0);
+    }
+    let mut s = to_lines(src);
+    // Cut bottom-up so earlier line numbers stay valid, then append in source order.
+    let mut subs: Vec<Vec<String>> = picked.iter().rev().map(|&l| {
+        let (a, b) = subtree_range(&s, l);
+        s.drain(a..b).collect()
+    }).collect();
+    subs.reverse();
+    (join(s, src), append_archived(dst, src_path, now, subs), picked.len())
+}
+
+/// DST (an archive file's text; org's header when empty) with SUBS appended at top level.
+fn append_archived(dst: &str, src_path: &str, now: chrono::NaiveDateTime, subs: Vec<Vec<String>>) -> String {
     let mut d = to_lines(dst);
     if d.is_empty() {
         d = vec!["#    -*- mode: org -*-".into(), String::new(), String::new(), format!("Archived entries from file {src_path}"), String::new()];
     }
-    insert_subtree(&mut d, None, sub);
-    Ok((join(s, src), join_nl(d)))
+    for mut sub in subs {
+        set_property(&mut sub, "ARCHIVE_TIME", &now.format("%Y-%m-%d %a %H:%M").to_string());
+        set_property(&mut sub, "ARCHIVE_FILE", src_path);
+        insert_subtree(&mut d, None, sub);
+    }
+    join_nl(d)
 }
 
 /// Insert a captured ENTRY into DST: as last child of the first heading titled
@@ -1865,6 +1901,20 @@ mod tests {
         assert_eq!(ex("text\n", 0).unwrap_err(), "not on a heading");
         assert_eq!(ex("* TODO :tag:\n", 0).unwrap_err(), "the heading has no title");
         assert_eq!(extract_subtree("* A\n", 0, &kw(), |_, _| Err("boom".into())).unwrap_err(), "boom");
+    }
+
+    #[test]
+    fn archive_done_moves_top_most_done_subtrees_in_order() {
+        let kw = Kw { todo: vec!["TODO".into()], done: vec!["DONE".into(), "CANCELLED".into()] };
+        let now = chrono::NaiveDateTime::parse_from_str("2026-10-02 14:30", "%Y-%m-%d %H:%M").unwrap();
+        let src = "#+title: x\n* DONE A\n** TODO A1\n* TODO B\n** DONE B1\nnote\n*** DONE B1a\n** TODO B2\n* DONE C :ARCHIVE:\n* Old :ARCHIVE:\n** DONE D\n* DONE R\nSCHEDULED: <2026-10-01 Thu +1w>\n* CANCELLED E\n";
+        let (s, a, n) = archive_done(src, "* earlier\n", "/n/x.org", now, &kw);
+        assert_eq!(n, 3);
+        assert_eq!(s, "#+title: x\n* TODO B\n** TODO B2\n* DONE C :ARCHIVE:\n* Old :ARCHIVE:\n** DONE D\n* DONE R\nSCHEDULED: <2026-10-01 Thu +1w>\n");
+        let p = ":PROPERTIES:\n:ARCHIVE_TIME: 2026-10-02 Fri 14:30\n:ARCHIVE_FILE: /n/x.org\n:END:\n";
+        assert_eq!(a, format!("* earlier\n* DONE A\n{p}** TODO A1\n* DONE B1\n{p}note\n** DONE B1a\n* CANCELLED E\n{p}"));
+        assert_eq!(archive_done("* TODO a\n", "", "/n/x.org", now, &kw), ("* TODO a\n".into(), "".into(), 0));
+        assert!(archive_done("* DONE a\n", "", "/n/x.org", now, &kw).1.starts_with("#    -*- mode: org -*-\n\n\nArchived entries from file /n/x.org\n\n* DONE a\n"));
     }
 
     #[test]

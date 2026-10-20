@@ -917,6 +917,22 @@
     flash(`Archived to ${base(loc.path)}_archive`);
   }
 
+  /** Archive every done subtree of the open note; one `u` restores both files. */
+  async function archiveDone() {
+    if (!inFile()) return flash("Open a note first.");
+    const path = tab.path!, src = await textOf(path);
+    let newSrc = src, n = 0;
+    await recorded(async () => {
+      await toFile(path + "_archive", async (dst) => {
+        let d: string;
+        [newSrc, d, n] = await call<[string, string, number]>("org_archive_done", { src, dst, srcPath: path });
+        return d;
+      });
+      await toFile(path, async () => newSrc);
+    });
+    flash(n ? `Archived ${n} done task${n === 1 ? "" : "s"} to ${base(path)}_archive` : "No done tasks in this note.");
+  }
+
   async function newTask(scheduled = "") {
     const files = (await call<string[]>("list_files")).map(rel);
     const inbox = cfg.config.inbox;
@@ -1880,6 +1896,7 @@
     { label: "Task: move to…", leader: "x m", run: () => atCursor("move") },
     { label: "Task: copy to…", leader: "x M", run: () => atCursor("copy") },
     { label: "Task: archive", leader: "x A", run: () => atCursor("archive") },
+    { label: "Note: archive all done tasks", leader: "x a", run: () => act(archiveDone) },
     { label: "Task: track time on it", leader: "x i", run: () => atCursor("clockIn") },
     { label: "New heading / list item / table row below", keys: ["Alt+Enter"], ctx: "editor", leader: "x h", run: tableOr("rowBelow", () => ed.newItem(view)) },
     { label: "New task heading below", keys: ["Alt+Shift+Enter"], ctx: "editor", leader: "x n", run: () => ed.newHeading(view, kw().todo[0]) },
