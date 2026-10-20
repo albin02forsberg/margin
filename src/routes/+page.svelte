@@ -166,6 +166,7 @@
   }
 
   async function show(i: number) {
+    ed.vimReset(view); // vim's global insert-mode bookkeeping outlives the state swap below (#517)
     const old = tabs[cur];
     if (old && isText(old)) {
       old.state = view.state;
