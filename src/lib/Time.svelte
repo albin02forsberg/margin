@@ -76,7 +76,7 @@
   const removeOff = (line: number) => api.act(async () => { await invoke("tc_leave_remove", { line }); await refresh(); });
   const offHours = (l: any) => (l.rest ? "rest of day" : l.hours ? `${hm(l.hours)}/day` : "full day");
 
-  const KEYS: Record<string, string> = { i: "start", o: "stop", p: "pause", r: "resume", c: "switch", a: "adjust", n: "logSession", e: "export", E: "exportReport", t: "daily", w: "weekly" };
+  const KEYS: Record<string, string> = { i: "start", o: "stop", p: "pause", r: "resume", c: "switch", a: "adjust", n: "logSession", e: "export", E: "exportReport", O: "stopEarlier", S: "editSession", L: "timeOff", t: "daily", w: "weekly" };
   function key(e: KeyboardEvent) {
     if (e.ctrlKey || e.metaKey || e.altKey || (e.target as HTMLElement).closest("input, select")) return;
     if (sugg && (e.key === "h" || e.key === "l")) return shiftDay(e.key === "h" ? -1 : 1);
@@ -125,6 +125,7 @@
               <button onclick={() => run("switch")}><kbd>c</kbd>Switch project</button>
               <button onclick={() => run("adjust")}><kbd>a</kbd>Started earlier…</button>
               <button class="primary" onclick={() => run("stop")}><kbd>o</kbd>Stop</button>
+              <button onclick={() => run("stopEarlier")}><kbd>O</kbd>Stopped earlier…</button>
             {:else if d.on_break != null}
               <button onclick={() => run("start")}><kbd>i</kbd>Start something else</button>
               <button class="primary" onclick={() => run("resume")}><kbd>r</kbd>Resume</button>
@@ -173,7 +174,7 @@
       <div class="lane">
         <h2>Sessions</h2>
         <section class="card">
-          <h3>Today</h3>
+          <h3>Today <button class="link" onclick={() => run("editSession")}><kbd>S</kbd>Edit a session…</button></h3>
           {#if d.today.length}
             <table>
               <tbody>
@@ -244,7 +245,7 @@
 
         <section class="card timeoff">
           <h3>Time off <span class="dim">lowers the day's expected hours; work on those days is flex</span></h3>
-          <div><button onclick={() => run("timeOff")}>Log time off…</button></div>
+          <div><button onclick={() => run("timeOff")}><kbd>L</kbd>Log time off…</button></div>
           {#if allOff.length}
             <table>
               <tbody>
@@ -277,6 +278,7 @@
   .lane { background: color-mix(in srgb, var(--active) 60%, transparent); border-radius: var(--r); padding: var(--s3); display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
   .lane > h2 { margin: 0; padding: 0 var(--s1); font-size: var(--fs-md); font-weight: 600; }
   .card { padding: var(--s4); }
+  h3 button { margin-left: auto; font-size: var(--fs-sm); }
   h3 { font-size: var(--fs-md); font-weight: 600; margin: 0 0 var(--s3); display: flex; flex-wrap: wrap; gap: 0 10px; align-items: baseline; }
   .status { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; }
   .status.on { background: linear-gradient(160deg, color-mix(in srgb, var(--done) 12%, var(--card)), var(--card) 60%); }

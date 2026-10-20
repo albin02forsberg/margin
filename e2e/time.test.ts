@@ -46,10 +46,22 @@ describe("Time tracking", () => {
     await answer("When did you actually start?", hm(from));
     await fileMatches(log, (s) => { const e = events(s); return e.length === 1 && near(e[0].t, from); }, "clock-in not moved back");
     await noPicker();
-    await palette("Time: I stopped earlier");
+    await browser.keys("O");
     await answer("When did you actually stop?", hm(to));
     await answer("What did you do?", "half an hour");
     await fileMatches(log, (s) => { const e = events(s); return evs(s) === "in:Acme out" && e[1].t === `${isoDay(to)}T${hm(to)}:00` && e[1].note === "half an hour"; }, "not clocked out at the earlier time");
+  });
+
+  it("opens the edit-session and time-off prompts from the keys S and L", async () => {
+    await noPicker();
+    await browser.keys("S");
+    await find(".picker label span", "Edit a session on");
+    await browser.keys(Key.Escape);
+    await noPicker();
+    await browser.keys("L");
+    await find(".picker label span", "Kind of time off");
+    await browser.keys(Key.Escape);
+    await noPicker();
   });
 
   it("takes a break and resumes on the same project", async () => {
