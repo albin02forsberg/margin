@@ -595,14 +595,14 @@
   const dateKind = (it?: AgendaItem) => (it && /deadline|overdue|warning/.test(it.kind) ? "DEADLINE" : "SCHEDULED");
 
   /** REPEAT adds Every day / Every week quick picks (for SCHEDULED/DEADLINE prompts). */
-  function datePick(prompt: string, repeat = false, kind?: string) {
+  function datePick(prompt: string, repeat = false, kind?: string, noDate = true) {
     return pick({
       prompt,
       items: [
         { label: "Today", value: "today" }, { label: "Tomorrow", value: "tomorrow" }, { label: "Next Monday", value: "mon" },
         { label: "In a week", value: "+1w" },
         ...(repeat ? [{ label: "Every day", value: "today +1d", detail: "repeats" }, { label: "Every week", value: "today +1w", detail: "repeats" }, { label: "Stop repeating", value: "norepeat", detail: "keeps the date" }] : []),
-        { label: "No date", value: "rm", detail: "remove" },
+        ...(noDate ? [{ label: "No date", value: "rm", detail: "remove" }] : []),
       ],
       allowCustom: true,
       preview: (q) => call("date_preview", { input: q, kind }),
@@ -831,13 +831,9 @@
 
   async function insertDate() {
     if (!inFile()) return;
-    const input = await datePick("Insert date");
-    if (input == null || input === "rm") return;
-    const iso: string = await call("read_date", { input });
-    const [y, m, d] = iso.split("-").map(Number);
-    const time = input.match(/\d{1,2}:\d{2}/)?.[0];
-    const day = new Date(y, m - 1, d).toLocaleDateString("en-US", { weekday: "short" });
-    ed.insertText(view, `<${iso} ${day}${time ? " " + time : ""}>`);
+    const input = await datePick("Insert date", false, undefined, false);
+    if (input == null) return;
+    ed.insertText(view, await call("date_stamp", { input }));
     view.focus();
   }
 

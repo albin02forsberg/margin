@@ -619,7 +619,7 @@ pub fn headline_at(lines: &[String], line: usize) -> Option<usize> {
     (0..=line.min(lines.len().saturating_sub(1))).rev().find(|&i| heading_level(&lines[i]).is_some())
 }
 
-fn ts_string(d: NaiveDate, time: Option<&str>, repeater: Option<&str>, warn: Option<&str>) -> String {
+pub fn ts_string(d: NaiveDate, time: Option<&str>, repeater: Option<&str>, warn: Option<&str>) -> String {
     let mut s = format!("<{}", d.format("%Y-%m-%d %a"));
     for p in [time, repeater, warn].into_iter().flatten() {
         s += &format!(" {p}");

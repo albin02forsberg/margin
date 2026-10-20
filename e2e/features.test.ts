@@ -194,6 +194,13 @@ describe("Features", () => {
     await fileMatches(file, (s) => s.includes("* Standup with Alice\n- budget topics\n"), "cursor wasn't at %?");
   });
 
+  it("Insert date keeps the repeater", async () => {
+    await palette("Insert date");
+    await answer("Insert date", "today +1w");
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "standups.org"), (s) => s.includes(`<${orgDay(new Date())} +1w>`), "stamp lost its repeater");
+  });
+
   it("lists an unlinked mention and links it", async () => {
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "Alpha Project"); // by #+title, though alpha.org has no :ID:

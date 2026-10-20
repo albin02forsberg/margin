@@ -888,6 +888,17 @@ fn planning_at(text: &str, line: usize, kind: &str, input: &str, today: NaiveDat
     Ok(org::set_planning(text, line, kind, d))
 }
 
+/// Active timestamp for INPUT (blank = today), keeping time range, repeater and warning.
+fn date_stamp_at(input: &str, today: NaiveDate) -> R<String> {
+    let (d, time, rep, warn) = opt_date_at(input, today)?.unwrap_or((today, None, None, None));
+    Ok(org::ts_string(d, time.as_deref(), rep.as_deref(), warn.as_deref()))
+}
+
+#[tauri::command]
+fn date_stamp(input: String) -> R<String> {
+    date_stamp_at(&input, today())
+}
+
 #[tauri::command]
 fn read_date(input: String) -> R<String> {
     date(&input).map(|d| d.to_string())
@@ -1780,7 +1791,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             watcher::gnome_extension, watcher::screen_recording,
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
-            agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, read_past_date, org_context,
+            agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
@@ -2165,6 +2176,11 @@ mod tests {
         assert_eq!((opt_date_at("", t), opt_date_at("  ", t)), (Ok(None), Ok(None)));
         assert_eq!(opt_date_at("+1d 14:00", t), Ok(Some((iso("2026-10-13"), Some("14:00".into()), None, None))));
         assert_eq!(opt_date_at("soon", t), Err("can't read date \"soon\"".into()));
+        assert_eq!(date_stamp_at("fri +1w", t).unwrap(), "<2026-10-16 Fri +1w>");
+        assert_eq!(date_stamp_at("fri -3d", t).unwrap(), "<2026-10-16 Fri -3d>");
+        assert_eq!(date_stamp_at("fri 14:00-15:30", t).unwrap(), "<2026-10-16 Fri 14:00-15:30>");
+        assert_eq!(date_stamp_at("", t).unwrap(), "<2026-10-12 Mon>");
+        assert!(date_stamp_at("soon", t).is_err());
         assert_eq!(date_preview_at(" ", t, false), "");
         assert_eq!(date_preview_at("fri", t, false), "Friday 16 October 2026");
         assert_eq!(date_preview_at("fri 14:00", t, false), "Friday 16 October 2026, 14:00");
