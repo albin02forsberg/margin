@@ -86,6 +86,8 @@ pub struct Config {
     pub restore_tabs: bool,
     /// Underline misspelled words in org notes (the webview's own spell checker).
     pub spellcheck: bool,
+    /// Spell-check languages (Linux/WebKitGTK only), e.g. `sv_SE`; empty = the system locale.
+    pub spellcheck_languages: Vec<String>,
     /// Update from the daily builds of main (the `nightly` prerelease) instead of stable releases.
     pub nightly_updates: bool,
 }
@@ -216,6 +218,7 @@ impl Default for Config {
             ai_exclude: vec![],
             restore_tabs: true,
             spellcheck: false,
+            spellcheck_languages: vec![],
             nightly_updates: false,
         }
     }
@@ -486,6 +489,13 @@ pub fn remove_key(text: &str, key: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spellcheck_languages_parse() {
+        assert!(Config::default().spellcheck_languages.is_empty());
+        let c = toml::from_str::<Config>("spellcheck_languages = [\"sv_SE\", \"en_US\"]").unwrap();
+        assert_eq!(c.spellcheck_languages, ["sv_SE", "en_US"]);
+    }
 
     #[test]
     fn spellcheck_off_by_default() {

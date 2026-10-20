@@ -178,7 +178,7 @@ fn reload_config(app: AppHandle, s: State<App>) -> R<String> {
     *s.cfg_error.lock().unwrap() = None;
     s.cache.clear();
     watch(&app);
-    apply_spellcheck(&app, new.spellcheck);
+    apply_spellcheck(&app, new.spellcheck, &new.spellcheck_languages);
     // A shortcut that won't register is reported, but the rest still applies.
     let rebind = rebind_capture(&app, &old.capture_shortcut, &new.capture_shortcut).err();
     if let Some(p) = new.profiles.first().filter(|_| !new.profiles.contains(&profile)) {
@@ -190,19 +190,23 @@ fn reload_config(app: AppHandle, s: State<App>) -> R<String> {
 /// Turn WebKitGTK's spell checker on or off for the main window (#514); it is off by default
 /// and ignores the `spellcheck` attribute until then. WebKit on macOS and WebView2 need nothing.
 #[cfg(target_os = "linux")]
-fn apply_spellcheck(app: &AppHandle, on: bool) {
+fn apply_spellcheck(app: &AppHandle, on: bool, langs: &[String]) {
     use webkit2gtk::{WebContextExt, WebViewExt};
     let Some(w) = app.get_webview_window("main") else { return };
+    let langs = langs.to_vec();
     if let Err(e) = w.with_webview(move |v| {
         if let Some(c) = v.inner().context() {
             c.set_spell_checking_enabled(on);
+            if !langs.is_empty() {
+                c.set_spell_checking_languages(&langs.iter().map(String::as_str).collect::<Vec<_>>());
+            }
         }
     }) {
         eprintln!("spellcheck: {e}");
     }
 }
 #[cfg(not(target_os = "linux"))]
-fn apply_spellcheck(_: &AppHandle, _: bool) {}
+fn apply_spellcheck(_: &AppHandle, _: bool, _: &[String]) {}
 
 /// Move the quick-capture shortcut from OLD to NEW (either may be empty = none).
 #[cfg(desktop)]
@@ -1768,7 +1772,10 @@ pub fn run() {
             let profile = cfg.profiles.iter().find(|p| **p == saved.trim()).or(cfg.profiles.first()).cloned().unwrap_or("Work".into());
             app.manage(App { cfg_path, cfg: Mutex::new(cfg), cfg_error: Mutex::new(cfg_error), profile: Mutex::new(profile), cache: Default::default(), watcher: Mutex::new(None) });
             watch(app.handle());
-            apply_spellcheck(app.handle(), app.state::<App>().cfg().spellcheck);
+            {
+                let c = app.state::<App>().cfg();
+                apply_spellcheck(app.handle(), c.spellcheck, &c.spellcheck_languages);
+            }
             write_calendar(app.handle());
             tray::setup(app.handle())?;
             #[cfg(target_os = "macos")]
