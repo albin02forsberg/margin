@@ -374,7 +374,7 @@ Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`, `no` p
 | Space n b | Notes linking here, plus unlinked mentions of this note's title (**Link** turns one into an `[[id:]]` link; Space n u undoes) |
 | Space n g | Graph of notes within two links of this one; click a note to open it |
 | Space n r | Rename this note (same folder, `.org` added if missing); `[[file:]]` links to it in other notes are updated after a backup, `[[id:]]` links need nothing |
-| Space n m | Move this note to another folder under the notes folder (pick one, or type a path like `archive/2026` to create it; not `.trash` or the attachments folder). `[[file:]]` links to it are updated and its own relative links (attachments too) re-based, after a backup |
+| Space n m | Move this note to another folder under the notes folder (pick one, or type a path like `archive/2026` to create it; not `.trash`, the attachments folder or the images folder). `[[file:]]` links to it are updated and its own relative links (attachments too) re-based, after a backup |
 | Space n D | Delete this note: after a confirm (it says how many notes link to it) the file moves to `<notes>/.trash/`, keeping its subfolder; nothing is deleted for good and links to it are left as they are |
 | Space n R | Restore a note from `<notes>/.trash/`: pick it (newest first) and it moves back to its original place and opens; refused if a note of that name already exists |
 | Space n f | Show this file in the system file manager (any open file: a note, `config.toml`, the time log) |
