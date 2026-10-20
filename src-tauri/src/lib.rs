@@ -19,7 +19,7 @@ mod timeclock;
 mod tray;
 mod watcher;
 
-use chrono::{Duration, NaiveDate, NaiveDateTime};
+use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime};
 use config::Config;
 use serde_json::{json, Value};
 use std::path::{Component, Path, PathBuf};
@@ -1161,7 +1161,6 @@ struct DashIn {
 }
 
 fn dashboard(inp: DashIn) -> Value {
-    use chrono::Datelike;
     let DashIn { today: t, today_hours: today_h, sessions, projects, leave, cal, status: (cur, on_break), .. } = &inp;
     let (t, today_h) = (*t, *today_h);
     let leave_only: Vec<_> = leave.iter().map(|x| x.1.clone()).collect();
@@ -1593,6 +1592,17 @@ fn ai_set(app: AppHandle, s: State<App>, backend: ai::Backend, model: String) ->
     reload_config(app, s)
 }
 
+/// Inclusive range of the week report: the Mon-Sun week containing PICKED, else the last 7 days ending TODAY.
+fn week_range(picked: Option<NaiveDate>, today: NaiveDate) -> (NaiveDate, NaiveDate) {
+    match picked {
+        Some(d) => {
+            let mon = d - Duration::days(d.weekday().num_days_from_monday().into());
+            (mon, mon + Duration::days(6))
+        }
+        None => (today - Duration::days(6), today),
+    }
+}
+
 /// Org-formatted report text. KIND: daily | weekly | holidays | flex | doctor | backup.
 #[tauri::command]
 fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<String> {
@@ -1602,11 +1612,14 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
     let codes = tc.leave_codes().unwrap_or_default();
     Ok(match kind.as_str() {
         "daily" => timeclock::daily_report(&tc.sessions(), &tc.projects(), (&leave, &codes), &tc.cal, date(date_input.as_deref().unwrap_or(""))?, &profile),
-        "weekly" => timeclock::weekly_report(&tc.sessions(), &tc.projects(), (&leave, &codes), &tc.cal, today() - Duration::days(7), today(), &profile),
+        "weekly" => {
+            let (from, to) = week_range(date_input.as_deref().filter(|d| !d.trim().is_empty()).map(date).transpose()?, today());
+            timeclock::weekly_report(&tc.sessions(), &tc.projects(), (&leave, &codes), &tc.cal, from, to, &profile)
+        }
         "holidays" => timeclock::holidays_report(date(date_input.as_deref().unwrap_or(""))?.format("%Y").to_string().parse().unwrap(), &tc.cal),
         "flex" => {
             let t = today();
-            let week = (t - Duration::days(7), t);
+            let week = week_range(None, t);
             let (total, period, days) = timeclock::flex(&tc.sessions(), &tc.projects(), &leave, &tc.cal, Some(week));
             format!("Flex ({profile}): total {total:+.2} h, last 7 days {period:+.2} h over {days} worked days")
         }
@@ -1902,6 +1915,15 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn week_range_is_seven_inclusive_days() {
+        let d = |m, day| NaiveDate::from_ymd_opt(2026, m, day).unwrap();
+        assert_eq!(week_range(None, d(10, 20)), (d(10, 14), d(10, 20))); // 7 days, not 8
+        assert_eq!(week_range(Some(d(10, 15)), d(10, 20)), (d(10, 12), d(10, 18))); // Thu -> Mon..Sun
+        assert_eq!(week_range(Some(d(10, 18)), d(10, 20)), (d(10, 12), d(10, 18))); // Sunday
+        assert_eq!(week_range(Some(d(10, 12)), d(10, 20)), (d(10, 12), d(10, 18))); // Monday
+    }
 
     #[test]
     fn system_spell_langs_from_locale() {
