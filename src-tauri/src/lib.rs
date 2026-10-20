@@ -1097,7 +1097,7 @@ fn notes_orphans(s: State<App>) -> Vec<(PathBuf, String)> {
         .into_iter()
         .map(|f| (std::fs::metadata(&f.path).and_then(|m| m.modified()).ok(), f.path.clone(), f.title.clone()))
         .collect();
-    v.sort_by(|a, b| b.0.cmp(&a.0));
+    v.sort_by_key(|a| std::cmp::Reverse(a.0));
     v.into_iter().map(|(_, p, t)| (p, t)).collect()
 }
 
