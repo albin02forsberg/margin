@@ -788,13 +788,16 @@ describe("Org structure keys", () => {
     await answer("Open a note", n);
     await find(".status .file", `${n}.org`);
     await noPicker();
+    const panel = () => browser.execute(() => `${document.querySelector(".cm-vim-panel")?.textContent ?? "-"}|${document.activeElement?.className}`);
+    const before = await panel(); // diagnostic for #517: vim state on arrival
     await browser.keys(Key.Escape);
+    const after = await panel();
     await type(keys);
     const want = read(f(n)).split("\n")[line - 1].replace(/^\*+ /, "");
     try {
       await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes(want)));
     } catch {
-      throw new Error(`cursor not on line ${line} of ${n}; active: ${JSON.stringify(await texts(".cm-activeLine"))}`);
+      throw new Error(`cursor not on line ${line} of ${n}; active: ${JSON.stringify(await texts(".cm-activeLine"))}; vim panel|focus before Esc ${before}, after ${after}`);
     }
   };
   /** Save and wait until N's text after the title is WANT. */
