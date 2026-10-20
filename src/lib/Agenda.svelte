@@ -43,6 +43,7 @@
     ["z", "Add note", "note"],
     ["y", "Copy link", "link"],
     ["m", "Move to…", "move"],
+    ["M", "Copy to…", "copy"],
     ["A", "Archive", "archive"],
     ["I", "Track time", "clockIn"],
     ["↵", "Open", "open"],
