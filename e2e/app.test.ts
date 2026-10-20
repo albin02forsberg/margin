@@ -34,6 +34,14 @@ describe("Margin", () => {
     await (await browser.$(".tabs .tab.cur .x")).click();
   });
 
+  it("\"Show what's new\" opens the kept release notes (#513)", async () => {
+    const { version } = JSON.parse(readFileSync(join(import.meta.dirname, "../src-tauri/tauri.conf.json"), "utf8"));
+    await browser.execute((v) => localStorage.setItem("last-notes", JSON.stringify({ from: "0.0.1", to: v, body: "### Features\n- zoom" })), version);
+    await palette("Show what's new");
+    await find(".tabs .tab.cur", `What's new in ${version}`);
+    await (await browser.$(".tabs .tab.cur .x")).click();
+  });
+
   it("opens a note with Ctrl+P, edits and saves it", async () => {
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "scratch");
