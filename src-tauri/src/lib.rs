@@ -197,9 +197,15 @@ fn apply_spellcheck(app: &AppHandle, on: bool, langs: &[String]) {
     if let Err(e) = w.with_webview(move |v| {
         if let Some(c) = v.inner().context() {
             c.set_spell_checking_enabled(on);
-            if !langs.is_empty() {
-                c.set_spell_checking_languages(&langs.iter().map(String::as_str).collect::<Vec<_>>());
-            }
+            // An empty list would leave WebKit's previous languages (or none) in place, so an
+            // unset config falls back to the system locale (#565).
+            let langs = if langs.is_empty() {
+                let names = webkit2gtk::glib::language_names();
+                system_spell_langs(&names.iter().map(|n| n.as_str()).collect::<Vec<_>>())
+            } else {
+                langs
+            };
+            c.set_spell_checking_languages(&langs.iter().map(String::as_str).collect::<Vec<_>>());
         }
     }) {
         eprintln!("spellcheck: {e}");
@@ -207,6 +213,23 @@ fn apply_spellcheck(app: &AppHandle, on: bool, langs: &[String]) {
 }
 #[cfg(not(target_os = "linux"))]
 fn apply_spellcheck(_: &AppHandle, _: bool, _: &[String]) {}
+
+/// Spell-check languages from locale names (`sv_SE.UTF-8`, `sv`, `C`): keep `ll_CC` ones with the
+/// encoding/modifier stripped, deduped; `["en_US"]` when none qualify.
+#[cfg(any(target_os = "linux", test))]
+fn system_spell_langs(names: &[&str]) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    for n in names {
+        let l = n.split(['.', '@']).next().unwrap_or("");
+        if l.split_once('_').is_some_and(|(a, b)| !a.is_empty() && !b.is_empty()) && !out.iter().any(|o| o == l) {
+            out.push(l.to_string());
+        }
+    }
+    if out.is_empty() {
+        out.push("en_US".into());
+    }
+    out
+}
 
 /// Move the quick-capture shortcut from OLD to NEW (either may be empty = none).
 #[cfg(desktop)]
@@ -1867,6 +1890,13 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn system_spell_langs_from_locale() {
+        assert_eq!(system_spell_langs(&["sv_SE.UTF-8", "sv_SE", "sv", "C"]), ["sv_SE"]);
+        assert_eq!(system_spell_langs(&["de_DE@euro", "en_US.UTF-8"]), ["de_DE", "en_US"]);
+        assert_eq!(system_spell_langs(&["C"]), ["en_US"]);
+    }
 
     #[test]
     fn save_refuses_to_overwrite_an_external_edit() {
