@@ -651,6 +651,7 @@ describe("Journal, archive and move", () => {
         writeFileSync(join(notes, "chores.org"), chores);
         writeFileSync(join(notes, "projects.org"), projects);
         writeFileSync(join(notes, "extract.org"), extract);
+        writeFileSync(join(notes, "narrow.org"), "* One\nalpha\n* Two\nbeta\n");
       },
     });
   });
@@ -729,6 +730,21 @@ describe("Journal, archive and move", () => {
     await fileMatches(f("extract.org"), (s) => s === `* TODO Big idea :x:\n[[id:${id}][Big idea]]\n`, "heading not replaced by a link");
     await leader("nu");
     await fileMatches(f("extract.org"), (s) => s === extract, "undo didn't restore the heading");
+  });
+
+  it("Space v n narrows to the heading at the cursor and widens again", async () => {
+    const shown = () => browser.execute(() => document.querySelector(".cm-content")?.textContent ?? "");
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "narrow");
+    await find(".status .file", "narrow.org");
+    await browser.waitUntil(async () => (await shown()).includes("beta"), { timeoutMsg: "note not shown" });
+    await leader("vn");
+    await find(".status .narrowed", "Narrowed to One");
+    await browser.waitUntil(async () => !(await shown()).includes("beta") && (await shown()).includes("alpha"), { timeoutMsg: "sibling heading still shown" });
+    await leader("vn");
+    await browser.waitUntil(async () => (await shown()).includes("beta"), { timeoutMsg: "widen didn't show the sibling again" });
+    assert.equal((await texts(".status .narrowed")).length, 0);
+    await fileMatches(f("narrow.org"), (s) => s === "* One\nalpha\n* Two\nbeta\n", "narrowing changed the file");
   });
 });
 

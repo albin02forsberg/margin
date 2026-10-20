@@ -66,6 +66,8 @@
   let formulaDialog = $state<FormulaDialog>();
   let mode = $state("normal");
   let words = $state("");
+  /** Title of the heading the editor is narrowed to (Space v n), or "". */
+  let narrowed = $state("");
   let docWords = 0;
   let message = $state("");
   let tc = $state<any>({});
@@ -156,6 +158,7 @@
     if (docChanged) docWords = wordCount(s.doc.toString(), org);
     const r = s.selection.main;
     words = wordsLabel(docWords, r.empty ? undefined : wordCount(s.sliceDoc(r.from, r.to), org));
+    narrowed = ed.narrowedTo(s);
   }
 
   function newState(key: string, text: string, path?: string, readOnly = false) {
@@ -1879,6 +1882,11 @@
     { label: "Code the selection / word", leader: "i ~", run: () => inFile() && ed.emphasis(view, "~") },
     { label: "Strike through the selection / word", leader: "i +", run: () => inFile() && ed.emphasis(view, "+") },
     { label: "Insert horizontal rule", leader: "i -", run: () => inFile() && ed.insertText(view, "\n-----\n") },
+    { label: "View: narrow to heading at cursor / widen", leader: "v n", run: () => {
+      if (!inFile()) return flash("Open a note first.");
+      if (!ed.narrowToggle(view)) return flash("Put the cursor under a heading of an org note first.");
+      countWords(view.state, false);
+    } },
     { label: "Toggle monospace font for notes", leader: "v m", run: () => { monoFont = !monoFont; store("mono-font", monoFont ? "1" : "0"); } },
     { label: "View: reset zoom (Ctrl/Cmd+= / - / 0 zoom in / out / reset)", leader: "v 0", run: resetZoom },
     { label: "Fold / unfold all headings (Tab folds one)", keys: ["Shift+Tab"], ctx: "normal", run: () => ed.orgShiftTab(view) },
@@ -2338,6 +2346,7 @@
       {#if isText(tab)}<span class="mode">{mode.toUpperCase()}</span>{/if}
       <span class="file">{tab?.path ? rel(tab.path) : ""}{tab?.missing ? " • deleted on disk (:w recreates it)" : tab?.conflict ? " • changed on disk (:w keeps yours, Space f r reloads)" : tab?.dirty ? " • unsaved" : ""}</span>
       {#if isText(tab)}<span class="words">{words}</span>{/if}
+      {#if isText(tab) && narrowed}<span class="narrowed" title="Only this heading is shown; saving keeps the whole note">Narrowed to {narrowed} · Space v n widens</span>{/if}
       <span class="msg">{message}</span>
       {#if download}<progress class="dl" max={download.size} value={download.have} title="Downloading the AI model ({Math.floor((download.have / download.size) * 100)}%); cancel it in AI drafts: choose model…"></progress>{/if}
       {#if drafting && (cfg.config.ai_backend === "embedded" || chatting)}<button class="hint cancel" onclick={() => act(() => call("ai_draft_cancel"))}>Drafting… cancel</button>{/if}
@@ -2425,6 +2434,7 @@
   .status { display: flex; gap: var(--s3); align-items: center; padding: 0 var(--s4) var(--s2); color: var(--dim); font: var(--fs-xs) var(--mono); flex: none; min-height: 20px; }
   .mode { color: var(--bg); background: var(--accent); padding: 0 6px; border-radius: var(--radius-sm); font-weight: 700; }
   .file, .words { color: var(--dim); }
+  .narrowed { color: var(--accent); }
   .msg { color: var(--fg); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dl { width: 120px; height: 8px; accent-color: var(--accent); }
   .hint { background: none; border: 0; color: var(--dim); font: var(--fs-xs) var(--sans); cursor: pointer; }
