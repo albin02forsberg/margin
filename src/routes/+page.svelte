@@ -1094,6 +1094,16 @@
     flash(`Renamed to ${base(r[0])}${n ? ` — updated links in ${n} note${n > 1 ? "s" : ""}` : ""}`);
   }
 
+  /** Copy the open note (unsaved edits included) into a new note beside it, with fresh IDs, and open it. */
+  async function duplicateNote() {
+    if (!inFile() || !tab.path!.startsWith(cfg.notes)) return flash("Open a note first.");
+    const t = tab;
+    const title = (await ask("Duplicate note as", `${t.title} copy`))?.trim();
+    if (!title) return;
+    const [p] = await call<[string, string]>("note_duplicate", { path: t.path, text: stateOf(t).doc.toString(), title });
+    await openFile(p);
+  }
+
   /** Move the open note to another folder under the notes folder (a typed one is created); the backend fixes links to and from it. */
   async function moveNote() {
     if (!inFile() || !tab.path!.startsWith(cfg.notes)) return flash("Open a note first.");
@@ -1848,6 +1858,7 @@
     { label: "Capture with template…", leader: "c", run: captureTemplate },
     { label: "New note", keys: ["Ctrl+Shift+N"], leader: "n n", run: newNote },
     { label: "Rename note…", leader: "n r", run: renameNote },
+    { label: "Note: duplicate…", leader: "n c", run: () => act(duplicateNote) },
     { label: "Move note to folder…", leader: "n m", run: moveNote },
     { label: "Delete note… (move to .trash)", leader: "n D", run: trashNote },
     { label: "Restore note from .trash…", leader: "n R", run: restoreNote },

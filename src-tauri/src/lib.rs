@@ -1029,6 +1029,20 @@ fn note_extract(s: State<App>, path: PathBuf, text: String, line: usize) -> R<[S
     Ok([src, new.to_string_lossy().into_owned()])
 }
 
+/// Copy the live TEXT of note PATH into a new note TITLE beside it (fresh IDs;
+/// the original's file properties and `:ID:`s are not copied). Returns (path, id).
+#[tauri::command]
+fn note_duplicate(s: State<App>, path: PathBuf, text: String, title: String) -> R<(PathBuf, String)> {
+    s.check(&path)?;
+    in_notes(&s.cfg().notes(), &path)?;
+    let title = title.trim();
+    if title.is_empty() {
+        return Err("title is empty".into());
+    }
+    let dir = path.parent().ok_or("no folder")?;
+    notes::new_note(dir, title, &org::duplicate_body(&text)).map_err(|e| e.to_string())
+}
+
 /// Every note's title (`#+title`, else the file name), with or without an ID.
 #[tauri::command(async)]
 fn note_titles(s: State<App>) -> std::collections::HashMap<PathBuf, String> {
@@ -1961,7 +1975,7 @@ pub fn run() {
             watcher::gnome_extension, watcher::screen_recording,
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
-            org_targets, org_tags, org_refile, org_refile_same, org_refile_copy, org_refile_copy_same, note_extract, org_archive, org_archive_done, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
+            org_targets, org_tags, org_refile, org_refile_same, org_refile_copy, org_refile_copy_same, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, notes_tags, notes_tagged, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
