@@ -24,3 +24,18 @@ test("findTarget", () => {
   assert.equal(findTarget(doc, "body"), 5);
   assert.equal(findTarget(doc, ""), null);
 });
+
+test("findTarget: custom keywords and statistics cookies", () => {
+  const d = "* DOING Write report\n* Release [2/5]\n* TODO Ship   it [40%] :work:\n* C++ [/]\n";
+  assert.equal(findTarget(d, "*Write report"), null);
+  assert.equal(findTarget(d, "*DOING Write report"), 0);
+  assert.equal(findTarget(d, "*Write report", ["TODO", "DOING", "DONE"]), 0);
+  assert.equal(findTarget(d, "*Ship it", ["DOING"]), null);
+  assert.equal(findTarget(d, "*Ship it"), 2);
+  assert.equal(findTarget(d, "*Release"), 1);
+  assert.equal(findTarget(d, "*Release [2/5]"), 1);
+  assert.equal(findTarget(d, "*Release [3/5]"), 1);
+  assert.equal(findTarget(d, "*C++", ["C++", "DONE"]), null);
+  assert.equal(findTarget(d, "*c++"), 3);
+  assert.equal(findTarget("* A+ Go\n", "*Go", ["A+"]), 0);
+});

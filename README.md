@@ -373,7 +373,7 @@ Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`, `no` p
 | Space x o | Sort the child headings of the heading at the cursor (the top-level headings when the cursor is above the first one) by title, priority, status, scheduled or deadline date, ascending or descending; subtrees move whole, headings without the key go last, `u` undoes |
 | Shift+← / → | Change task status, or move a date by a day |
 | Shift+↑ / ↓ | Change priority, or the date part under the cursor |
-| Enter, gf, Ctrl+click | Follow a link (relative `file:` links like `../other/note.org` resolve from the note's folder; `[[*Heading]]`, `[[#custom-id]]`, `[[file:a.org::*Heading]]`, `::12` (line) and `::text` jump to the match). On a footnote `[fn:1]` it jumps to the definition and back; Ctrl+O returns |
+| Enter, gf, Ctrl+click | Follow a link (relative `file:` links like `../other/note.org` resolve from the note's folder; `[[*Heading]]`, `[[#custom-id]]`, `[[file:a.org::*Heading]]`, `::12` (line) and `::text` jump to the match; a `*Heading` search ignores your todo keywords and `[2/5]` cookies, as org does). On a footnote `[fn:1]` it jumps to the definition and back; Ctrl+O returns |
 | click `[ ]` | Toggle a checkbox |
 | Space x … | Task commands for the heading at the cursor |
 | Space n b | Notes linking here, plus unlinked mentions of this note's title (**Link** turns one into an `[[id:]]` link; Space n u undoes) |
