@@ -8,6 +8,8 @@
     habit?: { bar: string; streak: number } | null;
     /** `CLOSED:` stamp ("2026-10-14T10:12:00"), set when a task is marked done (config `log_done`). */
     closed?: string | null;
+    /** `:EFFORT:` estimate in minutes. */
+    effort?: number | null;
   };
   export type AgendaApi = {
     /** Run a task operation on IT (see ACTIONS; `keyword` sets ARG); resolves when the files are written. */
@@ -39,6 +41,7 @@
     ["p", "Priority", "priority"],
     ["t", "Status", "state"],
     ["#", "Tags", "tags"],
+    ["E", "Effort", "effort"],
     ["e", "Rename", "title"],
     ["z", "Add note", "note"],
     ["y", "Copy link", "link"],
@@ -64,6 +67,7 @@
   import { columns, moveTo } from "./board";
   import { chips } from "./chips";
   import { doneLog, withLog } from "./donelog";
+  import { fmtEffort, planned } from "./effort";
 
   /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions.
    *  LOGDONE: config `log_done` (the Done log needs its CLOSED: stamps). */
@@ -112,7 +116,7 @@
   const groups = $derived.by(() => {
     if (mode === "todo") {
       const ks = [...new Set(shown.map((i) => i.keyword ?? ""))];
-      return ks.map((k) => ({ key: k, title: k, sub: "", today: false, rows: rowsOf((i) => (i.keyword ?? "") === k) }));
+      return ks.map((k) => ({ key: k, title: k, sub: "", today: false, planned: 0, rows: rowsOf((i) => (i.keyword ?? "") === k) }));
     }
     return days.map((d) => ({
       key: iso(d),
@@ -120,6 +124,7 @@
       sub: fmtDay(d, { day: "numeric", month: "long" }),
       today: iso(d) === today,
       rows: rowsOf((i) => i.date === iso(d)),
+      planned: planned(items.filter((i) => i.date === iso(d)), isDone),
     }));
   });
   function rowsOf(pred: (i: AgendaItem) => boolean) {
@@ -141,7 +146,7 @@
   );
   const subheading = $derived(
     mode === "todo" ? `${items.length} ${query != null ? "found" : "open"}${query ? ` · ${query}` : ""}`
-    : span === 1 ? (iso(start) === today ? fmtDay(start) : "")
+    : span === 1 ? [iso(start) === today ? fmtDay(start) : "", groups[0]?.planned ? `~${fmtEffort(groups[0].planned)} planned` : ""].filter(Boolean).join(" · ")
     : `${fmtDay(start, { day: "numeric", month: "short" })} – ${fmtDay(days[6], { day: "numeric", month: "short", year: "numeric" })}`,
   );
 
@@ -313,6 +318,7 @@
     </div>
     <div class="kmeta">
       {#each it.tags as t}<span class="tag">{t}</span>{/each}{#each it.inherited ?? [] as t}<span class="tag inh" title="Inherited">{t}</span>{/each}
+      {#if it.effort}<span class="effort" title="Effort estimate">{fmtEffort(it.effort)}</span>{/if}
       {#if dateChip(it.date)}<span class="meta">{dateChip(it.date)}</span>{/if}
       <span class="spacer"></span>
       <span class="cat">{it.category}</span>
@@ -328,6 +334,7 @@
     <span class="title">{it.title}</span>
     {#each it.tags as t}<span class="tag">{t}</span>{/each}{#each it.inherited ?? [] as t}<span class="tag inh" title="Inherited">{t}</span>{/each}
     <span class="spacer"></span>
+    {#if it.effort}<span class="effort" title="Effort estimate">{fmtEffort(it.effort)}</span>{/if}
     {#if it.habit}
       <span class="habit" title="Last {it.habit.bar.length} days: green done, amber due (not yet overdue), red overdue, grey not due">
         {#each it.habit.bar as c}<i class:x={c === "x"} class:ok={c === "-"} class:due={c === "!"}></i>{/each}
@@ -434,7 +441,7 @@
       {#if g.rows.length || (span === 7 && mode === "agenda")}
         <section class="card" class:today={g.today}>
           {#if mode === "todo" || span === 7}
-            <h2 class:today={g.today}>{g.title} <small>{g.sub}</small>{#if g.rows.length}<small class="n">{g.rows.length}</small>{/if}</h2>
+            <h2 class:today={g.today}>{g.title} <small>{g.sub}</small>{#if g.rows.length}<small class="n">{g.rows.length}</small>{/if}{#if g.planned}<small class="planned" title="Effort of the open tasks">~{fmtEffort(g.planned)} planned</small>{/if}</h2>
           {/if}
           {#each g.rows as { it, i }, j (i)}
             {#if it.kind === "closed" && g.rows[j - 1]?.it.kind !== "closed"}<h3 class="logh">Done</h3>{/if}
@@ -565,6 +572,8 @@
   .habit i.ok { background: var(--accent); }
   .habit i.due { background: var(--todo); }
   .time { font: var(--fs-sm) var(--mono); color: var(--date); }
+  .effort { font: var(--fs-xs) var(--mono); color: var(--dim); border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; white-space: nowrap; }
+  h2 .planned { margin-left: auto; font-size: var(--fs-sm); }
   .meta { font-size: var(--fs-sm); color: var(--dim); white-space: nowrap; }
   .meta.warn { color: var(--todo); background: color-mix(in srgb, var(--todo) 14%, transparent); border-radius: var(--radius-sm); padding: 0 6px; }
   .cat { font-size: var(--fs-sm); color: var(--dim); max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

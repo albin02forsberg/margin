@@ -25,6 +25,18 @@ static TAGS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+(:[^\s]+:)\s*$")
 static STATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^\s*- State "([^"]+)"\s+from .*?\[(\d{4}-\d{2}-\d{2})"#).unwrap());
 static CLOSED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"CLOSED:\s*\[(\d{4}-\d{2}-\d{2})(?:\s+[^\s\]\d]+)?(?:\s+(\d{1,2}:\d{2}))?[^\]]*\]\s*").unwrap());
 static PROP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*:([^:\s]+):\s*(.*?)\s*$").unwrap());
+static EFFORT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(?:(\d{1,5}):(\d{2})|(?:(\d{1,5})\s*h)?\s*(?:(\d+)\s*m(?:in)?)?)$").unwrap());
+
+/// An `:EFFORT:` value in minutes: `1:30`, `2h`, `45min`, `1h 30m`, or plain minutes `45`.
+pub fn parse_effort(s: &str) -> Option<u32> {
+    let s = s.trim().to_lowercase();
+    if let Ok(m) = s.parse() {
+        return Some(m);
+    }
+    let c = EFFORT.captures(&s).filter(|_| !s.is_empty())?;
+    let n = |i: usize| c.get(i).map_or(Some(0), |m| m.as_str().parse::<u32>().ok());
+    Some(n(1)? * 60 + n(2)? + n(3)? * 60 + n(4)?)
+}
 
 #[derive(Clone, Debug)]
 pub struct Kw {
@@ -89,6 +101,8 @@ pub struct Headline {
     pub done_log: Vec<NaiveDate>,
     /// `CLOSED: [date time]` on the planning line (midnight without a time).
     pub closed: Option<NaiveDateTime>,
+    /// `:EFFORT:` in minutes.
+    pub effort: Option<u32>,
 }
 
 impl Headline {
@@ -257,6 +271,8 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
                     h.category = c[2].to_string();
                 } else if c[1].eq_ignore_ascii_case("STYLE") {
                     h.habit = c[2].eq_ignore_ascii_case("habit");
+                } else if c[1].eq_ignore_ascii_case("EFFORT") {
+                    h.effort = parse_effort(&c[2]);
                 }
             }
             continue;
@@ -342,6 +358,8 @@ pub struct Item {
     /// Set on today's agenda entry of a habit, and on its Tasks entry.
     pub habit: Option<Habit>,
     pub closed: Option<NaiveDateTime>,
+    /// `:EFFORT:` in minutes.
+    pub effort: Option<u32>,
     /// A deadline's own warning period in days (`-3d` cookie), for reminders.
     #[serde(skip)]
     pub warn: Option<i64>,
@@ -368,6 +386,7 @@ fn item(f: &OrgFile, h: &Headline, date: NaiveDate, kind: &'static str, label: S
         category: h.category.clone(),
         habit: None,
         closed: h.closed,
+        effort: h.effort,
         warn: None,
     }
 }
@@ -809,6 +828,32 @@ pub fn set_title(text: &str, line: usize, kw: &Kw, title: &str) -> String {
 
 pub fn set_tags(text: &str, line: usize, kw: &Kw, tags: Vec<String>) -> String {
     edit_heading(text, line, kw, |p| p.tags = tags.into_iter().filter(|t| !t.is_empty()).collect())
+}
+
+/// Set (Some minutes, written `H:MM` like org) or remove the `:EFFORT:` of the
+/// heading at LINE. Removing it drops the drawer only when nothing else is left in it.
+pub fn set_effort(text: &str, line: usize, minutes: Option<u32>) -> String {
+    let mut lines = to_lines(text);
+    let Some(hl) = headline_at(&lines, line) else { return text.to_string() };
+    let i = if lines.get(hl + 1).is_some_and(|l| is_planning(l)) { hl + 2 } else { hl + 1 };
+    let entry = minutes.map(|m| format!(":EFFORT: {}:{:02}", m / 60, m % 60));
+    if !lines.get(i).is_some_and(|l| l.trim().eq_ignore_ascii_case(":PROPERTIES:")) {
+        if let Some(e) = entry {
+            lines.splice(i..i, [":PROPERTIES:".to_string(), e, ":END:".to_string()]);
+        }
+        return join(lines, text);
+    }
+    // An unclosed drawer is left alone.
+    let Some(end) = drawer_end(&lines, i) else { return text.to_string() };
+    let old = (i + 1..end).find(|&j| PROP.captures(&lines[j]).is_some_and(|c| c[1].eq_ignore_ascii_case("EFFORT")));
+    match (old, entry) {
+        (Some(j), Some(e)) => lines[j] = e,
+        (None, Some(e)) => lines.insert(end, e),
+        (Some(_), None) if end == i + 2 => { lines.drain(i..=end); },
+        (Some(j), None) => { lines.remove(j); },
+        (None, None) => {}
+    }
+    join(lines, text)
 }
 
 /// Add `- Note taken on [date time] \\` plus NOTE (indented) under the
@@ -1418,6 +1463,38 @@ mod tests {
     const DOC: &str = ":PROPERTIES:\n:ID: file-1\n:END:\n#+title: My Note\n#+category: Work\n\
 * TODO [#A] Write report :work:urgent:\nSCHEDULED: <2026-10-01 Thu> DEADLINE: <2026-10-05 Mon 10:00>\n:PROPERTIES:\n:ID: h-1\n:END:\nSee [[id:other][Other]] and [[file:b.org]].\n\
 ** NEXT Sub\n:PROPERTIES:\n:CATEGORY: Sub\n:END:\n*** DONE Deep\n* Meeting\n<2026-10-03 Sat 14:00>\n* TODO Water plants\nSCHEDULED: <2026-09-28 Mon +1w>\n";
+
+    #[test]
+    fn effort_parses_org_durations() {
+        for (s, m) in [("1:30", Some(90)), ("0:30", Some(30)), ("2h", Some(120)), ("45min", Some(45)), ("45m", Some(45)), ("1h 30min", Some(90)), ("20", Some(20)), (" 2H ", Some(120))] {
+            assert_eq!(parse_effort(s), m, "{s}");
+        }
+        for s in ["", "soon", "1:3", "h", "1.5h"] {
+            assert_eq!(parse_effort(s), None, "{s}");
+        }
+        let f = parse(Path::new("/n/x.org"), "* TODO A\n:PROPERTIES:\n:Effort: 0:30\n:END:\n* TODO B\n:PROPERTIES:\n:EFFORT: later\n:END:\n", &kw());
+        assert_eq!(f.headlines.iter().map(|h| h.effort).collect::<Vec<_>>(), [Some(30), None]);
+    }
+
+    #[test]
+    fn set_effort_edits_the_drawer() {
+        let sched = "* TODO A\nSCHEDULED: <2026-10-02 Fri>\nbody\n";
+        let set = set_effort(sched, 0, Some(90));
+        assert_eq!(set, "* TODO A\nSCHEDULED: <2026-10-02 Fri>\n:PROPERTIES:\n:EFFORT: 1:30\n:END:\nbody\n");
+        assert_eq!(parse(Path::new("/x.org"), &set, &kw()).headlines[0].effort, Some(90)); // round-trip
+        assert_eq!(set_effort(&set, 2, Some(30)), set.replace("1:30", "0:30"));
+        // Removing the last property drops the drawer.
+        assert_eq!(set_effort(&set, 0, None), sched);
+        // An existing drawer: added at its end; removal keeps :ID:.
+        let id = "* A\n:PROPERTIES:\n:ID: x\n:END:\n* B\n";
+        let with = set_effort(id, 0, Some(240));
+        assert_eq!(with, "* A\n:PROPERTIES:\n:ID: x\n:EFFORT: 4:00\n:END:\n* B\n");
+        assert_eq!(set_effort(&with, 0, None), id);
+        assert_eq!(set_effort("* A\n", 0, None), "* A\n");
+        // An empty drawer stays; an unclosed one is left alone.
+        assert_eq!(set_effort("* A\n:PROPERTIES:\n:END:\n", 0, None), "* A\n:PROPERTIES:\n:END:\n");
+        assert_eq!(set_effort("* A\n:PROPERTIES:\n* B\n", 0, Some(15)), "* A\n:PROPERTIES:\n* B\n");
+    }
 
     #[test]
     fn targets_carry_bare_titles() {

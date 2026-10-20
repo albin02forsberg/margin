@@ -700,7 +700,8 @@ fn org_heading(s: State<App>, text: String, line: usize) -> Option<org::Parts> {
 }
 
 /// Headline edits. OP: cycle (VALUE ±1) | keyword (VALUE or none) | priority (letter or none)
-/// | priority-cycle (±1) | tags ("a:b") | title (new text) | shift ("SCHEDULED 1").
+/// | priority-cycle (±1) | tags ("a:b") | title (new text) | shift ("SCHEDULED 1")
+/// | effort ("0:30", "2h"; empty clears).
 #[tauri::command]
 fn org_edit(s: State<App>, text: String, line: usize, op: String, value: Option<String>) -> R<String> {
     org_edit_op(&text, line, &op, value, &s.kw(), timeclock::now(), s.cfg().log_done)
@@ -720,6 +721,7 @@ fn org_edit_op(text: &str, line: usize, op: &str, value: Option<String>, kw: &or
         "title" => org::set_title(text, line, kw, &v),
         "note" if v.trim().is_empty() => return Err("The note is empty.".into()),
         "note" => org::add_note(text, line, &v, now),
+        "effort" => org::set_effort(text, line, opt().map(|e| org::parse_effort(e).ok_or_else(|| format!("Not a duration: {e} (try 0:30, 2h or 45min)"))).transpose()?),
         "tags" => org::set_tags(text, line, kw, v.split(':').map(|t| t.trim().to_string()).collect()),
         "shift" => {
             let (kind, days) = v.split_once(' ').ok_or("shift needs \"KIND DAYS\"")?;
@@ -2029,6 +2031,10 @@ mod tests {
         assert_eq!(edit(sched, "shift", Some("SCHEDULED -1")).unwrap(), "* Task\nSCHEDULED: <2026-01-07 Wed>\n");
         assert_eq!(edit(sched, "shift", Some("scheduled 3")).unwrap(), sched); // the kind is case-sensitive
         assert_eq!(edit(sched, "shift", Some("DEADLINE 3")).unwrap(), sched); // no such date: untouched
+        let e = "* Task\n:PROPERTIES:\n:EFFORT: 2:00\n:END:\n";
+        assert_eq!(edit("* Task\n", "effort", Some("2h")).unwrap(), e);
+        assert_eq!(edit(e, "effort", Some("")).unwrap(), "* Task\n");
+        assert_eq!(edit("* T\n", "effort", Some("soon")).unwrap_err(), "Not a duration: soon (try 0:30, 2h or 45min)");
     }
 
     #[test]
