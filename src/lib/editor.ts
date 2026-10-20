@@ -15,6 +15,7 @@ import * as tbl from "./orgtable";
 import { renumber, itemSwap } from "./list";
 import { applySet, type NumOpts } from "./setopt";
 import { EMPH, toggleEmphasis } from "./emphasis";
+import { FN, addFootnote, footnoteTarget } from "./footnote";
 
 /** Set by the app; vim ex commands, mappings and clicks call through these. */
 export const hooks = {
@@ -283,7 +284,7 @@ function inline(out: Range<Decoration>[], text: string, from: number, active: bo
     const complete = m[1].endsWith("%") ? m[1] === "100%" : a !== "" && a === b;
     out.push(mark(`cm-org-cookie${complete ? " cm-org-cookie-done" : ""}`).range(s, e));
   }
-  for (const m of text.matchAll(/\[fn:[^\]\s]+\]/g)) {
+  for (const m of text.matchAll(FN)) {
     const s = from + m.index!, e = s + m[0].length;
     if (free(s, e)) { taken.push([s, e]); out.push(mark("cm-org-fn").range(s, e)); }
   }
@@ -448,6 +449,30 @@ export function linkAt(state: EditorState, pos: number): string | null {
 
 export const linkAtCursor = (v: EditorView) => linkAt(v.state, v.state.selection.main.head);
 
+/** Follow the footnote at POS (reference ⇄ definition) as a vim jump, so Ctrl+O
+ *  returns; null when POS isn't on one, else its label, whether it's the
+ *  definition and whether it moved. */
+export function followFootnote(v: EditorView, pos = v.state.selection.main.head) {
+  const t = footnoteTarget(v.state.doc.toString(), pos);
+  if (!t) return null;
+  if (t.to == null) return { label: t.label, def: t.def, moved: false };
+  const cm = getCM(v) as any;
+  if (cm) Vim.getVimGlobalState_().jumpList.add(cm, cm.getCursor(), cm.posFromIndex(t.to));
+  v.dispatch({ selection: { anchor: t.to }, effects: EditorView.scrollIntoView(t.to, { y: "center" }) });
+  return { label: t.label, def: t.def, moved: true };
+}
+
+/** Insert the next numbered footnote at the cursor and type its definition under `* Footnotes`. */
+export function insertFootnote(v: EditorView) {
+  const r = addFootnote(v.state.doc.toString(), v.state.selection.main.head);
+  const cm = getCM(v) as any;
+  if (cm?.state.vim?.visualMode) Vim.handleKey(cm, "<Esc>", "mapping");
+  if (cm) Vim.getVimGlobalState_().jumpList.add(cm, cm.getCursor(), cm.getCursor());
+  v.dispatch({ changes: r.changes, selection: { anchor: r.cursor }, effects: EditorView.scrollIntoView(r.cursor, { y: "center" }) });
+  insertMode(v);
+  return true;
+}
+
 /** Ctrl/Cmd-click follows links; clicking a checkbox toggles it. */
 const clicks = EditorView.domEventHandlers({
   mousedown(e, v) {
@@ -455,9 +480,11 @@ const clicks = EditorView.domEventHandlers({
     if (pos == null) return false;
     if (e.ctrlKey || e.metaKey) {
       const target = linkAt(v.state, pos);
-      if (!target) return false;
+      const fn = !target && footnoteTarget(v.state.doc.toString(), pos);
+      if (!target && !fn) return false;
       e.preventDefault();
-      hooks.follow(target);
+      if (fn) v.dispatch({ selection: { anchor: pos } }); // the app follows the footnote at the cursor
+      hooks.follow(target ?? undefined);
       return true;
     }
     const ln = v.state.doc.lineAt(pos);

@@ -372,7 +372,7 @@ Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`, `no` p
 | Alt+J / Alt+K | Move heading, list item (with nested lines; renumbers) or table row down / up |
 | Shift+← / → | Change task status, or move a date by a day |
 | Shift+↑ / ↓ | Change priority, or the date part under the cursor |
-| Enter, gf, Ctrl+click | Follow a link (relative `file:` links like `../other/note.org` resolve from the note's folder; `[[*Heading]]`, `[[#custom-id]]`, `[[file:a.org::*Heading]]`, `::12` (line) and `::text` jump to the match) |
+| Enter, gf, Ctrl+click | Follow a link (relative `file:` links like `../other/note.org` resolve from the note's folder; `[[*Heading]]`, `[[#custom-id]]`, `[[file:a.org::*Heading]]`, `::12` (line) and `::text` jump to the match). On a footnote `[fn:1]` it jumps to the definition and back; Ctrl+O returns |
 | click `[ ]` | Toggle a checkbox |
 | Space x … | Task commands for the heading at the cursor |
 | Space n b | Notes linking here, plus unlinked mentions of this note's title (**Link** turns one into an `[[id:]]` link; Space n u undoes) |
@@ -418,7 +418,7 @@ drawers, `#+KEY:` names and heading `:tags:`.
 | `\|-` then Tab | Expands into a separator line |
 | `<s`, `<q`, `<e`, `<v` + Tab | Code, quote, example, verse block |
 | Ctrl+Shift+O | Go to a heading in this note |
-| Space i … | Insert table, code block, quote, link, date, rule; `Space i D` stamps the current time as an inactive `[2026-10-12 Mon 09:05]` (`Space i d` takes the full date syntax: `fri 14:00-15:30`, `fri +1w` repeat, `fri -3d` warning) |
+| Space i … | Insert table, code block, quote, link, date, rule, footnote (`Space i f` adds the next `[fn:N]` and types its definition under a `* Footnotes` heading at the end); `Space i D` stamps the current time as an inactive `[2026-10-12 Mon 09:05]` (`Space i d` takes the full date syntax: `fri 14:00-15:30`, `fri +1w` repeat, `fri -3d` warning) |
 | Space i b / i / ~ / + | Bold, italic, code, strike-through the selection or the word at the cursor (again removes it); Ctrl/Cmd+B and Ctrl/Cmd+I in insert mode |
 | Space T … | Table: rows, columns, separator, sort, align |
 | `[/]` or `[%]` in a heading | Progress cookie, updated when you tick checkboxes or finish child tasks |

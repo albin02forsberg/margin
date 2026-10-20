@@ -885,8 +885,15 @@
 
   // ---------------------------------------------------------------- notes
 
+  /** Jump between the footnote at the cursor and its definition; false when not on one. */
+  function followFootnote() {
+    const f = ed.followFootnote(view);
+    if (f && !f.moved) flash(f.def ? `Nothing references fn:${f.label}` : `No definition for fn:${f.label}`);
+    return !!f;
+  }
+
   async function followLink(target = ed.linkAtCursor(view)) {
-    if (!target) return flash("No link here.");
+    if (!target) return followFootnote() || flash("No link here.");
     if (target.startsWith("id:")) {
       const nodes: NoteNode[] = await call("notes_nodes");
       const n = nodes.find((n) => n.id === target.slice(3));
@@ -1704,7 +1711,7 @@
     { label: "Show note graph", leader: "n g", run: () => { showGraph = !showGraph; return refreshBacklinks(); } },
     { label: "AI chat (local model)", leader: "n a", run: toggleChat },
     { label: "Undo last edit made from a task view or the links panel", leader: "n u", run: () => undo().then(refreshBacklinks) },
-    { label: "Follow link at cursor (also gf, Ctrl+click)", keys: ["Enter"], ctx: "normal", leader: "n o", run: () => (ed.linkAtCursor(view) ? (act(() => followLink()), true) : false) },
+    { label: "Follow link or footnote at cursor (also gf, Ctrl+click)", keys: ["Enter"], ctx: "normal", leader: "n o", run: () => (ed.linkAtCursor(view) ? (act(() => followLink()), true) : followFootnote()) },
 
     { label: "Go to Today", keys: ["Ctrl+1"], leader: "v t", run: () => openView("agenda") },
     { label: "Go to All tasks", keys: ["Ctrl+2"], leader: "v a", run: () => openView("todo") },
@@ -1779,6 +1786,7 @@
     { label: "Insert web link…", leader: "i w", run: insertWebLink },
     { label: "Insert link to a note…", leader: "i l", run: insertLink },
     { label: "Insert date…", leader: "i d", run: insertDate },
+    { label: "Insert footnote (Enter on [fn:N] jumps there and back)", leader: "i f", run: () => inFile() && ed.insertFootnote(view) },
     { label: "Insert timestamp now (inactive)", leader: "i D", run: () => inFile() && ed.insertText(view, inactiveStamp(new Date())) },
     { label: "Clean up unused attachments…", run: cleanAttachments },
     { label: "Bold the selection / word (Ctrl+B in insert mode)", leader: "i b", run: () => inFile() && ed.emphasis(view, "*") },
