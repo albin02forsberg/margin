@@ -645,6 +645,12 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
     }
 
     #[test]
+    fn markdown_fragment_and_unresolved_id() {
+        let m = markdown(&parse("Intro [[id:nope][Other]] end\n\n- one\n", &kw()), "x", Path::new("/n"), &Ids::new());
+        assert!(m.contains("Intro Other end") && !m.contains("id:nope") && m.contains("- one"), "{m}");
+    }
+
+    #[test]
     fn followups() {
         let dir = std::env::temp_dir().join(format!("margin-export-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();

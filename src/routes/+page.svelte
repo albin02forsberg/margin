@@ -1404,6 +1404,17 @@
     if (path) await exported(path, format === "pdf");
   }
 
+  /** Copy the selection (else the whole note) to the clipboard as Markdown. */
+  async function copyMarkdown() {
+    if (!inFile()) return flash("Open a note first.");
+    const r = view.state.selection.main, text = r.empty ? view.state.doc.toString() : view.state.sliceDoc(r.from, r.to);
+    if (!text.trim()) return flash("Nothing to copy.");
+    try {
+      await navigator.clipboard.writeText(await invoke<string>("export_markdown", { path: tab.path, text }));
+      flash("Copied as Markdown");
+    } catch { flash("Couldn't copy to the clipboard."); }
+  }
+
   /** The open note plus the notes it links to by id:, as HTML/Markdown pages in a folder that link to each other, or one PDF. */
   async function exportLinked() {
     if (!inFile()) return flash("Open a note first.");
@@ -1776,6 +1787,7 @@
 
     { label: "Export: note as HTML", leader: "e h", run: () => exportNote("html") },
     { label: "Export: note as Markdown", leader: "e m", run: () => exportNote("md") },
+    { label: "Export: copy note as Markdown", leader: "e c", run: copyMarkdown },
     { label: "Export: note as PDF", leader: "e p", run: () => exportNote("pdf") },
     { label: "Export: note and linked notes…", leader: "e a", run: exportLinked },
     { label: "Export: time report (HTML/PDF)…", leader: "e t", run: exportReport },

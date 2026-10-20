@@ -1608,6 +1608,12 @@ fn export_note(s: State<App>, path: PathBuf, text: String, format: String, overw
     }
 }
 
+/// TEXT (the buffer or selection of PATH) as Markdown, for the clipboard; nothing is written.
+#[tauri::command]
+fn export_markdown(s: State<App>, path: PathBuf, text: String) -> String {
+    export::markdown(&export::parse(&text, &s.kw()), &stem(&path), path.parent().unwrap_or(Path::new("")), &export::Ids::new())
+}
+
 /// Export note TEXT (the buffer of PATH) and the notes it reaches by id: links within DEPTH hops
 /// as FORMAT (html | md) pages in `<export_dir>/<stem>/`, id: links between them made relative,
 /// pages of an earlier export no longer included moved into `old/`; pdf: one `<stem> (linked).html` print page. Returns PATH's page.
@@ -1796,7 +1802,7 @@ pub fn run() {
             notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
-            export_note, export_linked, export_report, export_open, quit::quit_reply
+            export_note, export_markdown, export_linked, export_report, export_open, quit::quit_reply
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
