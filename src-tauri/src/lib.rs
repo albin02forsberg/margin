@@ -705,6 +705,12 @@ fn org_edit_op(text: &str, line: usize, op: &str, value: Option<String>, kw: &or
     })
 }
 
+/// Sort the children of the heading at or above LINE (None: top level) by KEY; `KEY-` sorts descending.
+#[tauri::command]
+fn org_sort(s: State<App>, text: String, line: Option<usize>, key: String) -> R<String> {
+    org::sort_children(&text, line, &s.kw(), key.trim_end_matches('-'), key.ends_with('-'))
+}
+
 #[tauri::command]
 fn org_targets(s: State<App>) -> Vec<org::Target> {
     org::targets(&s.files(), &s.cfg().notes())
@@ -1831,7 +1837,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             watcher::gnome_extension, watcher::screen_recording,
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
-            agenda, todos, search_todos, org_heading, org_edit, org_planning, read_date, date_stamp, read_past_date, org_context,
+            agenda, todos, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,

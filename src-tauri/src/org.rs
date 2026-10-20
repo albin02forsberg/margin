@@ -902,6 +902,60 @@ pub fn refile_same(text: &str, line: usize, dst_line: Option<usize>) -> Result<S
     Ok(join(l, text))
 }
 
+/// Sort the children of the heading at or above LINE (top-level headings for
+/// None or a line above the first heading) by KEY: title | priority | status
+/// | scheduled | deadline. Stable; headings without the key go last either
+/// way. Blank lines between siblings stay where they were.
+pub fn sort_children(text: &str, line: Option<usize>, kw: &Kw, key: &str, desc: bool) -> Result<String, String> {
+    let mut l = to_lines(text);
+    let (s, e) = match line.and_then(|n| headline_at(&l, n)) {
+        Some(hl) => (hl + 1, subtree_range(&l, hl).1),
+        None => (0, l.len()),
+    };
+    let heads: Vec<usize> = (s..e).filter(|&i| heading_level(&l[i]).is_some()).collect();
+    let Some(lvl) = heads.first().and_then(|&i| heading_level(&l[i])) else { return Err("No headings to sort here.".into()) };
+    let starts: Vec<usize> = heads.into_iter().filter(|&i| heading_level(&l[i]).unwrap() <= lvl).collect();
+    if starts.len() < 2 {
+        return Err("Only one heading here; nothing to sort.".into());
+    }
+    let kws: Vec<&String> = kw.todo.iter().chain(&kw.done).collect();
+    let key_of = |sub: &[String]| -> Option<String> {
+        let (_, k, p, title, _) = split_headline(&sub[0], kw)?;
+        match key {
+            "title" => Some(title.to_lowercase()),
+            "priority" => p,
+            "status" => k.and_then(|k| kws.iter().position(|w| **w == k)).map(|i| format!("{i:04}")),
+            "scheduled" | "deadline" => {
+                let p = sub.get(1).filter(|p| is_planning(p))?;
+                let ts = TS.captures(&p[p.find(&format!("{}:", key.to_uppercase()))?..]).and_then(|c| parse_ts(&c))?;
+                Some(format!("{} {}", ts.date, ts.time.unwrap_or_default()))
+            }
+            _ => None,
+        }
+    };
+    if !["title", "priority", "status", "scheduled", "deadline"].contains(&key) {
+        return Err(format!("unknown sort key {key}"));
+    }
+    let tail: Vec<String> = l.drain(starts[0]..e).collect();
+    let mut subs: Vec<Vec<String>> = vec![];
+    let mut blanks = vec![];
+    for (j, &st) in starts.iter().enumerate() {
+        let mut sub = tail[st - starts[0]..starts.get(j + 1).unwrap_or(&e) - starts[0]].to_vec();
+        let n = sub.iter().rev().take_while(|x| x.trim().is_empty()).count();
+        blanks.push(sub.split_off(sub.len() - n));
+        subs.push(sub);
+    }
+    let mut keyed: Vec<(Option<String>, Vec<String>)> = subs.into_iter().map(|s| (key_of(&s), s)).collect();
+    keyed.sort_by(|(a, _), (b, _)| match (a, b) {
+        (Some(a), Some(b)) if desc => b.cmp(a),
+        (Some(a), Some(b)) => a.cmp(b),
+        (a, b) => b.is_some().cmp(&a.is_some()),
+    });
+    let sorted = keyed.into_iter().zip(blanks).flat_map(|((_, s), b)| s.into_iter().chain(b));
+    l.splice(starts[0]..starts[0], sorted);
+    Ok(join(l, text))
+}
+
 /// Add KEY to the property drawer of SUB's heading, creating the drawer.
 fn set_property(sub: &mut Vec<String>, key: &str, val: &str) {
     let i = if sub.len() > 1 && is_planning(&sub[1]) { 2 } else { 1 };
@@ -1515,6 +1569,32 @@ mod tests {
         let later = d("2026-10-03").and_hms_opt(9, 0, 0).unwrap();
         assert_eq!(add_note(&once, 0, "new", later), format!("* A\n- Note taken on [2026-10-03 Sat 09:00] \\\\\n  new\n{n}  old\n"));
         assert_eq!(add_note("no heading\n", 0, "x", at()), "no heading\n");
+    }
+
+    #[test]
+    fn sort_children_keys() {
+        let s = |t: &str, line, key, desc| sort_children(t, line, &kw(), key, desc).unwrap();
+        // Nested children travel with their parent; the body before the first child stays; text after the subtree stays.
+        let src = "* P\nbody\n** b\n*** deep\n** C\n** a\n* Q\n";
+        assert_eq!(s(src, Some(1), "title", false), "* P\nbody\n** a\n** b\n*** deep\n** C\n* Q\n");
+        assert_eq!(s(src, Some(0), "title", true), "* P\nbody\n** C\n** b\n*** deep\n** a\n* Q\n");
+        // Top level: no line, or a cursor above the first heading; the preamble stays.
+        let top = "#+title: T\n* b\n* a";
+        assert_eq!(s(top, None, "title", false), "#+title: T\n* a\n* b");
+        assert_eq!(s(top, Some(0), "title", false), "#+title: T\n* a\n* b");
+        // Missing keys go last, both directions; ties keep their order.
+        let pri = "* x\n* [#B] b1\n* [#A] a\n* [#B] b2\n";
+        assert_eq!(s(pri, None, "priority", false), "* [#A] a\n* [#B] b1\n* [#B] b2\n* x\n");
+        assert_eq!(s(pri, None, "priority", true), "* [#B] b1\n* [#B] b2\n* [#A] a\n* x\n");
+        assert_eq!(s("* DONE d\n* plain\n* NEXT n\n* TODO t\n", None, "status", false), "* TODO t\n* NEXT n\n* DONE d\n* plain\n");
+        let dates = "* none\n* late\nSCHEDULED: <2026-10-05 Mon> DEADLINE: <2026-10-01 Thu>\n* early\nSCHEDULED: <2026-10-02 Fri 10:00>\n";
+        assert_eq!(s(dates, None, "scheduled", false), "* early\nSCHEDULED: <2026-10-02 Fri 10:00>\n* late\nSCHEDULED: <2026-10-05 Mon> DEADLINE: <2026-10-01 Thu>\n* none\n");
+        assert_eq!(s(dates, None, "deadline", false), "* late\nSCHEDULED: <2026-10-05 Mon> DEADLINE: <2026-10-01 Thu>\n* none\n* early\nSCHEDULED: <2026-10-02 Fri 10:00>\n");
+        // Blank separators stay positional, so the last child doesn't glue onto the next.
+        assert_eq!(s("* P\n** b\n\n** a\n* Q\n", Some(0), "title", false), "* P\n** a\n\n** b\n* Q\n");
+        assert!(sort_children("* P\n** only\n", Some(0), &kw(), "title", false).is_err());
+        assert!(sort_children("no headings\n", None, &kw(), "title", false).is_err());
+        assert!(sort_children(src, Some(0), &kw(), "size", false).is_err());
     }
 
     #[test]

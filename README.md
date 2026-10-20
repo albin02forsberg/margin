@@ -370,6 +370,7 @@ Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`, `no` p
 | Alt+Shift+Enter | New task heading |
 | Alt+H / Alt+L (+Shift) | Promote / demote heading (with children) |
 | Alt+J / Alt+K | Move heading, list item (with nested lines; renumbers) or table row down / up |
+| Space x o | Sort the child headings of the heading at the cursor (the top-level headings when the cursor is above the first one) by title, priority, status, scheduled or deadline date, ascending or descending; subtrees move whole, headings without the key go last, `u` undoes |
 | Shift+← / → | Change task status, or move a date by a day |
 | Shift+↑ / ↓ | Change priority, or the date part under the cursor |
 | Enter, gf, Ctrl+click | Follow a link (relative `file:` links like `../other/note.org` resolve from the note's folder; `[[*Heading]]`, `[[#custom-id]]`, `[[file:a.org::*Heading]]`, `::12` (line) and `::text` jump to the match) |

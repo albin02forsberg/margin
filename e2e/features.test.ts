@@ -930,6 +930,7 @@ describe("Org structure keys", () => {
   const prio = "* TODO [#B] x\n* y\n* TODO z\n"; // lines 3-5
   // Link lines 3-6 start with the link, so the cursor at column 0 is on it; the targets follow.
   const links = "[[*Target heading]]\n[[#custom-id]]\n[[file:other.org::*Other heading]]\n[[*Missing]]\n* Target heading\n* Another\n:PROPERTIES:\n:CUSTOM_ID: custom-id\n:END:\n* Trailing\n";
+  const sortOrg = "* P\n** b\n*** deep\n** a\n** c\n* Q\n"; // lines 3-8
   const f = (n: string) => join(d.notes, `${n}.org`);
   const title = (n: string) => `#+title: ${n}\n\n`;
   /** Open note N in normal mode with the cursor at the start of LINE. */
@@ -957,6 +958,7 @@ describe("Org structure keys", () => {
     d = await launch({ files: ({ notes: dir }) => { for (const n of notes) writeFileSync(join(dir, `${n}.org`), title(n) + org);
       writeFileSync(join(dir, "prio.org"), title("prio") + prio);
       writeFileSync(join(dir, "links.org"), title("links") + links);
+      writeFileSync(join(dir, "sort.org"), title("sort") + sortOrg);
       writeFileSync(join(dir, "other.org"), title("other") + "* Lead\n* Other heading\n* Tail\n");
     } });
     await find(".agenda h1", "Today"); // the page listens for keys only once loaded
@@ -1048,6 +1050,18 @@ describe("Org structure keys", () => {
     await open("boxes", 7); // off the item lines, so they show the checkbox widget
     await (await (await find(".cm-line", "one")).$(".cm-org-check")).click();
     await saved("boxes", "* TODO A [1/2]\n- [X] one\n- [ ] two\n** Child\n* B\n", "checkbox or cookie not updated");
+  });
+
+  it("Space x o sorts a heading's children with their subtrees, u undoes it (#553)", async () => {
+    await open("sort", 3);
+    await browser.keys(" ");
+    await type("xo");
+    await answer("Sort headings by", "title");
+    await answer("Sort by title", "desc");
+    await noPicker();
+    await fileMatches(f("sort"), (s) => s === title("sort") + "* P\n** c\n** b\n*** deep\n** a\n* Q\n", "children not sorted");
+    await type("u");
+    await saved("sort", sortOrg, "sort not undone");
   });
 
   // Last: in e2e, a note opened after this one drops "3" and "0" of "3G0" and inserts the "G".

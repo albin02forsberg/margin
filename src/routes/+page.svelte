@@ -735,6 +735,17 @@
     if (h) await openFile(tab.path!, h.line);
   }
 
+  /** Sort the children of the heading at the cursor (top-level headings above the first one). */
+  async function sortHeadings() {
+    if (!inFile()) return flash("Open a note first.");
+    const by = await pick({ prompt: "Sort headings by", items: ["title", "priority", "status", "scheduled", "deadline"] });
+    if (by == null) return;
+    const dir = await pick({ prompt: `Sort by ${by}`, items: [{ label: "Ascending", value: "" }, { label: "Descending", value: "-" }] });
+    if (dir == null) return;
+    const line = curLine0();
+    await toFile(tab.path!, (text) => call("org_sort", { text, line, key: by + dir }));
+  }
+
   async function insertTable() {
     if (!inFile()) return flash("Open a note first.");
     const size = await ask("Table size: columns × rows", "3x2", "e.g. 4x3 — then Tab moves between cells");
@@ -1755,6 +1766,7 @@
     { label: "Turn line into heading / back", leader: "x *", run: () => inFile() && ed.toggleHeading(view) },
     { label: "Toggle checkbox (or click it)", leader: "x c", run: () => inFile() && ed.toggleCheckbox(view) },
     { label: "Update progress cookies [2/5]", leader: "x u", run: () => inFile() && ed.updateCookies(view) },
+    { label: "Sort headings under the cursor…", leader: "x o", run: () => act(sortHeadings) },
     { label: "List: renumber ordered list", leader: "x r", run: () => inFile() && ed.renumberList(view) },
     { label: "Go to heading…", keys: ["Ctrl+Shift+O"], leader: "n h", run: goToHeading },
     { label: "Promote heading / move table column left", keys: ["Alt+H"], ctx: "editor", run: tableOr("colLeft", () => ed.shiftHeading(view, -1)) },
