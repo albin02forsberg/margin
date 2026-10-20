@@ -855,6 +855,7 @@ describe("Org structure keys", () => {
     await browser.keys([Key.Alt, Key.Shift, Key.Enter]);
     await type("C");
     await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n* TODO C\n", "task heading not added");
+    await browser.releaseActions(); // diagnostic: are modifiers left pressed for the next test?
   });
 
   it("Shift+Right / Shift+Left cycle the heading's status", async () => {
