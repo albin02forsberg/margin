@@ -394,6 +394,39 @@ describe("Features", () => {
     await browser.waitUntil(async () => (await texts(".tabs .tab > button:not(.x)")).length === 1, { timeoutMsg: "middle-click didn't close the tab" });
   });
 
+  it("reorders tabs with Space b < / > and by dragging, keeping the active tab", async () => {
+    const names = () => texts(".tabs .tab > button:not(.x)");
+    for (const n of ["Beta", "Alpha"]) {
+      await browser.keys([Key.Ctrl, "p"]);
+      await answer("Open a note", n);
+      await find(".status .file", `${n.toLowerCase()}.org`);
+    }
+    await browser.keys(Key.Escape);
+    for (let i = 0; i < 2; i++) { await browser.keys(" "); await type("b>"); } // Alpha to the end (clamped there)
+    const o = await names();
+    assert.ok(o.length >= 2);
+    const swapped = [...o.slice(0, -2), o[o.length - 1], o[o.length - 2]];
+    await browser.keys(" ");
+    await type("b<");
+    await browser.waitUntil(async () => (await names()).join() === swapped.join(), { timeoutMsg: "tab not moved left" });
+    await find(".tabs .tab.cur button", "alpha");
+    await browser.keys(" ");
+    await type("b>");
+    await browser.waitUntil(async () => (await names()).join() === o.join(), { timeoutMsg: "tab not moved right" });
+    // drag the first tab to the end with pointer events
+    await browser.execute(() => {
+      const t = [...document.querySelectorAll<HTMLElement>(".tabs .tab")];
+      const r = t[0].getBoundingClientRect(), last = t[t.length - 1].getBoundingClientRect();
+      const ev = (type: string, x: number) => new PointerEvent(type, { clientX: x, clientY: r.top + 2, button: 0, bubbles: true });
+      t[0].dispatchEvent(ev("pointerdown", r.left + 5));
+      window.dispatchEvent(ev("pointermove", last.right - 3));
+      window.dispatchEvent(ev("pointerup", last.right - 3));
+    });
+    const dragged = [...o.slice(1), o[0]];
+    await browser.waitUntil(async () => (await names()).join() === dragged.join(), { timeoutMsg: "drag didn't reorder tabs" });
+    await find(".tabs .tab.cur button", "alpha");
+  });
+
   it("closes the tabs around a middle tab without touching their files or the kept tab's fresh edits", async () => {
     const files = ["hub.org", "leaf.org"].map((f) => join(d.notes, f));
     const before = files.map(read);

@@ -535,6 +535,47 @@
 
   const cycleTab = (d: number) => tabs.length && show((cur + d + tabs.length) % tabs.length);
 
+  /** Moves tab `from` to `to` (clamped), keeping the same tab active; the session effect saves the new order. */
+  function moveTab(from: number, to: number) {
+    to = Math.max(0, Math.min(tabs.length - 1, to));
+    if (from === to || !tabs[from]) return;
+    const active = tabs[cur];
+    tabs.splice(to, 0, ...tabs.splice(from, 1));
+    cur = tabs.indexOf(active);
+  }
+
+  /** Drag a tab sideways (pointer events: HTML5 drag doesn't fire on Windows while Tauri's file drop is on). */
+  let dragTab = $state<{ from: number; over: number } | null>(null);
+  function tabPointerDown(e: PointerEvent, from: number) {
+    if (e.button !== 0 || (e.target as HTMLElement).closest(".x")) return;
+    const x0 = e.clientX;
+    let moved = false;
+    const over = (ev: PointerEvent) => {
+      const els = [...document.querySelectorAll(".tabs .tab")];
+      const i = els.findIndex((el) => ev.clientX < el.getBoundingClientRect().right);
+      return i < 0 ? els.length - 1 : i;
+    };
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.abs(ev.clientX - x0) < 6) return;
+      moved = true;
+      dragTab = { from, over: over(ev) };
+    };
+    const up = (ev: PointerEvent) => {
+      removeEventListener("pointermove", move);
+      removeEventListener("pointerup", up);
+      removeEventListener("pointercancel", up);
+      dragTab = null;
+      if (!moved) return;
+      const swallow = (c: Event) => c.stopPropagation(); // the release isn't a tab click
+      addEventListener("click", swallow, true);
+      setTimeout(() => removeEventListener("click", swallow, true));
+      if (ev.type === "pointerup") moveTab(from, over(ev));
+    };
+    addEventListener("pointermove", move);
+    addEventListener("pointerup", up);
+    addEventListener("pointercancel", up);
+  }
+
   async function switchTab() {
     const i = await pick({ prompt: "Switch to tab", items: tabs.map((t, i) => ({ label: t.title, detail: t.path ? rel(t.path) : "", value: i })) });
     if (i != null) await show(i);
@@ -1651,6 +1692,8 @@
     { label: "Switch tab…", leader: "b b", run: switchTab },
     { label: "Next tab (also gt)", keys: ["Ctrl+Tab"], leader: "b n", run: () => cycleTab(1) },
     { label: "Previous tab (also gT)", keys: ["Ctrl+Shift+Tab"], leader: "b p", run: () => cycleTab(-1) },
+    { label: "Move tab left", leader: "b <", run: () => moveTab(cur, cur - 1) },
+    { label: "Move tab right", leader: "b >", run: () => moveTab(cur, cur + 1) },
     { label: "Close tab (also :q)", leader: "b d", run: () => closeTab() },
     { label: "Close other tabs", leader: "b o", run: () => closeOthers() },
     { label: "Close all tabs", leader: "b D", run: () => closeOthers(true) },
@@ -2100,7 +2143,7 @@
     <nav class="tabs">
       {#each tabs as t, i (t.key)}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="tab" class:cur={i === cur} onmousedown={(e) => e.button === 1 && e.preventDefault()} onauxclick={(e) => e.button === 1 && act(() => closeTab(i))}>
+        <div class="tab" class:cur={i === cur} class:dragging={dragTab?.from === i} class:dropat={dragTab && dragTab.over === i && dragTab.from !== i} onpointerdown={(e) => tabPointerDown(e, i)} onmousedown={(e) => e.button === 1 && e.preventDefault()} onauxclick={(e) => e.button === 1 && act(() => closeTab(i))}>
           <button title={t.path ? rel(t.path) : t.title} onclick={() => act(() => show(i))}>{t.title}{t.dirty ? " •" : ""}</button>
           <button class="x" title="Close" onclick={() => act(() => closeTab(i))}>×</button>
         </div>
@@ -2220,6 +2263,8 @@
   .tab button:focus-visible { outline: none; box-shadow: var(--ring); }
   .tab .x { padding: 2px var(--s2) 2px var(--s1); opacity: 0; font-size: var(--fs-base); }
   .tab:hover .x, .tab.cur .x { opacity: 0.7; }
+  .tab.dragging { opacity: 0.6; }
+  .tab.dropat { box-shadow: var(--ring); }
   .tab.cur { background: var(--card); box-shadow: var(--soft); }
   .tab.cur button { color: var(--fg); font-weight: 500; }
   main { flex: 1; display: flex; min-height: 0; }

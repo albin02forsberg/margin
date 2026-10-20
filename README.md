@@ -215,6 +215,7 @@ profile clocks out first, and warns where old files stay (nothing is moved).
 | Ctrl+S / `:w` | Save (also saves automatically) |
 | Ctrl+Shift+T / `Space b u` | Reopen the last closed tab, at the line you left (up to 20) |
 | Middle-click a tab / `Space b o` / `Space b D` | Close that tab / close the other tabs / close all tabs (each goes on the reopen stack, which keeps the last 20; tabs with unresolved conflicts stay open). Hover a tab for its file path |
+| Drag a tab / `Space b <` / `Space b >` | Reorder tabs (the active tab stays active; the order is restored with the session) |
 | Palette → Show what's new | After Margin updates itself it opens the release notes once; this re-opens the notes of the last update (read-only tab) |
 | Palette → Report a bug | Opens a new GitHub issue in your browser, prefilled with Margin's version, your OS, the update channel and the last error message (no note content or settings); edit it and submit there |
 
