@@ -676,7 +676,8 @@ note (the chat says so instead of offering it) or for its tasks.
 ## Export
 
 `Space e` exports the open note (including unsaved edits) as HTML (`e h`),
-Markdown (`e m`) or PDF (`e p`), and the time report for the last 7 days, this
+Markdown (`e m`) or PDF (`e p`), copies it (or just the selection) to the clipboard as
+Markdown (`e c`), and the time report for the last 7 days, this
 month, last month or a custom range as HTML or PDF (`e t`, or `E` in the Time
 view). Files go to `export_dir` (default `~/Desktop`); if one is already there you
 choose Overwrite, Keep both (saves `name (2).html`) or Cancel. PDF writes the
