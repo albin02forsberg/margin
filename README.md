@@ -196,7 +196,8 @@ profile clocks out first, and warns where old files stay (nothing is moved).
 - **Space** (vim normal mode, or in any list view) — the same actions as a menu.
 - **Ctrl+=** / **Ctrl+-** (**Cmd** on macOS), or **Ctrl+mouse wheel** / touchpad pinch — zoom the whole UI
   in / out; reset with **Ctrl/Cmd+0** or `Space v 0`. The zoom level is remembered across restarts.
-- Top bar: **Today** (Ctrl+1), **Tasks** (Ctrl+2), **Inbox** (Ctrl+3),
+- Top bar: **Today** (Ctrl+1), **Tasks** (Ctrl+2), **Inbox** (Ctrl+3, with a badge counting
+  its open top-level entries; done and archived ones don't count),
   **Journal** (Ctrl+J), **Time** (Ctrl+4), **Notes** (Ctrl+P, recent notes first), your saved
   searches, the Ctrl+K search, Settings and the running clock (Pause / Stop / Start).
   Toggle it with Ctrl+\\ or `Space v s`. In a narrow window it keeps only the icons (under 760 px)
