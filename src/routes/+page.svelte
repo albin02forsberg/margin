@@ -14,7 +14,7 @@
   import * as ed from "$lib/editor";
   import { linkFor, asUrl } from "$lib/weblink";
   import { findTarget, linkHeadings, splitTarget } from "$lib/links";
-  import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath } from "$lib/paths";
+  import { ago, changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
@@ -1044,6 +1044,15 @@
     if (r) await openFile(r as string);
   }
 
+  /** Notes by last change, newest first (#619). */
+  async function recentlyChanged() {
+    const o = await call<[string, string, number][]>("notes_recent");
+    if (!o.length) return flash("No notes");
+    const now = Date.now() / 1000;
+    const r = await pick({ prompt: "Recently changed notes", items: o.map(([p, title, t]) => ({ label: title || niceName(p), detail: `${rel(p)} · ${ago(t, now)}`, value: p as unknown })) });
+    if (r) await openFile(r as string);
+  }
+
   /** Pick a tag used in notes, then a note or heading carrying it (#609). */
   async function browseTags() {
     const tags = await call<[string, number][]>("notes_tags");
@@ -1886,6 +1895,7 @@
     { label: "Show notes linking here", leader: "n b", run: () => { showBacklinks = !showBacklinks; return refreshBacklinks(); } },
     { label: "Jump to a note linking here…", leader: "n l", run: pickBacklink },
     { label: "Notes: find notes with no links…", leader: "n O", run: findOrphans },
+    { label: "Notes: recently changed…", leader: "n C", run: recentlyChanged },
     { label: "Notes: browse by tag…", leader: "n T", run: browseTags },
     { label: "Show note graph", leader: "n g", run: () => { showGraph = !showGraph; return refreshBacklinks(); } },
     { label: "AI chat (local model)", leader: "n a", run: toggleChat },

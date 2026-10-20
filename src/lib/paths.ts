@@ -44,6 +44,17 @@ export function onThisDay(files: string[], daily: string, today: string): { path
   return out.sort((a, b) => b.date.localeCompare(a.date));
 }
 
+/** How long ago the epoch-seconds time THEN is at NOW (epoch seconds): "just now" (also for the future), "5 min ago", "3 h ago", "yesterday", "4 days ago", else the date (YYYY-MM-DD, UTC). */
+export function ago(then: number, now: number): string {
+  const d = now - then;
+  if (d < 60) return "just now";
+  if (d < 3600) return `${Math.floor(d / 60)} min ago`;
+  if (d < 86400) return `${Math.floor(d / 3600)} h ago`;
+  if (d < 2 * 86400) return "yesterday";
+  if (d < 7 * 86400) return `${Math.floor(d / 86400)} days ago`;
+  return new Date(then * 1000).toISOString().slice(0, 10);
+}
+
 /** Folders ("a/b", "" for the notes folder itself) holding the notes FILES (relative, any separators), sorted;
  *  dot folders (like .trash), the attachments folder ATTACH and any folder at or under an IMAGES folder (at any depth, like the backend) are left out. */
 export function noteFolders(files: string[], attach: string, images = ""): string[] {
