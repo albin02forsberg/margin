@@ -725,6 +725,16 @@
     } catch { flash("Couldn't copy to the clipboard."); }
   }
 
+  /** Move the heading at the cursor (body and children) into a new note next to this one, leaving a link (org-roam-extract-subtree); `Space n u` puts it back. */
+  async function extractNote() {
+    const loc = editorLoc();
+    if (!loc) return flash("Open a note and put the cursor on a heading first.");
+    let path = "";
+    await recorded(() => toFile(loc.path, async (text) => { const [s, p] = await call<[string, string]>("note_extract", { path: loc.path, text, line: loc.line }); path = p; return s; }));
+    await openFile(path);
+    flash(`Extracted into ${base(path)}`);
+  }
+
   function atCursor(op: string, arg?: number) {
     const loc = editorLoc();
     if (!loc) return flash("Open a note and put the cursor on a task first.");
@@ -1759,6 +1769,7 @@
       await copyHeadingLink({ path: tab.path!, line: curLine0() });
     }) },
     { label: "Today's journal", keys: ["Ctrl+J"], leader: "j", run: () => journal() },
+    { label: "Note: extract heading at cursor into a new note, leaving a link", leader: "n x", run: () => act(extractNote) },
     { label: "Journal for another day…", leader: "n J", run: journalPick },
     { label: "Journal: previous entry", leader: "n [", run: () => journalStep(-1) },
     { label: "Journal: next entry", leader: "n ]", run: () => journalStep(1) },

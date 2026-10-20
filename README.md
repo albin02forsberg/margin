@@ -385,6 +385,7 @@ Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`, `no` p
 | Space n f | Show this file in the system file manager (any open file: a note, `config.toml`, the time log) |
 | Space n y | Copy this file's full path to the clipboard |
 | Space n w | Copy an `[[id:…][Heading]]` link to the heading at the cursor (adds an `:ID:` to it if missing) |
+| Space n x | Extract the heading at the cursor into a new note in the same folder, like `org-roam-extract-subtree`: its text and children move there (children become top-level headings), titled after the heading without keyword, priority, tags or `[n/m]` cookie; the heading stays with its dates and drawers (an `:ID:` keeps resolving) and gets an `[[id:]]` link to the note. Space n u puts the text back (the new note stays) |
 | Space n a | AI chat with the local model, about this note if you like ([Drafts from a local model](#drafts-from-a-local-model)) |
 
 ![A note with its local graph](docs/screenshots/graph.png)

@@ -1,7 +1,7 @@
 // End-to-end tests of features beyond the basics; setup and helpers are in setup.ts.
 import { after, before, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { answer, browser, close, fileMatches, find, isoDay, Key, launch, noPicker, orgDay, palette, read, savedView, texts, type, type Dirs } from "./setup.ts";
 
@@ -638,6 +638,7 @@ describe("Journal, archive and move", () => {
   let d: Dirs;
   const chores = "* TODO Archive me\n* TODO Move me\n* TODO Stay put\n";
   const projects = "#+title: Projects\n\n* Garden\n* Shed\n";
+  const extract = "* TODO Big idea :x:\nwhy\n** Part\n";
   const f = (n: string) => join(d.notes, n);
   /** Leader key sequence KEYS from the editor's normal mode. */
   const leader = async (keys: string) => { await browser.keys(Key.Escape); await browser.keys(" "); await type(keys); };
@@ -649,6 +650,7 @@ describe("Journal, archive and move", () => {
         writeFileSync(join(notes, "daily", "2020-01-02.org"), "#+title: 2020-01-02\n\n* Second day\n");
         writeFileSync(join(notes, "chores.org"), chores);
         writeFileSync(join(notes, "projects.org"), projects);
+        writeFileSync(join(notes, "extract.org"), extract);
       },
     });
   });
@@ -702,6 +704,20 @@ describe("Journal, archive and move", () => {
     await browser.keys("u");
     await fileMatches(f("chores.org"), (s) => s === chores, "undo didn't restore the source");
     await fileMatches(f("projects.org"), (s) => s === projects, "undo didn't restore the target");
+  });
+
+  it("Space n x extracts the heading into a new note with a link back, and Space n u restores it", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "extract");
+    await find(".status .file", "extract.org");
+    await leader("nx");
+    await find(".status .file", "big_idea.org");
+    const name = readdirSync(d.notes).find((n) => n.endsWith("-big_idea.org"))!;
+    const note = read(f(name)), id = /:ID:\s+(\S+)/.exec(note)![1];
+    assert.match(note, /#\+title: Big idea\n\nwhy\n\* Part\n$/);
+    await fileMatches(f("extract.org"), (s) => s === `* TODO Big idea :x:\n[[id:${id}][Big idea]]\n`, "heading not replaced by a link");
+    await leader("nu");
+    await fileMatches(f("extract.org"), (s) => s === extract, "undo didn't restore the heading");
   });
 
   it("M copies a task under another file's heading, leaves the source and u removes the copy", async () => {
