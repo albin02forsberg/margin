@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { worked, parseWhen, naive, dayTime } from "./clock.ts";
+import { worked, parseWhen, naive, dayTime, inactiveStamp } from "./clock.ts";
 
 const day = (date: string, hours: number, expected: number) => ({ date, hours, expected, leave: "", leave_hours: 0 });
 
@@ -28,4 +28,9 @@ test("dayTime: HH:MM or HHMM on a day, else null", () => {
   assert.equal(dayTime("2026-10-13", "9:30"), "2026-10-13T09:30:00");
   assert.equal(dayTime("2026-10-13", " 0930 "), "2026-10-13T09:30:00");
   for (const bad of ["", "9", "24:00", "12:60", "ab:cd", "9:3"]) assert.equal(dayTime("2026-10-13", bad), null, bad);
+});
+
+test("inactiveStamp: English weekday, zero-padded local time", () => {
+  assert.equal(inactiveStamp(new Date(2026, 9, 12, 9, 5)), "[2026-10-12 Mon 09:05]");
+  assert.equal(inactiveStamp(new Date(2026, 0, 4, 0, 0)), "[2026-01-04 Sun 00:00]");
 });
