@@ -124,8 +124,8 @@
               <button onclick={() => run("pause")}><kbd>p</kbd>Pause</button>
               <button onclick={() => run("switch")}><kbd>c</kbd>Switch project</button>
               <button onclick={() => run("adjust")}><kbd>a</kbd>Started earlier…</button>
-              <button onclick={() => run("stopEarlier")}><kbd>O</kbd>Stopped earlier…</button>
               <button class="primary" onclick={() => run("stop")}><kbd>o</kbd>Stop</button>
+              <button onclick={() => run("stopEarlier")}><kbd>O</kbd>Stopped earlier…</button>
             {:else if d.on_break != null}
               <button onclick={() => run("start")}><kbd>i</kbd>Start something else</button>
               <button class="primary" onclick={() => run("resume")}><kbd>r</kbd>Resume</button>
