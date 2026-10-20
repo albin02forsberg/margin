@@ -425,6 +425,7 @@ a header row.
 | `\|-` then Tab | Expands into a separator line |
 | `<s`, `<q`, `<e`, `<v` + Tab | Code, quote, example, verse block |
 | Ctrl+Shift+O | Go to a heading in this note |
+| Space n H | Go to a heading in any note (type to filter by note and outline path) |
 | Space i … | Insert table, code block, quote, link, date, rule, footnote (`Space i f` adds the next `[fn:N]` and types its definition under a `* Footnotes` heading at the end); `Space i D` stamps the current time as an inactive `[2026-10-12 Mon 09:05]` (`Space i d` takes the full date syntax: `fri 14:00-15:30`, `fri +1w` repeat, `fri -3d` warning) |
 | Space i b / i / ~ / + | Bold, italic, code, strike-through the selection or the word at the cursor (again removes it); Ctrl/Cmd+B and Ctrl/Cmd+I in insert mode |
 | Space T … | Table: rows, columns (`T H` inserts one to the left), separator, sort, align, `T f` formulas |

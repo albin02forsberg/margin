@@ -740,6 +740,14 @@
     if (h) await openFile(tab.path!, h.line);
   }
 
+  /** Jump to any heading of any note (leader `n H`). */
+  async function goToHeadingAnywhere() {
+    const targets = (await call<Target[]>("org_targets")).filter((t) => t.line != null);
+    if (!targets.length) return flash("No headings in any note.");
+    const t = await pick({ prompt: "Go to heading in any note", items: targets.map((t) => ({ label: t.label, value: t })) });
+    if (t) await openFile(t.path, t.line!);
+  }
+
   /** Sort the children of the heading at the cursor (top-level headings above the first one). */
   async function sortHeadings() {
     if (!inFile()) return flash("Open a note first.");
@@ -1791,6 +1799,7 @@
     { label: "Sort headings under the cursor…", leader: "x o", run: () => act(sortHeadings) },
     { label: "List: renumber ordered list", leader: "x r", run: () => inFile() && ed.renumberList(view) },
     { label: "Go to heading…", keys: ["Ctrl+Shift+O"], leader: "n h", run: goToHeading },
+    { label: "Go to heading in any note…", leader: "n H", run: goToHeadingAnywhere },
     { label: "Promote heading / move table column left", keys: ["Alt+H"], ctx: "editor", run: tableOr("colLeft", () => ed.shiftHeading(view, -1)) },
     { label: "Demote heading / move table column right", keys: ["Alt+L"], ctx: "editor", run: tableOr("colRightMove", () => ed.shiftHeading(view, 1)) },
     { label: "Promote heading with children / delete table column", keys: ["Alt+Shift+H"], ctx: "editor", run: tableOr("delCol", () => ed.shiftHeading(view, -1, true)) },
