@@ -706,6 +706,17 @@ describe("Journal, archive and move", () => {
     await fileMatches(f("projects.org"), (s) => s === projects, "undo didn't restore the target");
   });
 
+  it("M copies a task under another file's heading, leaves the source and u removes the copy", async () => {
+    await (await find(".agenda .row .title", "Stay put")).click();
+    await browser.keys("M");
+    await answer("Copy to…", "projects.org / Garden");
+    await fileMatches(f("projects.org"), (s) => s === "#+title: Projects\n\n* Garden\n** TODO Stay put\n* Shed\n", "copy not filed under Garden");
+    await find(".status .msg", "Copied to projects.org / Garden");
+    await fileMatches(f("chores.org"), (s) => s === chores, "source changed by the copy");
+    await browser.keys("u");
+    await fileMatches(f("projects.org"), (s) => s === projects, "undo didn't remove the copy");
+  });
+
   it("Space n x extracts the heading into a new note with a link back, and Space n u restores it", async () => {
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "extract");
@@ -718,17 +729,6 @@ describe("Journal, archive and move", () => {
     await fileMatches(f("extract.org"), (s) => s === `* TODO Big idea :x:\n[[id:${id}][Big idea]]\n`, "heading not replaced by a link");
     await leader("nu");
     await fileMatches(f("extract.org"), (s) => s === extract, "undo didn't restore the heading");
-  });
-
-  it("M copies a task under another file's heading, leaves the source and u removes the copy", async () => {
-    await (await find(".agenda .row .title", "Stay put")).click();
-    await browser.keys("M");
-    await answer("Copy to…", "projects.org / Garden");
-    await fileMatches(f("projects.org"), (s) => s === "#+title: Projects\n\n* Garden\n** TODO Stay put\n* Shed\n", "copy not filed under Garden");
-    await find(".status .msg", "Copied to projects.org / Garden");
-    await fileMatches(f("chores.org"), (s) => s === chores, "source changed by the copy");
-    await browser.keys("u");
-    await fileMatches(f("projects.org"), (s) => s === projects, "undo didn't remove the copy");
   });
 });
 
