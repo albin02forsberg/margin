@@ -61,6 +61,8 @@ wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 # Asks the GNOME extension for the active window (#180); already in the tree via notify-rust.
 zbus = "5"
+# Turns on WebKitGTK's spell checker (#514); already in the tree through wry.
+webkit2gtk = "2.0"
 
 # Free-RAM check before loading a built-in model (#149); already in the tree through Tauri.
 # Screen Recording permission check for window titles (#181); already in the tree via active-win-pos-rs.

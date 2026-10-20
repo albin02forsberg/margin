@@ -397,7 +397,7 @@ The `s`/`d` prompts offer *Every day* / *Every week* picks (the New task dialog 
 
 ## Writing in org
 
-Set `spellcheck = true` (Settings, Editor) to underline misspelled words in org notes with the system spell checker. On Linux the webview needs a system checker (hunspell/enchant) installed.
+Set `spellcheck = true` (Settings, Editor) to underline misspelled words in org notes with the system spell checker. On Linux the webview needs a system checker (hunspell/enchant) installed; Margin turns on WebKitGTK's checker for you, and toggling the setting applies without a restart.
 
 Notes render like a document: markup (stars, link brackets, `*bold*` markers,
 checkbox brackets, block delimiters) is hidden except on the line you're on, so
