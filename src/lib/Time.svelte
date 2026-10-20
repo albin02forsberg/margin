@@ -61,7 +61,7 @@
     if (active) tick().then(() => root?.focus());
   });
 
-  const run = (name: string, arg?: unknown) => api.act(async () => { await api.run(name, arg); await refresh(); root?.focus(); });
+  const run = (name: string, arg?: unknown) => api.act(async () => { await api.run(name, arg); root?.focus(); await refresh(); root?.focus(); });
   const clock = (iso: string) => iso?.slice(11, 16);
   const dayName = (s: string) => new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)).toLocaleDateString(undefined, { weekday: "short" });
   const weekTotal = $derived(d ? d.week.reduce((s: number, w: any) => s + w.hours, 0) : 0);
