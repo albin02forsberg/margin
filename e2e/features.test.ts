@@ -1024,6 +1024,17 @@ describe("Note navigation", () => {
     await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("* Two")), { timeoutMsg: "cursor not on the second heading" });
   });
 
+  it("Space n O lists notes with no links (not the inbox) and opens the picked one", async () => {
+    await browser.keys([Key.Ctrl, "3"]);
+    await find(".status .file", "inbox.org");
+    await browser.keys(Key.Escape);
+    await type(" nO");
+    await find(".picker label span", "Notes with no links");
+    assert.ok(!(await texts(".picker")).some((t) => t.includes("inbox.org")), "inbox listed");
+    await answer("Notes with no links", "Deep");
+    await find(".status .file", "deep.org");
+  });
+
   it("Ctrl+3 opens the inbox", async () => {
     await browser.keys([Key.Ctrl, "3"]);
     await find(".status .file", "inbox.org");
