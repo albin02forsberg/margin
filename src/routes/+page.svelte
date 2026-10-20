@@ -177,6 +177,7 @@
     if (motion) tick().then(() => replay(isText(t) ? editorEl : document.querySelector(`.pane > .view[data-key="${CSS.escape(t?.key ?? "")}"]`)));
     if (t?.state) {
       view.setState(t.state);
+      ed.vimClearJumps();
       ed.onModeChange(view, (m) => (mode = m));
       mode = "normal";
       countWords(view.state);
@@ -1013,6 +1014,7 @@
     Object.assign(t, { key: to, path: to, title: niceName(to), state: newState(to, text, to), saved: text, dirty: false, conflict: false, missing: false });
     if (t === tabs[cur]) {
       view.setState(t.state!);
+      ed.vimClearJumps();
       view.dispatch({ selection: old.selection });
       ed.onModeChange(view, (m) => (mode = m));
       mode = "normal";
