@@ -707,6 +707,7 @@
     },
     link: (loc) => copyHeadingLink(loc),
     move: (loc) => moveTask(loc),
+    copy: (loc) => copyTask(loc),
     archive: (loc) => archiveTask(loc),
     later: (loc, it) => edit(loc, "shift", `${dateKind(it)} 1`),
     earlier: (loc, it) => edit(loc, "shift", `${dateKind(it)} -1`),
@@ -845,6 +846,19 @@
       await toFile(loc.path, async () => newSrc);
     }
     flash(`Moved to ${t.label}`);
+  }
+
+  /** Copy the subtree at LOC under a picked file/heading (org-refile-copy); only the destination is written, so `u` undoes it. */
+  async function copyTask(loc: Loc) {
+    const targets: Target[] = await call("org_targets");
+    const t: Target | null = await pick({ prompt: "Copy to…", items: targets.map((x) => ({ label: x.label, value: x })), hint: "a file puts the copy at the top level; a heading files it underneath" });
+    if (!t) return;
+    if (t.path === loc.path) await toFile(loc.path, (text) => call("org_refile_copy_same", { text, line: loc.line, dstLine: t.line }));
+    else {
+      const src = await textOf(loc.path);
+      await toFile(t.path, (dst) => call("org_refile_copy", { src, line: loc.line, dst, dstLine: t.line }));
+    }
+    flash(`Copied to ${t.label}`);
   }
 
   async function archiveTask(loc: Loc) {
@@ -1789,6 +1803,7 @@
     { label: "Task: tags…", leader: "x g", run: () => atCursor("tags") },
     { label: "Task: add a note…", leader: "x z", run: () => atCursor("note") },
     { label: "Task: move to…", leader: "x m", run: () => atCursor("move") },
+    { label: "Task: copy to…", leader: "x M", run: () => atCursor("copy") },
     { label: "Task: archive", leader: "x A", run: () => atCursor("archive") },
     { label: "Task: track time on it", leader: "x i", run: () => atCursor("clockIn") },
     { label: "New heading / list item / table row below", keys: ["Alt+Enter"], ctx: "editor", leader: "x h", run: tableOr("rowBelow", () => ed.newItem(view)) },

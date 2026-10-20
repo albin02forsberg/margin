@@ -695,6 +695,17 @@ describe("Journal, archive and move", () => {
     await fileMatches(f("chores.org"), (s) => s === chores, "undo didn't restore the source");
     await fileMatches(f("projects.org"), (s) => s === projects, "undo didn't restore the target");
   });
+
+  it("M copies a task under another file's heading, leaves the source and u removes the copy", async () => {
+    await (await find(".agenda .row .title", "Stay put")).click();
+    await browser.keys("M");
+    await answer("Copy to…", "projects.org / Garden");
+    await fileMatches(f("projects.org"), (s) => s === "#+title: Projects\n\n* Garden\n** TODO Stay put\n* Shed\n", "copy not filed under Garden");
+    await find(".status .msg", "Copied to projects.org / Garden");
+    await fileMatches(f("chores.org"), (s) => s === chores, "source changed by the copy");
+    await browser.keys("u");
+    await fileMatches(f("projects.org"), (s) => s === projects, "undo didn't remove the copy");
+  });
 });
 
 // Own launch: in the Tables suite the first keys typed into this note, and into the next one opened, got garbled.

@@ -916,6 +916,57 @@ pub fn refile_same(text: &str, line: usize, dst_line: Option<usize>) -> Result<S
     Ok(join(l, text))
 }
 
+/// Drop every `:ID:` property in SUB (so the copy doesn't duplicate it), and a
+/// `:PROPERTIES:` drawer that this leaves empty.
+fn strip_ids(sub: Vec<String>) -> Vec<String> {
+    let is_id = |l: &str| l.trim_start().get(..4).is_some_and(|p| p.eq_ignore_ascii_case(":ID:"));
+    let mut out = Vec::with_capacity(sub.len());
+    let mut i = 0;
+    while i < sub.len() {
+        if sub[i].trim().eq_ignore_ascii_case(":PROPERTIES:") {
+            if let Some(end) = drawer_end(&sub, i) {
+                let kept: Vec<&String> = sub[i + 1..end].iter().filter(|l| !is_id(l)).collect();
+                if !kept.is_empty() || end == i + 1 {
+                    out.push(sub[i].clone());
+                    out.extend(kept.into_iter().cloned());
+                    out.push(sub[end].clone());
+                }
+                i = end + 1;
+                continue;
+            }
+        }
+        out.push(sub[i].clone());
+        i += 1;
+    }
+    out
+}
+
+/// Copy of the subtree at LINE, without its `:ID:`s.
+fn copy_subtree(lines: &[String], line: usize) -> Result<Vec<String>, String> {
+    let hl = headline_at(lines, line).ok_or("not on a heading")?;
+    let (s, e) = subtree_range(lines, hl);
+    Ok(strip_ids(lines[s..e].to_vec()))
+}
+
+/// Copy the subtree at LINE of SRC under heading DST_LINE of DST (None: top
+/// level), like org-refile-copy. Returns the new DST; SRC is unchanged.
+pub fn refile_copy(src: &str, line: usize, dst: &str, dst_line: Option<usize>) -> Result<String, String> {
+    let sub = copy_subtree(&to_lines(src), line)?;
+    let mut d = to_lines(dst);
+    check_target(&d, dst_line)?;
+    insert_subtree(&mut d, dst_line, sub);
+    Ok(join_nl(d))
+}
+
+/// Copy within one file; copying under the subtree itself is fine.
+pub fn refile_copy_same(text: &str, line: usize, dst_line: Option<usize>) -> Result<String, String> {
+    let mut l = to_lines(text);
+    check_target(&l, dst_line)?;
+    let sub = copy_subtree(&l, line)?;
+    insert_subtree(&mut l, dst_line, sub);
+    Ok(join(l, text))
+}
+
 /// Sort the children of the heading at or above LINE (top-level headings for
 /// None or a line above the first heading) by KEY: title | priority | status
 /// | scheduled | deadline. Stable; headings without the key go last either
@@ -1640,6 +1691,18 @@ mod tests {
         assert_eq!(refile_same(src, 1, Some(4)).unwrap(), "* Inbox\n* Other\n** TODO Buy milk\nnote\n*** sub\n");
         assert_eq!(refile_same(src, 1, None).unwrap(), "* Inbox\n* Other\n* TODO Buy milk\nnote\n** sub\n");
         assert!(refile_same(src, 1, Some(3)).is_err());
+        // Copy: source untouched, :ID:s dropped (nested too), a drawer emptied by that goes, others stay.
+        let src = "* Inbox\n** TODO Buy milk\n:PROPERTIES:\n:ID: a\n:END:\nnote\n*** sub\n:PROPERTIES:\n:id: b\n:EFFORT: 1h\n:END:\n* Other\n";
+        let dst = "#+title: P\n* Projects\n** Home\n* Later\n";
+        assert_eq!(refile_copy(src, 2, dst, Some(2)).unwrap(), "#+title: P\n* Projects\n** Home\n*** TODO Buy milk\nnote\n**** sub\n:PROPERTIES:\n:EFFORT: 1h\n:END:\n* Later\n");
+        assert_eq!(refile_copy("* A\n:PROPERTIES:\n:END:\n", 0, "", None).unwrap(), "* A\n:PROPERTIES:\n:END:\n");
+        assert_eq!(refile_copy("** A\n*** B\n", 0, "* X", None).unwrap(), "* X\n* A\n** B\n");
+        assert_eq!(refile_copy("* A\n", 0, "x\n", Some(0)).unwrap_err(), "refile target is not a heading");
+        assert_eq!(refile_copy("text\n", 0, "", None).unwrap_err(), "not on a heading");
+        let t = "* A\n:PROPERTIES:\n:ID: a\n:END:\n** B\n* C\n";
+        assert_eq!(refile_copy_same(t, 0, Some(5)).unwrap(), "* A\n:PROPERTIES:\n:ID: a\n:END:\n** B\n* C\n** A\n*** B\n");
+        assert_eq!(refile_copy_same(t, 0, Some(0)).unwrap(), "* A\n:PROPERTIES:\n:ID: a\n:END:\n** B\n** A\n*** B\n* C\n");
+        assert_eq!(refile_copy_same(t, 4, None).unwrap(), "* A\n:PROPERTIES:\n:ID: a\n:END:\n** B\n* C\n* B\n");
         let now = chrono::NaiveDateTime::parse_from_str("2026-10-02 14:30", "%Y-%m-%d %H:%M").unwrap();
         let (s, a) = archive("* DONE A\nSCHEDULED: <2026-10-01 Thu>\n* B\n", 0, "", "/n/x.org", now).unwrap();
         assert_eq!(s, "* B\n");

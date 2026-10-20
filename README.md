@@ -227,7 +227,7 @@ key in your desktop's settings instead: it opens the same form in the running ap
 ## Tasks (Today / Tasks views)
 
 `j`/`k` move, `x` done, `s` schedule, `d` due date, `p` priority, `t` status,
-`#` tags, `e` rename, `y` copy a link to the task, `m` move to another file/heading, `A` archive, `I` track time,
+`#` tags, `e` rename, `y` copy a link to the task, `m` move to another file/heading, `M` copy there (the copy drops `:ID:`s), `A` archive, `I` track time,
 `Enter` open, `<`/`>` reschedule a day, `+`/`-` priority, `n` new task, `u` undo,
 `v` day/week, `h`/`l` previous/next, `.` today, `D` (or click the heading) go to a date, `/` filter, `?` all keys.
 Click the checkbox to complete a task.
