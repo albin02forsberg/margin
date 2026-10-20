@@ -790,18 +790,28 @@ const RECALC = new Set<TableOp>(["next", "prev", "enter", "align", "recalc"]);
 
 /** Run a table edit at the cursor (also "recalc" from the #+TBLFM line under a table).
  *  Returns false when the cursor is not in a table. */
-export function tableOp(v: EditorView, op: TableOp): boolean {
-  const s = v.state;
-  let ln = curLine(v);
-  const onFormula = op === "recalc" && TBLFM.test(ln.text) && ln.number > 1 && tbl.isTableLine(s.doc.line(ln.number - 1).text);
+/** The table at the cursor (or above its #+TBLFM line with FORMULA): first/last line,
+ *  the #+TBLFM line (0 when none) and its formulas, the cursor's row line. */
+function findTable(s: EditorState, formula: boolean) {
+  let ln = s.doc.lineAt(s.selection.main.head);
+  const onFormula = formula && TBLFM.test(ln.text) && ln.number > 1 && tbl.isTableLine(s.doc.line(ln.number - 1).text);
   if (onFormula) ln = s.doc.line(ln.number - 1);
-  else if (!tbl.isTableLine(ln.text)) return false;
+  else if (!tbl.isTableLine(ln.text)) return null;
   let a = ln.number, b = ln.number;
   while (a > 1 && tbl.isTableLine(s.doc.line(a - 1).text)) a--;
   while (b < s.doc.lines && tbl.isTableLine(s.doc.line(b + 1).text)) b++;
   const fmLine = b < s.doc.lines && TBLFM.test(s.doc.line(b + 1).text) ? b + 1 : 0;
-  let fm = fmLine ? s.doc.line(fmLine).text.replace(TBLFM, "").trim() : "";
+  const fm = fmLine ? s.doc.line(fmLine).text.replace(TBLFM, "").trim() : "";
   const lines = Array.from({ length: b - a + 1 }, (_, i) => s.doc.line(a + i).text);
+  return { a, b, fmLine, fm, lines, ln, onFormula };
+}
+
+export function tableOp(v: EditorView, op: TableOp): boolean {
+  const s = v.state;
+  const found = findTable(s, op === "recalc");
+  if (!found) return false;
+  const { a, b, fmLine, lines, ln, onFormula } = found;
+  let fm = found.fm;
   const col = onFormula ? 0 : tbl.cellIndex(ln.text, s.selection.main.head - ln.from);
   const t: tbl.Table = { lines, row: ln.number - a, col };
   const ops: Record<TableOp, () => tbl.Table | null> = {
@@ -831,6 +841,32 @@ export function tableOp(v: EditorView, op: TableOp): boolean {
   return true;
 }
 
+/** For the formula dialog: the table at the cursor (cell `=expr` formulas moved into
+ *  its TBLFM) and the cursor's 1-based data row and column, or null outside a table. */
+export function tableFormulas(v: EditorView) {
+  const f = findTable(v.state, true);
+  if (!f) return null;
+  const ex = tbl.extractCellFormulas(f.lines);
+  const row = f.onFormula ? 1 : f.lines.slice(0, f.ln.number - f.a + 1).filter((l) => !tbl.isSep(l)).length;
+  const col = f.onFormula ? 1 : tbl.cellIndex(f.ln.text, v.state.selection.main.head - f.ln.from) + 1;
+  return { lines: ex.lines, fm: tbl.mergeTblfm(f.fm, ex.formulas), row: Math.max(1, row), col };
+}
+
+/** Replace the cursor's table formulas with FM, then recalculate and align. */
+export function setTableFormulas(v: EditorView, fm: string): boolean {
+  const f = findTable(v.state, true);
+  if (!f) return false;
+  const lines = tbl.extractCellFormulas(f.lines).lines;
+  const text = tbl.align(fm ? tbl.applyFormulas(lines, fm) : lines).join("\n") + (fm ? `\n#+TBLFM: ${fm}` : "");
+  const from = v.state.doc.line(f.a).from, to = v.state.doc.line(f.fmLine || f.b).to;
+  const head = Math.min(v.state.selection.main.head, from + text.length);
+  v.dispatch({ changes: { from, to, insert: text }, selection: { anchor: head } });
+  return true;
+}
+
+/** Set by the page: opens the formula dialog (the toolbar's "Formulas…" button). */
+export const tableHooks: { formulas?: () => void } = {};
+
 /** Table toolbar buttons: [label, tooltip, op]; "|" draws a divider. */
 const TABLE_TOOLS: ([string, string, TableOp] | "|")[] = [
   ["+ Row ↑", "Insert row above (Space T k)", "rowAbove"], ["+ Row ↓", "Insert row below (Space T j, Alt+Shift+J)", "rowBelow"],
@@ -855,6 +891,11 @@ function tablePanel(v: EditorView): Panel {
     b.onclick = () => { tableOp(v, t[2]); v.focus(); };
     dom.append(b);
   }
+  const f = Object.assign(document.createElement("button"), { type: "button", textContent: "Formulas…", title: "List, add and edit #+TBLFM formulas (Space T f)" });
+  f.dataset.op = "formulas";
+  f.onmousedown = (e) => e.preventDefault();
+  f.onclick = () => tableHooks.formulas?.();
+  dom.append(f);
   return { dom };
 }
 

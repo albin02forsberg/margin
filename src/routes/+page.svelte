@@ -21,6 +21,7 @@
   import Time, { hm, type Session, type Suggestion, type TimeApi } from "$lib/Time.svelte";
   import TaskDialog from "$lib/TaskDialog.svelte";
   import TableDialog from "$lib/TableDialog.svelte";
+  import FormulaDialog from "$lib/FormulaDialog.svelte";
   import Projects from "$lib/Projects.svelte";
   import Settings from "$lib/Settings.svelte";
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
@@ -61,6 +62,7 @@
   let menu = $state<Menu>();
   let taskDialog = $state<TaskDialog>();
   let tableDialog = $state<TableDialog>();
+  let formulaDialog = $state<FormulaDialog>();
   let mode = $state("normal");
   let words = $state("");
   let docWords = 0;
@@ -754,6 +756,16 @@
     const s = await tableDialog!.open();
     if (s) ed.insertTable(view, s.cols, s.rows, s.header);
   }
+
+  /** The formula dialog for the table at the cursor (Space T f, the toolbar's "Formulas…"). */
+  async function tableFormulas() {
+    const t = inFile() && ed.tableFormulas(view);
+    if (!t) return flash("Put the cursor in a table first.");
+    const fm = await formulaDialog!.open(t);
+    if (fm != null) ed.setTableFormulas(view, fm);
+    view.focus();
+  }
+  ed.tableHooks.formulas = tableFormulas;
 
   async function insertCodeBlock() {
     if (!inFile()) return flash("Open a note first.");
@@ -1794,6 +1806,7 @@
     { label: "Table: add separator line below", leader: "T -", run: tableCmd("sep") },
     { label: "Table: align", leader: "T a", run: tableCmd("align") },
     { label: "Table: recalculate formulas (#+TBLFM)", leader: "T r", run: tableCmd("recalc") },
+    { label: "Table: edit formulas…", leader: "T f", run: tableFormulas },
     { label: "Table: sort by this column", leader: "T s", run: tableCmd("sort") },
     { label: "Table: sort by this column, descending", leader: "T S", run: tableCmd("sortDesc") },
     { label: "Insert table…", leader: "i t", run: insertTable },
@@ -1885,7 +1898,7 @@
   const closeDrawer = () => { showGraph = showBacklinks = showChat = false; };
 
   function onKey(e: KeyboardEvent) {
-    if (picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen() || tableDialog?.isOpen()) return;
+    if (picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen() || tableDialog?.isOpen() || formulaDialog?.isOpen()) return;
     const inEditor = isText(tab) && view.contentDOM.contains(e.target as Node);
     if (e.key === "Escape" && !inEditor && drawerOpen()) { closeDrawer(); e.preventDefault(); return; }
     const idle = inEditor && ed.vimIdle(view);
@@ -2279,6 +2292,7 @@
 <Menu bind:this={menu} root={leader} />
 <TaskDialog bind:this={taskDialog} />
 <TableDialog bind:this={tableDialog} />
+<FormulaDialog bind:this={formulaDialog} />
 
 <style>
   :global(html, body) { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: var(--fs-base) var(--sans); overflow: hidden; }

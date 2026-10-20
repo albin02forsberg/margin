@@ -320,32 +320,51 @@ export const parseTblfm = (s: string) =>
     return { lhs: f.slice(0, eq).trim(), rhs: f.slice(eq + 1).trim() };
   });
 
+/** The [data row, column] fields a formula's LHS writes, or null when it isn't `$N` / `@R$C`.
+ *  Column formulas skip the header and rows that are otherwise empty (e.g. one just added with Tab). */
+function targets(g: Grid, lhs: string): [number, number][] | null {
+  const col = /^\$(<|>|\d+)$/.exec(lhs);
+  if (col) {
+    const c = colRef(col[1], g, 0);
+    const body = g.data.map((_, k) => k).filter((k) => !g.hlines.length || g.data[k] > g.hlines[0]);
+    return body.filter((r) => g.rows[g.data[r]]!.some((v, k) => k !== c && v !== "")).map((r) => [r, c]);
+  }
+  const fld = /^@(<|>|\d+|I+)\$(<|>|\d+)$/.exec(lhs);
+  return fld ? [[rowRef(fld[1], g, 0), colRef(fld[2], g, 0)]] : null;
+}
+
+/** Why a formula would write #ERROR into LINES, or null when every target evaluates. */
+export function formulaError(lines: string[], lhs: string, rhs: string): string | null {
+  const g = grid(lines);
+  try {
+    const ts = targets(g, lhs);
+    if (!ts) return "target must be a column ($3) or a field (@2$3, @>$3)";
+    if (!rhs.trim()) return "the expression is empty";
+    for (const [r, c] of ts) {
+      if (g.data[r] == null || c < 0 || c >= g.n) return `target ${lhs} is outside the table`;
+      if (!isFinite(evaluate(rhs.split(";")[0], g, r, c))) return "the result is not a number (division by zero?)";
+    }
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
+}
+
 /** Recalculate the table: column formulas first, then field formulas (twice, so
  *  formulas that depend on other formulas settle). Bad formulas write #ERROR. */
 export function applyFormulas(lines: string[], tblfm: string): string[] {
   const g = grid(lines);
   const indent = /^\s*/.exec(lines[0] ?? "")![0];
   const fs = parseTblfm(tblfm);
-  const body = g.hlines.length ? g.data.map((_, k) => k).filter((k) => g.data[k] > g.hlines[0]) : g.data.map((_, k) => k);
   const set = (r: number, c: number, rhs: string) => {
     const [expr, fmt] = rhs.split(";");
     let out: string;
     try { out = format(evaluate(expr, g, r, c), fmt); } catch { out = "#ERROR"; }
-    g.rows[g.data[r]]![c] = out;
+    const row = g.rows[g.data[r]];
+    if (row && c >= 0 && c < g.n) row[c] = out; // a target outside the table is ignored
   };
-  for (let pass = 0; pass < 2; pass++) {
-    for (const { lhs, rhs } of fs) {
-      const col = /^\$(<|>|\d+)$/.exec(lhs);
-      if (col) {
-        const c = colRef(col[1], g, 0);
-        // Skip rows that are otherwise empty, e.g. a row just added with Tab.
-        for (const r of body) if (g.rows[g.data[r]]!.some((v, k) => k !== c && v !== "")) set(r, c, rhs);
-        continue;
-      }
-      const fld = /^@(<|>|\d+|I+)\$(<|>|\d+)$/.exec(lhs);
-      if (fld) set(rowRef(fld[1], g, 0), colRef(fld[2], g, 0), rhs);
-    }
-  }
+  for (let pass = 0; pass < 2; pass++)
+    for (const { lhs, rhs } of fs) for (const [r, c] of targets(g, lhs) ?? []) set(r, c, rhs);
   return g.rows.map((r, i) => (r ? `${indent}| ${r.join(" | ")} |` : lines[i]));
 }
 
@@ -379,4 +398,25 @@ export function mergeTblfm(existing: string, add: string[]): string {
     else fs.push(f);
   }
   return fs.map((f) => `${f.lhs}=${f.rhs}`).join("::");
+}
+
+/** TBLFM without the formula for LHS. */
+export const removeTblfm = (existing: string, lhs: string) =>
+  parseTblfm(existing).filter((f) => f.lhs !== lhs).map((f) => `${f.lhs}=${f.rhs}`).join("::");
+
+/** Functions formulas can call, for the formula dialog: [name, what it does, true when it takes a range]. */
+export const FUNCTIONS: [string, string, boolean][] = [
+  ["vsum", "sum of a range", true], ["vmean", "average of a range", true], ["vmin", "smallest value in a range", true],
+  ["vmax", "largest value in a range", true], ["vcount", "number of non-empty fields in a range", true], ["vmedian", "median of a range", true],
+  ["abs", "absolute value", false], ["round", "round to N decimals: round(x, N)", false], ["floor", "round down", false],
+  ["ceil", "round up", false], ["sqrt", "square root", false], ["exp", "e to the power of x", false], ["ln", "natural logarithm", false],
+];
+
+export type Target = { kind: "col" | "cell" | "last"; col: number; row?: number };
+
+/** A formula for TARGET (1-based column / data row) applying FN (or nothing) to EXPR. */
+export function buildFormula(t: Target, fn: string, expr: string): { lhs: string; rhs: string } {
+  const lhs = t.kind === "col" ? `$${t.col}` : t.kind === "last" ? `@>$${t.col}` : `@${t.row ?? 1}$${t.col}`;
+  const e = expr.trim();
+  return { lhs, rhs: fn ? `${fn}(${e})` : e };
 }
