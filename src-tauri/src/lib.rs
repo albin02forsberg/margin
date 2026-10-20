@@ -1106,17 +1106,33 @@ fn notes_graph(s: State<App>, path: PathBuf) -> notes::Graph {
     notes::graph(&s.files(), &path, 2)
 }
 
+/// Whether PATH is the inbox, a journal file or trashed: not a note for orphans and tags.
+fn not_a_note(c: &Config) -> impl Fn(&Path) -> bool {
+    let (notes, daily, inbox) = (c.notes(), c.daily_dir.clone(), c.notes().join(&c.inbox));
+    move |p: &Path| p == inbox || is_daily_path(&notes, &daily, p) || p.starts_with(notes.join(".trash"))
+}
+
 /// Notes with no links in or out (journal and inbox excluded), most recently changed first, as (path, title).
 #[tauri::command(async)]
 fn notes_orphans(s: State<App>) -> Vec<(PathBuf, String)> {
-    let c = s.cfg();
-    let (notes, daily, inbox) = (c.notes(), c.daily_dir.clone(), c.notes().join(&c.inbox));
-    let mut v: Vec<_> = notes::orphans(&s.files(), |p| p == inbox || is_daily_path(&notes, &daily, p) || p.starts_with(notes.join(".trash")))
+    let mut v: Vec<_> = notes::orphans(&s.files(), not_a_note(&s.cfg()))
         .into_iter()
         .map(|f| (std::fs::metadata(&f.path).and_then(|m| m.modified()).ok(), f.path.clone(), f.title.clone()))
         .collect();
     v.sort_by_key(|a| std::cmp::Reverse(a.0));
     v.into_iter().map(|(_, p, t)| (p, t)).collect()
+}
+
+/// Tags used in notes (file and non-task heading tags) as (tag, count), most used first.
+#[tauri::command(async)]
+fn notes_tags(s: State<App>) -> Vec<(String, usize)> {
+    notes::tags(&s.files(), not_a_note(&s.cfg()))
+}
+
+/// Notes and headings tagged TAG (any case) as (path, line, title); line 0 is a file tag.
+#[tauri::command(async)]
+fn notes_tagged(s: State<App>, tag: String) -> Vec<(PathBuf, usize, String)> {
+    notes::tagged(&s.files(), &tag, not_a_note(&s.cfg()))
 }
 
 /// Open top-level inbox entries: level-1 headlines that aren't done or archived (plain notes count).
@@ -1946,7 +1962,7 @@ pub fn run() {
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_refile_copy, org_refile_copy_same, note_extract, org_archive, org_archive_done, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
-            notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id,
+            notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, notes_tags, notes_tagged, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply

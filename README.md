@@ -46,7 +46,9 @@ push it a day, or `s` to schedule it. `Y` copies the shown list as Markdown chec
 
 **Links and backlinks** — `Space n b` shows the notes linking here, `Space n g` the local
 graph, and `Enter` on a link follows it. `Space n O` lists notes with no links in or out
-(journal and inbox left out), most recently changed first.
+(journal and inbox left out), most recently changed first. `Space n T` browses notes by tag:
+pick a tag from `#+FILETAGS:` or a non-task heading's own tags (with counts, any case), then
+the note or heading to open.
 
 <img src="docs/gifs/links.gif" width="800" alt="Opening a note, showing its backlinks and graph, and following a link with Enter">
 
