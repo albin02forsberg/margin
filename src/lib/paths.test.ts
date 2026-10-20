@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, relativeTo, resolvePath } from "./paths.ts";
+import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, onlyEchoes, relativeTo, resolvePath } from "./paths.ts";
 
 test("resolvePath", () => {
   assert.equal(resolvePath("/n/sub", "../other/target.org"), "/n/other/target.org");
@@ -66,3 +66,15 @@ test("folderName", () => {
   for (const bad of ["/etc", "\\x", "C:\\x", "..", "a/../../b", "a/.."]) assert.equal(folderName(bad), null, bad);
 });
 
+
+test("onlyEchoes", () => {
+  const echo = new Set(["/a"]);
+  assert.equal(onlyEchoes(["/a"], ["/a"], echo), true); // our own save
+  assert.equal(onlyEchoes(["/b"], ["/a"], echo), true); // not an open file
+  assert.equal(onlyEchoes(["/a", "/b"], ["/b"], echo), false); // /b changed under us
+  assert.equal(onlyEchoes([], ["/a"], echo), true);
+  assert.equal(onlyEchoes(["/x"], [], echo), true);
+  const big = Array.from({ length: 10000 }, (_, i) => `/n/${i}.org`);
+  assert.equal(onlyEchoes(big, big, new Set(big)), true);
+  assert.equal(onlyEchoes(big, big, new Set()), false);
+});
