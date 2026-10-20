@@ -707,6 +707,16 @@
     "priority-up": (loc) => edit(loc, "priority-cycle", "1"),
     "priority-down": (loc) => edit(loc, "priority-cycle", "-1"),
     tags: (loc) => editTags(loc),
+    async effort(loc) {
+      if (!(await heading(loc))) return flash("Not on a task.");
+      const v = await pick({
+        prompt: "Effort estimate",
+        items: [["15 min", "0:15"], ["30 min", "0:30"], ["1 hour", "1:00"], ["2 hours", "2:00"], ["4 hours", "4:00"], ["None", ""]].map(([label, value]) => ({ label, value, detail: value || "remove" })),
+        allowCustom: true,
+        hint: "or type 1:30, 2h, 45min",
+      });
+      if (v != null) await edit(loc, "effort", String(v));
+    },
     async title(loc) {
       const h = await heading(loc);
       if (!h) return flash("Not on a task.");
@@ -1844,6 +1854,7 @@
     { label: "Task: due date…", leader: "x d", run: () => atCursor("deadline") },
     { label: "Task: rename…", leader: "x e", run: () => atCursor("title") },
     { label: "Task: tags…", leader: "x g", run: () => atCursor("tags") },
+    { label: "Task: set effort…", leader: "x E", run: () => atCursor("effort") },
     { label: "Task: add a note…", leader: "x z", run: () => atCursor("note") },
     { label: "Task: move to…", leader: "x m", run: () => atCursor("move") },
     { label: "Task: copy to…", leader: "x M", run: () => atCursor("copy") },

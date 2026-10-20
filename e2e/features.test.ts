@@ -582,6 +582,7 @@ describe("Tags", () => {
       files: ({ notes }) => {
         writeFileSync(join(notes, "tags.org"), `* TODO Tag me :alpha:beta:\nSCHEDULED: ${day}\n* TODO Other :gamma:\n`);
         writeFileSync(join(notes, "strip.org"), "* TODO Strip me :xray:yank:\n");
+        writeFileSync(join(notes, "effort.org"), `* TODO Estimate me\nSCHEDULED: ${day}\n:PROPERTIES:\n:ID: e1\n:END:\n`);
         writeFileSync(join(notes, "inh.org"), "#+FILETAGS: :work:\n* Proj :proj:\n** TODO Child task\n* TODO Loose task\n");
       },
     });
@@ -605,6 +606,17 @@ describe("Tags", () => {
     await type("done");
     await browser.keys(Key.Enter);
     await fileMatches(join(d.notes, "tags.org"), (s) => s.includes("* TODO Tag me :alpha:gamma:fresh:\nSCHEDULED:"), "tags not rewritten in order");
+  });
+
+  it("E sets an effort estimate: badge on the row, total in the day header, :EFFORT: in the drawer", async () => {
+    await (await find(".agenda .row .title", "Estimate me")).click();
+    await browser.keys("E");
+    await find(".picker label span", "Effort estimate");
+    await type("1:30");
+    await browser.keys([Key.Ctrl, Key.Enter]);
+    await find(".agenda .row .effort", "1h 30m");
+    await find(".agenda header .titles span", "~1h 30m planned");
+    await fileMatches(join(d.notes, "effort.org"), (s) => s.endsWith(":PROPERTIES:\n:ID: e1\n:EFFORT: 1:30\n:END:\n"), "effort not added to the drawer");
   });
 
   it("Space x g in the editor removes tags without leaving spaces", async () => {

@@ -230,12 +230,17 @@ key in your desktop's settings instead: it opens the same form in the running ap
 ## Tasks (Today / Tasks views)
 
 `j`/`k` move, `x` done, `s` schedule, `d` due date, `p` priority, `t` status,
-`#` tags, `e` rename, `y` copy a link to the task, `m` move to another file/heading, `M` copy there (the copy drops `:ID:`s), `A` archive, `I` track time,
+`#` tags, `E` effort, `e` rename, `y` copy a link to the task, `m` move to another file/heading, `M` copy there (the copy drops `:ID:`s), `A` archive, `I` track time,
 `Enter` open, `<`/`>` reschedule a day, `+`/`-` priority, `n` new task, `u` undo,
 `v` day/week, `h`/`l` previous/next, `.` today, `D` (or click the heading) go to a date, `/` filter, `?` all keys.
 Click the checkbox to complete a task.
 `z` (or `Space x z` in a note) adds a note to the task, as org's agenda `z` does:
 `- Note taken on [2026-10-20 Tue 14:30] \\` plus your text, below the planning line and drawers, newest first.
+`E` (or `Space x E` in a note) sets an effort estimate, org's `:EFFORT:` property
+(`0:15` … `4:00`, or type `1:30`, `2h`, `45min`; written as `H:MM` so Emacs reads it).
+Tasks show it as a badge (`1h 30m`), and each day in Today shows the total of its open
+tasks (`~5h 30m planned`, each task counted once). Removing it drops the property drawer
+only when nothing else was in it.
 Subtrees archived in place with an `:ARCHIVE:` tag (Emacs's `C-c C-x a`) are left out of Today, Tasks, reminders and the calendar feed, as in org's agenda; they stay in the note and in search.
 A time range (`<2026-10-16 Fri 10:00-11:00>`) shows as `10:00-11:00`; a date
 range (`<2026-10-19 Mon>--<2026-10-21 Wed>`) shows on each of its days with a
