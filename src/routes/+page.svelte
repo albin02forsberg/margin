@@ -695,6 +695,11 @@
       const t = await ask("Task title", h.title);
       if (t?.trim()) await edit(loc, "title", t);
     },
+    async note(loc) {
+      if (!(await heading(loc))) return flash("Not on a task.");
+      const t = await ask("Note");
+      if (t?.trim()) await edit(loc, "note", t);
+    },
     link: (loc) => copyHeadingLink(loc),
     move: (loc) => moveTask(loc),
     archive: (loc) => archiveTask(loc),
@@ -1741,6 +1746,7 @@
     { label: "Task: due date…", leader: "x d", run: () => atCursor("deadline") },
     { label: "Task: rename…", leader: "x e", run: () => atCursor("title") },
     { label: "Task: tags…", leader: "x g", run: () => atCursor("tags") },
+    { label: "Task: add a note…", leader: "x z", run: () => atCursor("note") },
     { label: "Task: move to…", leader: "x m", run: () => atCursor("move") },
     { label: "Task: archive", leader: "x A", run: () => atCursor("archive") },
     { label: "Task: track time on it", leader: "x i", run: () => atCursor("clockIn") },

@@ -510,6 +510,16 @@ describe("Task keys", () => {
     await fileMatches(file(), (s) => s.includes("* TODO [#B] Rank me higher\n"), "task not renamed");
   });
 
+  it("z adds a timestamped note under the task and u removes it", async () => {
+    const orig = read(file());
+    await select("Finish me");
+    await browser.keys("z");
+    await answer("Note", "Called Bob");
+    await fileMatches(file(), (s) => new RegExp(`\\* TODO Finish me\\nSCHEDULED: <[^>]+>\\n- Note taken on \\[[^\\]]+\\] \\\\\\\\\\n  Called Bob\\n`).test(s), "note not added under the task");
+    await browser.keys("u");
+    await fileMatches(file(), (s) => s === orig, "undo didn't remove the note");
+  });
+
   it("y copies a link to the task, which gives it an :ID:", async () => {
     await select("Finish me");
     await browser.keys("y");

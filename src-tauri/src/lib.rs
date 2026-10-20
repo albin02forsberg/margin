@@ -694,6 +694,8 @@ fn org_edit_op(text: &str, line: usize, op: &str, value: Option<String>, kw: &or
         "priority-cycle" => org::cycle_priority(text, line, kw, n()?),
         "title" if v.trim().is_empty() => return Err("A task needs a title.".into()),
         "title" => org::set_title(text, line, kw, &v),
+        "note" if v.trim().is_empty() => return Err("The note is empty.".into()),
+        "note" => org::add_note(text, line, &v, now),
         "tags" => org::set_tags(text, line, kw, v.split(':').map(|t| t.trim().to_string()).collect()),
         "shift" => {
             let (kind, days) = v.split_once(' ').ok_or("shift needs \"KIND DAYS\"")?;
@@ -1935,6 +1937,8 @@ mod tests {
         assert_eq!(edit("* Task :a:\n", "tags", None).unwrap(), "* Task\n");
         assert_eq!(edit("* TODO [#B] Task :a:\n", "title", Some("New")).unwrap(), "* TODO [#B] New :a:\n");
         assert!(edit("* Task\n", "title", Some(" ")).is_err());
+        assert_eq!(edit("* Task\n", "note", Some("hi")).unwrap(), "* Task\n- Note taken on [2026-01-08 Thu 09:00] \\\\\n  hi\n");
+        assert!(edit("* Task\n", "note", Some(" ")).is_err());
         let sched = "* Task\nSCHEDULED: <2026-01-08 Thu>\n";
         assert_eq!(edit(sched, "shift", Some("SCHEDULED 3")).unwrap(), "* Task\nSCHEDULED: <2026-01-11 Sun>\n");
         assert_eq!(edit(sched, "shift", Some("SCHEDULED -1")).unwrap(), "* Task\nSCHEDULED: <2026-01-07 Wed>\n");

@@ -40,6 +40,7 @@
     ["t", "Status", "state"],
     ["#", "Tags", "tags"],
     ["e", "Rename", "title"],
+    ["z", "Add note", "note"],
     ["y", "Copy link", "link"],
     ["m", "Move to…", "move"],
     ["A", "Archive", "archive"],
