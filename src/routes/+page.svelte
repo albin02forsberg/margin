@@ -20,6 +20,7 @@
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
   import Time, { hm, type Session, type Suggestion, type TimeApi } from "$lib/Time.svelte";
   import TaskDialog from "$lib/TaskDialog.svelte";
+  import TableDialog from "$lib/TableDialog.svelte";
   import Projects from "$lib/Projects.svelte";
   import Settings from "$lib/Settings.svelte";
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
@@ -59,6 +60,7 @@
   let picker = $state<Picker>();
   let menu = $state<Menu>();
   let taskDialog = $state<TaskDialog>();
+  let tableDialog = $state<TableDialog>();
   let mode = $state("normal");
   let words = $state("");
   let docWords = 0;
@@ -749,9 +751,8 @@
 
   async function insertTable() {
     if (!inFile()) return flash("Open a note first.");
-    const size = await ask("Table size: columns × rows", "3x2", "e.g. 4x3 — then Tab moves between cells");
-    const m = size?.match(/(\d+)\s*[x×*, ]\s*(\d+)/);
-    if (m) ed.insertTable(view, Math.max(1, +m[1]), Math.max(1, +m[2]));
+    const s = await tableDialog!.open();
+    if (s) ed.insertTable(view, s.cols, s.rows, s.header);
   }
 
   async function insertCodeBlock() {
@@ -1787,7 +1788,8 @@
     { label: "Table: delete row", keys: ["Alt+Shift+K"], ctx: "editor", leader: "T d", run: tableCmd("delRow") },
     { label: "Table: insert row below", keys: ["Alt+Shift+J"], ctx: "editor", leader: "T j", run: tableCmd("rowBelow") },
     { label: "Table: insert row above", leader: "T k", run: tableCmd("rowAbove") },
-    { label: "Table: insert column", leader: "T l", run: tableCmd("colRight") },
+    { label: "Table: insert column right", leader: "T l", run: tableCmd("colRight") },
+    { label: "Table: insert column left", leader: "T H", run: tableCmd("colBefore") },
     { label: "Table: delete column", leader: "T h", run: tableCmd("delCol") },
     { label: "Table: add separator line below", leader: "T -", run: tableCmd("sep") },
     { label: "Table: align", leader: "T a", run: tableCmd("align") },
@@ -1883,7 +1885,7 @@
   const closeDrawer = () => { showGraph = showBacklinks = showChat = false; };
 
   function onKey(e: KeyboardEvent) {
-    if (picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen()) return;
+    if (picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen() || tableDialog?.isOpen()) return;
     const inEditor = isText(tab) && view.contentDOM.contains(e.target as Node);
     if (e.key === "Escape" && !inEditor && drawerOpen()) { closeDrawer(); e.preventDefault(); return; }
     const idle = inEditor && ed.vimIdle(view);
@@ -2276,6 +2278,7 @@
 <Picker bind:this={picker} />
 <Menu bind:this={menu} root={leader} />
 <TaskDialog bind:this={taskDialog} />
+<TableDialog bind:this={tableDialog} />
 
 <style>
   :global(html, body) { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: var(--fs-base) var(--sans); overflow: hidden; }

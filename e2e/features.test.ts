@@ -720,7 +720,8 @@ describe("Insert commands", () => {
     await toNormal();
     await type("G"); // the last, empty line, so the table goes below the block
     await palette("Insert table");
-    await answer("Table size", "3x2");
+    await find(".dialog h2", "Insert table");
+    await (await browser.$('.dialog button[aria-label="3 × 2"]')).click(); // the size grid's cell for 3 columns, 2 rows
     await toNormal();
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(join(d.notes, "ins.org"), (s) => /^#\+title: Ins\n#\+begin_src rust\n\n#\+end_src\n\| Column 1 \| Column 2 \| Column 3 \|\n\|[-+]+\|\n(\|( +\|){3}\n?){2}$/.test(s), "code block or 3x2 table not inserted");
@@ -765,6 +766,7 @@ describe("Tables, lists and attachments", () => {
       files: ({ notes }) => {
         writeFileSync(join(notes, "tbl.org"), "#+title: Tbl\n\n| a | b |\n|-\n| long cell | 1 |\n");
         writeFileSync(join(notes, "calc.org"), "#+title: Calc\n\n| item | qty | price | total |\n|-\n| a | 2 | 3 | |\n| b | 4 | 5 | |\n");
+        writeFileSync(join(notes, "tools.org"), "#+title: Tools\n\n| a | b | c |\n|-\n| 1 | 2 | 3 |\n");
         writeFileSync(join(notes, "emph.org"), "#+title: Emph\n\nsay hello now\n");
         writeFileSync(join(notes, "list.org"), "#+title: List\n\n1. a\n2. b\n3. c\n");
         writeFileSync(join(notes, "pics.org"), "#+title: Pics\n\n[[file:attachments/pics/used.txt][used]]\n[[file:images/used.png]]\n");
@@ -805,6 +807,18 @@ describe("Tables, lists and attachments", () => {
     await browser.keys(Key.Escape);
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(join(d.notes, "calc.org"), (s) => /\n#\+TBLFM: \$4=\$2\*\$3\n?$/.test(s) && /\|\s*6\s*\|/.test(s) && /\|\s*20\s*\|/.test(s), "formula or computed values missing");
+  });
+
+  it("the table toolbar shows in a table and its buttons edit it", async () => {
+    await open("Tools", "tools.org");
+    assert.equal((await texts(".cm-table-tools")).length, 0, "toolbar shown outside a table");
+    await type("3G"); // on the "a" cell
+    await (await find(".cm-table-tools button", "− Col")).click();
+    await (await find(".cm-table-tools button", "+ Row ↓")).click();
+    await type("iX"); // the cursor is in the new row, and vim still in normal mode
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "tools.org"), (s) => /\| b \| c \|\n\| X *\| *\|\n\|---\+---\|\n\| 2 \| 3 \|/.test(s), "toolbar did not delete the column or add the row");
   });
 
   it("Enter after an ordered-list item renumbers the items below", async () => {

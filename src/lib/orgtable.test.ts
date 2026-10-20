@@ -34,6 +34,8 @@ test("tab moves through cells, skips separators, adds a row at the end", () => {
 test("row and column edits", () => {
   const t = { lines: ["| a | b |", "| c | d |"], row: 0, col: 0 };
   assert.deepEqual(T.insertCol(t).lines, ["| a |   | b |", "| c |   | d |"]);
+  assert.deepEqual(T.insertCol({ ...t, col: 1 }, true), { lines: ["| a |   | b |", "| c |   | d |"], row: 0, col: 1 });
+  assert.deepEqual(T.insertCol(t, true).lines, ["|   | a | b |", "|   | c | d |"]);
   assert.deepEqual(T.deleteCol(t)!.lines, ["| b |", "| d |"]);
   assert.deepEqual(T.moveRow(t, 1).lines, ["| c | d |", "| a | b |"]);
   assert.deepEqual(T.moveCol(t, 1), { lines: ["| b | a |", "| d | c |"], row: 0, col: 1 });
@@ -46,6 +48,7 @@ test("sort keeps the header above the separator", () => {
   const t = { lines: ["| n |", "|---|", "| 10 |", "| 9 |", "| 100 |"], row: 3, col: 0 };
   assert.deepEqual(T.sortRows(t).lines, ["|   n |", "|-----|", "|   9 |", "|  10 |", "| 100 |"]);
   assert.deepEqual(T.create(2, 1), ["| Column 1 | Column 2 |", "|----------+----------|", "|          |          |"]);
+  assert.deepEqual(T.create(2, 2, false), ["|   |   |", "|   |   |"]);
 });
 
 test("formulas: column, field, ranges, functions, format", () => {

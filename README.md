@@ -410,6 +410,12 @@ bar counts the note's words (`38 of 412 words` while text is selected);
 markup does not count: punctuation-only tokens, and in org files planning lines,
 drawers, `#+KEY:` names and heading `:tags:`.
 
+While the cursor is in a table, a toolbar under the editor has buttons for every
+table edit: insert / delete / move rows and columns, sort, separator, align and
+recalculate (hover a button for its key). `Space i t` (Insert table…) opens a
+size picker: click a cell of the grid, or type columns and rows, with or without
+a header row.
+
 | | |
 |---|---|
 | Tab / Shift+Tab in a table | Align and move to the next / previous cell (adds rows at the end) |
@@ -421,7 +427,7 @@ drawers, `#+KEY:` names and heading `:tags:`.
 | Ctrl+Shift+O | Go to a heading in this note |
 | Space i … | Insert table, code block, quote, link, date, rule, footnote (`Space i f` adds the next `[fn:N]` and types its definition under a `* Footnotes` heading at the end); `Space i D` stamps the current time as an inactive `[2026-10-12 Mon 09:05]` (`Space i d` takes the full date syntax: `fri 14:00-15:30`, `fri +1w` repeat, `fri -3d` warning) |
 | Space i b / i / ~ / + | Bold, italic, code, strike-through the selection or the word at the cursor (again removes it); Ctrl/Cmd+B and Ctrl/Cmd+I in insert mode |
-| Space T … | Table: rows, columns, separator, sort, align |
+| Space T … | Table: rows, columns (`T H` inserts one to the left), separator, sort, align |
 | `[/]` or `[%]` in a heading | Progress cookie, updated when you tick checkboxes or finish child tasks |
 | Enter / Alt+Enter in a `1.` list | Next item; the items below are renumbered (Space x r renumbers after vim edits like `dd` / `p`) |
 
