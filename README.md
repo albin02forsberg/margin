@@ -426,6 +426,13 @@ recalculate (hover a button for its key). `Space i t` (Insert table…) opens a
 size picker: click a cell of the grid, or type columns and rows, with or without
 a header row.
 
+Cells copied from a spreadsheet (tab-separated text) paste as an aligned org
+table with a header separator (Ctrl/Cmd+V outside a table; `u` undoes it; vim's
+`p` pastes plain text). When the clipboard holds both the cells' text and an
+image of them, the table wins. `Space T c` turns selected lines of CSV, TSV or
+`;`-separated values into a table, and `Space T y` copies the table at the
+cursor as CSV.
+
 | | |
 |---|---|
 | Tab / Shift+Tab in a table | Align and move to the next / previous cell (adds rows at the end) |
@@ -438,7 +445,7 @@ a header row.
 | Space n H | Go to a heading in any note (type to filter by note and outline path) |
 | Space i … | Insert table, code block, quote, link, date, rule, footnote (`Space i f` adds the next `[fn:N]` and types its definition under a `* Footnotes` heading at the end); `Space i D` stamps the current time as an inactive `[2026-10-12 Mon 09:05]` (`Space i d` takes the full date syntax: `fri 14:00-15:30`, `fri +1w` repeat, `fri -3d` warning) |
 | Space i b / i / ~ / + | Bold, italic, code, strike-through the selection or the word at the cursor (again removes it); Ctrl/Cmd+B and Ctrl/Cmd+I in insert mode |
-| Space T … | Table: rows, columns (`T H` inserts one to the left), separator, sort, align, `T f` formulas |
+| Space T … | Table: rows, columns (`T H` inserts one to the left), separator, sort, align, `T f` formulas, `T c` CSV/TSV → table, `T y` copy as CSV |
 | `[/]` or `[%]` in a heading | Progress cookie, updated when you tick checkboxes or finish child tasks |
 | Enter / Alt+Enter in a `1.` list | Next item; the items below are renumbered (Space x r renumbers after vim edits like `dd` / `p`) |
 

@@ -1887,6 +1887,12 @@
     { label: "Table: edit formulas…", leader: "T f", run: tableFormulas },
     { label: "Table: sort by this column", leader: "T s", run: tableCmd("sort") },
     { label: "Table: sort by this column, descending", leader: "T S", run: tableCmd("sortDesc") },
+    { label: "Table: convert selection (CSV/TSV) to table", leader: "T c", run: () => (inFile() && ed.convertToTable(view)) || flash("Select lines of comma-, tab- or semicolon-separated values first.") },
+    { label: "Table: copy table as CSV", leader: "T y", run: () => act(async () => {
+      const csv = inFile() && ed.tableCsv(view);
+      if (!csv) return flash("Put the cursor in a table first.");
+      await navigator.clipboard.writeText(csv).then(() => flash("Copied the table as CSV"), () => flash("Couldn't copy to the clipboard."));
+    }) },
     { label: "Insert table…", leader: "i t", run: insertTable },
     { label: "Insert code block…", leader: "i c", run: insertCodeBlock },
     { label: "Insert quote block", leader: "i q", run: () => inFile() && ed.insertBlock(view, "quote") },
@@ -2113,9 +2119,15 @@
     flash(`📎 Attached ${links.length} file${links.length > 1 ? "s" : ""}`);
   }
 
-  /** Pasted images are saved as pasted-YYYYMMDD-HHMMSS.png in the note folder's images folder. */
+  /** Pasted spreadsheet cells become a table; pasted images are saved as pasted-YYYYMMDD-HHMMSS.png in the note folder's images folder. */
   function onPaste(e: ClipboardEvent) {
     const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith("image/"));
+    // Spreadsheet cells (TSV) become an org table, even when the clipboard also holds an image of them.
+    if (inFile() && ed.pasteTable(view, e.clipboardData?.getData("text/plain") ?? "")) {
+      e.preventDefault();
+      e.stopPropagation();
+      return flash("Pasted as a table — u to undo");
+    }
     if (!file && inFile()) {
       // A URL pasted over a one-line selection links the selection (Ctrl/Cmd+V only; vim's p fires no paste event).
       const url = asUrl(e.clipboardData?.getData("text/plain") ?? ""), sel = ed.lineSelection(view);

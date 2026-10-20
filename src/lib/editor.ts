@@ -893,6 +893,36 @@ export function insertTable(v: EditorView, cols: number, rows: number, header = 
   insertMode(v);
 }
 
+/** Replace [FROM, TO) with table LINES on lines of their own, as one undoable change. */
+function putTable(v: EditorView, from: number, to: number, lines: string[]) {
+  const d = v.state.doc;
+  const lead = d.sliceString(d.lineAt(from).from, from).trim() ? "\n" : "";
+  const trail = d.sliceString(to, d.lineAt(to).to).trim() ? "\n" : "";
+  replaceRange(v, from, to, lead + lines.join("\n") + trail);
+}
+
+/** Paste TEXT (spreadsheet TSV) as a table over the selection; false when the cursor is in a table or it isn't TSV. */
+export function pasteTable(v: EditorView, text: string): boolean {
+  const lines = !inTable(v) && tbl.isTsv(text) && tbl.fromDelimited(text, "\t");
+  if (!lines) return false;
+  const { from, to } = v.state.selection.main;
+  putTable(v, from, to, lines);
+  return true;
+}
+
+/** Turn the CSV / TSV on the selected lines into a table; false when it doesn't parse. */
+export function convertToTable(v: EditorView): boolean {
+  const { from, to } = v.state.selection.main;
+  const a = v.state.doc.lineAt(from), b = v.state.doc.lineAt(to > from && v.state.doc.lineAt(to).from === to ? to - 1 : to); // vim's V ends at the next line's start
+  const lines = tbl.fromDelimited(v.state.sliceDoc(a.from, b.to));
+  if (!lines) return false;
+  putTable(v, a.from, b.to, lines);
+  return true;
+}
+
+/** The table at the cursor as CSV, or null outside a table. */
+export const tableCsv = (v: EditorView) => { const f = findTable(v.state, true); return f && tbl.toCsv(f.lines); };
+
 /** All headings in the doc, for a "go to heading" picker. */
 export function headings(state: EditorState) {
   const out: { line: number; level: number; text: string }[] = [];

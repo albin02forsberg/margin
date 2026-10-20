@@ -164,6 +164,50 @@ export function create(cols: number, rows: number, header = true): string[] {
   return align(header ? [head, "|-", ...body] : body);
 }
 
+const textLines = (text: string) => text.split(/\r?\n/).filter((l) => l.trim());
+
+/** Spreadsheet-copied text: at least two rows, every one with the same number (≥ 1) of tabs.
+ *  Strict on purpose, so ordinary text with a stray tab still pastes as text. */
+export function isTsv(text: string): boolean {
+  const ls = textLines(text);
+  const n = ls[0]?.split("\t").length ?? 0;
+  return ls.length >= 2 && n > 1 && ls.every((l) => l.split("\t").length === n);
+}
+
+/** CSV / TSV text as an aligned table with a header separator, or null when it has fewer
+ *  than two rows or no separator. SEP defaults to tab, else `,`, else `;` when every line has it.
+ *  Quoted fields may hold separators, doubled quotes and newlines (which become spaces). */
+export function fromDelimited(text: string, sep?: string): string[] | null {
+  const ls = textLines(text);
+  sep ??= ["\t", ",", ";"].find((c) => ls.length && ls.every((l) => l.includes(c)));
+  if (!sep || ls.length < 2) return null;
+  const rows: string[][] = [];
+  let row: string[] = [], cell = "", quoted = false, i = 0;
+  const s = text.replace(/\r\n?/g, "\n");
+  const endRow = () => { row.push(cell); if (row.some((c) => c.trim())) rows.push(row); row = []; cell = ""; };
+  for (; i < s.length; i++) {
+    const c = s[i];
+    if (quoted) {
+      if (c === '"' && s[i + 1] === '"') { cell += '"'; i++; }
+      else if (c === '"') quoted = false;
+      else cell += c === "\n" ? " " : c;
+    } else if (c === '"' && !cell.trim()) { quoted = true; cell = ""; }
+    else if (c === sep) { row.push(cell); cell = ""; }
+    else if (c === "\n") endRow();
+    else cell += c;
+  }
+  endRow();
+  if (rows.length < 2) return null;
+  const line = (r: string[]) => `| ${r.map((c) => c.trim().replace(/\|/g, "\\vert{}")).join(" | ")} |`;
+  return align([line(rows[0]), "|-", ...rows.slice(1).map(line)]);
+}
+
+/** The table's rows as CSV (separator lines dropped, `\vert{}` back to `|`), quoting fields with `,` `"` or newlines. */
+export function toCsv(lines: string[]): string {
+  const q = (c: string) => ((c = c.replace(/\\vert\{\}/g, "|")), /[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c);
+  return lines.flatMap((l) => { const c = cells(l); return c ? [c.map(q).join(",")] : []; }).join("\n") + "\n";
+}
+
 // ---------------------------------------------------------------- formulas (#+TBLFM)
 //
 // Supported: column formulas `$4=$2*$3`, field formulas `@>$4=vsum(@2..@-1)`,
