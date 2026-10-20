@@ -43,19 +43,6 @@
       "source_location": "L181"
     },
     {
-      "id": "src_lib_board_column",
-      "label": "Column",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 111,
-      "community_name": "lib/Agenda.svelte",
-      "file_type": "code",
-      "norm_label": "column",
-      "source_file": "src/lib/board.ts",
-      "source_location": "L3"
-    },
-    {
       "id": "src_lib_projects_card",
       "label": "Card",
       "_callable": true,
@@ -134,6 +121,19 @@
       "source_location": "L3"
     },
     {
+      "id": "src_lib_board_column",
+      "label": "Column",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 15,
+      "community_name": "board.test.ts",
+      "file_type": "code",
+      "norm_label": "column",
+      "source_file": "src/lib/board.ts",
+      "source_location": "L3"
+    },
+    {
       "id": "src_lib_settings_field",
       "label": "Field",
       "_callable": true,
@@ -186,19 +186,6 @@
       "source_location": "L89"
     },
     {
-      "id": "src_lib_editor_num",
-      "label": "Num",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 3,
-      "community_name": "editor.ts",
-      "file_type": "code",
-      "norm_label": "num",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L44"
-    },
-    {
       "id": "src_lib_editor_orgconf",
       "label": "OrgConf",
       "_callable": true,
@@ -223,19 +210,6 @@
       "norm_label": "tbl",
       "source_file": "src/lib/editor.ts",
       "source_location": "L90"
-    },
-    {
-      "id": "src_lib_setopt_numopts",
-      "label": "NumOpts",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 3,
-      "community_name": "editor.ts",
-      "file_type": "code",
-      "norm_label": "numopts",
-      "source_file": "src/lib/setopt.ts",
-      "source_location": "L2"
     },
     {
       "id": "src_lib_orgtable_grid",
@@ -464,11 +438,37 @@
       "_callable": true,
       "_callable_class": true,
       "_origin": "ast",
-      "community": 84,
-      "community_name": "whatsnew.test.ts",
+      "community": 82,
+      "community_name": "ref_node_assert",
       "file_type": "code",
       "norm_label": "notes",
       "source_file": "src/lib/whatsnew.ts",
+      "source_location": "L2"
+    },
+    {
+      "id": "src_lib_editor_num",
+      "label": "Num",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 84,
+      "community_name": "Num",
+      "file_type": "code",
+      "norm_label": "num",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L44"
+    },
+    {
+      "id": "src_lib_setopt_numopts",
+      "label": "NumOpts",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 95,
+      "community_name": "setopt.test.ts",
+      "file_type": "code",
+      "norm_label": "numopts",
+      "source_file": "src/lib/setopt.ts",
       "source_location": "L2"
     },
     {
@@ -724,6 +724,18 @@
       "source_location": "L23"
     },
     {
+      "id": "src_lib_editor_createstate",
+      "label": "createState()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "curLine",
+      "file_type": "code",
+      "norm_label": "createstate()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L958"
+    },
+    {
       "id": "src_lib_editor_curline",
       "label": "curLine()",
       "_callable": true,
@@ -832,6 +844,18 @@
       "source_location": "L478"
     },
     {
+      "id": "src_lib_editor_orgshifttab",
+      "label": "orgShiftTab()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "curLine",
+      "file_type": "code",
+      "norm_label": "orgshifttab()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L519"
+    },
+    {
       "id": "src_lib_editor_orgtab",
       "label": "orgTab()",
       "_callable": true,
@@ -878,6 +902,18 @@
       "norm_label": "toggleheading()",
       "source_file": "src/lib/editor.ts",
       "source_location": "L644"
+    },
+    {
+      "id": "src_lib_editor_viminsert",
+      "label": "vimInsert()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 10,
+      "community_name": "curLine",
+      "file_type": "code",
+      "norm_label": "viminsert()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L846"
     },
     {
       "id": "src_lib_editor_withrenumber",
@@ -1324,54 +1360,6 @@
       "source_location": "L213"
     },
     {
-      "id": "src_lib_agenda_shift",
-      "label": "shift()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 111,
-      "community_name": "lib/Agenda.svelte",
-      "file_type": "code",
-      "norm_label": "shift()",
-      "source_file": "src/lib/Agenda.svelte",
-      "source_location": "L219"
-    },
-    {
-      "id": "src_lib_board_columns",
-      "label": "columns()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 111,
-      "community_name": "lib/Agenda.svelte",
-      "file_type": "code",
-      "norm_label": "columns()",
-      "source_file": "src/lib/board.ts",
-      "source_location": "L6"
-    },
-    {
-      "id": "src_lib_board_moveto",
-      "label": "moveTo()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 111,
-      "community_name": "lib/Agenda.svelte",
-      "file_type": "code",
-      "norm_label": "moveto()",
-      "source_file": "src/lib/board.ts",
-      "source_location": "L17"
-    },
-    {
-      "id": "src_lib_board_test_it",
-      "label": "it()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 111,
-      "community_name": "lib/Agenda.svelte",
-      "file_type": "code",
-      "norm_label": "it()",
-      "source_file": "src/lib/board.test.ts",
-      "source_location": "L6"
-    },
-    {
       "id": "src_routes_page_priority",
       "label": "priority()",
       "_callable": true,
@@ -1382,6 +1370,18 @@
       "norm_label": "priority()",
       "source_file": "src/routes/+page.svelte",
       "source_location": "L685"
+    },
+    {
+      "id": "src_routes_page_title",
+      "label": "title()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 111,
+      "community_name": "lib/Agenda.svelte",
+      "file_type": "code",
+      "norm_label": "title()",
+      "source_file": "src/routes/+page.svelte",
+      "source_location": "L692"
     },
     {
       "id": "src_lib_projects_cards",
@@ -1557,11 +1557,59 @@
       "_callable": true,
       "_origin": "ast",
       "community": 124,
-      "community_name": "@tauri-apps/api/core",
+      "community_name": "lib/Projects.svelte",
       "file_type": "code",
       "norm_label": "#each()",
       "source_file": "src/lib/Projects.svelte",
       "source_location": "L55"
+    },
+    {
+      "id": "src_lib_agenda_shift",
+      "label": "shift()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 15,
+      "community_name": "board.test.ts",
+      "file_type": "code",
+      "norm_label": "shift()",
+      "source_file": "src/lib/Agenda.svelte",
+      "source_location": "L219"
+    },
+    {
+      "id": "src_lib_board_columns",
+      "label": "columns()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 15,
+      "community_name": "board.test.ts",
+      "file_type": "code",
+      "norm_label": "columns()",
+      "source_file": "src/lib/board.ts",
+      "source_location": "L6"
+    },
+    {
+      "id": "src_lib_board_moveto",
+      "label": "moveTo()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 15,
+      "community_name": "board.test.ts",
+      "file_type": "code",
+      "norm_label": "moveto()",
+      "source_file": "src/lib/board.ts",
+      "source_location": "L17"
+    },
+    {
+      "id": "src_lib_board_test_it",
+      "label": "it()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 15,
+      "community_name": "board.test.ts",
+      "file_type": "code",
+      "norm_label": "it()",
+      "source_file": "src/lib/board.test.ts",
+      "source_location": "L6"
     },
     {
       "id": "src_lib_settings_changes",
@@ -1780,18 +1828,6 @@
       "source_location": "L676"
     },
     {
-      "id": "src_lib_editor_createstate",
-      "label": "createState()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 3,
-      "community_name": "editor.ts",
-      "file_type": "code",
-      "norm_label": "createstate()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L958"
-    },
-    {
       "id": "src_lib_editor_inserttext",
       "label": "insertText()",
       "_callable": true,
@@ -1840,54 +1876,6 @@
       "source_location": "L449"
     },
     {
-      "id": "src_lib_editor_num_constructor",
-      "label": ".constructor()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 3,
-      "community_name": "editor.ts",
-      "file_type": "code",
-      "norm_label": ".constructor()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L45"
-    },
-    {
-      "id": "src_lib_editor_num_eq",
-      "label": ".eq()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 3,
-      "community_name": "editor.ts",
-      "file_type": "code",
-      "norm_label": ".eq()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L46"
-    },
-    {
-      "id": "src_lib_editor_num_todom",
-      "label": ".toDOM()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 3,
-      "community_name": "editor.ts",
-      "file_type": "code",
-      "norm_label": ".todom()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L47"
-    },
-    {
-      "id": "src_lib_editor_numext",
-      "label": "numExt()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 3,
-      "community_name": "editor.ts",
-      "file_type": "code",
-      "norm_label": "numext()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L49"
-    },
-    {
       "id": "src_lib_editor_onmodechange",
       "label": "onModeChange()",
       "_callable": true,
@@ -1898,18 +1886,6 @@
       "norm_label": "onmodechange()",
       "source_file": "src/lib/editor.ts",
       "source_location": "L859"
-    },
-    {
-      "id": "src_lib_editor_orgshifttab",
-      "label": "orgShiftTab()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 3,
-      "community_name": "editor.ts",
-      "file_type": "code",
-      "norm_label": "orgshifttab()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L519"
     },
     {
       "id": "src_lib_editor_pad",
@@ -1982,30 +1958,6 @@
       "norm_label": "vimidle()",
       "source_file": "src/lib/editor.ts",
       "source_location": "L854"
-    },
-    {
-      "id": "src_lib_editor_viminsert",
-      "label": "vimInsert()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 3,
-      "community_name": "editor.ts",
-      "file_type": "code",
-      "norm_label": "viminsert()",
-      "source_file": "src/lib/editor.ts",
-      "source_location": "L846"
-    },
-    {
-      "id": "src_lib_setopt_applyset",
-      "label": "applySet()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 3,
-      "community_name": "editor.ts",
-      "file_type": "code",
-      "norm_label": "applyset()",
-      "source_file": "src/lib/setopt.ts",
-      "source_location": "L5"
     },
     {
       "id": "src_lib_editor_drawerrange",
@@ -2349,7 +2301,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 43,
-      "community_name": "svelte",
+      "community_name": "chatctx.ts",
       "file_type": "code",
       "norm_label": "bytes()",
       "source_file": "src/lib/chatctx.ts",
@@ -2361,7 +2313,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 43,
-      "community_name": "svelte",
+      "community_name": "chatctx.ts",
       "file_type": "code",
       "norm_label": "chatcontext()",
       "source_file": "src/lib/chatctx.ts",
@@ -2373,7 +2325,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 43,
-      "community_name": "svelte",
+      "community_name": "chatctx.ts",
       "file_type": "code",
       "norm_label": "cleanchat()",
       "source_file": "src/lib/chatctx.ts",
@@ -2385,23 +2337,59 @@
       "_callable": true,
       "_origin": "ast",
       "community": 43,
-      "community_name": "svelte",
+      "community_name": "chatctx.ts",
       "file_type": "code",
       "norm_label": "level()",
       "source_file": "src/lib/chatctx.ts",
       "source_location": "L5"
     },
     {
-      "id": "src_routes_page_title",
-      "label": "title()",
+      "id": "src_lib_zoom_clamp",
+      "label": "clamp()",
       "_callable": true,
       "_origin": "ast",
-      "community": 43,
-      "community_name": "svelte",
+      "community": 45,
+      "community_name": "zoom.test.ts",
       "file_type": "code",
-      "norm_label": "title()",
-      "source_file": "src/routes/+page.svelte",
-      "source_location": "L692"
+      "norm_label": "clamp()",
+      "source_file": "src/lib/zoom.ts",
+      "source_location": "L3"
+    },
+    {
+      "id": "src_lib_zoom_nextzoom",
+      "label": "nextZoom()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "zoom.test.ts",
+      "file_type": "code",
+      "norm_label": "nextzoom()",
+      "source_file": "src/lib/zoom.ts",
+      "source_location": "L5"
+    },
+    {
+      "id": "src_lib_zoom_parsezoom",
+      "label": "parseZoom()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "zoom.test.ts",
+      "file_type": "code",
+      "norm_label": "parsezoom()",
+      "source_file": "src/lib/zoom.ts",
+      "source_location": "L8"
+    },
+    {
+      "id": "src_lib_zoom_wheelzoom",
+      "label": "wheelZoom()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 45,
+      "community_name": "zoom.test.ts",
+      "file_type": "code",
+      "norm_label": "wheelzoom()",
+      "source_file": "src/lib/zoom.ts",
+      "source_location": "L15"
     },
     {
       "id": "src_lib_orgtable_align",
@@ -3904,6 +3892,54 @@
       "source_location": "L4"
     },
     {
+      "id": "src_lib_whatsnew_notestext",
+      "label": "notesText()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "notestext()",
+      "source_file": "src/lib/whatsnew.ts",
+      "source_location": "L14"
+    },
+    {
+      "id": "src_lib_whatsnew_notestitle",
+      "label": "notesTitle()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "notestitle()",
+      "source_file": "src/lib/whatsnew.ts",
+      "source_location": "L13"
+    },
+    {
+      "id": "src_lib_whatsnew_notestoshow",
+      "label": "notesToShow()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "notestoshow()",
+      "source_file": "src/lib/whatsnew.ts",
+      "source_location": "L5"
+    },
+    {
+      "id": "src_lib_whatsnew_test_raw",
+      "label": "raw()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "raw()",
+      "source_file": "src/lib/whatsnew.test.ts",
+      "source_location": "L5"
+    },
+    {
       "id": "src_lib_words_wordcount",
       "label": "wordCount()",
       "_callable": true,
@@ -3928,100 +3964,52 @@
       "source_location": "L22"
     },
     {
-      "id": "src_lib_zoom_clamp",
-      "label": "clamp()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 82,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "clamp()",
-      "source_file": "src/lib/zoom.ts",
-      "source_location": "L3"
-    },
-    {
-      "id": "src_lib_zoom_nextzoom",
-      "label": "nextZoom()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 82,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "nextzoom()",
-      "source_file": "src/lib/zoom.ts",
-      "source_location": "L5"
-    },
-    {
-      "id": "src_lib_zoom_parsezoom",
-      "label": "parseZoom()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 82,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "parsezoom()",
-      "source_file": "src/lib/zoom.ts",
-      "source_location": "L8"
-    },
-    {
-      "id": "src_lib_zoom_wheelzoom",
-      "label": "wheelZoom()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 82,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "wheelzoom()",
-      "source_file": "src/lib/zoom.ts",
-      "source_location": "L15"
-    },
-    {
-      "id": "src_lib_whatsnew_notestext",
-      "label": "notesText()",
+      "id": "src_lib_editor_num_constructor",
+      "label": ".constructor()",
       "_callable": true,
       "_origin": "ast",
       "community": 84,
-      "community_name": "whatsnew.test.ts",
+      "community_name": "Num",
       "file_type": "code",
-      "norm_label": "notestext()",
-      "source_file": "src/lib/whatsnew.ts",
-      "source_location": "L14"
+      "norm_label": ".constructor()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L45"
     },
     {
-      "id": "src_lib_whatsnew_notestitle",
-      "label": "notesTitle()",
+      "id": "src_lib_editor_num_eq",
+      "label": ".eq()",
       "_callable": true,
       "_origin": "ast",
       "community": 84,
-      "community_name": "whatsnew.test.ts",
+      "community_name": "Num",
       "file_type": "code",
-      "norm_label": "notestitle()",
-      "source_file": "src/lib/whatsnew.ts",
-      "source_location": "L13"
+      "norm_label": ".eq()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L46"
     },
     {
-      "id": "src_lib_whatsnew_notestoshow",
-      "label": "notesToShow()",
+      "id": "src_lib_editor_num_todom",
+      "label": ".toDOM()",
       "_callable": true,
       "_origin": "ast",
       "community": 84,
-      "community_name": "whatsnew.test.ts",
+      "community_name": "Num",
       "file_type": "code",
-      "norm_label": "notestoshow()",
-      "source_file": "src/lib/whatsnew.ts",
-      "source_location": "L5"
+      "norm_label": ".todom()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L47"
     },
     {
-      "id": "src_lib_whatsnew_test_raw",
-      "label": "raw()",
+      "id": "src_lib_editor_numext",
+      "label": "numExt()",
       "_callable": true,
       "_origin": "ast",
       "community": 84,
-      "community_name": "whatsnew.test.ts",
+      "community_name": "Num",
       "file_type": "code",
-      "norm_label": "raw()",
-      "source_file": "src/lib/whatsnew.test.ts",
-      "source_location": "L5"
+      "norm_label": "numext()",
+      "source_file": "src/lib/editor.ts",
+      "source_location": "L49"
     },
     {
       "id": "scripts_coverage_ratchet_main",
@@ -4202,6 +4190,18 @@
       "norm_label": "page()",
       "source_file": "docs/mockups/r5.js",
       "source_location": "L14"
+    },
+    {
+      "id": "src_lib_setopt_applyset",
+      "label": "applySet()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 95,
+      "community_name": "setopt.test.ts",
+      "file_type": "code",
+      "norm_label": "applyset()",
+      "source_file": "src/lib/setopt.ts",
+      "source_location": "L5"
     },
     {
       "id": "docs_mockups_r4_frag",
@@ -4576,18 +4576,6 @@
       "source_location": "L14"
     },
     {
-      "id": "src_tauri_src_remind_due",
-      "label": "Due",
-      "_origin": "ast",
-      "_rust_declaration_count": 1,
-      "community": 113,
-      "community_name": "org.rs",
-      "file_type": "code",
-      "norm_label": "due",
-      "source_file": "src-tauri/src/remind.rs",
-      "source_location": "L11"
-    },
-    {
       "id": "src_tauri_src_lib_app",
       "label": "App",
       "_origin": "ast",
@@ -4610,18 +4598,6 @@
       "norm_label": "dashin",
       "source_file": "src-tauri/src/lib.rs",
       "source_location": "L1106"
-    },
-    {
-      "id": "src_tauri_src_tray_tray",
-      "label": "Tray",
-      "_origin": "ast",
-      "_rust_declaration_count": 1,
-      "community": 15,
-      "community_name": "tray.rs",
-      "file_type": "code",
-      "norm_label": "tray",
-      "source_file": "src-tauri/src/tray.rs",
-      "source_location": "L11"
     },
     {
       "id": "src_tauri_src_lib_localmodel",
@@ -4924,6 +4900,18 @@
       "source_location": "L23"
     },
     {
+      "id": "src_tauri_src_tray_tray",
+      "label": "Tray",
+      "_origin": "ast",
+      "_rust_declaration_count": 1,
+      "community": 38,
+      "community_name": "quit.rs",
+      "file_type": "code",
+      "norm_label": "tray",
+      "source_file": "src-tauri/src/tray.rs",
+      "source_location": "L11"
+    },
+    {
       "id": "src_tauri_src_watcher_rec",
       "label": "Rec",
       "_origin": "ast",
@@ -4946,6 +4934,18 @@
       "norm_label": "event()",
       "source_file": "src-tauri/src/ics.rs",
       "source_location": "L35"
+    },
+    {
+      "id": "src_tauri_src_remind_due",
+      "label": "Due",
+      "_origin": "ast",
+      "_rust_declaration_count": 1,
+      "community": 60,
+      "community_name": "super",
+      "file_type": "code",
+      "norm_label": "due",
+      "source_file": "src-tauri/src/remind.rs",
+      "source_location": "L11"
     },
     {
       "id": "src_tauri_src_retrieve_source",
@@ -6568,6 +6568,83 @@
       "source_location": ""
     },
     {
+      "id": "src_tauri_src_idle",
+      "label": "idle.rs",
+      "_origin": "ast",
+      "community": 109,
+      "community_name": "wlr.rs",
+      "file_type": "code",
+      "norm_label": "idle.rs",
+      "source_file": "src-tauri/src/idle.rs",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_tauri_src_idle_idle_steps",
+      "label": "idle_steps()",
+      "_origin": "ast",
+      "community": 109,
+      "community_name": "wlr.rs",
+      "file_type": "code",
+      "norm_label": "idle_steps()",
+      "source_file": "src-tauri/src/idle.rs",
+      "source_location": "L69"
+    },
+    {
+      "id": "src_tauri_src_idle_rs_apphandle",
+      "label": "AppHandle",
+      "_origin": "ast",
+      "community": 109,
+      "community_name": "wlr.rs",
+      "file_type": "code",
+      "norm_label": "apphandle",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "src_tauri_src_idle_rs_naivedatetime",
+      "label": "NaiveDateTime",
+      "_origin": "ast",
+      "community": 109,
+      "community_name": "wlr.rs",
+      "file_type": "code",
+      "norm_label": "naivedatetime",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "src_tauri_src_idle_source",
+      "label": "source()",
+      "_origin": "ast",
+      "community": 109,
+      "community_name": "wlr.rs",
+      "file_type": "code",
+      "norm_label": "source()",
+      "source_file": "src-tauri/src/idle.rs",
+      "source_location": "L28"
+    },
+    {
+      "id": "src_tauri_src_idle_start",
+      "label": "start()",
+      "_origin": "ast",
+      "community": 109,
+      "community_name": "wlr.rs",
+      "file_type": "code",
+      "norm_label": "start()",
+      "source_file": "src-tauri/src/idle.rs",
+      "source_location": "L41"
+    },
+    {
+      "id": "src_tauri_src_idle_step",
+      "label": "step()",
+      "_origin": "ast",
+      "community": 109,
+      "community_name": "wlr.rs",
+      "file_type": "code",
+      "norm_label": "step()",
+      "source_file": "src-tauri/src/idle.rs",
+      "source_location": "L14"
+    },
+    {
       "id": "src_tauri_src_watcher_wlr",
       "label": "wlr.rs",
       "_origin": "ast",
@@ -6917,6 +6994,39 @@
       "source_location": "L1"
     },
     {
+      "id": "core",
+      "label": "@tauri-apps/api/core",
+      "_origin": "ast",
+      "community": 111,
+      "community_name": "lib/Agenda.svelte",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "@tauri-apps/api/core",
+      "source_file": "@tauri-apps/api/core"
+    },
+    {
+      "id": "settings",
+      "label": "$lib/settings",
+      "_origin": "ast",
+      "community": 111,
+      "community_name": "lib/Agenda.svelte",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "$lib/settings",
+      "source_file": "$lib/settings"
+    },
+    {
+      "id": "svelte",
+      "label": "svelte",
+      "_origin": "ast",
+      "community": 111,
+      "community_name": "lib/Agenda.svelte",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "svelte",
+      "source_file": "svelte"
+    },
+    {
       "id": "src_lib_agenda",
       "label": "lib/Agenda.svelte",
       "_origin": "ast",
@@ -6928,48 +7038,59 @@
       "source_location": "L1"
     },
     {
-      "id": "src_lib_board",
-      "label": "board.ts",
+      "id": "src_lib_chat",
+      "label": "lib/Chat.svelte",
       "_origin": "ast",
       "community": 111,
       "community_name": "lib/Agenda.svelte",
       "file_type": "code",
-      "norm_label": "board.ts",
-      "source_file": "src/lib/board.ts",
+      "norm_label": "lib/chat.svelte",
+      "source_file": "src/lib/Chat.svelte",
       "source_location": "L1"
     },
     {
-      "id": "src_lib_board_test",
-      "label": "board.test.ts",
+      "id": "src_lib_picker",
+      "label": "lib/Picker.svelte",
       "_origin": "ast",
       "community": 111,
       "community_name": "lib/Agenda.svelte",
       "file_type": "code",
-      "norm_label": "board.test.ts",
-      "source_file": "src/lib/board.test.ts",
+      "norm_label": "lib/picker.svelte",
+      "source_file": "src/lib/Picker.svelte",
       "source_location": "L1"
     },
     {
-      "id": "src_lib_board_test_done",
-      "label": "done",
+      "id": "src_lib_settings_svelte_src_lib_settings",
+      "label": "lib/Settings.svelte",
       "_origin": "ast",
       "community": 111,
       "community_name": "lib/Agenda.svelte",
       "file_type": "code",
-      "norm_label": "done",
-      "source_file": "src/lib/board.test.ts",
-      "source_location": "L5"
+      "norm_label": "lib/settings.svelte",
+      "source_file": "src/lib/Settings.svelte",
+      "source_location": "L1"
     },
     {
-      "id": "src_lib_board_test_todo",
-      "label": "todo",
+      "id": "src_lib_time",
+      "label": "lib/Time.svelte",
       "_origin": "ast",
       "community": 111,
       "community_name": "lib/Agenda.svelte",
       "file_type": "code",
-      "norm_label": "todo",
-      "source_file": "src/lib/board.test.ts",
-      "source_location": "L5"
+      "norm_label": "lib/time.svelte",
+      "source_file": "src/lib/Time.svelte",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_lib_weekbars",
+      "label": "WeekBars.svelte",
+      "_origin": "ast",
+      "community": 111,
+      "community_name": "lib/Agenda.svelte",
+      "file_type": "code",
+      "norm_label": "weekbars.svelte",
+      "source_file": "src/lib/WeekBars.svelte",
+      "source_location": "L1"
     },
     {
       "id": "src_lib_projects_roundings",
@@ -8127,17 +8248,6 @@
       "source_location": "L351"
     },
     {
-      "id": "src_tauri_src_remind_rs_naivedatetime",
-      "label": "NaiveDateTime",
-      "_origin": "ast",
-      "community": 113,
-      "community_name": "org.rs",
-      "file_type": "code",
-      "norm_label": "naivedatetime",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
       "id": "r",
       "label": "R",
       "_origin": "ast",
@@ -9161,15 +9271,26 @@
       "source_location": "L139"
     },
     {
-      "id": "codemirror_state_state",
-      "label": "@codemirror/state",
+      "id": "lib_graph_graph",
+      "label": "$lib/graph",
       "_origin": "ast",
       "community": 117,
-      "community_name": "@codemirror/state",
+      "community_name": "$lib/graph",
       "confidence": "EXTRACTED",
       "file_type": "code",
-      "norm_label": "@codemirror/state",
-      "source_file": "@codemirror/state"
+      "norm_label": "$lib/graph",
+      "source_file": "$lib/graph"
+    },
+    {
+      "id": "lib_projects_projects",
+      "label": "$lib/projects",
+      "_origin": "ast",
+      "community": 118,
+      "community_name": "$lib/projects",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "$lib/projects",
+      "source_file": "$lib/projects"
     },
     {
       "id": "scripts_media_size",
@@ -9293,132 +9414,44 @@
       "source_location": "L11"
     },
     {
-      "id": "src_tauri_src_idle",
-      "label": "idle.rs",
+      "id": "tauri_apps_api_event_event",
+      "label": "@tauri-apps/api/event",
       "_origin": "ast",
       "community": 120,
-      "community_name": "super",
+      "community_name": "@tauri-apps/api/event",
+      "confidence": "EXTRACTED",
       "file_type": "code",
-      "norm_label": "idle.rs",
-      "source_file": "src-tauri/src/idle.rs",
-      "source_location": "L1"
+      "norm_label": "@tauri-apps/api/event",
+      "source_file": "@tauri-apps/api/event"
     },
     {
-      "id": "src_tauri_src_idle_idle_steps",
-      "label": "idle_steps()",
+      "id": "tauri_apps_api_webview_webview",
+      "label": "@tauri-apps/api/webview",
       "_origin": "ast",
-      "community": 120,
-      "community_name": "super",
+      "community": 121,
+      "community_name": "@tauri-apps/api/webview",
+      "confidence": "EXTRACTED",
       "file_type": "code",
-      "norm_label": "idle_steps()",
-      "source_file": "src-tauri/src/idle.rs",
-      "source_location": "L69"
-    },
-    {
-      "id": "src_tauri_src_idle_rs_apphandle",
-      "label": "AppHandle",
-      "_origin": "ast",
-      "community": 120,
-      "community_name": "super",
-      "file_type": "code",
-      "norm_label": "apphandle",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "src_tauri_src_idle_rs_naivedatetime",
-      "label": "NaiveDateTime",
-      "_origin": "ast",
-      "community": 120,
-      "community_name": "super",
-      "file_type": "code",
-      "norm_label": "naivedatetime",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "src_tauri_src_idle_source",
-      "label": "source()",
-      "_origin": "ast",
-      "community": 120,
-      "community_name": "super",
-      "file_type": "code",
-      "norm_label": "source()",
-      "source_file": "src-tauri/src/idle.rs",
-      "source_location": "L28"
-    },
-    {
-      "id": "src_tauri_src_idle_start",
-      "label": "start()",
-      "_origin": "ast",
-      "community": 120,
-      "community_name": "super",
-      "file_type": "code",
-      "norm_label": "start()",
-      "source_file": "src-tauri/src/idle.rs",
-      "source_location": "L41"
-    },
-    {
-      "id": "src_tauri_src_idle_step",
-      "label": "step()",
-      "_origin": "ast",
-      "community": 120,
-      "community_name": "super",
-      "file_type": "code",
-      "norm_label": "step()",
-      "source_file": "src-tauri/src/idle.rs",
-      "source_location": "L14"
+      "norm_label": "@tauri-apps/api/webview",
+      "source_file": "@tauri-apps/api/webview"
     },
     {
       "id": "clock",
       "label": "$lib/clock",
       "_origin": "ast",
       "community": 124,
-      "community_name": "@tauri-apps/api/core",
+      "community_name": "lib/Projects.svelte",
       "confidence": "EXTRACTED",
       "file_type": "code",
       "norm_label": "$lib/clock",
       "source_file": "$lib/clock"
     },
     {
-      "id": "core",
-      "label": "@tauri-apps/api/core",
-      "_origin": "ast",
-      "community": 124,
-      "community_name": "@tauri-apps/api/core",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "@tauri-apps/api/core",
-      "source_file": "@tauri-apps/api/core"
-    },
-    {
-      "id": "lib_projects_projects",
-      "label": "$lib/projects",
-      "_origin": "ast",
-      "community": 124,
-      "community_name": "@tauri-apps/api/core",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "$lib/projects",
-      "source_file": "$lib/projects"
-    },
-    {
-      "id": "settings",
-      "label": "$lib/settings",
-      "_origin": "ast",
-      "community": 124,
-      "community_name": "@tauri-apps/api/core",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "$lib/settings",
-      "source_file": "$lib/settings"
-    },
-    {
       "id": "time_svelte",
       "label": "$lib/Time.svelte",
       "_origin": "ast",
       "community": 124,
-      "community_name": "@tauri-apps/api/core",
+      "community_name": "lib/Projects.svelte",
       "confidence": "EXTRACTED",
       "file_type": "code",
       "norm_label": "$lib/time.svelte",
@@ -9429,21 +9462,10 @@
       "label": "lib/Projects.svelte",
       "_origin": "ast",
       "community": 124,
-      "community_name": "@tauri-apps/api/core",
+      "community_name": "lib/Projects.svelte",
       "file_type": "code",
       "norm_label": "lib/projects.svelte",
       "source_file": "src/lib/Projects.svelte",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_lib_settings_svelte_src_lib_settings",
-      "label": "lib/Settings.svelte",
-      "_origin": "ast",
-      "community": 124,
-      "community_name": "@tauri-apps/api/core",
-      "file_type": "code",
-      "norm_label": "lib/settings.svelte",
-      "source_file": "src/lib/Settings.svelte",
       "source_location": "L1"
     },
     {
@@ -9645,114 +9667,48 @@
       "source_location": ""
     },
     {
-      "id": "app",
-      "label": "@tauri-apps/api/app",
+      "id": "src_lib_board",
+      "label": "board.ts",
       "_origin": "ast",
       "community": 15,
-      "community_name": "tray.rs",
-      "confidence": "EXTRACTED",
+      "community_name": "board.test.ts",
       "file_type": "code",
-      "norm_label": "@tauri-apps/api/app",
-      "source_file": "@tauri-apps/api/app"
-    },
-    {
-      "id": "menuitem",
-      "label": "MenuItem",
-      "_origin": "ast",
-      "community": 15,
-      "community_name": "tray.rs",
-      "file_type": "code",
-      "norm_label": "menuitem",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "src_tauri_src_tray",
-      "label": "tray.rs",
-      "_origin": "ast",
-      "community": 15,
-      "community_name": "tray.rs",
-      "file_type": "code",
-      "norm_label": "tray.rs",
-      "source_file": "src-tauri/src/tray.rs",
+      "norm_label": "board.ts",
+      "source_file": "src/lib/board.ts",
       "source_location": "L1"
     },
     {
-      "id": "src_tauri_src_tray_refresh",
-      "label": "refresh()",
+      "id": "src_lib_board_test",
+      "label": "board.test.ts",
       "_origin": "ast",
       "community": 15,
-      "community_name": "tray.rs",
+      "community_name": "board.test.ts",
       "file_type": "code",
-      "norm_label": "refresh()",
-      "source_file": "src-tauri/src/tray.rs",
-      "source_location": "L68"
+      "norm_label": "board.test.ts",
+      "source_file": "src/lib/board.test.ts",
+      "source_location": "L1"
     },
     {
-      "id": "src_tauri_src_tray_rs_apphandle",
-      "label": "AppHandle",
+      "id": "src_lib_board_test_done",
+      "label": "done",
       "_origin": "ast",
       "community": 15,
-      "community_name": "tray.rs",
+      "community_name": "board.test.ts",
       "file_type": "code",
-      "norm_label": "apphandle",
-      "source_file": "",
-      "source_location": ""
+      "norm_label": "done",
+      "source_file": "src/lib/board.test.ts",
+      "source_location": "L5"
     },
     {
-      "id": "src_tauri_src_tray_setup",
-      "label": "setup()",
+      "id": "src_lib_board_test_todo",
+      "label": "todo",
       "_origin": "ast",
       "community": 15,
-      "community_name": "tray.rs",
+      "community_name": "board.test.ts",
       "file_type": "code",
-      "norm_label": "setup()",
-      "source_file": "src-tauri/src/tray.rs",
-      "source_location": "L21"
-    },
-    {
-      "id": "src_tauri_src_tray_show",
-      "label": "show()",
-      "_origin": "ast",
-      "community": 15,
-      "community_name": "tray.rs",
-      "file_type": "code",
-      "norm_label": "show()",
-      "source_file": "src-tauri/src/tray.rs",
-      "source_location": "L55"
-    },
-    {
-      "id": "src_tauri_src_tray_tracking",
-      "label": "tracking()",
-      "_origin": "ast",
-      "community": 15,
-      "community_name": "tray.rs",
-      "file_type": "code",
-      "norm_label": "tracking()",
-      "source_file": "src-tauri/src/tray.rs",
-      "source_location": "L62"
-    },
-    {
-      "id": "trayicon",
-      "label": "TrayIcon",
-      "_origin": "ast",
-      "community": 15,
-      "community_name": "tray.rs",
-      "file_type": "code",
-      "norm_label": "trayicon",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "wry",
-      "label": "Wry",
-      "_origin": "ast",
-      "community": 15,
-      "community_name": "tray.rs",
-      "file_type": "code",
-      "norm_label": "wry",
-      "source_file": "",
-      "source_location": ""
+      "norm_label": "todo",
+      "source_file": "src/lib/board.test.ts",
+      "source_location": "L5"
     },
     {
       "id": "src_lib_settings_categories",
@@ -12197,6 +12153,17 @@
       "source_file": "$lib/chatctx"
     },
     {
+      "id": "codemirror_state_state",
+      "label": "@codemirror/state",
+      "_origin": "ast",
+      "community": 29,
+      "community_name": "+page.svelte",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "@codemirror/state",
+      "source_file": "@codemirror/state"
+    },
+    {
       "id": "editor",
       "label": "$lib/editor",
       "_origin": "ast",
@@ -12327,28 +12294,6 @@
       "file_type": "code",
       "norm_label": "$lib/taskdialog.svelte",
       "source_file": "$lib/TaskDialog.svelte"
-    },
-    {
-      "id": "tauri_apps_api_event_event",
-      "label": "@tauri-apps/api/event",
-      "_origin": "ast",
-      "community": 29,
-      "community_name": "+page.svelte",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "@tauri-apps/api/event",
-      "source_file": "@tauri-apps/api/event"
-    },
-    {
-      "id": "tauri_apps_api_webview_webview",
-      "label": "@tauri-apps/api/webview",
-      "_origin": "ast",
-      "community": 29,
-      "community_name": "+page.svelte",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "@tauri-apps/api/webview",
-      "source_file": "@tauri-apps/api/webview"
     },
     {
       "id": "theme_css",
@@ -12637,17 +12582,6 @@
       "source_location": "L34"
     },
     {
-      "id": "src_lib_setopt",
-      "label": "setopt.ts",
-      "_origin": "ast",
-      "community": 3,
-      "community_name": "editor.ts",
-      "file_type": "code",
-      "norm_label": "setopt.ts",
-      "source_file": "src/lib/setopt.ts",
-      "source_location": "L1"
-    },
-    {
       "id": "pkg_margin",
       "label": "margin",
       "_origin": "ast",
@@ -12860,6 +12794,116 @@
       "source_location": "L151"
     },
     {
+      "id": "package_scripts",
+      "label": "scripts",
+      "_origin": "ast",
+      "community": 33,
+      "community_name": "lib/TaskDialog.svelte",
+      "file_type": "code",
+      "norm_label": "scripts",
+      "source_file": "package.json",
+      "source_location": "L9"
+    },
+    {
+      "id": "package_scripts_build",
+      "label": "build",
+      "_origin": "ast",
+      "community": 33,
+      "community_name": "lib/TaskDialog.svelte",
+      "file_type": "code",
+      "norm_label": "build",
+      "source_file": "package.json",
+      "source_location": "L11"
+    },
+    {
+      "id": "package_scripts_check",
+      "label": "check",
+      "_origin": "ast",
+      "community": 33,
+      "community_name": "lib/TaskDialog.svelte",
+      "file_type": "code",
+      "norm_label": "check",
+      "source_file": "package.json",
+      "source_location": "L14"
+    },
+    {
+      "id": "package_scripts_check_watch",
+      "label": "check:watch",
+      "_origin": "ast",
+      "community": 33,
+      "community_name": "lib/TaskDialog.svelte",
+      "file_type": "code",
+      "norm_label": "check:watch",
+      "source_file": "package.json",
+      "source_location": "L15"
+    },
+    {
+      "id": "package_scripts_coverage",
+      "label": "coverage",
+      "_origin": "ast",
+      "community": 33,
+      "community_name": "lib/TaskDialog.svelte",
+      "file_type": "code",
+      "norm_label": "coverage",
+      "source_file": "package.json",
+      "source_location": "L18"
+    },
+    {
+      "id": "package_scripts_coverage_ratchet",
+      "label": "coverage:ratchet",
+      "_origin": "ast",
+      "community": 33,
+      "community_name": "lib/TaskDialog.svelte",
+      "file_type": "code",
+      "norm_label": "coverage:ratchet",
+      "source_file": "package.json",
+      "source_location": "L19"
+    },
+    {
+      "id": "package_scripts_dev",
+      "label": "dev",
+      "_origin": "ast",
+      "community": 33,
+      "community_name": "lib/TaskDialog.svelte",
+      "file_type": "code",
+      "norm_label": "dev",
+      "source_file": "package.json",
+      "source_location": "L10"
+    },
+    {
+      "id": "package_scripts_e2e_build",
+      "label": "e2e:build",
+      "_origin": "ast",
+      "community": 33,
+      "community_name": "lib/TaskDialog.svelte",
+      "file_type": "code",
+      "norm_label": "e2e:build",
+      "source_file": "package.json",
+      "source_location": "L20"
+    },
+    {
+      "id": "package_scripts_e2e_run",
+      "label": "e2e:run",
+      "_origin": "ast",
+      "community": 33,
+      "community_name": "lib/TaskDialog.svelte",
+      "file_type": "code",
+      "norm_label": "e2e:run",
+      "source_file": "package.json",
+      "source_location": "L21"
+    },
+    {
+      "id": "package_scripts_prepare",
+      "label": "prepare",
+      "_origin": "ast",
+      "community": 33,
+      "community_name": "lib/TaskDialog.svelte",
+      "file_type": "code",
+      "norm_label": "prepare",
+      "source_file": "package.json",
+      "source_location": "L13"
+    },
+    {
       "id": "package_scripts_preview",
       "label": "preview",
       "_origin": "ast",
@@ -12869,6 +12913,50 @@
       "norm_label": "preview",
       "source_file": "package.json",
       "source_location": "L12"
+    },
+    {
+      "id": "package_scripts_screenshots",
+      "label": "screenshots",
+      "_origin": "ast",
+      "community": 33,
+      "community_name": "lib/TaskDialog.svelte",
+      "file_type": "code",
+      "norm_label": "screenshots",
+      "source_file": "package.json",
+      "source_location": "L23"
+    },
+    {
+      "id": "package_scripts_tauri",
+      "label": "tauri",
+      "_origin": "ast",
+      "community": 33,
+      "community_name": "lib/TaskDialog.svelte",
+      "file_type": "code",
+      "norm_label": "tauri",
+      "source_file": "package.json",
+      "source_location": "L16"
+    },
+    {
+      "id": "package_scripts_test",
+      "label": "test",
+      "_origin": "ast",
+      "community": 33,
+      "community_name": "lib/TaskDialog.svelte",
+      "file_type": "code",
+      "norm_label": "test",
+      "source_file": "package.json",
+      "source_location": "L17"
+    },
+    {
+      "id": "package_scripts_test_e2e",
+      "label": "test:e2e",
+      "_origin": "ast",
+      "community": 33,
+      "community_name": "lib/TaskDialog.svelte",
+      "file_type": "code",
+      "norm_label": "test:e2e",
+      "source_file": "package.json",
+      "source_location": "L22"
     },
     {
       "id": "src_lib_taskdialog",
@@ -13939,6 +14027,17 @@
       "source_location": "L1611"
     },
     {
+      "id": "app",
+      "label": "@tauri-apps/api/app",
+      "_origin": "ast",
+      "community": 38,
+      "community_name": "quit.rs",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "@tauri-apps/api/app",
+      "source_file": "@tauri-apps/api/app"
+    },
+    {
       "id": "atomicu32",
       "label": "AtomicU32",
       "_origin": "ast",
@@ -13957,6 +14056,17 @@
       "community_name": "quit.rs",
       "file_type": "code",
       "norm_label": "atomicu8",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "menuitem",
+      "label": "MenuItem",
+      "_origin": "ast",
+      "community": 38,
+      "community_name": "quit.rs",
+      "file_type": "code",
+      "norm_label": "menuitem",
       "source_file": "",
       "source_location": ""
     },
@@ -14115,6 +14225,94 @@
       "source_location": "L16"
     },
     {
+      "id": "src_tauri_src_tray",
+      "label": "tray.rs",
+      "_origin": "ast",
+      "community": 38,
+      "community_name": "quit.rs",
+      "file_type": "code",
+      "norm_label": "tray.rs",
+      "source_file": "src-tauri/src/tray.rs",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_tauri_src_tray_refresh",
+      "label": "refresh()",
+      "_origin": "ast",
+      "community": 38,
+      "community_name": "quit.rs",
+      "file_type": "code",
+      "norm_label": "refresh()",
+      "source_file": "src-tauri/src/tray.rs",
+      "source_location": "L68"
+    },
+    {
+      "id": "src_tauri_src_tray_rs_apphandle",
+      "label": "AppHandle",
+      "_origin": "ast",
+      "community": 38,
+      "community_name": "quit.rs",
+      "file_type": "code",
+      "norm_label": "apphandle",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "src_tauri_src_tray_setup",
+      "label": "setup()",
+      "_origin": "ast",
+      "community": 38,
+      "community_name": "quit.rs",
+      "file_type": "code",
+      "norm_label": "setup()",
+      "source_file": "src-tauri/src/tray.rs",
+      "source_location": "L21"
+    },
+    {
+      "id": "src_tauri_src_tray_show",
+      "label": "show()",
+      "_origin": "ast",
+      "community": 38,
+      "community_name": "quit.rs",
+      "file_type": "code",
+      "norm_label": "show()",
+      "source_file": "src-tauri/src/tray.rs",
+      "source_location": "L55"
+    },
+    {
+      "id": "src_tauri_src_tray_tracking",
+      "label": "tracking()",
+      "_origin": "ast",
+      "community": 38,
+      "community_name": "quit.rs",
+      "file_type": "code",
+      "norm_label": "tracking()",
+      "source_file": "src-tauri/src/tray.rs",
+      "source_location": "L62"
+    },
+    {
+      "id": "trayicon",
+      "label": "TrayIcon",
+      "_origin": "ast",
+      "community": 38,
+      "community_name": "quit.rs",
+      "file_type": "code",
+      "norm_label": "trayicon",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "wry",
+      "label": "Wry",
+      "_origin": "ast",
+      "community": 38,
+      "community_name": "quit.rs",
+      "file_type": "code",
+      "norm_label": "wry",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "src_tauri_src_ai_capped",
       "label": "capped()",
       "_origin": "ast",
@@ -14269,22 +14467,11 @@
       "source_location": "L551"
     },
     {
-      "id": "lib_graph_graph",
-      "label": "$lib/graph",
-      "_origin": "ast",
-      "community": 4,
-      "community_name": "$lib/graph",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "$lib/graph",
-      "source_file": "$lib/graph"
-    },
-    {
       "id": "src_lib_graph_svelte_src_lib_graph",
       "label": "lib/Graph.svelte",
       "_origin": "ast",
       "community": 4,
-      "community_name": "$lib/graph",
+      "community_name": "graph",
       "file_type": "code",
       "norm_label": "lib/graph.svelte",
       "source_file": "src/lib/Graph.svelte",
@@ -14430,33 +14617,11 @@
       "source_location": "L22"
     },
     {
-      "id": "svelte",
-      "label": "svelte",
-      "_origin": "ast",
-      "community": 43,
-      "community_name": "svelte",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "svelte",
-      "source_file": "svelte"
-    },
-    {
-      "id": "src_lib_chat",
-      "label": "lib/Chat.svelte",
-      "_origin": "ast",
-      "community": 43,
-      "community_name": "svelte",
-      "file_type": "code",
-      "norm_label": "lib/chat.svelte",
-      "source_file": "src/lib/Chat.svelte",
-      "source_location": "L1"
-    },
-    {
       "id": "src_lib_chatctx",
       "label": "chatctx.ts",
       "_origin": "ast",
       "community": 43,
-      "community_name": "svelte",
+      "community_name": "chatctx.ts",
       "file_type": "code",
       "norm_label": "chatctx.ts",
       "source_file": "src/lib/chatctx.ts",
@@ -14467,7 +14632,7 @@
       "label": "enc",
       "_origin": "ast",
       "community": 43,
-      "community_name": "svelte",
+      "community_name": "chatctx.ts",
       "file_type": "code",
       "norm_label": "enc",
       "source_file": "src/lib/chatctx.ts",
@@ -14478,176 +14643,33 @@
       "label": "chatctx.test.ts",
       "_origin": "ast",
       "community": 43,
-      "community_name": "svelte",
+      "community_name": "chatctx.ts",
       "file_type": "code",
       "norm_label": "chatctx.test.ts",
       "source_file": "src/lib/chatctx.test.ts",
       "source_location": "L1"
     },
     {
-      "id": "src_lib_picker",
-      "label": "lib/Picker.svelte",
+      "id": "src_lib_zoom",
+      "label": "zoom.ts",
       "_origin": "ast",
-      "community": 43,
-      "community_name": "svelte",
+      "community": 45,
+      "community_name": "zoom.test.ts",
       "file_type": "code",
-      "norm_label": "lib/picker.svelte",
-      "source_file": "src/lib/Picker.svelte",
+      "norm_label": "zoom.ts",
+      "source_file": "src/lib/zoom.ts",
       "source_location": "L1"
     },
     {
-      "id": "package_scripts",
-      "label": "scripts",
+      "id": "src_lib_zoom_test",
+      "label": "zoom.test.ts",
       "_origin": "ast",
       "community": 45,
-      "community_name": "scripts",
+      "community_name": "zoom.test.ts",
       "file_type": "code",
-      "norm_label": "scripts",
-      "source_file": "package.json",
-      "source_location": "L9"
-    },
-    {
-      "id": "package_scripts_build",
-      "label": "build",
-      "_origin": "ast",
-      "community": 45,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "build",
-      "source_file": "package.json",
-      "source_location": "L11"
-    },
-    {
-      "id": "package_scripts_check",
-      "label": "check",
-      "_origin": "ast",
-      "community": 45,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "check",
-      "source_file": "package.json",
-      "source_location": "L14"
-    },
-    {
-      "id": "package_scripts_check_watch",
-      "label": "check:watch",
-      "_origin": "ast",
-      "community": 45,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "check:watch",
-      "source_file": "package.json",
-      "source_location": "L15"
-    },
-    {
-      "id": "package_scripts_coverage",
-      "label": "coverage",
-      "_origin": "ast",
-      "community": 45,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "coverage",
-      "source_file": "package.json",
-      "source_location": "L18"
-    },
-    {
-      "id": "package_scripts_coverage_ratchet",
-      "label": "coverage:ratchet",
-      "_origin": "ast",
-      "community": 45,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "coverage:ratchet",
-      "source_file": "package.json",
-      "source_location": "L19"
-    },
-    {
-      "id": "package_scripts_dev",
-      "label": "dev",
-      "_origin": "ast",
-      "community": 45,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "dev",
-      "source_file": "package.json",
-      "source_location": "L10"
-    },
-    {
-      "id": "package_scripts_e2e_build",
-      "label": "e2e:build",
-      "_origin": "ast",
-      "community": 45,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "e2e:build",
-      "source_file": "package.json",
-      "source_location": "L20"
-    },
-    {
-      "id": "package_scripts_e2e_run",
-      "label": "e2e:run",
-      "_origin": "ast",
-      "community": 45,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "e2e:run",
-      "source_file": "package.json",
-      "source_location": "L21"
-    },
-    {
-      "id": "package_scripts_prepare",
-      "label": "prepare",
-      "_origin": "ast",
-      "community": 45,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "prepare",
-      "source_file": "package.json",
-      "source_location": "L13"
-    },
-    {
-      "id": "package_scripts_screenshots",
-      "label": "screenshots",
-      "_origin": "ast",
-      "community": 45,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "screenshots",
-      "source_file": "package.json",
-      "source_location": "L23"
-    },
-    {
-      "id": "package_scripts_tauri",
-      "label": "tauri",
-      "_origin": "ast",
-      "community": 45,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "tauri",
-      "source_file": "package.json",
-      "source_location": "L16"
-    },
-    {
-      "id": "package_scripts_test",
-      "label": "test",
-      "_origin": "ast",
-      "community": 45,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "test",
-      "source_file": "package.json",
-      "source_location": "L17"
-    },
-    {
-      "id": "package_scripts_test_e2e",
-      "label": "test:e2e",
-      "_origin": "ast",
-      "community": 45,
-      "community_name": "scripts",
-      "file_type": "code",
-      "norm_label": "test:e2e",
-      "source_file": "package.json",
-      "source_location": "L22"
+      "norm_label": "zoom.test.ts",
+      "source_file": "src/lib/zoom.test.ts",
+      "source_location": "L1"
     },
     {
       "id": "claude_skills_triage_skill",
@@ -15442,7 +15464,7 @@
       "label": "remind.rs",
       "_origin": "ast",
       "community": 60,
-      "community_name": "remind.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "remind.rs",
       "source_file": "src-tauri/src/remind.rs",
@@ -15453,7 +15475,7 @@
       "label": "deadline_cookie_overrides_warn_days()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "remind.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "deadline_cookie_overrides_warn_days()",
       "source_file": "src-tauri/src/remind.rs",
@@ -15464,7 +15486,7 @@
       "label": "notify()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "remind.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "notify()",
       "source_file": "src-tauri/src/remind.rs",
@@ -15475,7 +15497,7 @@
       "label": "once_a_day()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "remind.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "once_a_day()",
       "source_file": "src-tauri/src/remind.rs",
@@ -15486,7 +15508,7 @@
       "label": "once_a_day_fires_once()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "remind.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "once_a_day_fires_once()",
       "source_file": "src-tauri/src/remind.rs",
@@ -15497,7 +15519,7 @@
       "label": "picks_due_reminders()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "remind.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "picks_due_reminders()",
       "source_file": "src-tauri/src/remind.rs",
@@ -15508,7 +15530,7 @@
       "label": "AppHandle",
       "_origin": "ast",
       "community": 60,
-      "community_name": "remind.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "apphandle",
       "source_file": "",
@@ -15519,9 +15541,20 @@
       "label": "NaiveDate",
       "_origin": "ast",
       "community": 60,
-      "community_name": "remind.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "naivedate",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "src_tauri_src_remind_rs_naivedatetime",
+      "label": "NaiveDateTime",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "super",
+      "file_type": "code",
+      "norm_label": "naivedatetime",
       "source_file": "",
       "source_location": ""
     },
@@ -15530,7 +15563,7 @@
       "label": "start()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "remind.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "start()",
       "source_file": "src-tauri/src/remind.rs",
@@ -15541,7 +15574,7 @@
       "label": "tick()",
       "_origin": "ast",
       "community": 60,
-      "community_name": "remind.rs",
+      "community_name": "super",
       "file_type": "code",
       "norm_label": "tick()",
       "source_file": "src-tauri/src/remind.rs",
@@ -16762,28 +16795,6 @@
       "file_type": "code",
       "norm_label": "clock.test.ts",
       "source_file": "src/lib/clock.test.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_lib_time",
-      "label": "lib/Time.svelte",
-      "_origin": "ast",
-      "community": 69,
-      "community_name": "clock.ts",
-      "file_type": "code",
-      "norm_label": "lib/time.svelte",
-      "source_file": "src/lib/Time.svelte",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_lib_weekbars",
-      "label": "WeekBars.svelte",
-      "_origin": "ast",
-      "community": 69,
-      "community_name": "clock.ts",
-      "file_type": "code",
-      "norm_label": "weekbars.svelte",
-      "source_file": "src/lib/WeekBars.svelte",
       "source_location": "L1"
     },
     {
@@ -19119,6 +19130,28 @@
       "source_location": "L1"
     },
     {
+      "id": "src_lib_changelog_test",
+      "label": "changelog.test.ts",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "changelog.test.ts",
+      "source_file": "src/lib/changelog.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_lib_changelog_test_script",
+      "label": "script",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "script",
+      "source_file": "src/lib/changelog.test.ts",
+      "source_location": "L9"
+    },
+    {
       "id": "src_lib_graph_test",
       "label": "graph.test.ts",
       "_origin": "ast",
@@ -19196,28 +19229,6 @@
       "source_location": "L5"
     },
     {
-      "id": "src_lib_setopt_test",
-      "label": "setopt.test.ts",
-      "_origin": "ast",
-      "community": 82,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "setopt.test.ts",
-      "source_file": "src/lib/setopt.test.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_lib_setopt_test_off",
-      "label": "off",
-      "_origin": "ast",
-      "community": 82,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "off",
-      "source_file": "src/lib/setopt.test.ts",
-      "source_location": "L5"
-    },
-    {
       "id": "src_lib_weblink",
       "label": "weblink.ts",
       "_origin": "ast",
@@ -19240,6 +19251,28 @@
       "source_location": "L1"
     },
     {
+      "id": "src_lib_whatsnew",
+      "label": "whatsnew.ts",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "whatsnew.ts",
+      "source_file": "src/lib/whatsnew.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_lib_whatsnew_test",
+      "label": "whatsnew.test.ts",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "whatsnew.test.ts",
+      "source_file": "src/lib/whatsnew.test.ts",
+      "source_location": "L1"
+    },
+    {
       "id": "src_lib_words",
       "label": "words.ts",
       "_origin": "ast",
@@ -19259,28 +19292,6 @@
       "file_type": "code",
       "norm_label": "words.test.ts",
       "source_file": "src/lib/words.test.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_lib_zoom",
-      "label": "zoom.ts",
-      "_origin": "ast",
-      "community": 82,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "zoom.ts",
-      "source_file": "src/lib/zoom.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_lib_zoom_test",
-      "label": "zoom.test.ts",
-      "_origin": "ast",
-      "community": 82,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "zoom.test.ts",
-      "source_file": "src/lib/zoom.test.ts",
       "source_location": "L1"
     },
     {
@@ -19425,28 +19436,6 @@
       "norm_label": "@tauri-apps/plugin-updater",
       "source_file": "package.json",
       "source_location": "L38"
-    },
-    {
-      "id": "src_lib_whatsnew",
-      "label": "whatsnew.ts",
-      "_origin": "ast",
-      "community": 84,
-      "community_name": "whatsnew.test.ts",
-      "file_type": "code",
-      "norm_label": "whatsnew.ts",
-      "source_file": "src/lib/whatsnew.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_lib_whatsnew_test",
-      "label": "whatsnew.test.ts",
-      "_origin": "ast",
-      "community": 84,
-      "community_name": "whatsnew.test.ts",
-      "file_type": "code",
-      "norm_label": "whatsnew.test.ts",
-      "source_file": "src/lib/whatsnew.test.ts",
-      "source_location": "L1"
     },
     {
       "id": "claude_agents_implementer",
@@ -20496,26 +20485,37 @@
       "source_location": "L352"
     },
     {
-      "id": "src_lib_changelog_test",
-      "label": "changelog.test.ts",
+      "id": "src_lib_setopt",
+      "label": "setopt.ts",
       "_origin": "ast",
       "community": 95,
-      "community_name": "changelog.test.ts",
+      "community_name": "setopt.test.ts",
       "file_type": "code",
-      "norm_label": "changelog.test.ts",
-      "source_file": "src/lib/changelog.test.ts",
+      "norm_label": "setopt.ts",
+      "source_file": "src/lib/setopt.ts",
       "source_location": "L1"
     },
     {
-      "id": "src_lib_changelog_test_script",
-      "label": "script",
+      "id": "src_lib_setopt_test",
+      "label": "setopt.test.ts",
       "_origin": "ast",
       "community": 95,
-      "community_name": "changelog.test.ts",
+      "community_name": "setopt.test.ts",
       "file_type": "code",
-      "norm_label": "script",
-      "source_file": "src/lib/changelog.test.ts",
-      "source_location": "L9"
+      "norm_label": "setopt.test.ts",
+      "source_file": "src/lib/setopt.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_lib_setopt_test_off",
+      "label": "off",
+      "_origin": "ast",
+      "community": 95,
+      "community_name": "setopt.test.ts",
+      "file_type": "code",
+      "norm_label": "off",
+      "source_file": "src/lib/setopt.test.ts",
+      "source_location": "L5"
     },
     {
       "id": "docs_mockups_render",
@@ -20651,6 +20651,30 @@
       "type": "external"
     },
     {
+      "id": "chrono",
+      "label": "chrono",
+      "_origin": "semantic",
+      "community": 109,
+      "community_name": "wlr.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "chrono",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "crate",
+      "label": "crate",
+      "_origin": "semantic",
+      "community": 109,
+      "community_name": "wlr.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "crate",
+      "source_file": "",
+      "type": "external"
+    },
+    {
       "id": "ext_idle_notification_v1",
       "label": "ext_idle_notification_v1",
       "_origin": "semantic",
@@ -20687,6 +20711,30 @@
       "type": "external"
     },
     {
+      "id": "hashmap",
+      "label": "hashmap",
+      "_origin": "semantic",
+      "community": 109,
+      "community_name": "wlr.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "hashmap",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "json",
+      "label": "json",
+      "_origin": "semantic",
+      "community": 109,
+      "community_name": "wlr.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "json",
+      "source_file": "",
+      "type": "external"
+    },
+    {
       "id": "now",
       "label": "now",
       "_origin": "semantic",
@@ -20719,6 +20767,18 @@
       "external": true,
       "file_type": "concept",
       "norm_label": "sync",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "useridle",
+      "label": "useridle",
+      "_origin": "semantic",
+      "community": 109,
+      "community_name": "wlr.rs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "useridle",
       "source_file": "",
       "type": "external"
     },
@@ -20795,6 +20855,30 @@
       "type": "feature"
     },
     {
+      "id": "sveltekit",
+      "label": "SvelteKit",
+      "_origin": "semantic",
+      "community": 111,
+      "community_name": "lib/Agenda.svelte",
+      "confidence": "high",
+      "file_type": "concept",
+      "norm_label": "sveltekit",
+      "source_file": "package.json",
+      "type": "framework"
+    },
+    {
+      "id": "vite",
+      "label": "Vite",
+      "_origin": "semantic",
+      "community": 111,
+      "community_name": "lib/Agenda.svelte",
+      "confidence": "high",
+      "file_type": "concept",
+      "norm_label": "vite",
+      "source_file": "package.json",
+      "type": "build_tool"
+    },
+    {
       "id": "systemtime",
       "label": "systemtime",
       "_origin": "semantic",
@@ -20803,18 +20887,6 @@
       "external": true,
       "file_type": "concept",
       "norm_label": "systemtime",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "ref_node_url",
-      "label": "ref_node_url",
-      "_origin": "semantic",
-      "community": 119,
-      "community_name": "media-size.ts",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "ref_node_url",
       "source_file": "",
       "type": "external"
     },
@@ -20831,78 +20903,6 @@
       "type": "external"
     },
     {
-      "id": "chrono",
-      "label": "chrono",
-      "_origin": "semantic",
-      "community": 120,
-      "community_name": "super",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "chrono",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "crate",
-      "label": "crate",
-      "_origin": "semantic",
-      "community": 120,
-      "community_name": "super",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "crate",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "json",
-      "label": "json",
-      "_origin": "semantic",
-      "community": 120,
-      "community_name": "super",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "json",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "super",
-      "label": "super",
-      "_origin": "semantic",
-      "community": 120,
-      "community_name": "super",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "super",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "tauri",
-      "label": "tauri",
-      "_origin": "semantic",
-      "community": 120,
-      "community_name": "super",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "tauri",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "useridle",
-      "label": "useridle",
-      "_origin": "semantic",
-      "community": 120,
-      "community_name": "super",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "useridle",
-      "source_file": "",
-      "type": "external"
-    },
-    {
       "id": "github_releases",
       "label": "GitHub Releases",
       "_origin": "semantic",
@@ -20913,18 +20913,6 @@
       "norm_label": "github releases",
       "source_file": "README.md",
       "type": "integration"
-    },
-    {
-      "id": "menu",
-      "label": "menu",
-      "_origin": "semantic",
-      "community": 15,
-      "community_name": "tray.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "menu",
-      "source_file": "",
-      "type": "external"
     },
     {
       "id": "links_backlinks",
@@ -21227,28 +21215,28 @@
       "type": "external"
     },
     {
-      "id": "sveltekit",
-      "label": "SvelteKit",
+      "id": "menu",
+      "label": "menu",
       "_origin": "semantic",
-      "community": 43,
-      "community_name": "svelte",
-      "confidence": "high",
+      "community": 38,
+      "community_name": "quit.rs",
+      "external": true,
       "file_type": "concept",
-      "norm_label": "sveltekit",
-      "source_file": "package.json",
-      "type": "framework"
+      "norm_label": "menu",
+      "source_file": "",
+      "type": "external"
     },
     {
-      "id": "vite",
-      "label": "Vite",
+      "id": "tauri",
+      "label": "tauri",
       "_origin": "semantic",
-      "community": 43,
-      "community_name": "svelte",
-      "confidence": "high",
+      "community": 38,
+      "community_name": "quit.rs",
+      "external": true,
       "file_type": "concept",
-      "norm_label": "vite",
-      "source_file": "package.json",
-      "type": "build_tool"
+      "norm_label": "tauri",
+      "source_file": "",
+      "type": "external"
     },
     {
       "id": "assets_icon",
@@ -21321,18 +21309,6 @@
       "norm_label": "journal",
       "source_file": "README.md",
       "type": "feature"
-    },
-    {
-      "id": "hashmap",
-      "label": "hashmap",
-      "_origin": "semantic",
-      "community": 52,
-      "community_name": "ics.rs",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "hashmap",
-      "source_file": "",
-      "type": "external"
     },
     {
       "id": "node",
@@ -21411,7 +21387,7 @@
       "label": "arc",
       "_origin": "semantic",
       "community": 60,
-      "community_name": "remind.rs",
+      "community_name": "super",
       "external": true,
       "file_type": "concept",
       "norm_label": "arc",
@@ -21423,7 +21399,7 @@
       "label": "btreeset",
       "_origin": "semantic",
       "community": 60,
-      "community_name": "remind.rs",
+      "community_name": "super",
       "external": true,
       "file_type": "concept",
       "norm_label": "btreeset",
@@ -21435,7 +21411,7 @@
       "label": "notificationext",
       "_origin": "semantic",
       "community": 60,
-      "community_name": "remind.rs",
+      "community_name": "super",
       "external": true,
       "file_type": "concept",
       "norm_label": "notificationext",
@@ -21447,10 +21423,22 @@
       "label": "path",
       "_origin": "semantic",
       "community": 60,
-      "community_name": "remind.rs",
+      "community_name": "super",
       "external": true,
       "file_type": "concept",
       "norm_label": "path",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "super",
+      "label": "super",
+      "_origin": "semantic",
+      "community": 60,
+      "community_name": "super",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "super",
       "source_file": "",
       "type": "external"
     },
@@ -21551,6 +21539,18 @@
       "type": "external"
     },
     {
+      "id": "ref_node_url",
+      "label": "ref_node_url",
+      "_origin": "semantic",
+      "community": 67,
+      "community_name": "coverage-ratchet.ts",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "ref_node_url",
+      "source_file": "",
+      "type": "external"
+    },
+    {
       "id": "hashset",
       "label": "hashset",
       "_origin": "semantic",
@@ -21611,6 +21611,30 @@
       "type": "external"
     },
     {
+      "id": "ref_node_child_process",
+      "label": "ref_node_child_process",
+      "_origin": "semantic",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "ref_node_child_process",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "ref_node_os",
+      "label": "ref_node_os",
+      "_origin": "semantic",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "ref_node_os",
+      "source_file": "",
+      "type": "external"
+    },
+    {
       "id": "ref_node_test",
       "label": "ref_node_test",
       "_origin": "semantic",
@@ -21635,37 +21659,46 @@
       "type": "external"
     },
     {
-      "id": "ref_node_child_process",
-      "label": "ref_node_child_process",
-      "_origin": "semantic",
-      "community": 95,
-      "community_name": "changelog.test.ts",
+      "id": "projects",
+      "label": "projects",
+      "community": 124,
+      "community_name": "lib/Projects.svelte",
       "external": true,
       "file_type": "concept",
-      "norm_label": "ref_node_child_process",
+      "norm_label": "projects",
       "source_file": "",
       "type": "external"
     },
     {
-      "id": "ref_node_os",
-      "label": "ref_node_os",
-      "_origin": "semantic",
-      "community": 95,
-      "community_name": "changelog.test.ts",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "ref_node_os",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "state",
-      "label": "state",
+      "id": "event",
+      "label": "event",
       "community": 29,
       "community_name": "+page.svelte",
       "external": true,
       "file_type": "concept",
-      "norm_label": "state",
+      "norm_label": "event",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "webview",
+      "label": "webview",
+      "community": 29,
+      "community_name": "+page.svelte",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "webview",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "graph",
+      "label": "graph",
+      "community": 4,
+      "community_name": "graph",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "graph",
       "source_file": "",
       "type": "external"
     }
@@ -69756,7 +69789,7 @@
     },
     {
       "source": "src_lib_graph_svelte_src_lib_graph",
-      "target": "lib_graph_graph",
+      "target": "graph",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -69792,7 +69825,7 @@
     },
     {
       "source": "src_lib_projects_svelte_src_lib_projects",
-      "target": "lib_projects_projects",
+      "target": "projects",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -69954,6 +69987,15 @@
     },
     {
       "source": "src_routes_page",
+      "target": "codemirror_state_state",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/routes/+page.svelte"
+    },
+    {
+      "source": "src_routes_page",
       "target": "core",
       "relation": "imports_from",
       "_origin": "ast",
@@ -69964,6 +70006,15 @@
     {
       "source": "src_routes_page",
       "target": "editor",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/routes/+page.svelte"
+    },
+    {
+      "source": "src_routes_page",
+      "target": "event",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -70071,15 +70122,6 @@
     },
     {
       "source": "src_routes_page",
-      "target": "state",
-      "relation": "imports_from",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/routes/+page.svelte"
-    },
-    {
-      "source": "src_routes_page",
       "target": "svelte",
       "relation": "imports_from",
       "_origin": "ast",
@@ -70090,24 +70132,6 @@
     {
       "source": "src_routes_page",
       "target": "taskdialog_svelte",
-      "relation": "imports_from",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/routes/+page.svelte"
-    },
-    {
-      "source": "src_routes_page",
-      "target": "tauri_apps_api_event_event",
-      "relation": "imports_from",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/routes/+page.svelte"
-    },
-    {
-      "source": "src_routes_page",
-      "target": "tauri_apps_api_webview_webview",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -70144,6 +70168,15 @@
     {
       "source": "src_routes_page",
       "target": "weblink",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/routes/+page.svelte"
+    },
+    {
+      "source": "src_routes_page",
+      "target": "webview",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -72197,5 +72230,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "b00183b2723b5cd4cca8f95f082f0be02f87435b"
+  "built_at_commit": "2b6d9312c524b264f8f04a84ae2b28120f0a1b05"
 }
