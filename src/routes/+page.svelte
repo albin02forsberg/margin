@@ -1554,6 +1554,12 @@
     if (d != null) await report("weekly", "Week report", d);
   }
 
+  /** Month report for the calendar month containing the picked date (empty = this month). */
+  async function monthlyReport() {
+    const d = await datePick("Month report for", false, undefined, false);
+    if (d != null) await report("monthly", "Month report", d);
+  }
+
   async function exportCsv() {
     const start = await datePick("Export from");
     if (start == null) return;
@@ -1817,7 +1823,7 @@
     start: (p?: string) => clockIn(p), stop: clockOut, pause: () => tcDo("tc_break"), resume: () => tcDo("tc_resume"),
     switch: changeProject, adjust: adjustStart, stopEarlier, editSession: (s) => editSession(s), export: exportCsv, exportReport, projects: () => openView("projects"),
     profile: (n) => switchProfile(n), holidays: () => report("holidays", "Holidays"), daily: dailyReport,
-    weekly: weeklyReport, doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
+    weekly: weeklyReport, monthly: monthlyReport, doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
     backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), open: (loc) => openFile(loc.path, loc.line), import: importEmacs, acceptSuggestion, editSuggestion,
     flex: async () => flash(await call("tc_report", { kind: "flex" })), leave: async () => flash(await call("tc_leave_time")), diary: () => openFile(cfg.diary_path),
     timeOff, logSession,
@@ -1988,6 +1994,7 @@
     { label: "Time: I stopped earlier…", leader: "t O", run: t("stopEarlier") },
     { label: "Time: day report", leader: "t t", run: t("daily") },
     { label: "Time: week report", leader: "t s", run: t("weekly") },
+    { label: "Time: month report", leader: "t m", run: t("monthly") },
     { label: "Time: show flex balance", leader: "t f", run: t("flex") },
     { label: "Time: when to leave today", leader: "t w", run: t("leave") },
     { label: "Time: public holidays", leader: "t h", run: t("holidays") },
