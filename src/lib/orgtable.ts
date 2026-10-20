@@ -119,8 +119,10 @@ function mapRows(lines: string[], f: (c: string[]) => string[]) {
   });
 }
 
-export function insertCol(t: Table): Table {
-  return done(mapRows(t.lines, (c) => [...c.slice(0, t.col + 1), "", ...c.slice(t.col + 1)]), t.row, t.col + 1);
+/** An empty column right of the cursor's, or left of it with BEFORE. */
+export function insertCol(t: Table, before = false): Table {
+  const at = before ? t.col : t.col + 1;
+  return done(mapRows(t.lines, (c) => [...c.slice(0, at), "", ...c.slice(at)]), t.row, at);
 }
 
 export function deleteCol(t: Table): Table | null {
@@ -155,11 +157,11 @@ export function sortRows(t: Table, desc = false): Table {
   return done([...t.lines.slice(0, a), ...sorted, ...t.lines.slice(b + 1)], a, t.col);
 }
 
-/** A new table with a header row and separator. */
-export function create(cols: number, rows: number): string[] {
+/** A new table of ROWS empty rows, under a header row and separator unless HEADER is false. */
+export function create(cols: number, rows: number, header = true): string[] {
   const head = `|${Array.from({ length: cols }, (_, i) => ` Column ${i + 1} |`).join("")}`;
   const body = Array.from({ length: Math.max(1, rows) }, () => `|${" |".repeat(cols)}`);
-  return align([head, "|-", ...body]);
+  return align(header ? [head, "|-", ...body] : body);
 }
 
 // ---------------------------------------------------------------- formulas (#+TBLFM)

@@ -2,7 +2,7 @@
 // the line being edited), folding, tables, blocks and the structure-editing ops.
 import { Compartment, EditorState, Facet, Prec, StateEffect, type Extension, type Range, type TransactionSpec } from "@codemirror/state";
 import {
-  Decoration, EditorView, GutterMarker, ViewPlugin, WidgetType, drawSelection, gutter, highlightActiveLine, keymap, lineNumbers, type DecorationSet, type ViewUpdate,
+  Decoration, EditorView, GutterMarker, ViewPlugin, WidgetType, drawSelection, gutter, highlightActiveLine, keymap, lineNumbers, showPanel, type DecorationSet, type Panel, type ViewUpdate,
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
@@ -783,7 +783,7 @@ export function shiftTimestamp(v: EditorView, dir: number, field = true): boolea
 export const inTable = (v: EditorView) => tbl.isTableLine(curLine(v).text);
 const TBLFM = /^\s*#\+TBLFM:\s*/i;
 
-type TableOp = "next" | "prev" | "enter" | "align" | "recalc" | "rowBelow" | "rowAbove" | "delRow" | "colRight" | "delCol"
+type TableOp = "next" | "prev" | "enter" | "align" | "recalc" | "rowBelow" | "rowAbove" | "delRow" | "colRight" | "colBefore" | "delCol"
   | "rowDown" | "rowUp" | "colLeft" | "colRightMove" | "sep" | "sort" | "sortDesc";
 /** Ops that recalculate #+TBLFM formulas, like moving through cells in a spreadsheet. */
 const RECALC = new Set<TableOp>(["next", "prev", "enter", "align", "recalc"]);
@@ -807,7 +807,7 @@ export function tableOp(v: EditorView, op: TableOp): boolean {
   const ops: Record<TableOp, () => tbl.Table | null> = {
     next: () => tbl.nextCell(t, 1), prev: () => tbl.nextCell(t, -1), enter: () => tbl.nextRow(t),
     align: () => t, recalc: () => t, rowBelow: () => tbl.insertRow(t, true), rowAbove: () => tbl.insertRow(t, false),
-    delRow: () => tbl.deleteRow(t), colRight: () => tbl.insertCol(t), delCol: () => tbl.deleteCol(t),
+    delRow: () => tbl.deleteRow(t), colRight: () => tbl.insertCol(t), colBefore: () => tbl.insertCol(t, true), delCol: () => tbl.deleteCol(t),
     rowDown: () => tbl.moveRow(t, 1), rowUp: () => tbl.moveRow(t, -1), colLeft: () => tbl.moveCol(t, -1), colRightMove: () => tbl.moveCol(t, 1),
     sep: () => tbl.insertSep(t), sort: () => tbl.sortRows(t), sortDesc: () => tbl.sortRows(t, true),
   };
@@ -831,9 +831,40 @@ export function tableOp(v: EditorView, op: TableOp): boolean {
   return true;
 }
 
-export function insertTable(v: EditorView, cols: number, rows: number) {
+/** Table toolbar buttons: [label, tooltip, op]; "|" draws a divider. */
+const TABLE_TOOLS: ([string, string, TableOp] | "|")[] = [
+  ["+ Row ↑", "Insert row above (Space T k)", "rowAbove"], ["+ Row ↓", "Insert row below (Space T j, Alt+Shift+J)", "rowBelow"],
+  ["− Row", "Delete row (Space T d, Alt+Shift+K)", "delRow"], ["Row ↑", "Move row up (Alt+K)", "rowUp"], ["Row ↓", "Move row down (Alt+J)", "rowDown"], "|",
+  ["+ Col ←", "Insert column left (Space T H)", "colBefore"], ["+ Col →", "Insert column right (Space T l)", "colRight"],
+  ["− Col", "Delete column (Space T h)", "delCol"], ["Col ←", "Move column left (Alt+H)", "colLeft"], ["Col →", "Move column right (Alt+L)", "colRightMove"], "|",
+  ["Sort ↑", "Sort rows by this column (Space T s)", "sort"], ["Sort ↓", "Sort rows by this column, descending (Space T S)", "sortDesc"],
+  ["Separator", "Add a separator line below (Space T -)", "sep"], ["Align", "Align the table (Space T a)", "align"], ["Recalc", "Recalculate #+TBLFM formulas (Space T r)", "recalc"],
+];
+
+function tablePanel(v: EditorView): Panel {
+  const dom = document.createElement("div");
+  dom.className = "cm-table-tools";
+  dom.setAttribute("role", "toolbar");
+  dom.setAttribute("aria-label", "Table");
+  dom.append(Object.assign(document.createElement("span"), { textContent: "Table" }));
+  for (const t of TABLE_TOOLS) {
+    if (t === "|") { dom.append(document.createElement("i")); continue; }
+    const b = Object.assign(document.createElement("button"), { type: "button", textContent: t[0], title: t[1] });
+    b.dataset.op = t[2];
+    b.onmousedown = (e) => e.preventDefault(); // keep the editor's focus, selection and vim mode
+    b.onclick = () => { tableOp(v, t[2]); v.focus(); };
+    dom.append(b);
+  }
+  return { dom };
+}
+
+/** The table toolbar, under the editor while the cursor is in a table. */
+const tableTools = showPanel.compute(["doc", "selection"], (s) =>
+  !s.readOnly && tbl.isTableLine(s.doc.lineAt(s.selection.main.head).text) ? tablePanel : null);
+
+export function insertTable(v: EditorView, cols: number, rows: number, header = true) {
   const ln = curLine(v);
-  const lines = tbl.create(cols, rows);
+  const lines = tbl.create(cols, rows, header);
   const lead = ln.text.trim() ? "\n" : "";
   const from = ln.text.trim() ? ln.to : ln.from;
   v.dispatch({ changes: { from, to: ln.text.trim() ? from : ln.to, insert: lead + lines.join("\n") }, selection: { anchor: from + lead.length + 2 } });
@@ -919,6 +950,11 @@ const theme = EditorView.theme({
   ".cm-panels.cm-panels-bottom": { borderTop: "1px solid var(--border)" },
   ".cm-vim-panel": { padding: "2px 12px" },
   ".cm-vim-panel input": { color: "var(--fg)", fontFamily: "var(--mono)" },
+  ".cm-table-tools": { display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center", padding: "4px 12px", fontFamily: "var(--sans)" },
+  ".cm-table-tools > span": { color: "var(--dim)", fontSize: "var(--fs-xs)", textTransform: "uppercase", letterSpacing: "0.05em", marginRight: "4px" },
+  ".cm-table-tools > i": { width: "1px", alignSelf: "stretch", background: "var(--border)", margin: "0 4px" },
+  ".cm-table-tools button": { background: "var(--bg)", border: "1px solid var(--border)", color: "var(--fg)", borderRadius: "var(--radius-sm)", padding: "1px 7px", font: "var(--fs-sm) var(--sans)", cursor: "pointer" },
+  ".cm-table-tools button:hover": { borderColor: "var(--accent)", color: "var(--accent)" },
 
   // headings
   ".cm-org-h": { fontWeight: "650", paddingTop: "0.9em", paddingBottom: "0.1em" },
@@ -1018,7 +1054,7 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
   ];
   if (opts.org) {
     ext.push(
-      spellConf.of(spellExt()), orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path }), orgStyle, orgFold, clicks,
+      spellConf.of(spellExt()), orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path }), orgStyle, orgFold, clicks, tableTools,
       Prec.high(keymap.of([{ key: "Tab", run: orgTab }, { key: "Shift-Tab", run: orgShiftTab }, { key: "Enter", run: smartEnter },
         // Insert mode only: in normal / visual mode Ctrl+B stays vim's page up.
         { key: "Mod-b", run: (v) => vimInsert(v) && emphasis(v, "*") }, { key: "Mod-i", run: (v) => vimInsert(v) && emphasis(v, "/") }])),
