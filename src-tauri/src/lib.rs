@@ -421,7 +421,7 @@ fn pacman_owned() -> bool {
         && std::env::current_exe().is_ok_and(|p| p.starts_with("/usr/"))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn list_files(s: State<App>) -> Vec<PathBuf> {
     let mut v = org::org_paths(&s.cfg().notes());
     v.sort();
@@ -676,18 +676,18 @@ fn trash_attachments(s: State<App>, files: Vec<PathBuf>) -> R<()> {
 
 // ---------------------------------------------------------------- org
 
-#[tauri::command]
+#[tauri::command(async)]
 fn agenda(s: State<App>, start: String, days: i64) -> R<Vec<org::Item>> {
     Ok(org::agenda(&s.files(), &s.kw(), date(&start)?, days, today()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn todos(s: State<App>) -> Vec<org::Item> {
     org::todos(&s.files(), &s.kw(), false, |_, _| true, today())
 }
 
 /// Tasks matching QUERY (see org::query).
-#[tauri::command]
+#[tauri::command(async)]
 fn search_todos(s: State<App>, query: String) -> R<Vec<org::Item>> {
     let kw = s.kw();
     let (keep, done) = org::query(&query, today(), &kw)?;
@@ -735,12 +735,12 @@ fn org_sort(s: State<App>, text: String, line: Option<usize>, key: String) -> R<
     org::sort_children(&text, line, &s.kw(), key.trim_end_matches('-'), key.ends_with('-'))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn org_targets(s: State<App>) -> Vec<org::Target> {
     org::targets(&s.files(), &s.cfg().notes())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn org_tags(s: State<App>) -> Vec<String> {
     org::all_tags(&s.files())
 }
@@ -997,12 +997,12 @@ fn notes_new(s: State<App>, title: String) -> R<notes::Node> {
 }
 
 /// Every note's title (`#+title`, else the file name), with or without an ID.
-#[tauri::command]
+#[tauri::command(async)]
 fn note_titles(s: State<App>) -> std::collections::HashMap<PathBuf, String> {
     s.files().iter().map(|f| (f.path.clone(), f.title.clone())).collect()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn notes_nodes(s: State<App>) -> Vec<notes::Node> {
     notes::nodes(&s.files())
 }
@@ -1688,7 +1688,7 @@ fn export_html_fragment(s: State<App>, path: PathBuf, text: String) -> String {
 /// Export note TEXT (the buffer of PATH) and the notes it reaches by id: links within DEPTH hops
 /// as FORMAT (html | md) pages in `<export_dir>/<stem>/`, id: links between them made relative,
 /// pages of an earlier export no longer included moved into `old/`; pdf: one `<stem> (linked).html` print page. Returns PATH's page.
-#[tauri::command]
+#[tauri::command(async)]
 fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, format: String, overwrite: Option<bool>) -> R<PathBuf> {
     let kw = s.kw();
     let root = org::parse(&path, &text, &kw);
