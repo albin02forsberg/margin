@@ -13,7 +13,7 @@
   import type { EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
   import { linkFor, asUrl } from "$lib/weblink";
-  import { findTarget, splitTarget } from "$lib/links";
+  import { findTarget, linkHeadings, splitTarget } from "$lib/links";
   import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, relativeTo, resolvePath } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
@@ -44,7 +44,7 @@
   type NoteNode = { id: string; title: string; path: string; line: number };
   type Hit = { path: string; title: string; line: number; text: string };
   type Mention = Hit & { col: number; len: number };
-  type Target = { path: string; line: number | null; label: string };
+  type Target = { path: string; line: number | null; label: string; title: string };
   type Parts = { level: number; keyword: string | null; priority: string | null; title: string; tags: string[] };
   type Loc = { path: string; line: number };
   /** A command: shown in the palette, bound to KEYS, placed in the Space menu at LEADER.
@@ -1084,16 +1084,21 @@
     if (!inFile()) return flash("Open a note first.");
     const loc = { path: tab.path!, pos: view.state.selection.main.head };
     const sel = ed.lineSelection(view); // a one-line selection becomes the link text and is replaced
-    const { nodes, sorted, titles } = await noteItems();
+    const [{ nodes, sorted, titles }, targets] = await Promise.all([noteItems(), call<Target[]>("org_targets")]);
     const withId = new Set(nodes.filter((n) => n.line === 0).map((n) => n.path));
+    const heads = linkHeadings(targets, new Set(nodes.map((n) => `${n.path}:${n.line}`))); // headings without an :ID: link as ::*Title
     const items = [
       ...nodes.map((n) => ({ label: n.title, detail: rel(n.path), value: n as unknown })),
       ...sorted.filter((p) => !withId.has(p) && p !== loc.path).map((p) => ({ label: titles.get(p) ?? niceName(p), detail: rel(p), value: p as unknown })),
+      ...heads.map((h) => ({ label: h.bare, detail: h.label, value: { head: h } as unknown })),
     ];
     const r = await pick({ prompt: "Link to note — or type a title to create one", items, allowCustom: true, hint: "Ctrl+↵ creates a new note" });
     if (r == null || r === "") return;
     let link: string;
-    if (typeof r === "object") link = linkFor(`id:${r.id}`, sel?.text ?? r.title);
+    if (typeof r === "object" && "head" in r) {
+      const h = r.head as (typeof heads)[number];
+      link = linkFor(`${h.path === loc.path ? "" : `file:${relativeTo(loc.path, h.path)}::`}*${h.bare}`, sel?.text ?? h.bare);
+    } else if (typeof r === "object") link = linkFor(`id:${r.id}`, sel?.text ?? r.title);
     else if (sorted.includes(r)) link = linkFor(`file:${relativeTo(loc.path, r)}`, sel?.text ?? titles.get(r) ?? niceName(r)); // org resolves file: links from the note's folder
     else {
       const n: NoteNode = await call("notes_new", { title: r });

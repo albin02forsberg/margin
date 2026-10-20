@@ -1122,6 +1122,8 @@ pub struct Target {
     pub path: PathBuf,
     pub line: Option<usize>,
     pub label: String,
+    /// Bare headline title (the note's title for a file entry).
+    pub title: String,
 }
 
 /// Refile/capture targets: every file (top level) and every heading, labelled by outline path.
@@ -1129,7 +1131,7 @@ pub fn targets(files: &[Arc<OrgFile>], root: &Path) -> Vec<Target> {
     let mut out = vec![];
     for f in files {
         let rel = f.path.strip_prefix(root).unwrap_or(&f.path).display().to_string();
-        out.push(Target { path: f.path.clone(), line: None, label: rel.clone() });
+        out.push(Target { path: f.path.clone(), line: None, label: rel.clone(), title: f.title.clone() });
         let mut stack: Vec<(usize, &str)> = vec![];
         for h in &f.headlines {
             while stack.last().is_some_and(|(l, _)| *l >= h.level) {
@@ -1137,7 +1139,7 @@ pub fn targets(files: &[Arc<OrgFile>], root: &Path) -> Vec<Target> {
             }
             stack.push((h.level, &h.title));
             let olp: Vec<&str> = stack.iter().map(|(_, t)| *t).collect();
-            out.push(Target { path: f.path.clone(), line: Some(h.line), label: format!("{rel} / {}", olp.join(" / ")) });
+            out.push(Target { path: f.path.clone(), line: Some(h.line), label: format!("{rel} / {}", olp.join(" / ")), title: h.title.clone() });
         }
     }
     out
@@ -1327,6 +1329,14 @@ mod tests {
     const DOC: &str = ":PROPERTIES:\n:ID: file-1\n:END:\n#+title: My Note\n#+category: Work\n\
 * TODO [#A] Write report :work:urgent:\nSCHEDULED: <2026-10-01 Thu> DEADLINE: <2026-10-05 Mon 10:00>\n:PROPERTIES:\n:ID: h-1\n:END:\nSee [[id:other][Other]] and [[file:b.org]].\n\
 ** NEXT Sub\n:PROPERTIES:\n:CATEGORY: Sub\n:END:\n*** DONE Deep\n* Meeting\n<2026-10-03 Sat 14:00>\n* TODO Water plants\nSCHEDULED: <2026-09-28 Mon +1w>\n";
+
+    #[test]
+    fn targets_carry_bare_titles() {
+        let f = Arc::new(parse(Path::new("/n/x.org"), DOC, &kw()));
+        let t: Vec<_> = targets(&[f], Path::new("/n")).into_iter().map(|t| (t.line, t.label, t.title)).collect();
+        assert_eq!(t[0], (None, "x.org".into(), "My Note".into()));
+        assert_eq!(t[2], (Some(11), "x.org / Write report / Sub".into(), "Sub".into()));
+    }
 
     #[test]
     fn parses_headlines() {

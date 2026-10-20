@@ -952,6 +952,21 @@ describe("Note navigation", () => {
     await type("gf"); // the cursor is on the link just inserted
     await find(".status .file", "target.org");
     await find(".cm-content", "Target text.");
+    // a heading without an :ID: links as file:…::*Title, and following it lands on the heading
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Writer");
+    await find(".status .file", "writer.org");
+    await browser.keys(Key.Escape);
+    await type("Go");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "l"]);
+    await answer("Link to note", "headed.org / Two");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "sub", "writer.org"), (s) => s.includes("[[file:../headed.org::*Two][Two]]"), "heading link not inserted");
+    await type("gf");
+    await find(".status .file", "headed.org");
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("* Two")), { timeoutMsg: "cursor not on the linked heading" });
   });
 
   it("Ctrl+Shift+O jumps to the picked heading", async () => {
