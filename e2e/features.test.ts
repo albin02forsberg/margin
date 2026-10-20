@@ -564,6 +564,66 @@ describe("Task keys", () => {
   });
 });
 
+describe("Tags", () => {
+  let d: Dirs;
+  const day = `<${orgDay(new Date())}>`;
+  before(async () => {
+    d = await launch({
+      files: ({ notes }) => {
+        writeFileSync(join(notes, "tags.org"), `* TODO Tag me :alpha:beta:\nSCHEDULED: ${day}\n* TODO Other :gamma:\n`);
+        writeFileSync(join(notes, "strip.org"), "* TODO Strip me :xray:yank:\n");
+        writeFileSync(join(notes, "inh.org"), "#+FILETAGS: :work:\n* Proj :proj:\n** TODO Child task\n* TODO Loose task\n");
+      },
+    });
+  });
+  after(close, { timeout: 30_000 });
+
+  it("# toggles an existing tag, adds a new one with Ctrl+Enter and ✓ Done saves", async () => {
+    await find(".agenda h1", "Today");
+    await (await find(".agenda .row .title", "Tag me")).click();
+    await browser.keys("#");
+    await find(".picker label span", "Tags: alpha, beta");
+    await type("beta");
+    await browser.keys(Key.Enter); // toggles beta off
+    await find(".picker label span", "Tags: alpha");
+    await type("gamma");
+    await browser.keys(Key.Enter); // an existing tag from another heading
+    await find(".picker label span", "Tags: alpha, gamma");
+    await type("fresh");
+    await browser.keys([Key.Ctrl, Key.Enter]);
+    await find(".picker label span", "Tags: alpha, gamma, fresh");
+    await type("done");
+    await browser.keys(Key.Enter);
+    await fileMatches(join(d.notes, "tags.org"), (s) => s.includes("* TODO Tag me :alpha:gamma:fresh:\nSCHEDULED:"), "tags not rewritten in order");
+  });
+
+  it("Space x g in the editor removes tags without leaving spaces", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "strip");
+    await find(".status .file", "strip.org");
+    for (const t of ["xray", "yank"]) {
+      await browser.keys(Key.Escape);
+      await browser.keys(" ");
+      await type("xg");
+      await find(".picker label span", "Tags:");
+      await type(t);
+      await browser.keys(Key.Enter);
+      await find(".picker label span", "Tags:");
+      await type("done");
+      await browser.keys(Key.Enter);
+      await noPicker();
+    }
+    await fileMatches(join(d.notes, "strip.org"), (s) => s === "* TODO Strip me\n", "tags not removed cleanly");
+  });
+
+  it("tag: search matches tags inherited from #+FILETAGS and parent headings", async () => {
+    await palette("Search tasks");
+    await answer("Search tasks", "tag:work tag:proj");
+    await find(".agenda h1", "tag:work tag:proj");
+    await browser.waitUntil(async () => (await texts(".agenda .row .title")).join("|") === "Child task", { timeoutMsg: "search doesn't list exactly the inheriting child" });
+  });
+});
+
 describe("Journal, archive and move", () => {
   let d: Dirs;
   const chores = "* TODO Archive me\n* TODO Move me\n* TODO Stay put\n";
