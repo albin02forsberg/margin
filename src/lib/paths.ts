@@ -53,6 +53,12 @@ export function folderName(name: string): string | null {
 /** The changed paths of two coalesced syncs; undefined (check everything) wins. */
 export const mergeChanged = (a?: string[], b?: string[]) => (a && b ? [...new Set([...a, ...b])] : undefined);
 
+/** Whether every changed PATH is our own echo or not in REFRESH (the open files); Set lookups keep it linear. */
+export const onlyEchoes = (paths: string[], refresh: string[], echo: Set<string>) => {
+  const r = new Set(refresh);
+  return paths.every((p) => echo.has(p) || !r.has(p));
+};
+
 /** Whether FILE is one of the changed PATHS or under one (a moved or deleted folder); no PATHS means everything changed. */
 export const changed = (file: string, paths?: string[]) => !paths || paths.some((p) => file === p || (file.startsWith(p) && /[\\/]/.test(file[p.length])));
 

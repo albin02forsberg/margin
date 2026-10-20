@@ -14,7 +14,7 @@
   import * as ed from "$lib/editor";
   import { linkFor, asUrl } from "$lib/weblink";
   import { findTarget, linkHeadings, splitTarget } from "$lib/links";
-  import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, relativeTo, resolvePath } from "$lib/paths";
+  import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, onlyEchoes, relativeTo, resolvePath } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
@@ -1988,7 +1988,7 @@
     }
     // Reports even then: writeTab doesn't regenerate them after a save of the time log or the diary.
     for (const t of tabs) if (t.kind === "report" && t.report) replaceText(t, await call("tc_report", t.report));
-    if (paths && refresh && paths.every((p) => echo.has(p) || !refresh.includes(p))) return; // our own save, or an attachment (pasted image)
+    if (paths && refresh && onlyEchoes(paths, refresh, echo)) return; // our own save, or an attachment (pasted image)
     await pruneMissing(paths);
     reload++;
     await refreshTc();
