@@ -856,6 +856,14 @@ export function vimIdle(v: EditorView): boolean {
   return !!vs && !vs.insertMode && !vs.visualMode && !vs.inputState.operator && vs.inputState.keyBuffer.length === 0;
 }
 
+/** Back to a clean normal mode (after the view's state was swapped): leave insert/visual, drop pending keys. */
+export function vimReset(v: EditorView) {
+  const cm = getCM(v) as any;
+  if (!cm) return;
+  if (cm.state.vim?.insertMode || cm.state.vim?.visualMode) Vim.handleKey(cm, "<Esc>", "mapping");
+  if (!vimIdle(v)) Vim.handleKey(cm, "<Esc>", "mapping");
+}
+
 export function onModeChange(v: EditorView, f: (mode: string) => void) {
   (getCM(v) as any)?.on("vim-mode-change", (e: { mode: string; subMode?: string }) => f(e.subMode ? `${e.mode} ${e.subMode}` : e.mode));
 }

@@ -842,6 +842,18 @@ describe("Org structure keys", () => {
     await saved("levels", org, "subtree not promoted");
   });
 
+  // Right before the next opens: a note opened after this one must not keep its insert mode / pending keys.
+  it("Alt+Enter continues a checkbox list, Alt+Shift+Enter adds a task heading after the subtree", async () => {
+    await open("newitem", 5);
+    await browser.keys([Key.Alt, Key.Enter]);
+    await type("three");
+    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n", "list item not added");
+    await type("8G0"); // * B (one line down after "three")
+    await browser.keys([Key.Alt, Key.Shift, Key.Enter]);
+    await type("C");
+    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n* TODO C\n", "task heading not added");
+  });
+
   it("Shift+Right / Shift+Left cycle the heading's status", async () => {
     await open("status", 7);
     await browser.keys([Key.Shift, Key.ArrowRight]);
@@ -851,7 +863,7 @@ describe("Org structure keys", () => {
   });
 
   it("Shift+Up / Shift+Down cycle a heading's priority", async () => {
-    await open("prio", 3, "ggjj0"); // no count: the digits of "3G0" get dropped here
+    await open("prio", 3);
     await browser.keys([Key.Shift, Key.ArrowUp]);
     await fileMatches(f("prio"), (s) => s.includes("\n* TODO [#A] x\n"), "priority not raised to A");
     await browser.keys([Key.Shift, Key.ArrowDown]);
@@ -898,17 +910,5 @@ describe("Org structure keys", () => {
     await open("boxes", 7); // off the item lines, so they show the checkbox widget
     await (await (await find(".cm-line", "one")).$(".cm-org-check")).click();
     await saved("boxes", "* TODO A [1/2]\n- [X] one\n- [ ] two\n** Child\n* B\n", "checkbox or cookie not updated");
-  });
-
-  // Last: in e2e, a note opened after this one drops "3" and "0" of "3G0" and inserts the "G".
-  it("Alt+Enter continues a checkbox list, Alt+Shift+Enter adds a task heading after the subtree", async () => {
-    await open("newitem", 5);
-    await browser.keys([Key.Alt, Key.Enter]);
-    await type("three");
-    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n", "list item not added");
-    await type("8G0"); // * B (one line down after "three")
-    await browser.keys([Key.Alt, Key.Shift, Key.Enter]);
-    await type("C");
-    await saved("newitem", "* TODO A [0/2]\n- [ ] one\n- [ ] two\n- [ ] three\n** Child\n* B\n* TODO C\n", "task heading not added");
   });
 });

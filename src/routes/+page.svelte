@@ -177,6 +177,7 @@
     if (t?.state) {
       view.setState(t.state);
       ed.onModeChange(view, (m) => (mode = m));
+      ed.vimReset(view);
       mode = "normal";
       countWords(view.state);
       await tick();
@@ -954,6 +955,7 @@
       view.setState(t.state!);
       view.dispatch({ selection: old.selection });
       ed.onModeChange(view, (m) => (mode = m));
+      ed.vimReset(view);
       mode = "normal";
       countWords(view.state);
     }
