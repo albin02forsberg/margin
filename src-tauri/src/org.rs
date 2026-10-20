@@ -799,6 +799,25 @@ pub fn set_tags(text: &str, line: usize, kw: &Kw, tags: Vec<String>) -> String {
     edit_heading(text, line, kw, |p| p.tags = tags.into_iter().filter(|t| !t.is_empty()).collect())
 }
 
+/// Add `- Note taken on [date time] \\` plus NOTE (indented) under the
+/// headline at LINE, below its planning line and drawers, newest first like
+/// org with `org-log-into-drawer` nil.
+pub fn add_note(text: &str, line: usize, note: &str, now: NaiveDateTime) -> String {
+    let mut lines = to_lines(text);
+    let Some(hl) = headline_at(&lines, line) else { return text.to_string() };
+    let mut i = hl + 1;
+    if lines.get(i).is_some_and(|l| is_planning(l)) {
+        i += 1;
+    }
+    while lines.get(i).is_some_and(|l| [":PROPERTIES:", ":LOGBOOK:"].iter().any(|d| l.trim().eq_ignore_ascii_case(d))) {
+        i = (i + 1..lines.len()).find(|&j| lines[j].trim().eq_ignore_ascii_case(":END:")).map_or(lines.len(), |j| j + 1);
+    }
+    let head = format!("- Note taken on [{}] \\\\", now.format("%Y-%m-%d %a %H:%M"));
+    let body = note.trim().lines().map(|l| if l.trim().is_empty() { String::new() } else { format!("  {}", l.trim_end()) });
+    lines.splice(i..i, std::iter::once(head).chain(body));
+    join(lines, text)
+}
+
 /// Move the KIND (SCHEDULED/DEADLINE) date of the headline at LINE by DAYS.
 pub fn shift_date(text: &str, line: usize, kind: &str, days: i64) -> String {
     let mut lines = to_lines(text);
@@ -1479,6 +1498,23 @@ mod tests {
         let s = "* TODO A\nSCHEDULED: <2026-10-02 Fri> DEADLINE: <2026-10-09 Fri +1w>\n";
         assert_eq!(shift_date(s, 0, "SCHEDULED", 1), "* TODO A\nSCHEDULED: <2026-10-03 Sat> DEADLINE: <2026-10-09 Fri +1w>\n");
         assert_eq!(shift_date(s, 0, "DEADLINE", -7), "* TODO A\nSCHEDULED: <2026-10-02 Fri> DEADLINE: <2026-10-02 Fri +1w>\n");
+    }
+
+    #[test]
+    fn notes() {
+        let n = "- Note taken on [2026-10-02 Fri 14:30] \\\\\n";
+        assert_eq!(add_note("* A\nbody\n* B\n", 0, " Called Bob ", at()), format!("* A\n{n}  Called Bob\nbody\n* B\n"));
+        // Below the planning line and both drawers; from a body line too.
+        let t = "* TODO A\nSCHEDULED: <2026-10-02 Fri +1d>\n:PROPERTIES:\n:ID: x\n:END:\n:LOGBOOK:\n- State \"DONE\" from \"TODO\" [2026-10-01 Thu]\n:END:\nbody\n";
+        assert_eq!(add_note(t, 8, "x", at()), t.replace(":END:\nbody", &format!(":END:\n{n}  x\nbody")));
+        // Last heading, with and without a trailing newline; multi-line text.
+        assert_eq!(add_note("* A\n** B\n", 1, "one\n\ntwo", at()), format!("* A\n** B\n{n}  one\n\n  two\n"));
+        assert_eq!(add_note("* A", 0, "x", at()), format!("* A\n{n}  x"));
+        // Newest first.
+        let once = add_note("* A\n", 0, "old", at());
+        let later = d("2026-10-03").and_hms_opt(9, 0, 0).unwrap();
+        assert_eq!(add_note(&once, 0, "new", later), format!("* A\n- Note taken on [2026-10-03 Sat 09:00] \\\\\n  new\n{n}  old\n"));
+        assert_eq!(add_note("no heading\n", 0, "x", at()), "no heading\n");
     }
 
     #[test]

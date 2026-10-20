@@ -231,6 +231,8 @@ key in your desktop's settings instead: it opens the same form in the running ap
 `Enter` open, `<`/`>` reschedule a day, `+`/`-` priority, `n` new task, `u` undo,
 `v` day/week, `h`/`l` previous/next, `.` today, `D` (or click the heading) go to a date, `/` filter, `?` all keys.
 Click the checkbox to complete a task.
+`z` (or `Space x z` in a note) adds a note to the task, as org's agenda `z` does:
+`- Note taken on [2026-10-20 Tue 14:30] \\` plus your text, below the planning line and drawers, newest first.
 Subtrees archived in place with an `:ARCHIVE:` tag (Emacs's `C-c C-x a`) are left out of Today, Tasks, reminders and the calendar feed, as in org's agenda; they stay in the note and in search.
 A time range (`<2026-10-16 Fri 10:00-11:00>`) shows as `10:00-11:00`; a date
 range (`<2026-10-19 Mon>--<2026-10-21 Wed>`) shows on each of its days with a
