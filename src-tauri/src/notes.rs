@@ -320,6 +320,12 @@ pub fn adjacency(files: &[Arc<OrgFile>]) -> Vec<BTreeSet<usize>> {
     adj
 }
 
+/// The files that no other file links to and that link to none, except those SKIP says to leave out.
+pub fn orphans(files: &[Arc<OrgFile>], skip: impl Fn(&Path) -> bool) -> Vec<Arc<OrgFile>> {
+    let adj = adjacency(files);
+    files.iter().zip(adj).filter(|(f, a)| a.is_empty() && !skip(&f.path)).map(|(f, _)| f.clone()).collect()
+}
+
 pub fn graph(files: &[Arc<OrgFile>], path: &Path, depth: usize) -> Graph {
     let Some(start) = files.iter().position(|f| f.path == path) else { return Graph::default() };
     let adj = adjacency(files);
@@ -486,6 +492,20 @@ mod tests {
     fn files(docs: &[(&str, &str)]) -> Vec<Arc<OrgFile>> {
         let kw = Kw { todo: vec![], done: vec![] };
         docs.iter().map(|(p, t)| Arc::new(parse(Path::new(p), t, &kw))).collect()
+    }
+
+    #[test]
+    fn orphans_have_no_links_in_or_out() {
+        let fs = files(&[
+            ("/n/a.org", ":PROPERTIES:\n:ID: a\n:END:\n[[file:b.org]]\n"),
+            ("/n/b.org", ""),
+            ("/n/lone.org", "nothing\n"),
+            ("/n/self.org", ":PROPERTIES:\n:ID: s\n:END:\n[[id:s]] [[file:self.org]]\n"),
+            ("/n/dead.org", "[[file:gone.org]] [[id:nope]]\n"),
+            ("/n/daily/d.org", ""),
+        ]);
+        let o = orphans(&fs, |p| p.starts_with("/n/daily"));
+        assert_eq!(o.iter().map(|f| f.path.to_str().unwrap()).collect::<Vec<_>>(), ["/n/lone.org", "/n/self.org", "/n/dead.org"]);
     }
 
     #[test]

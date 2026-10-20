@@ -1000,6 +1000,13 @@
     await createNote(r);
   }
 
+  async function findOrphans() {
+    const o = await call<[string, string][]>("notes_orphans");
+    if (!o.length) return flash("No orphan notes");
+    const r = await pick({ prompt: "Notes with no links in or out", items: o.map(([p, title]) => ({ label: title || niceName(p), detail: rel(p), value: p as unknown })) });
+    if (r) await openFile(r as string);
+  }
+
   async function createNote(title: string) {
     const n: NoteNode = await call("notes_new", { title });
     await openFile(n.path);
@@ -1791,6 +1798,7 @@
     { label: "Insert link to a note…", keys: ["Ctrl+L"], leader: "n i", ctx: "editor", run: insertLink },
     { label: "Show notes linking here", leader: "n b", run: () => { showBacklinks = !showBacklinks; return refreshBacklinks(); } },
     { label: "Jump to a note linking here…", leader: "n l", run: pickBacklink },
+    { label: "Notes: find notes with no links…", leader: "n O", run: findOrphans },
     { label: "Show note graph", leader: "n g", run: () => { showGraph = !showGraph; return refreshBacklinks(); } },
     { label: "AI chat (local model)", leader: "n a", run: toggleChat },
     { label: "Undo last edit made from a task view or the links panel", leader: "n u", run: () => undo().then(refreshBacklinks) },
