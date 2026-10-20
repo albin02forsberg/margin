@@ -138,4 +138,28 @@ describe("Time tracking", () => {
     await answer("What did you do?", "weekday entry");
     await fileMatches(log, (s) => events(s).some((e) => e.ev === "out" && e.t === `${day}T11:30:00` && e.note === "weekday entry"), "weekday session not logged on the previous such day");
   });
+
+  it("Space t h lists the public holidays in a Holidays tab", async () => {
+    await noPicker();
+    await palette("Time: public holidays");
+    await find(".tabs .tab > button:not(.x)", "Holidays");
+    await find(".cm-content", "Christmas Day"); // a fixed-date red day, whatever year it is
+  });
+
+  it("Space t D reports a clean log, then flags an unparseable line", async () => {
+    const orig = read(log);
+    try {
+      writeFileSync(log, `{"ev":"in","t":"2020-01-06T09:00:00","project":"Acme"}\n{"ev":"out","t":"2020-01-06T10:00:00","note":"clean"}\n`);
+      await noPicker();
+      await palette("Time: check log for problems");
+      await find(".tabs .tab > button:not(.x)", "Log check");
+      await find(".cm-content", "No issues found");
+      writeFileSync(log, read(log) + "this is not json\n");
+      await noPicker();
+      await palette("Time: check log for problems");
+      await find(".cm-content", "Line 3: unrecognized entry");
+    } finally {
+      writeFileSync(log, orig);
+    }
+  });
 });
