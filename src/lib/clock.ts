@@ -16,6 +16,10 @@ export function worked(week: WeekDay[], today: string) {
 
 const p2 = (n: number) => String(n).padStart(2, "0");
 
+/** Org inactive timestamp "[2026-10-12 Mon 09:05]" for D, local time; English weekday regardless of locale. */
+export const inactiveStamp = (d: Date) =>
+  `[${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()]} ${p2(d.getHours())}:${p2(d.getMinutes())}]`;
+
 /** Local naive "YYYY-MM-DDTHH:MM:SS" (what the backend's NaiveDateTime parses; toISOString is UTC with a Z). */
 export const naive = (d: Date) =>
   `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;

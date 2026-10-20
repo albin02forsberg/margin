@@ -26,7 +26,7 @@
   import { chatContext } from "$lib/chatctx";
   import { bugReportUrl, isError, osName } from "$lib/bugreport";
   import { notesText, notesTitle, notesToShow, type Notes } from "$lib/whatsnew";
-  import { dayTime, naive, parseWhen } from "$lib/clock";
+  import { dayTime, inactiveStamp, naive, parseWhen } from "$lib/clock";
   import { parseSession, type Entry } from "$lib/session";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
   import { wordCount, wordsLabel } from "$lib/words";
@@ -1695,6 +1695,7 @@
     { label: "Insert web link…", leader: "i w", run: insertWebLink },
     { label: "Insert link to a note…", leader: "i l", run: insertLink },
     { label: "Insert date…", leader: "i d", run: insertDate },
+    { label: "Insert timestamp now (inactive)", leader: "i D", run: () => inFile() && ed.insertText(view, inactiveStamp(new Date())) },
     { label: "Clean up unused attachments…", run: cleanAttachments },
     { label: "Bold the selection / word (Ctrl+B in insert mode)", leader: "i b", run: () => inFile() && ed.emphasis(view, "*") },
     { label: "Italic the selection / word (Ctrl+I in insert mode)", leader: "i i", run: () => inFile() && ed.emphasis(view, "/") },
