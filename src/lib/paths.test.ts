@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changed, folderName, journalNeighbour, mergeChanged, needsRefresh, noteFolders, relativeTo, resolvePath } from "./paths.ts";
+import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, relativeTo, resolvePath } from "./paths.ts";
 
 test("resolvePath", () => {
   assert.equal(resolvePath("/n/sub", "../other/target.org"), "/n/other/target.org");
@@ -66,7 +66,3 @@ test("folderName", () => {
   for (const bad of ["/etc", "\\x", "C:\\x", "..", "a/../../b", "a/.."]) assert.equal(folderName(bad), null, bad);
 });
 
-test("needsRefresh", () => {
-  for (const f of ["/n/a.org", "/n/sub", "/d/timelog.jsonl", "/n/x/timelog.jsonl"]) assert.ok(needsRefresh(f, "/n"), f);
-  for (const f of ["/n/images/a.png", "/n/notes.txt"]) assert.ok(!needsRefresh(f, "/n"), f);
-});

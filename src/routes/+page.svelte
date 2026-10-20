@@ -14,7 +14,7 @@
   import * as ed from "$lib/editor";
   import { linkFor, asUrl } from "$lib/weblink";
   import { findTarget, splitTarget } from "$lib/links";
-  import { changed, folderName, journalNeighbour, mergeChanged, needsRefresh, noteFolders, relativeTo, resolvePath } from "$lib/paths";
+  import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, relativeTo, resolvePath } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
@@ -1942,9 +1942,9 @@
     }
   }
 
-  /** Bring open tabs, views, backlink lists and the timer up to date with the disk; PATHS (the watcher's changed paths) limits the re-reads.
+  /** Bring open tabs, views, backlink lists and the timer up to date with the disk; PATHS (the watcher's changed paths) limits the re-reads; REFRESH (the watcher's subset that can alter notes, agenda or timer) lets attachments skip the rest.
    *  If every changed path is an open tab holding what it last saved (our own save coming back), skip the views, timer and backlinks: writeTab refreshed them. */
-  async function doSync(paths?: string[]) {
+  async function doSync(paths?: string[], refresh?: string[]) {
     const echo = new Set<string>();
     for (const t of tabs) {
       if (t.kind !== "file" || !changed(t.path!, paths)) continue;
@@ -1959,7 +1959,7 @@
     }
     // Reports even then: writeTab doesn't regenerate them after a save of the time log or the diary.
     for (const t of tabs) if (t.kind === "report" && t.report) replaceText(t, await call("tc_report", t.report));
-    if (paths?.every((p) => echo.has(p) || !needsRefresh(p, cfg.notes))) return; // our own save, or an attachment (pasted image)
+    if (paths && refresh && paths.every((p) => echo.has(p) || !refresh.includes(p))) return; // our own save, or an attachment (pasted image)
     await pruneMissing(paths);
     reload++;
     await refreshTc();
@@ -2008,15 +2008,17 @@
   let syncChain = Promise.resolve();
   let syncQueued = false;
   let syncPaths: string[] | undefined;
+  let syncRefresh: string[] | undefined;
   /** Sync with the disk; PATHS (the watcher's changed paths) narrows it, none checks everything. */
-  function syncFromDisk(paths?: string[]) {
+  function syncFromDisk(paths?: string[], refresh?: string[]) {
     if (!cfg) return; // still starting up (focus/fs event before config loads); startup prunes anyway
-    if (syncQueued) return void (syncPaths = mergeChanged(syncPaths, paths));
+    if (syncQueued) return void ((syncPaths = mergeChanged(syncPaths, paths)), (syncRefresh = mergeChanged(syncRefresh, refresh)));
     syncQueued = true;
     syncPaths = paths;
+    syncRefresh = refresh;
     syncChain = syncChain.then(async () => {
       syncQueued = false;
-      await doSync(syncPaths).catch((e) => flash(`⚠ ${e}`));
+      await doSync(syncPaths, syncRefresh).catch((e) => flash(`⚠ ${e}`));
     });
   }
 
@@ -2096,7 +2098,7 @@
     const timer = setInterval(() => act(refreshTc), 60_000);
     const blur = () => (saveSession(), act(saveAll));
     const focus = () => syncFromDisk();
-    const unlisten = listen<string[]>("fs-changed", (e) => syncFromDisk(e.payload));
+    const unlisten = listen<{ paths: string[]; refresh: string[] }>("fs-changed", (e) => syncFromDisk(e.payload.paths, e.payload.refresh));
     // config.toml edited outside the app: apply it (a broken file keeps the current settings).
     const unlistenCfg = listen("config-changed", () => act(async () => {
       let warn = "";

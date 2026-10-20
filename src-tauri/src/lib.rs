@@ -337,14 +337,14 @@ fn split_changes(paths: Vec<PathBuf>, cfg: &Path, cfg_real: &Path, roots: &[Path
     (cfg_changed, rest)
 }
 
-/// Whether a change to P can alter notes, agenda or tray: anything outside the notes folder NOTES, a `.org` file, a folder (no extension) or a data file.
-/// Other files in the notes (images, attachments) only matter to an open tab. Mirrors `needsRefresh` in src/lib/paths.ts.
+/// Whether a change to P can alter notes, agenda or tray: anything outside the notes folder NOTES, a `.org` file, a folder (also a dotted one, or a gone one: it can't be stat-ed) or a data file.
+/// Other existing files in the notes (images, attachments) only matter to an open tab.
 fn needs_refresh(p: &Path, notes: &Path) -> bool {
-    !p.starts_with(notes) || p.extension().is_none_or(|e| ["org", "jsonl", "json", "toml"].contains(&e.to_str().unwrap_or("org")))
+    !p.starts_with(notes) || !p.exists() || p.is_dir() || p.extension().is_none_or(|e| ["org", "jsonl", "json", "toml"].contains(&e.to_str().unwrap_or("org")))
 }
 
 /// Watch the notes and data dirs; the UI gets an "fs-changed" event (with the
-/// changed paths) whenever anything there changes — our own writes, Emacs, sync tools.
+/// changed paths and which of them `needs_refresh`) whenever anything there changes — our own writes, Emacs, sync tools.
 /// config.toml edited elsewhere (so it no longer matches the loaded config) gets "config-changed".
 fn watch(app: &AppHandle) {
     let s = app.state::<App>();
@@ -365,11 +365,12 @@ fn watch(app: &AppHandle) {
             }
         }
         if !paths.is_empty() {
-            if paths.iter().any(|p| needs_refresh(p, &roots[0])) {
+            let refresh: Vec<_> = paths.iter().filter(|p| needs_refresh(p, &roots[0])).collect();
+            if !refresh.is_empty() {
                 tray::refresh(&handle);
                 write_calendar(&handle);
             }
-            let _ = handle.emit("fs-changed", paths);
+            let _ = handle.emit("fs-changed", serde_json::json!({ "paths": paths, "refresh": refresh }));
         }
     });
     let mut d = match debouncer {
@@ -2046,10 +2047,17 @@ mod tests {
 
     #[test]
     fn only_notes_changes_skip_the_refresh() {
-        let n = Path::new("/n");
-        let r = |s: &str| needs_refresh(Path::new(s), n);
-        assert!(r("/n/a.org") && r("/n/sub") && r("/d/timelog.jsonl") && r("/n/x/timelog.jsonl"));
-        assert!(!r("/n/images/a.png") && !r("/n/notes.txt"));
+        let root = std::env::temp_dir().join(format!("margin-refresh-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Projects.old")).unwrap();
+        for f in ["img.png", "a.org"] {
+            std::fs::write(root.join(f), "").unwrap();
+        }
+        let r = |s: &str| needs_refresh(&root.join(s), &root);
+        assert!(r("a.org") && r("Projects.old") && r("2026.10") && r("a.png.gone"));
+        assert!(!r("img.png"));
+        assert!(needs_refresh(Path::new("/d/timelog.jsonl"), &root));
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
