@@ -4,7 +4,7 @@ import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { answer, browser, close, fileMatches, find, isoDay, Key, launch, noPicker, pad, palette, read, texts, type Dirs } from "./setup.ts";
+import { answer, browser, close, fileMatches, find, isoDay, Key, launch, noPicker, pad, palette, read, texts, timeFocused, type Dirs } from "./setup.ts";
 
 let d: Dirs, log: string;
 type Ev = { ev: string; t: string; project?: string; note?: string };
@@ -46,6 +46,7 @@ describe("Time tracking", () => {
     await answer("When did you actually start?", hm(from));
     await fileMatches(log, (s) => { const e = events(s); return e.length === 1 && near(e[0].t, from); }, "clock-in not moved back");
     await noPicker();
+    await timeFocused();
     await browser.keys("O");
     await answer("When did you actually stop?", hm(to));
     await answer("What did you do?", "half an hour");
@@ -54,10 +55,12 @@ describe("Time tracking", () => {
 
   it("opens the edit-session and time-off prompts from the keys S and L", async () => {
     await noPicker();
+    await timeFocused();
     await browser.keys("S");
     await find(".picker label span", "Edit a session on");
     await browser.keys(Key.Escape);
     await noPicker();
+    await timeFocused();
     await browser.keys("L");
     await find(".picker label span", "Kind of time off");
     await browser.keys(Key.Escape);
