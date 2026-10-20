@@ -847,7 +847,7 @@ const vimInsert = (v: EditorView) => !!(getCM(v) as any)?.state.vim?.insertMode;
 
 export function insertMode(v: EditorView) {
   const cm = getCM(v) as any;
-  if (cm && !cm.state.vim?.insertMode) Vim.handleKey(cm, "i", "mapping");
+  if (cm && !cm.state.vim?.insertMode) Vim.handleKey(cm, "i");
 }
 
 /** True when vim is idle in normal mode (no pending operator/count/keys). */
