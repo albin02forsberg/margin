@@ -32,6 +32,7 @@
   import { parseSession, type Entry } from "$lib/session";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
   import { wordCount, wordsLabel } from "$lib/words";
+  import { windowTitle } from "$lib/wintitle";
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
 
   type View = "agenda" | "todo" | "time" | "projects" | "settings";
@@ -83,6 +84,15 @@
   let recent = $state<string[]>(JSON.parse(stored("recent", "[]")));
 
   const tab = $derived(tabs[cur]);
+  // Window title follows the active tab (#589); IPC only when it changed, and a missing capability never breaks the page.
+  let lastTitle = "";
+  $effect(() => {
+    const t = windowTitle(tab);
+    document.title = t;
+    if (t === lastTitle) return;
+    lastTitle = t;
+    try { getCurrentWindow().setTitle(t).catch(() => {}); } catch {}
+  });
   const isText = (t?: Tab) => t?.kind === "file" || t?.kind === "report";
   const call = <T = any,>(cmd: string, args?: Record<string, unknown>) => invoke<T>(cmd, args);
   const pick = (o: PickOpts) => picker!.open(o);

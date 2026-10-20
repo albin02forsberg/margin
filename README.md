@@ -16,6 +16,8 @@ the editor has vim keys.
   to that day's date (prompts and `%?` are ignored).
 - **Time** — a timeclock with breaks, projects, flex balance and reports, in
   the window or the tray.
+- **Window title** shows the active tab (`• note — Margin` when unsaved), so
+  the taskbar and window switcher tell Margin windows apart.
 - **Stays in sync** with Emacs, git or any sync tool editing the same files,
   and updates itself from GitHub releases.
   The running version shows in Settings under About ("About Margin" in the palette opens it there).
