@@ -1395,6 +1395,13 @@
 
   // ---------------------------------------------------------------- time tracking
 
+  let inboxCount = $state(0);
+  // Every save, capture and sync bumps `reload`; recount then (no timer).
+  $effect(() => {
+    reload;
+    call<number>("inbox_count").then((n) => (inboxCount = n), () => {});
+  });
+
   async function refreshTc() {
     tc = await call("tc_status");
   }
@@ -2296,7 +2303,7 @@
       <nav class="views" class:has-ind={ind.on} bind:this={viewsEl}>
         <span class="ind" class:slide={motion} class:on={ind.on} style:transform="translate({ind.x}px, {ind.y}px)" style:width="{ind.w}px" style:height="{ind.h}px" aria-hidden="true"></span>
         {#each NAV as n}
-          <button class:on={n.on(tab)} title="{n.label} ({pretty('Ctrl')}+{n.keys})" onclick={() => act(n.run)}><span class="ico">{n.icon}</span><span class="lbl">{n.label}</span><kbd>{n.keys}</kbd></button>
+          <button class:on={n.on(tab)} title="{n.label}{n.label === 'Inbox' && inboxCount > 0 ? ` — ${inboxCount} item${inboxCount > 1 ? 's' : ''}` : ''} ({pretty('Ctrl')}+{n.keys})" onclick={() => act(n.run)}><span class="ico">{n.icon}</span><span class="lbl">{n.label}</span>{#if n.label === "Inbox" && inboxCount > 0}<span class="badge">{inboxCount}</span>{/if}<kbd>{n.keys}</kbd></button>
         {/each}
         <button class:on={tab?.kind === "file" && !NAV.some((n) => n.on(tab))} title="Open a note ({pretty('Ctrl')}+P)" onclick={() => act(quickOpen)}><span class="ico">▤</span><span class="lbl">Notes</span><kbd>P</kbd></button>
         {#each cfg.config.views ?? [] as v, i}
@@ -2432,6 +2439,7 @@
   .views button.on .ico, .set.on .ico { color: var(--link); }
   .views button.on kbd { display: none; }
   .grow { flex: 1; }
+  .badge { background: var(--link); color: var(--bg); font-size: var(--fs-sm); font-weight: 600; line-height: 1; padding: 2px 6px; border-radius: 10px; font-variant-numeric: tabular-nums; }
   .ico { width: 16px; text-align: center; line-height: 1; font-size: var(--fs-lg); }
   .topnav .cmdk { width: 250px; flex: 0 1000 250px; min-width: 100px; background: var(--card); box-shadow: var(--soft); padding: 6px var(--s3); }
   .cmdk .lbl { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; }

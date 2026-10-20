@@ -1113,6 +1113,19 @@ fn notes_orphans(s: State<App>) -> Vec<(PathBuf, String)> {
     v.into_iter().map(|(_, p, t)| (p, t)).collect()
 }
 
+/// Open top-level inbox entries: level-1 headlines that aren't done or archived (plain notes count).
+fn open_entries(f: &org::OrgFile, kw: &org::Kw) -> usize {
+    f.headlines.iter().filter(|h| h.level == 1 && !h.archived() && !h.keyword.as_deref().is_some_and(|k| kw.is_done(k))).count()
+}
+
+/// Entries waiting in the inbox (for the nav badge). Reads the file directly, so an absolute inbox path outside the notes dir counts too.
+#[tauri::command(async)]
+fn inbox_count(s: State<App>) -> usize {
+    let c = s.cfg();
+    let path = c.notes().join(&c.inbox);
+    std::fs::read_to_string(&path).map_or(0, |t| open_entries(&org::parse(&path, &t, &s.kw()), &s.kw()))
+}
+
 #[tauri::command(async)]
 fn notes_unlinked(s: State<App>, path: PathBuf) -> Vec<notes::Mention> {
     notes::unlinked(&s.files(), &path)
@@ -1927,7 +1940,7 @@ pub fn run() {
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_refile_copy, org_refile_copy_same, note_extract, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
-            notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, notes_unlinked, notes_ensure_id, notes_heading_id,
+            notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply
@@ -2020,6 +2033,13 @@ mod tests {
 
     fn kw() -> org::Kw {
         org::Kw { todo: vec!["TODO".into()], done: vec!["DONE".into()] }
+    }
+
+    #[test]
+    fn inbox_entries_skip_done_nested_and_archived() {
+        let t = "* TODO a\n** TODO nested\n* DONE b\n* plain note\n* TODO old :ARCHIVE:\n* NEXT c\n";
+        assert_eq!(open_entries(&org::parse(Path::new("inbox.org"), t, &kw()), &kw()), 3);
+        assert_eq!(open_entries(&org::parse(Path::new("inbox.org"), "", &kw()), &kw()), 0);
     }
 
     fn edit(text: &str, op: &str, v: Option<&str>) -> R<String> {
