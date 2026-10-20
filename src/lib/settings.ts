@@ -35,6 +35,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
   ] },
   { name: "Editor", fields: [
     { key: "spellcheck", label: "Spell check org notes", kind: "bool", hint: "underlines misspelled words with the system spell checker; on Linux the webview needs a system checker (hunspell/enchant) installed" },
+    { key: "spellcheck_languages", label: "Spell check languages", kind: "list", hint: "Linux only; one per line, e.g. sv_SE or en_US; needs that hunspell dictionary installed; empty = system locale" },
   ] },
   { name: "Tasks", fields: [
     { key: "todo_keywords", label: "Open keywords", kind: "list", hint: "one per line" },
