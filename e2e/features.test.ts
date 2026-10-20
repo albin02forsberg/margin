@@ -1148,3 +1148,67 @@ describe("Org structure keys", () => {
     await saved("boxes", "* TODO A [1/2]\n- [X] one\n- [ ] two\n** Child\n* B\n", "checkbox or cookie not updated");
   });
 });
+
+describe("Web links and note graph", () => {
+  let d: Dirs;
+  const note = (n: string) => join(d.notes, `${n}.org`);
+  const open = async (n: string) => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", n);
+    await find(".status .file", `${n}.org`);
+    await noPicker();
+    await browser.keys(Key.Escape);
+  };
+  /** Dispatch a paste of TEXT on the editor; a plain object stands in for the clipboard when DataTransfer can't be built. */
+  const paste = (text: string) => browser.execute((text: string) => {
+    const ev = new ClipboardEvent("paste", { bubbles: true, cancelable: true });
+    if (!ev.clipboardData) Object.defineProperty(ev, "clipboardData", { value: { getData: (t: string) => (t === "text/plain" ? text : ""), files: [] } });
+    document.querySelector(".cm-content")!.dispatchEvent(ev);
+  }, text);
+  before(async () => {
+    d = await launch({ files: ({ notes }) => {
+      writeFileSync(join(notes, "hub.org"), "#+title: Hub\n\nsee [[file:spoke.org][Spoke]] here\n");
+      writeFileSync(join(notes, "spoke.org"), "#+title: Spoke\n\nback to [[file:hub.org][Hub]]\n");
+      writeFileSync(join(notes, "paste.org"), "#+title: Paste\n\nsay hello now\nsay world now\n");
+    } });
+    await find(".agenda h1", "Today");
+  });
+  after(close, { timeout: 30_000 });
+
+  it("clicking a node in the note graph opens that note", async () => {
+    await open("hub");
+    await palette("Show note graph");
+    await find(".links", "Graph");
+    await browser.waitUntil(async () => (await browser.$$(".links svg a")).length > 1, { timeoutMsg: "graph has no linked node" });
+    const node = await browser.$$(".links svg g.h1 a");
+    await node[0].click();
+    await find(".status .file", "spoke.org");
+    await find(".tabs .tab.cur button", "Spoke");
+  });
+
+  it("a URL pasted over a selected word links it; other pastes are left alone", async () => {
+    await open("paste");
+    await type("3G0wviw");
+    await paste("https://example.com");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(note("paste"), (s) => s.includes("say [[https://example.com][hello]] now\n"), "URL not pasted as a link over the selection");
+    // Plain text over a selection is not turned into a link.
+    await type("4G0wviw");
+    await paste("not a url");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await browser.pause(300);
+    assert.ok(!read(note("paste")).includes("[[not a url]"), read(note("paste")));
+  });
+
+  it("Insert web link… links the selected word with the URL asked for", async () => {
+    await open("paste");
+    await type("4G0wviw");
+    await palette("Insert web link");
+    await answer("Link address (URL)", "https://margin.test");
+    await answer("Link text (optional)", "world");
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(note("paste"), (s) => s.includes("say [[https://margin.test][world]] now\n"), "web link not inserted over the selection");
+  });
+});
