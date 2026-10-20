@@ -1296,7 +1296,7 @@ describe("Web links and note graph", () => {
   });
 
   it("spreadsheet cells (TSV) paste as an aligned table, and u undoes it", async () => {
-    const table = "| Name  | Qty |\n|-------+-----|\n| apple |   3 |";
+    const table = "| Name  | Qty |\n|-------+-----|\n| apple | 3   |";
     await open("sheet");
     await type("G");
     await paste("Name\tQty\napple\t3\n");
