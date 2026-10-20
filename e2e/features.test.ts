@@ -622,6 +622,36 @@ describe("Journal, archive and move", () => {
   });
 });
 
+// Own launch: in the Tables suite the first keys typed into this note, and into the next one opened, got garbled.
+describe("Insert commands", () => {
+  let d: Dirs;
+  before(async () => { d = await launch({ files: ({ notes }) => writeFileSync(join(notes, "ins.org"), "#+title: Ins\n") }); });
+  after(close, { timeout: 30_000 });
+
+  it("Insert code block… and Insert table… add a src block and a sized table", async () => {
+    // Both leave insert mode on; Escape only once the editor shows it, or it's lost and later keys type text.
+    const toNormal = async () => {
+      await noPicker();
+      await find(".status .mode", "INSERT");
+      await browser.keys(Key.Escape);
+      await find(".status .mode", "NORMAL");
+    };
+    await find(".agenda h1", "Today");
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Ins");
+    await find(".status .file", "ins.org");
+    await palette("Insert code block"); // the cursor is on the title line, so the block goes below it
+    await answer("Code block language", "rust");
+    await toNormal();
+    await type("G"); // the last, empty line, so the table goes below the block
+    await palette("Insert table");
+    await answer("Table size", "3x2");
+    await toNormal();
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "ins.org"), (s) => /^#\+title: Ins\n#\+begin_src rust\n\n#\+end_src\n\| Column 1 \| Column 2 \| Column 3 \|\n\|[-+]+\|\n(\|( +\|){3}\n?){2}$/.test(s), "code block or 3x2 table not inserted");
+  });
+});
+
 describe("Tables, lists and attachments", () => {
   let d: Dirs;
   const att = (...p: string[]) => join(d.notes, "attachments", ...p);
