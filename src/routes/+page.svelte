@@ -1451,6 +1451,12 @@
     if (d != null && d !== "rm") await report("daily", "Day report", d);
   }
 
+  /** Week report for the Mon-Sun week containing the picked date. */
+  async function weeklyReport() {
+    const d = await datePick("Week report for", false, undefined, false);
+    if (d != null) await report("weekly", "Week report", d);
+  }
+
   async function exportCsv() {
     const start = await datePick("Export from");
     if (start == null) return;
@@ -1714,7 +1720,7 @@
     start: (p?: string) => clockIn(p), stop: clockOut, pause: () => tcDo("tc_break"), resume: () => tcDo("tc_resume"),
     switch: changeProject, adjust: adjustStart, stopEarlier, editSession: (s) => editSession(s), export: exportCsv, exportReport, projects: () => openView("projects"),
     profile: (n) => switchProfile(n), holidays: () => report("holidays", "Holidays"), daily: dailyReport,
-    weekly: () => report("weekly", "Week report"), doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
+    weekly: weeklyReport, doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
     backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), open: (loc) => openFile(loc.path, loc.line), import: importEmacs, acceptSuggestion, editSuggestion,
     flex: async () => flash(await call("tc_report", { kind: "flex" })), leave: async () => flash(await call("tc_leave_time")), diary: () => openFile(cfg.diary_path),
     timeOff, logSession,
