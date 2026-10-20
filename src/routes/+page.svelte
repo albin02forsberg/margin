@@ -25,6 +25,7 @@
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
   import { chatContext } from "$lib/chatctx";
   import { bugReportUrl, isError, osName } from "$lib/bugreport";
+  import { notesText, notesTitle, notesToShow, type Notes } from "$lib/whatsnew";
   import { dayTime, naive, parseWhen } from "$lib/clock";
   import { parseSession, type Entry } from "$lib/session";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
@@ -1544,6 +1545,16 @@
   /** Look for a newer release. QUIET (at startup) only mentions it; otherwise offer to install and restart. */
   let version = $state("");
 
+  /** Open release notes (read-only tab) and keep them for "Show what's new". */
+  async function showNotes(n: Notes) {
+    store("last-notes", JSON.stringify(n));
+    await openReport("report:whatsnew", notesTitle(n), notesText(n));
+  }
+  async function whatsNew() {
+    const n = notesToShow(stored("last-notes", "null"), version);
+    if (n) await showNotes(n); else flash("No release notes yet — they are kept after an update.");
+  }
+
   async function checkUpdate(quiet = false) {
     const meta = await call<(ConstructorParameters<typeof Update>[0] & { pacman?: boolean }) | null>("update_check"); // stable or nightly, per config.toml
     const u = meta && new Update(meta);
@@ -1554,6 +1565,7 @@
     if (!yes) return;
     if (!(await readyToLeave("Update: "))) return;
     flash(`Downloading Margin ${u.version}…`);
+    if (meta.body) store("pending-notes", JSON.stringify({ from: version, to: u.version, body: meta.body })); // shown after the restart
     await u.download();
     await saveAll(); // the Windows installer closes the app as soon as it starts
     saveSession();
@@ -1632,6 +1644,7 @@
     { label: "Save all", leader: "f S", run: saveAll },
     { label: "About Margin", run: async () => { await openView("settings"); await tick(); document.querySelector(".settings .about")?.scrollIntoView({ block: "nearest" }); } },
     { label: "Check for updates", leader: "f u", run: () => checkUpdate() },
+    { label: "Show what's new (notes of the last update)", run: whatsNew },
     { label: "Report a bug (opens a prefilled GitHub issue)", run: () => openUrl(bugReportUrl({ version, os: osName(navigator.userAgent), nightly: !!cfg?.config?.nightly_updates, error: lastError })) },
     { label: "Run setup again…", run: setup },
     { label: "Help: tutorial", leader: "?", run: async () => openFile((await call<[string, boolean]>("tutorial"))[0]) },
@@ -1936,7 +1949,7 @@
       message = "This page only works inside the app window — run `npm run tauri dev` instead of opening it in a browser.";
       return;
     }
-    getVersion().then((v) => (version = v), () => {}); // show nothing if it fails
+    const gotVersion = getVersion().then((v) => (version = v), () => ""); // show nothing if it fails
     act(async () => {
       cfg = await call("config");
       view = new EditorView({ parent: editorEl! });
@@ -1948,6 +1961,9 @@
       requestAnimationFrame(() => (motion = true)); // nothing animates on first load
       await restoreSession();
       await pruneMissing();
+      const n = notesToShow(stored("pending-notes", "null"), await gotVersion); // after an update (#513); kept if the version is unknown
+      if (n) await showNotes(n);
+      if (n || (await gotVersion)) store("pending-notes", "");
       const [tut, first] = await call<[string, boolean]>("tutorial");
       if (first) {
         await setup().catch((e) => flash(`⚠ ${e}`));
