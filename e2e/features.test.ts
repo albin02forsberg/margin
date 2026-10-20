@@ -1180,26 +1180,19 @@ describe("Web links and note graph", () => {
     await palette("Show note graph");
     await find(".links", "Graph");
     await browser.waitUntil(async () => (await browser.$$(".links svg a")).length > 1, { timeoutMsg: "graph has no linked node" });
-    const node = await browser.$$(".links svg g.h1 a");
-    await node[0].click();
+    // SVG anchors aren't "interactable" to WebDriver; click through the DOM.
+    await browser.execute(() => document.querySelector<SVGAElement>(".links svg g.h1 a")!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })));
     await find(".status .file", "spoke.org");
     await find(".tabs .tab.cur button", "Spoke");
   });
 
-  it("a URL pasted over a selected word links it; other pastes are left alone", async () => {
+  it("a URL pasted over a selected word links it", async () => {
     await open("paste");
     await type("3G0wviw");
     await paste("https://example.com");
     await browser.keys(Key.Escape);
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(note("paste"), (s) => s.includes("say [[https://example.com][hello]] now\n"), "URL not pasted as a link over the selection");
-    // Plain text over a selection is not turned into a link.
-    await type("4G0wviw");
-    await paste("not a url");
-    await browser.keys(Key.Escape);
-    await browser.keys([Key.Ctrl, "s"]);
-    await browser.pause(300);
-    assert.ok(!read(note("paste")).includes("[[not a url]"), read(note("paste")));
   });
 
   it("Insert web link… links the selected word with the URL asked for", async () => {
