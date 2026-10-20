@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, onlyEchoes, relativeTo, resolvePath } from "./paths.ts";
+import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath } from "./paths.ts";
 
 test("resolvePath", () => {
   assert.equal(resolvePath("/n/sub", "../other/target.org"), "/n/other/target.org");
@@ -28,6 +28,18 @@ test("journalNeighbour", () => {
   assert.equal(journalNeighbour(f, "daily", "2026-10-09", 1), undefined);
   assert.equal(journalNeighbour(["C:\\n\\a\\b\\2026-01-02.org", "C:\\n\\b\\2026-01-01.org"], "a/b", "2026-01-05", -1), "C:\\n\\a\\b\\2026-01-02.org");
   assert.equal(journalNeighbour([], "daily", "2026-10-01", 1), undefined);
+});
+
+test("onThisDay", () => {
+  const f = ["/n/daily/2025-10-20.org", "/n/daily/2024-10-20.org", "/n/daily/2026-07-20.org", "/n/daily/2026-10-20.org", "/n/daily/2025-09-20.org",
+    "/n/daily/2026-09-19.org", "/n/x/2023-10-20.org", "/n/daily/notes.org", "/n/daily/2026-12-20.org"];
+  assert.deepEqual(onThisDay(f, "daily", "2026-10-20").map((x) => [x.date, x.ago]),
+    [["2026-07-20", "3 months ago"], ["2025-10-20", "1 year ago"], ["2024-10-20", "2 years ago"]]);
+  assert.deepEqual(onThisDay(f, "daily", "2026-10-21"), []);
+  assert.deepEqual(onThisDay(["/n/daily/2024-02-29.org", "/n/daily/2025-12-31.org"], "daily", "2026-02-28"), []);
+  assert.deepEqual(onThisDay(["/n/daily/2024-02-29.org"], "daily", "2028-02-29").map((x) => x.ago), ["4 years ago"]); // leap day
+  assert.deepEqual(onThisDay(["/n/daily/2026-01-31.org"], "daily", "2026-03-31").map((x) => x.ago), ["2 months ago"]);
+  assert.deepEqual(onThisDay([], "daily", "2026-10-20"), []);
 });
 
 test("mergeChanged", () => {

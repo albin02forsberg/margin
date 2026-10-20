@@ -28,6 +28,22 @@ export function journalNeighbour(files: string[], daily: string, date: string, d
   return days.filter((x) => (dir > 0 ? x.n > date : x.n < date)).sort((a, b) => dir * a.n.localeCompare(b.n))[0]?.f;
 }
 
+/** Journal entries (in DAILY) on the same day of an earlier year (same month), then of an earlier month this year, newest first, relative to TODAY (YYYY-MM-DD).
+ *  Months/years lacking that day (Feb 29, the 31st) simply have no entry to match. `ago` is e.g. "1 year ago" / "3 months ago". */
+export function onThisDay(files: string[], daily: string, today: string): { path: string; date: string; ago: string }[] {
+  const [ty, tm, td] = today.split("-").map(Number);
+  const out: { path: string; date: string; ago: string }[] = [];
+  for (const path of files) {
+    if (!journalNeighbour([path], daily, "0000-00-00", 1)) continue; // not a YYYY-MM-DD.org in DAILY
+    const date = path.split(/[\\/]+/).pop()!.slice(0, 10), [y, m, d] = date.split("-").map(Number);
+    if (d !== td || date >= today) continue;
+    const yrs = ty - y, mos = tm - m;
+    if (yrs > 0 && mos === 0) out.push({ path, date, ago: `${yrs} year${yrs > 1 ? "s" : ""} ago` });
+    else if (yrs === 0 && mos > 0) out.push({ path, date, ago: `${mos} month${mos > 1 ? "s" : ""} ago` });
+  }
+  return out.sort((a, b) => b.date.localeCompare(a.date));
+}
+
 /** Folders ("a/b", "" for the notes folder itself) holding the notes FILES (relative, any separators), sorted;
  *  dot folders (like .trash), the attachments folder ATTACH and any folder at or under an IMAGES folder (at any depth, like the backend) are left out. */
 export function noteFolders(files: string[], attach: string, images = ""): string[] {

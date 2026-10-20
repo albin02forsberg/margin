@@ -14,7 +14,7 @@
   import * as ed from "$lib/editor";
   import { linkFor, asUrl } from "$lib/weblink";
   import { findTarget, linkHeadings, splitTarget } from "$lib/links";
-  import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, onlyEchoes, relativeTo, resolvePath } from "$lib/paths";
+  import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
@@ -1251,6 +1251,15 @@
     else flash(`No ${dir < 0 ? "earlier" : "later"} journal entry`);
   }
 
+  /** Pick among this day's journal entries from earlier years/months and open it. */
+  async function journalOnThisDay() {
+    const t = new Date(), today = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+    const hits = onThisDay(await call<string[]>("list_files"), cfg.config.daily_dir, today);
+    if (!hits.length) return flash("No earlier entries for this day");
+    const f = await pick({ prompt: "Journal: on this day", items: hits.map((h) => ({ label: `${h.date} · ${h.ago}`, detail: rel(h.path), value: h.path })) });
+    if (f) await openFile(f);
+  }
+
   async function journalPick() {
     const d = await datePick("Open journal for");
     if (d && d !== "rm") await journal(d);
@@ -1837,6 +1846,7 @@
     { label: "Today's journal", keys: ["Ctrl+J"], leader: "j", run: () => journal() },
     { label: "Note: extract heading at cursor into a new note, leaving a link", leader: "n x", run: () => act(extractNote) },
     { label: "Journal for another day…", leader: "n J", run: journalPick },
+    { label: "Journal: on this day…", leader: "n t", run: journalOnThisDay },
     { label: "Journal: previous entry", leader: "n [", run: () => journalStep(-1) },
     { label: "Journal: next entry", leader: "n ]", run: () => journalStep(1) },
     { label: "Add a line to today's journal", leader: "n e", run: journalEntry },
