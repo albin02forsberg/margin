@@ -1183,7 +1183,7 @@ describe("Web links and note graph", () => {
     // SVG anchors aren't "interactable" to WebDriver; click through the DOM.
     await browser.execute(() => document.querySelector<SVGAElement>(".links svg g.h1 a")!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })));
     await find(".status .file", "spoke.org");
-    await find(".tabs .tab.cur button", "Spoke");
+    await find(".tabs .tab.cur button", "spoke");
   });
 
   it("a URL pasted over a selected word links it", async () => {
