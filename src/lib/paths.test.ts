@@ -52,6 +52,10 @@ test("noteFolders", () => {
   assert.deepEqual(noteFolders(f, "attachments"), ["", "a", "daily", "files", "files/att", "projects", "projects/x"]);
   assert.deepEqual(noteFolders(f, "./files/att/"), ["", "a", "attachments", "attachments/a", "daily", "files", "projects", "projects/x"]);
   assert.deepEqual(noteFolders([], ""), [""]);
+  const g = ["a.org", "images/i.org", "images/sub/j.org", "projects/x/images/k.org", "projects/x/n.org", "assets/img/m.org", "assets/o.org", "myimages/p.org"];
+  assert.deepEqual(noteFolders(g, "", "images"), ["", "assets", "assets/img", "myimages", "projects", "projects/x"]);
+  assert.deepEqual(noteFolders(g, "", "assets/img"), ["", "assets", "images", "images/sub", "myimages", "projects", "projects/x", "projects/x/images"]);
+  assert.ok(noteFolders(g, "").includes("images"));
 });
 
 test("folderName", () => {

@@ -921,7 +921,7 @@
     if (!inFile() || !tab.path!.startsWith(cfg.notes)) return flash("Open a note first.");
     const t = tab, from = t.path!;
     const here = rel(from).split(/[\\/]/).slice(0, -1).join("/");
-    const folders = noteFolders((await call<string[]>("list_files")).map(rel), cfg.config.attachments_dir).filter((f) => f !== here);
+    const folders = noteFolders((await call<string[]>("list_files")).map(rel), cfg.config.attachments_dir, cfg.config.images_dir).filter((f) => f !== here);
     const items = folders.map((f) => ({ label: f ? `${f}/` : "(notes folder)", value: f || "." }));
     const typed = await pick({ prompt: `Move “${t.title}” to folder`, items, allowCustom: true, hint: "type a path + Ctrl+↵ for a new folder" });
     if (typed == null || typed === "") return;
@@ -1924,11 +1924,11 @@
   async function cleanAttachments() {
     const files = await call<string[]>("unused_attachments");
     if (!files.length) return flash("Every attachment is linked from a note.");
-    const all = `Move all ${files.length} to the attachments .trash folder`;
+    const all = `Move all ${files.length} to .trash`;
     const v = await pick({ prompt: "Unused attachments — pick one to move to .trash, or all", items: [{ label: all, value: files }, ...files.map((f) => ({ label: rel(f), value: [f] }))] });
     if (!v) return;
     await call("trash_attachments", { files: v });
-    flash(`🗑 Moved ${v.length} file${v.length > 1 ? "s" : ""} to the attachments .trash folder`);
+    flash(`🗑 Moved ${v.length} file${v.length > 1 ? "s" : ""} to .trash`);
   }
 
   onMount(() => {

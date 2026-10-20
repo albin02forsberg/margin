@@ -29,15 +29,16 @@ export function journalNeighbour(files: string[], daily: string, date: string, d
 }
 
 /** Folders ("a/b", "" for the notes folder itself) holding the notes FILES (relative, any separators), sorted;
- *  dot folders (like .trash) and the attachments folder ATTACH are left out. */
-export function noteFolders(files: string[], attach: string): string[] {
-  const a = folderName(attach);
+ *  dot folders (like .trash), the attachments folder ATTACH and any folder at or under an IMAGES folder (at any depth, like the backend) are left out. */
+export function noteFolders(files: string[], attach: string, images = ""): string[] {
+  const a = folderName(attach), im = folderName(images);
+  const inImages = (d: string) => !!im && d.split("/").some((_, k, p) => { const x = p.slice(0, k + 1).join("/"); return x === im || x.endsWith("/" + im); });
   const out = new Set([""]);
   for (const f of files) {
     const p = f.split(/[\\/]+/).slice(0, -1);
     for (let i = 1; i <= p.length; i++) out.add(p.slice(0, i).join("/"));
   }
-  return [...out].filter((d) => !d.split("/").some((s) => s.startsWith(".")) && !(a && (d === a || d.startsWith(a + "/")))).sort();
+  return [...out].filter((d) => !d.split("/").some((s) => s.startsWith(".")) && !(a && (d === a || d.startsWith(a + "/"))) && !inImages(d)).sort();
 }
 
 /** A typed folder NAME as "a/b" relative to the notes folder ("" for the folder itself), or null when it
