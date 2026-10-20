@@ -963,6 +963,21 @@ describe("Note navigation", () => {
     await type("gf"); // the cursor is on the link just inserted
     await find(".status .file", "target.org");
     await find(".cm-content", "Target text.");
+    // a heading without an :ID: links as file:…::*Title, and following it lands on the heading
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Writer");
+    await find(".status .file", "writer.org");
+    await browser.keys(Key.Escape);
+    await type("Go");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "l"]);
+    await answer("Link to note", "headed.org / Two");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "sub", "writer.org"), (s) => s.includes("[[file:../headed.org::*Two][Two]]"), "heading link not inserted");
+    await type("gf");
+    await find(".status .file", "headed.org");
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("* Two")), { timeoutMsg: "cursor not on the linked heading" });
   });
 
   it("Ctrl+Shift+O jumps to the picked heading", async () => {
@@ -1167,5 +1182,62 @@ describe("Org structure keys", () => {
     await open("boxes", 7); // off the item lines, so they show the checkbox widget
     await (await (await find(".cm-line", "one")).$(".cm-org-check")).click();
     await saved("boxes", "* TODO A [1/2]\n- [X] one\n- [ ] two\n** Child\n* B\n", "checkbox or cookie not updated");
+  });
+});
+
+describe("Web links and note graph", () => {
+  let d: Dirs;
+  const note = (n: string) => join(d.notes, `${n}.org`);
+  const open = async (n: string) => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", n);
+    await find(".status .file", `${n}.org`);
+    await noPicker();
+    await browser.keys(Key.Escape);
+  };
+  /** Dispatch a paste of TEXT on the editor; a plain object stands in for the clipboard when DataTransfer can't be built. */
+  const paste = (text: string) => browser.execute((text: string) => {
+    const ev = new ClipboardEvent("paste", { bubbles: true, cancelable: true });
+    if (!ev.clipboardData) Object.defineProperty(ev, "clipboardData", { value: { getData: (t: string) => (t === "text/plain" ? text : ""), files: [] } });
+    document.querySelector(".cm-content")!.dispatchEvent(ev);
+  }, text);
+  before(async () => {
+    d = await launch({ files: ({ notes }) => {
+      writeFileSync(join(notes, "hub.org"), "#+title: Hub\n\nsee [[file:spoke.org][Spoke]] here\n");
+      writeFileSync(join(notes, "spoke.org"), "#+title: Spoke\n\nback to [[file:hub.org][Hub]]\n");
+      writeFileSync(join(notes, "paste.org"), "#+title: Paste\n\nsay hello now\nsay world now\n");
+    } });
+    await find(".agenda h1", "Today");
+  });
+  after(close, { timeout: 30_000 });
+
+  it("clicking a node in the note graph opens that note", async () => {
+    await open("hub");
+    await palette("Show note graph");
+    await find(".links", "Graph");
+    await browser.waitUntil(async () => (await browser.$$(".links svg a")).length > 1, { timeoutMsg: "graph has no linked node" });
+    // SVG anchors aren't "interactable" to WebDriver; click through the DOM.
+    await browser.execute(() => document.querySelector<SVGAElement>(".links svg g.h1 a")!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })));
+    await find(".status .file", "spoke.org");
+    await find(".tabs .tab.cur button", "spoke");
+  });
+
+  it("a URL pasted over a selected word links it", async () => {
+    await open("paste");
+    await type("3G0wviw");
+    await paste("https://example.com");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(note("paste"), (s) => s.includes("say [[https://example.com][hello]] now\n"), "URL not pasted as a link over the selection");
+  });
+
+  it("Insert web link… links the selected word with the URL asked for", async () => {
+    await open("paste");
+    await type("4G0wviw");
+    await palette("Insert web link");
+    await answer("Link address (URL)", "https://margin.test");
+    await answer("Link text (optional)", "world");
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(note("paste"), (s) => s.includes("say [[https://margin.test][world]] now\n"), "web link not inserted over the selection");
   });
 });

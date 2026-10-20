@@ -211,7 +211,7 @@ profile clocks out first, and warns where old files stay (nothing is moved).
 | Ctrl+P | Open a note — or type a title to create one |
 | Ctrl+Shift+N | New note |
 | Ctrl+Shift+F | Search all notes as you type (lines with every word, in any order; `"quote"` a phrase) |
-| Ctrl+L | Insert a link to another note (a one-line selection becomes the link text; pasting a URL over a selection links it too) |
+| Ctrl+L | Insert a link to another note or to any heading (a heading without an `:ID:` links as `[[file:note.org::*Heading]]`, or `[[*Heading]]` in the same note; a one-line selection becomes the link text; pasting a URL over a selection links it too) |
 | Ctrl+S / `:w` | Save (also saves automatically) |
 | Ctrl+Shift+T / `Space b u` | Reopen the last closed tab, at the line you left (up to 20) |
 | Middle-click a tab / `Space b o` / `Space b D` | Close that tab / close the other tabs / close all tabs (each goes on the reopen stack, which keeps the last 20; tabs with unresolved conflicts stay open). Hover a tab for its file path |
@@ -373,7 +373,7 @@ Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`, `no` p
 | Space x o | Sort the child headings of the heading at the cursor (the top-level headings when the cursor is above the first one) by title, priority, status, scheduled or deadline date, ascending or descending; subtrees move whole, headings without the key go last, `u` undoes |
 | Shift+← / → | Change task status, or move a date by a day |
 | Shift+↑ / ↓ | Change priority, or the date part under the cursor |
-| Enter, gf, Ctrl+click | Follow a link (relative `file:` links like `../other/note.org` resolve from the note's folder; `[[*Heading]]`, `[[#custom-id]]`, `[[file:a.org::*Heading]]`, `::12` (line) and `::text` jump to the match). On a footnote `[fn:1]` it jumps to the definition and back; Ctrl+O returns |
+| Enter, gf, Ctrl+click | Follow a link (relative `file:` links like `../other/note.org` resolve from the note's folder; `[[*Heading]]`, `[[#custom-id]]`, `[[file:a.org::*Heading]]`, `::12` (line) and `::text` jump to the match; a `*Heading` search ignores your todo keywords and `[2/5]` cookies, as org does). On a footnote `[fn:1]` it jumps to the definition and back; Ctrl+O returns |
 | click `[ ]` | Toggle a checkbox |
 | Space x … | Task commands for the heading at the cursor |
 | Space n b | Notes linking here, plus unlinked mentions of this note's title (**Link** turns one into an `[[id:]]` link; Space n u undoes) |

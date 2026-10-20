@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { findTarget, splitTarget } from "./links.ts";
+import { bareTitle, findTarget, linkHeadings, splitTarget } from "./links.ts";
 
 const doc = "#+title: T\n* TODO [#A] Install :tag:\n:PROPERTIES:\n:CUSTOM_ID: setup\n:END:\nbody text\n** Usage\r\nmore\n";
 
@@ -23,4 +23,29 @@ test("findTarget", () => {
   assert.equal(findTarget(doc, "999"), 8);
   assert.equal(findTarget(doc, "body"), 5);
   assert.equal(findTarget(doc, ""), null);
+});
+
+test("findTarget: custom keywords and statistics cookies", () => {
+  const d = "* DOING Write report\n* Release [2/5]\n* TODO Ship   it [40%] :work:\n* C++ [/]\n";
+  assert.equal(findTarget(d, "*Write report"), null);
+  assert.equal(findTarget(d, "*DOING Write report"), 0);
+  assert.equal(findTarget(d, "*Write report", ["TODO", "DOING", "DONE"]), 0);
+  assert.equal(findTarget(d, "*Ship it", ["DOING"]), null);
+  assert.equal(findTarget(d, "*Ship it"), 2);
+  assert.equal(findTarget(d, "*Release"), 1);
+  assert.equal(findTarget(d, "*Release [2/5]"), 1);
+  assert.equal(findTarget(d, "*Release [3/5]"), 1);
+  assert.equal(findTarget(d, "*C++", ["C++", "DONE"]), null);
+  assert.equal(findTarget(d, "*c++"), 3);
+  assert.equal(findTarget("* A+ Go\n", "*Go", ["A+"]), 0);
+});
+
+test("linkHeadings", () => {
+  const t = (path: string, line: number | null, title: string) => ({ path, line, title });
+  const got = linkHeadings(
+    [t("a", null, "Note A"), t("a", 1, "Plan [2/5]"), t("a", 4, "plan"), t("a", 6, "Has id"), t("a", 8, "[[x]] link"), t("a", 9, " "), t("b", 2, "Plan")],
+    new Set(["a:6"]),
+  );
+  assert.deepEqual(got.map((h) => [h.path, h.line, h.bare]), [["a", 1, "Plan"], ["b", 2, "Plan"]]);
+  assert.equal(bareTitle("  Ship  it [40%] [/]"), "Ship it");
 });
