@@ -477,7 +477,7 @@ or `"none"`) picks which public holidays count as 0 hours, and `extra_days_off` 
 one per line in Settings → Time) adds your own; the holidays report lists them too. Changing either
 also changes the flex of past days. Keys:
 `i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV (import template: `Project` = export code, `Duration` in decimal hours, `1,5`; zero-hour rows are left out; a missing folder is created; a bare file name goes into the export folder; otherwise the path must be an absolute `.csv` path outside the app's data and config folders),
-`E` export a report as HTML/PDF.
+`E` export a report as HTML/PDF, `O` stopped earlier, `S` edit a session, `L` log time off.
 Space t … has every timeclock command (same letters as the old Emacs menu).
 `Space t a` ("I started earlier") and `Space t O` ("I stopped earlier", for when you forgot to stop) take minutes ago (`25`) or a time (`14:05`). A start can't move before the previous session's end.
 
