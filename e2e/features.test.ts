@@ -735,6 +735,8 @@ describe("Insert commands", () => {
     await type("2G$"); // on the "." of "See this."
     await browser.keys(" ");
     await type("if");
+    await browser.pause(1500);
+    console.log("DEBUG fn", JSON.stringify(await texts(".status .msg")), JSON.stringify(await texts(".status .mode")), JSON.stringify(await texts(".cm-content")), JSON.stringify(await texts(".menu")));
     await find(".status .mode", "INSERT");
     await type("Def");
     await browser.keys(Key.Escape);
