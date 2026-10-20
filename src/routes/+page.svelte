@@ -937,7 +937,7 @@
     const dir = tab?.path ? tab.path.replace(/[\\/][^\\/]*$/, "") : cfg.notes;
     if (file) await openFile(/^([\\/]|[A-Za-z]:)/.test(file) ? file : resolvePath(dir, file, sep()));
     if (!search) return;
-    const line = findTarget(view.state.doc.toString(), search);
+    const line = findTarget(view.state.doc.toString(), search, [...(kw().todo ?? []), ...(kw().done ?? [])]);
     if (line == null) return flash(`No match for "${search}" in ${tab?.title ?? "note"}`);
     const pos = view.state.doc.line(line + 1).from;
     view.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: "center" }) });

@@ -8,16 +8,22 @@ export function splitTarget(t: string): { file: string; search: string } {
   return i < 0 ? { file: s, search: "" } : { file: s.slice(0, i), search: s.slice(i + 2) };
 }
 
-const HEAD = /^\*+\s+(?:(?:TODO|DONE|NEXT|WAIT\w*|CANCEL\w*)\s+)?(?:\[#[A-Z0-9]+\]\s+)?(.*?)(?:\s+:[\w@#%:]+:)?\s*$/;
+const KW = "TODO|DONE|NEXT|WAIT\\w*|CANCEL\\w*";
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** Heading regex capturing the title after an optional keyword (from KEYWORDS, else the defaults), priority and tags. */
+const head = (keywords?: string[]) => new RegExp(`^\\*+\\s+(?:(?:${keywords?.length ? keywords.map(esc).join("|") : KW})\\s+)?(?:\\[#[A-Z0-9]+\\]\\s+)?(.*?)(?:\\s+:[\\w@#%:]+:)?\\s*$`);
+/** Title for comparison, as org does: no statistics cookies (`[2/5]`, `[40%]`), collapsed whitespace, lowercase. */
+const norm = (s: string) => s.replace(/\[\d*(?:\/\d*|%)\]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
 
-/** 0-based line a search string points at (`*Heading`, `#custom-id`, line number, or plain text), or null. */
-export function findTarget(text: string, search: string): number | null {
+/** 0-based line a search string points at (`*Heading`, `#custom-id`, line number, or plain text), or null.
+ *  KEYWORDS are the todo/done keywords a `*Heading` may carry (defaults to TODO, DONE, NEXT, WAIT*, CANCEL*). */
+export function findTarget(text: string, search: string, keywords?: string[]): number | null {
   const lines = text.split(/\r?\n/);
   if (!search) return null;
   if (/^\d+$/.test(search)) return Math.min(Math.max(+search, 1), lines.length) - 1;
   if (search[0] === "*") {
-    const want = search.slice(1).trim().toLowerCase();
-    const i = lines.findIndex((l) => HEAD.exec(l)?.[1].toLowerCase() === want);
+    const want = norm(search.slice(1)), re = head(keywords);
+    const i = lines.findIndex((l) => { const m = re.exec(l); return !!m && norm(m[1]) === want; });
     return i < 0 ? null : i;
   }
   if (search[0] === "#") {
