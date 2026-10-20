@@ -75,3 +75,21 @@ test("cell formulas move into TBLFM", () => {
   assert.deepEqual(r, { lines: ["| a |  |", "| b |  |"], formulas: ["$2=$1*2", "@2$2=vsum(@1..@2)"] });
   assert.equal(T.mergeTblfm("$2=$1::@1$1=3", ["$2=$1*2", "$3=1"]), "$2=$1*2::@1$1=3::$3=1");
 });
+
+test("formula dialog helpers: build, check, remove", () => {
+  const t = ["| x | y |", "|-", "| 1 | 2 |", "| 3 | 4 |", "| | |"];
+  assert.deepEqual(T.buildFormula({ kind: "col", col: 2 }, "", "$1*2"), { lhs: "$2", rhs: "$1*2" });
+  assert.deepEqual(T.buildFormula({ kind: "last", col: 1 }, "vsum", "@2..@-1"), { lhs: "@>$1", rhs: "vsum(@2..@-1)" });
+  assert.deepEqual(T.buildFormula({ kind: "cell", col: 2, row: 3 }, "round", "$1/3, 2"), { lhs: "@3$2", rhs: "round($1/3, 2)" });
+  assert.equal(T.formulaError(t, "@>$1", "vsum(@2..@-1)"), null);
+  assert.equal(T.formulaError(t, "$2", "$1+"), "can't read “”");
+  assert.equal(T.formulaError(t, "$2", "nope($1)"), "unknown function nope");
+  assert.equal(T.formulaError(t, "$2", "@2..@3"), "a range needs a function like vsum()");
+  assert.equal(T.formulaError(t, "$2", "$1/0"), "the result is not a number (division by zero?)");
+  assert.equal(T.formulaError(t, "@9$1", "1"), "target @9$1 is outside the table");
+  assert.match(T.formulaError(t, "x", "1")!, /^target must be/);
+  assert.deepEqual(T.applyFormulas(["| 1 |"], "@9$1=1::$9=1"), ["| 1 |"]); // targets outside the table are ignored
+  assert.equal(T.removeTblfm("$2=$1::@>$1=vsum(@2..@-1)", "$2"), "@>$1=vsum(@2..@-1)");
+  // Every listed function evaluates.
+  for (const [fn, , range] of T.FUNCTIONS) assert.equal(T.formulaError(t, "@>$2", `${fn}(${range ? "@2$1..@3$1" : "4"})`), null, fn);
+});

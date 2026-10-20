@@ -427,7 +427,7 @@ a header row.
 | Ctrl+Shift+O | Go to a heading in this note |
 | Space i … | Insert table, code block, quote, link, date, rule, footnote (`Space i f` adds the next `[fn:N]` and types its definition under a `* Footnotes` heading at the end); `Space i D` stamps the current time as an inactive `[2026-10-12 Mon 09:05]` (`Space i d` takes the full date syntax: `fri 14:00-15:30`, `fri +1w` repeat, `fri -3d` warning) |
 | Space i b / i / ~ / + | Bold, italic, code, strike-through the selection or the word at the cursor (again removes it); Ctrl/Cmd+B and Ctrl/Cmd+I in insert mode |
-| Space T … | Table: rows, columns (`T H` inserts one to the left), separator, sort, align |
+| Space T … | Table: rows, columns (`T H` inserts one to the left), separator, sort, align, `T f` formulas |
 | `[/]` or `[%]` in a heading | Progress cookie, updated when you tick checkboxes or finish child tasks |
 | Enter / Alt+Enter in a `1.` list | Next item; the items below are renumbered (Space x r renumbers after vim edits like `dd` / `p`) |
 
@@ -469,6 +469,15 @@ References: `$3` column, `@2` row, `@2$3` field, relative `@-1` / `$+1`, `@<` /
 `@>` first / last row, `@I` / `@II` separator lines, ranges `@2..@-1` or
 `@2$1..@4$3`. Operators `+ - * / ^`; functions `vsum vmean vmin vmax vcount
 vmedian abs round floor ceil sqrt exp ln`; format with `;%.2f` or `;%d`.
+
+**Formulas…** in the table toolbar (or `Space T f`, "Table: edit formulas…") opens
+a dialog that lists the table's formulas (cell `=expr` ones included) with any
+error next to each, and lets you edit or delete them. To add one, pick a target
+(a whole column, one cell, the last row for a total, or type any field like
+`@II$3`), a function or a plain expression, and an optional format; the dialog
+shows the formula, why it would fail (an unknown function, a range without
+`vsum()`, a reference outside the table…) and a live preview of the
+recalculated table. **Save & recalculate** writes the `#+TBLFM:` line.
 
 ## Time tracking
 

@@ -767,6 +767,7 @@ describe("Tables, lists and attachments", () => {
         writeFileSync(join(notes, "tbl.org"), "#+title: Tbl\n\n| a | b |\n|-\n| long cell | 1 |\n");
         writeFileSync(join(notes, "calc.org"), "#+title: Calc\n\n| item | qty | price | total |\n|-\n| a | 2 | 3 | |\n| b | 4 | 5 | |\n");
         writeFileSync(join(notes, "tools.org"), "#+title: Tools\n\n| a | b | c |\n|-\n| 1 | 2 | 3 |\n");
+        writeFileSync(join(notes, "sums.org"), "#+title: Sums\n\n| item | qty |\n|-\n| a | 2 |\n| b | 3 |\n| total | |\n");
         writeFileSync(join(notes, "emph.org"), "#+title: Emph\n\nsay hello now\n");
         writeFileSync(join(notes, "list.org"), "#+title: List\n\n1. a\n2. b\n3. c\n");
         writeFileSync(join(notes, "pics.org"), "#+title: Pics\n\n[[file:attachments/pics/used.txt][used]]\n[[file:images/used.png]]\n");
@@ -819,6 +820,26 @@ describe("Tables, lists and attachments", () => {
     await browser.keys(Key.Escape);
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(join(d.notes, "tools.org"), (s) => /\| b \| c \|\n\| X *\| *\|\n\|---\+---\|\n\| 2 \| 3 \|/.test(s), "toolbar did not delete the column or add the row");
+  });
+
+  it("the formula dialog adds a total with a live preview and shows errors inline", async () => {
+    await open("Sums", "sums.org");
+    await type("3G");
+    await (await find(".cm-table-tools button", "Formulas…")).click();
+    await find(".dialog h2", "Table formulas");
+    await browser.$('.dialog select[name="target"]').selectByAttribute("value", "last");
+    await browser.$('.dialog input[name="column"]').setValue("2");
+    await browser.$('.dialog input[name="expr"]').setValue("nope($1)");
+    await find(".dialog .status.err", "unknown function nope");
+    await browser.$('.dialog select[name="fn"]').selectByAttribute("value", "vsum");
+    await browser.$('.dialog input[name="expr"]').setValue("@I..@-1");
+    await find(".dialog .status", "@>$2=vsum(@I..@-1) — ok");
+    await find(".dialog .preview", "| total |   5 |");
+    await (await find(".dialog button", "Add")).click();
+    await find(".dialog .list code", "@>$2=vsum(@I..@-1)");
+    await (await find(".dialog button", "Save & recalculate")).click();
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "sums.org"), (s) => /\| total \|\s+5 \|\n#\+TBLFM: @>\$2=vsum\(@I\.\.@-1\)\n?$/.test(s), "total formula not added or not computed");
   });
 
   it("Enter after an ordered-list item renumbers the items below", async () => {
