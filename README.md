@@ -415,7 +415,7 @@ drawers, `#+KEY:` names and heading `:tags:`.
 | `\|-` then Tab | Expands into a separator line |
 | `<s`, `<q`, `<e`, `<v` + Tab | Code, quote, example, verse block |
 | Ctrl+Shift+O | Go to a heading in this note |
-| Space i … | Insert table, code block, quote, link, date, rule |
+| Space i … | Insert table, code block, quote, link, date, rule (`Space i d` takes the full date syntax: `fri 14:00-15:30`, `fri +1w` repeat, `fri -3d` warning) |
 | Space i b / i / ~ / + | Bold, italic, code, strike-through the selection or the word at the cursor (again removes it); Ctrl/Cmd+B and Ctrl/Cmd+I in insert mode |
 | Space T … | Table: rows, columns, separator, sort, align |
 | `[/]` or `[%]` in a heading | Progress cookie, updated when you tick checkboxes or finish child tasks |
