@@ -34,7 +34,8 @@ a date; from anywhere, the global quick-capture shortcut does the same.
 <img src="docs/gifs/capture.gif" width="800" alt="Ctrl+K, New task, typing a title and today, and the task showing up in Today">
 
 **Triage Today** — select a task and press `+` for a higher priority, `x` for done, `>` to
-push it a day, or `s` to schedule it.
+push it a day, or `s` to schedule it. `Y` copies the shown list as Markdown checkboxes
+(grouped by day in the week view), handy for a standup or message.
 
 <img src="docs/gifs/today.gif" width="800" alt="Raising a priority, finishing a task, pushing one to tomorrow and rescheduling another in Today">
 

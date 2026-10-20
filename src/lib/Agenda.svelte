@@ -21,6 +21,7 @@
     moveOverdue: () => Promise<void>;
     /** Ask for a date ("Go to date"); ISO day, or null on cancel / unparsable input. */
     pickDate: () => Promise<string | null>;
+    flash: (msg: string) => void;
   };
 
   export const iso = (d: Date) =>
@@ -55,7 +56,7 @@
   ];
   const MORE: [string, string][] = [
     ["j / k", "Move selection"], ["< / >", "Reschedule a day earlier / later"], ["+ / -", "Raise / lower priority"],
-    ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["T", "Today: move all overdue tasks to a day"], ["H / L", "Board: move to the column left / right"], ["h / l", "Previous / next period"],
+    ["Y", "Copy the list as text"], ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["T", "Today: move all overdue tasks to a day"], ["H / L", "Board: move to the column left / right"], ["h / l", "Previous / next period"],
     [".", "Jump to today"], ["D", "Go to a date"], ["/", "Filter"], ["r", "Refresh"], ["?", "Toggle this help"],
   ];
 </script>
@@ -70,6 +71,7 @@
   import { chips } from "./chips";
   import { doneLog, withLog } from "./donelog";
   import { fmtEffort, planned } from "./effort";
+  import { agendaText } from "./agendatext";
 
   /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions.
    *  LOGDONE: config `log_done` (the Done log needs its CLOSED: stamps). */
@@ -251,6 +253,13 @@
     });
   }
 
+  /** Copy the shown (filtered) list as Markdown checkboxes; the week view groups by day. */
+  async function copyList() {
+    if (!shown.length) return api.flash("Nothing to copy");
+    const text = agendaText(shown.map((i) => ({ ...i, done: isDone(i) })), mode === "agenda" && span === 7);
+    await navigator.clipboard.writeText(text).then(() => api.flash(`Copied ${shown.length} task${shown.length === 1 ? "" : "s"}`), () => api.flash("Couldn't copy to the clipboard."));
+  }
+
   function key(e: KeyboardEvent) {
     if (e.target === filterInput) {
       if (e.key === "Escape" || e.key === "Enter" || e.key === "ArrowDown") {
@@ -274,6 +283,7 @@
       case "<": op("earlier"); break;
       case "+": op("priority-up"); break;
       case "-": op("priority-down"); break;
+      case "Y": void copyList(); break;
       case "n": api.newTask(dayInput()); break;
       case "u": api.act(async () => { await api.undo(); await refresh(); }); break;
       case "c": if (mode === "agenda") setLog(!logOn); break;
