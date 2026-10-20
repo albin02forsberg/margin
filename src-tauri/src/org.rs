@@ -690,6 +690,18 @@ fn edit_heading(text: &str, line: usize, kw: &Kw, f: impl FnOnce(&mut Parts)) ->
     join(lines, text)
 }
 
+/// Line of the next headline after HL (or the end): the limit of its own text.
+fn heading_end(lines: &[String], hl: usize) -> usize {
+    (hl + 1..lines.len()).find(|&i| heading_level(&lines[i]).is_some()).unwrap_or(lines.len())
+}
+
+/// Line of the `:END:` closing the drawer opened at START, if it is closed
+/// before the next headline.
+fn drawer_end(lines: &[String], start: usize) -> Option<usize> {
+    let lim = (start + 1..lines.len()).find(|&i| heading_level(&lines[i]).is_some()).unwrap_or(lines.len());
+    (start + 1..lim).find(|&j| lines[j].trim().eq_ignore_ascii_case(":END:"))
+}
+
 /// Set the TODO keyword (None clears it). Marking a repeating task done
 /// shifts its dates, sets `:LAST_REPEAT:`, logs `- State "DONE" from "TODO"
 /// [date time]` below the planning line and drawers (inside a LOGBOOK if
@@ -724,7 +736,7 @@ pub fn set_keyword(text: &str, line: usize, kw: &Kw, new: Option<&str>, now: Nai
         let stamp = format!("[{}]", now.format("%Y-%m-%d %a %H:%M"));
         let last = format!(":LAST_REPEAT: {stamp}");
         if lines.get(hl + 2).is_some_and(|l| l.trim().eq_ignore_ascii_case(":PROPERTIES:")) {
-            let end = (hl + 3..lines.len()).find(|&j| lines[j].trim().eq_ignore_ascii_case(":END:")).unwrap_or(lines.len());
+            let end = drawer_end(&lines, hl + 2).unwrap_or_else(|| heading_end(&lines, hl));
             match (hl + 3..end).find(|&j| lines[j].trim_start().to_ascii_uppercase().starts_with(":LAST_REPEAT:")) {
                 Some(j) => lines[j] = last,
                 None => lines.insert(end, last),
@@ -736,7 +748,7 @@ pub fn set_keyword(text: &str, line: usize, kw: &Kw, new: Option<&str>, now: Nai
         let log = format!("- State {:<12} from {:<12} {stamp}", q(next.as_deref()), q(p.keyword.as_deref()));
         let mut i = hl + 2;
         if lines.get(i).is_some_and(|l| l.trim().eq_ignore_ascii_case(":PROPERTIES:")) {
-            i = (i..lines.len()).find(|&j| lines[j].trim().eq_ignore_ascii_case(":END:")).map_or(i, |j| j + 1);
+            i = drawer_end(&lines, i).map_or(i, |j| j + 1);
         }
         if lines.get(i).is_some_and(|l| l.trim().eq_ignore_ascii_case(":LOGBOOK:")) {
             i += 1;
@@ -810,7 +822,9 @@ pub fn add_note(text: &str, line: usize, note: &str, now: NaiveDateTime) -> Stri
         i += 1;
     }
     while lines.get(i).is_some_and(|l| [":PROPERTIES:", ":LOGBOOK:"].iter().any(|d| l.trim().eq_ignore_ascii_case(d))) {
-        i = (i + 1..lines.len()).find(|&j| lines[j].trim().eq_ignore_ascii_case(":END:")).map_or(lines.len(), |j| j + 1);
+        // An unclosed drawer: insert before it rather than running on into later headings.
+        let Some(j) = drawer_end(&lines, i) else { break };
+        i = j + 1;
     }
     let head = format!("- Note taken on [{}] \\\\", now.format("%Y-%m-%d %a %H:%M"));
     let body = note.trim().lines().map(|l| if l.trim().is_empty() { String::new() } else { format!("  {}", l.trim_end()) });
@@ -1569,6 +1583,23 @@ mod tests {
         let later = d("2026-10-03").and_hms_opt(9, 0, 0).unwrap();
         assert_eq!(add_note(&once, 0, "new", later), format!("* A\n- Note taken on [2026-10-03 Sat 09:00] \\\\\n  new\n{n}  old\n"));
         assert_eq!(add_note("no heading\n", 0, "x", at()), "no heading\n");
+    }
+
+    #[test]
+    fn unclosed_drawer_stays_in_its_heading() {
+        let n = "- Note taken on [2026-10-02 Fri 14:30] \\\\\n";
+        assert_eq!(add_note("* A\n:LOGBOOK:\n- x\n* B\nbody\n", 0, "hi", at()), format!("* A\n{n}  hi\n:LOGBOOK:\n- x\n* B\nbody\n"));
+        assert_eq!(add_note("* A\n:LOGBOOK:\n- x\n", 0, "hi", at()), format!("* A\n{n}  hi\n:LOGBOOK:\n- x\n"));
+        // An :END: belonging to a later heading is not this drawer's.
+        let t = "* A\n:PROPERTIES:\n* B\n:PROPERTIES:\n:END:\n";
+        assert_eq!(add_note(t, 0, "hi", at()), format!("* A\n{n}  hi\n:PROPERTIES:\n* B\n:PROPERTIES:\n:END:\n"));
+    }
+
+    #[test]
+    fn repeat_with_unclosed_properties_stays_put() {
+        let t = "* TODO A\nSCHEDULED: <2026-10-02 Fri +1d>\n:PROPERTIES:\n:ID: x\n* B\n:END:\n";
+        let r = set_keyword(t, 0, &kw(), Some("DONE"), at(), false);
+        assert!(r.contains(":LAST_REPEAT:") && r.find(":LAST_REPEAT:") < r.find("* B"), "{r}");
     }
 
     #[test]
