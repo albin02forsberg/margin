@@ -994,6 +994,18 @@ describe("Org structure keys", () => {
     await saved("levels", org, "subtree not promoted");
   });
 
+  it("Space x o sorts a heading's children with their subtrees, u undoes it (#553)", async () => {
+    await open("sort", 3);
+    await browser.keys(" ");
+    await type("xo");
+    await answer("Sort headings by", "title");
+    await answer("Sort by title", "desc");
+    await noPicker();
+    await fileMatches(f("sort"), (s) => s === title("sort") + "* P\n** c\n** b\n*** deep\n** a\n* Q\n", "children not sorted");
+    await type("u");
+    await saved("sort", sortOrg, "sort not undone");
+  });
+
   it("Shift+Right / Shift+Left cycle the heading's status", async () => {
     await open("status", 7);
     await browser.keys([Key.Shift, Key.ArrowRight]);
@@ -1050,18 +1062,6 @@ describe("Org structure keys", () => {
     await open("boxes", 7); // off the item lines, so they show the checkbox widget
     await (await (await find(".cm-line", "one")).$(".cm-org-check")).click();
     await saved("boxes", "* TODO A [1/2]\n- [X] one\n- [ ] two\n** Child\n* B\n", "checkbox or cookie not updated");
-  });
-
-  it("Space x o sorts a heading's children with their subtrees, u undoes it (#553)", async () => {
-    await open("sort", 3);
-    await browser.keys(" ");
-    await type("xo");
-    await answer("Sort headings by", "title");
-    await answer("Sort by title", "desc");
-    await noPicker();
-    await fileMatches(f("sort"), (s) => s === title("sort") + "* P\n** c\n** b\n*** deep\n** a\n* Q\n", "children not sorted");
-    await type("u");
-    await saved("sort", sortOrg, "sort not undone");
   });
 
   // Last: in e2e, a note opened after this one drops "3" and "0" of "3G0" and inserts the "G".
