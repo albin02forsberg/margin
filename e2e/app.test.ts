@@ -27,6 +27,10 @@ describe("Margin", () => {
     await find(".agenda .row .title", "Fixture task");
   });
 
+  it("titles the window after the active tab", async () => {
+    assert.equal(await browser.execute(() => document.title), "Today — Margin");
+  });
+
   it("shows the app version in Settings > About", async () => {
     const { version } = JSON.parse(readFileSync(join(import.meta.dirname, "../src-tauri/tauri.conf.json"), "utf8"));
     await (await browser.$(".topnav .set")).click();
