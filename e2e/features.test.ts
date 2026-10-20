@@ -472,13 +472,15 @@ describe("Features", () => {
 describe("Task keys", () => {
   let d: Dirs;
   const file = () => join(d.notes, "keys.org");
-  const day = (n: number) => { const t = new Date(); t.setDate(t.getDate() + n); return `<${orgDay(t)}>`; };
+  const addDays = (n: number) => { const t = new Date(); t.setDate(t.getDate() + n); return t; };
+  const day = (n: number) => `<${orgDay(addDays(n))}>`;
   /** Click TITLE's row in Today (re-found by text: the agenda re-sorts after each change). */
   const select = async (title: string) => { await (await find(".agenda .row .title", title)).click(); };
   before(async () => {
     d = await launch({
       files: ({ notes }) => {
         writeFileSync(join(notes, "keys.org"), `* TODO Shift me\nSCHEDULED: ${day(0)}\n* TODO [#B] Rank me\nSCHEDULED: ${day(0)}\n* TODO Due me\nSCHEDULED: ${day(0)}\n* TODO Finish me\nSCHEDULED: ${day(0)}\n* TODO Repeat me\nSCHEDULED: ${day(0)}\n`);
+        writeFileSync(join(notes, "overdue.org"), `* TODO Late one\nSCHEDULED: <${orgDay(addDays(-5))} 09:00 +1w>\n* TODO Late two\nDEADLINE: ${day(4)} SCHEDULED: ${day(-2)}\n* DONE Late done\nSCHEDULED: ${day(-3)}\n`);
         writeFileSync(join(notes, "minutes.org"), "#+title: Minutes\n\nIntro line.\nThe quarterly budget review happened on Tuesday.\nOutro line.\n");
       },
     });
@@ -493,6 +495,18 @@ describe("Task keys", () => {
     await fileMatches(file(), (s) => s.includes(`* TODO Shift me\nSCHEDULED: ${day(1)}\n`), "task not rescheduled to tomorrow");
     await browser.keys("u"); // straight away: the task has left Today
     await fileMatches(file(), (s) => s === orig, "undo didn't restore the file");
+  });
+
+  it("T moves every overdue task to today, keeping time and repeater, and u restores them (#599)", async () => {
+    const f = join(d.notes, "overdue.org"), orig = read(f);
+    await select("Shift me");
+    await browser.keys("T");
+    await answer("Move 2 overdue tasks to", "today");
+    await fileMatches(f, (s) => s === `* TODO Late one\nSCHEDULED: <${orgDay(new Date())} 09:00 +1w>\n* TODO Late two\nDEADLINE: ${day(4)} SCHEDULED: ${day(0)}\n* DONE Late done\nSCHEDULED: ${day(-3)}\n`, "overdue tasks not moved to today");
+    await noPicker();
+    await select("Late one");
+    await browser.keys("u");
+    await fileMatches(f, (s) => s === orig, "undo didn't restore both tasks");
   });
 
   it("+ raises the priority and - lowers it again", async () => {

@@ -545,6 +545,20 @@ pub fn agenda(files: &[Arc<OrgFile>], kw: &Kw, start: NaiveDate, days: i64, toda
     out
 }
 
+/// (path, line) of open tasks whose SCHEDULED date (after any `-Nd` delay) is before TODAY: what the
+/// agenda labels "Scheduled Nd ago". Habits and archived subtrees are left out.
+pub fn overdue_scheduled(files: &[Arc<OrgFile>], kw: &Kw, today: NaiveDate) -> Vec<(PathBuf, usize)> {
+    let mut out = vec![];
+    for f in files {
+        for h in f.headlines.iter().filter(|h| !h.archived() && !h.habit && h.keyword.as_deref().is_some_and(|k| !kw.is_done(k))) {
+            if h.scheduled.as_ref().is_some_and(|s| s.date < today && today >= s.date + Duration::days(warn_days(s).unwrap_or(0).max(0))) {
+                out.push((f.path.clone(), h.line));
+            }
+        }
+    }
+    out
+}
+
 /// Tasks for which KEEP holds (open ones only, unless DONE), by priority then date.
 pub fn todos(files: &[Arc<OrgFile>], kw: &Kw, done: bool, keep: impl Fn(&OrgFile, &Headline) -> bool, today: NaiveDate) -> Vec<Item> {
     let mut out = vec![];
@@ -1357,6 +1371,14 @@ pub fn set_planning(text: &str, line: usize, kind: &str, date: Option<When>) -> 
     join(lines, text)
 }
 
+/// Move KIND on the headline at LINE to DATE, keeping its time, repeater and warning; no KIND: unchanged.
+pub fn move_planning(text: &str, line: usize, kind: &str, date: NaiveDate) -> String {
+    match planning_ts(text, line, kind) {
+        Some(o) => set_planning(text, line, kind, Some((date, o.span(), None, None))),
+        None => text.to_string(),
+    }
+}
+
 /// Parse org-read-date style input: "", "today", "tomorrow", "+3d", "-1w",
 /// "mon".."sun", "2026-10-02", "10-02", "15" (day of month), each optionally
 /// followed by a time "14:00" or range "9:00-10:30", a repeater "+1w",
@@ -1627,6 +1649,23 @@ mod tests {
             "2026-10-18 Trip 08:00 (1/3)", "2026-10-19 Trip  (2/3)"]);
         let mid: Vec<_> = agenda(&[f], &kw(), d("2026-10-20"), 1, d("2026-10-16")).into_iter().map(|i| (i.title, i.label)).collect();
         assert_eq!(mid, [("Trip".to_string(), "(3/3)".to_string()), ("Two".into(), String::new())]);
+    }
+
+    #[test]
+    fn overdue_and_move() {
+        let t = "* TODO Old\nSCHEDULED: <2026-10-15 Thu 09:00-10:00 +1w -2d>\n* DONE Finished\nSCHEDULED: <2026-10-01 Thu>\n\
+* TODO Habit\nSCHEDULED: <2026-10-01 Thu .+1d>\n:PROPERTIES:\n:STYLE: habit\n:END:\n* TODO Due only\nDEADLINE: <2026-10-01 Thu>\n\
+* TODO Today\nSCHEDULED: <2026-10-20 Tue>\n* TODO Later\nSCHEDULED: <2026-10-25 Sun>\n* Plain\nSCHEDULED: <2026-10-01 Thu>\n\
+* TODO Stale :ARCHIVE:\nSCHEDULED: <2026-10-01 Thu>\n* TODO Delayed\nSCHEDULED: <2026-10-18 Sun -5d>\n* NEXT Two\nDEADLINE: <2026-10-30 Fri> SCHEDULED: <2026-10-19 Mon>\n";
+        let f = Arc::new(parse(Path::new("/n/a.org"), t, &kw()));
+        let got: Vec<_> = overdue_scheduled(&[f], &kw(), d("2026-10-20")).into_iter().map(|(_, l)| t.lines().nth(l).unwrap().to_string()).collect();
+        assert_eq!(got, ["* TODO Old", "* NEXT Two"]);
+        // The absolute date replaces the old one; time range, repeater and warning stay, DEADLINE is untouched.
+        assert_eq!(move_planning("* TODO A\nSCHEDULED: <2026-10-15 Thu 09:00-10:00 +1w -2d>\n", 0, "SCHEDULED", d("2026-10-20")),
+            "* TODO A\nSCHEDULED: <2026-10-20 Tue 09:00-10:00 +1w -2d>\n");
+        assert_eq!(move_planning("* NEXT Two\nDEADLINE: <2026-10-30 Fri> SCHEDULED: <2026-10-19 Mon .+2d/3d>\n", 0, "SCHEDULED", d("2026-10-21")),
+            "* NEXT Two\nDEADLINE: <2026-10-30 Fri> SCHEDULED: <2026-10-21 Wed .+2d/3d>\n");
+        assert_eq!(move_planning("* TODO B\nDEADLINE: <2026-10-30 Fri>\n", 0, "SCHEDULED", d("2026-10-21")), "* TODO B\nDEADLINE: <2026-10-30 Fri>\n");
     }
 
     #[test]

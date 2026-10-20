@@ -17,6 +17,8 @@
     newTask: (scheduled?: string) => void;
     undo: () => Promise<void>;
     act: (f: () => unknown) => void;
+    /** Ask for a day and move every overdue SCHEDULED task there (one undo step). */
+    moveOverdue: () => Promise<void>;
     /** Ask for a date ("Go to date"); ISO day, or null on cancel / unparsable input. */
     pickDate: () => Promise<string | null>;
   };
@@ -53,7 +55,7 @@
   ];
   const MORE: [string, string][] = [
     ["j / k", "Move selection"], ["< / >", "Reschedule a day earlier / later"], ["+ / -", "Raise / lower priority"],
-    ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["H / L", "Board: move to the column left / right"], ["h / l", "Previous / next period"],
+    ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["T", "Today: move all overdue tasks to a day"], ["H / L", "Board: move to the column left / right"], ["h / l", "Previous / next period"],
     [".", "Jump to today"], ["D", "Go to a date"], ["/", "Filter"], ["r", "Refresh"], ["?", "Toggle this help"],
   ];
 </script>
@@ -275,6 +277,7 @@
       case "n": api.newTask(dayInput()); break;
       case "u": api.act(async () => { await api.undo(); await refresh(); }); break;
       case "c": if (mode === "agenda") setLog(!logOn); break;
+      case "T": if (mode === "agenda") api.act(async () => { await api.moveOverdue(); await refresh(); }); break;
       case "v": if (mode === "agenda") setSpan(span === 1 ? 7 : 1); else setBoard(!board); break;
       case "H": if (boardOn) shift(-1); break;
       case "L": if (boardOn) shift(1); break;

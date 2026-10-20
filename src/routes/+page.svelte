@@ -837,6 +837,17 @@
     if (input != null) await toFile(loc.path, (text) => call("org_planning", { text, line: loc.line, kind, input }));
   }
 
+  /** Move every overdue SCHEDULED task to one picked day, keeping time and repeater; one undo step (#599). */
+  async function moveOverdue() {
+    const due = await call<[string, number][]>("overdue_scheduled");
+    if (!due.length) return flash("Nothing overdue.");
+    const n = `${due.length} overdue task${due.length === 1 ? "" : "s"}`;
+    const input = await datePick(`Move ${n} to`, false, "SCHEDULED", false);
+    if (input == null) return;
+    await recorded(async () => { for (const [path, line] of due) await edit({ path, line }, "move", `SCHEDULED ${input}`); });
+    flash(`Moved ${n} — u (or Space n u) undoes.`);
+  }
+
   async function editTags(loc: Loc) {
     const h = await heading(loc);
     if (!h) return flash("Not on a task.");
@@ -1771,6 +1782,7 @@
     newTask: (s) => act(() => newTask(s ?? "")),
     undo,
     act,
+    moveOverdue,
     pickDate: async () => {
       const input = await datePick("Go to date");
       if (input == null || input === "rm") return null;
@@ -1819,6 +1831,7 @@
     { label: "Go to Inbox", keys: ["Ctrl+3"], leader: "v i", run: openInbox },
     { label: "Go to Time tracking", keys: ["Ctrl+4"], leader: "v c", run: () => openView("time") },
     { label: "Search tasks…", leader: "v f", run: searchTasks },
+    { label: "Today: move overdue scheduled tasks to…", run: () => act(moveOverdue) },
     { label: "Save this search as a view…", leader: "v v", run: saveView },
     { label: "Toggle top bar", keys: ["Ctrl+\\"], leader: "v s", run: () => { topbar = !topbar; store("sidebar", topbar ? "1" : "0"); } },
     { label: "Settings", keys: ["Ctrl+,"], leader: "f c", run: () => openView("settings") },
