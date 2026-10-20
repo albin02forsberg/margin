@@ -671,6 +671,14 @@ describe("Journal, archive and move", () => {
     await find(".status .msg", "No later journal entry");
   });
 
+  it("Space n J opens the journal for a chosen past date, creating it with a title", async () => {
+    const file = f(join("daily", "2021-03-04.org"));
+    await leader("nJ");
+    await answer("Open journal for", "2021-03-04");
+    await find(".status .file", "2021-03-04.org");
+    await fileMatches(file, (s) => s.includes("#+title: 2021-03-04\n"), "journal for the chosen date not created");
+  });
+
   it("A archives a task to <file>_archive and u restores both files", async () => {
     const archive = f("chores.org_archive");
     await browser.keys([Key.Ctrl, "2"]);
