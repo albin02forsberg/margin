@@ -385,4 +385,53 @@ describe("Margin", () => {
     await find(".status .file", "config.toml");
     await find(".cm-content", `capture_shortcut = "Nope+Bogus"`);
   });
+
+  // config.toml (still open from the last test) doesn't autosave, so its edits stay unsaved until asked.
+  const dirty = async () => (await texts(".tabs .tab.cur > button:not(.x)"))[0]?.endsWith(" •");
+
+  it("Reload from disk drops the unsaved edits", async () => {
+    const cfg = join(cfgDir, "config.toml");
+    await type("ggO# dropped by e2e");
+    await browser.keys(Key.Escape);
+    await browser.waitUntil(dirty, { timeoutMsg: "tab not marked unsaved" });
+    await palette("Reload from disk");
+    await find(".status .msg", "Reloaded from disk");
+    await browser.waitUntil(async () => !(await dirty()) && !(await texts(".cm-content"))[0]?.includes("dropped by e2e"), { timeoutMsg: "buffer not reloaded" });
+    assert.ok(!readFileSync(cfg, "utf8").includes("dropped by e2e"), "the edit reached the file");
+  });
+
+  it("Save all writes the unsaved tab", async () => {
+    await type("ggO# kept by e2e");
+    await browser.keys(Key.Escape);
+    await browser.waitUntil(dirty, { timeoutMsg: "tab not marked unsaved" });
+    await palette("Save all");
+    await fileMatches(join(cfgDir, "config.toml"), (s) => s.startsWith("# kept by e2e\n") && /^profiles = \["Work", "Home"\]$/m.test(s), "Save all didn't save config.toml");
+    await browser.waitUntil(async () => !(await dirty()), { timeoutMsg: "tab still marked unsaved" });
+  });
+
+  it("switching profile logs time to that profile's log, not Work's", async () => {
+    const [work, home] = ["work", "home"].map((p) => join(data, p, "timelog.jsonl"));
+    mkdirSync(join(data, "home"), { recursive: true });
+    writeFileSync(join(data, "home", "projects.toml"), "[Garden]\n");
+    const before = readFileSync(work, "utf8");
+    try {
+      await palette("Time: switch profile");
+      await answer("Switch profile", "Home");
+      await browser.keys([Key.Ctrl, "4"]);
+      await (await find(".time button", "Start tracking")).click();
+      await answer("Track time on project", "Garden");
+      await answer("What are you working on?", "weeding");
+      await find(".time .status h2", "Garden");
+      await browser.pause(1100); // a zero-length session is dropped
+      await (await find(".time .buttons button", "Stop")).click();
+      await answer("What did you do?", "weeded");
+      await fileMatches(home, (s) => /"ev":"in".*"project":"Garden"/.test(s) && /"ev":"out".*"note":"weeded"/.test(s), "session not in Home's log");
+      assert.equal(readFileSync(work, "utf8"), before, "Work's log changed");
+    } finally {
+      await noPicker().catch(() => browser.keys(Key.Escape));
+      await palette("Time: switch profile");
+      await answer("Switch profile", "Work");
+      await fileMatches(join(data, "active-profile.txt"), (s) => s.trim() === "Work", "not switched back to Work");
+    }
+  });
 });
