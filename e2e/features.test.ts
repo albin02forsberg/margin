@@ -1269,6 +1269,7 @@ describe("Web links and note graph", () => {
       writeFileSync(join(notes, "hub.org"), "#+title: Hub\n\nsee [[file:spoke.org][Spoke]] here\n");
       writeFileSync(join(notes, "spoke.org"), "#+title: Spoke\n\nback to [[file:hub.org][Hub]]\n");
       writeFileSync(join(notes, "paste.org"), "#+title: Paste\n\nsay hello now\nsay world now\n");
+      writeFileSync(join(notes, "sheet.org"), "#+title: Sheet\n\n");
     } });
     await find(".agenda h1", "Today");
   });
@@ -1292,6 +1293,18 @@ describe("Web links and note graph", () => {
     await browser.keys(Key.Escape);
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(note("paste"), (s) => s.includes("say [[https://example.com][hello]] now\n"), "URL not pasted as a link over the selection");
+  });
+
+  it("spreadsheet cells (TSV) paste as an aligned table, and u undoes it", async () => {
+    const table = "| Name  | Qty |\n|-------+-----|\n| apple |   3 |";
+    await open("sheet");
+    await type("G");
+    await paste("Name\tQty\napple\t3\n");
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(note("sheet"), (s) => s.includes(table), "TSV not pasted as a table");
+    await type("u");
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(note("sheet"), (s) => !s.includes("| Name"), "u did not undo the pasted table");
   });
 
   it("Insert web link… links the selected word with the URL asked for", async () => {

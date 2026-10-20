@@ -93,3 +93,24 @@ test("formula dialog helpers: build, check, remove", () => {
   // Every listed function evaluates.
   for (const [fn, , range] of T.FUNCTIONS) assert.equal(T.formulaError(t, "@>$2", `${fn}(${range ? "@2$1..@3$1" : "4"})`), null, fn);
 });
+
+test("fromDelimited turns TSV / CSV into an aligned table with a header", () => {
+  assert.deepEqual(T.fromDelimited("Name\tQty\napple\t3\nkiwi\t12\n"), ["| Name  | Qty |", "|-------+-----|", "| apple |   3 |", "| kiwi  |  12 |"]);
+  assert.deepEqual(T.fromDelimited('a,b\r\n"x, y","say ""hi"""\r\n'), ["| a    | b        |", "|------+----------|", '| x, y | say "hi" |']);
+  assert.deepEqual(T.fromDelimited("a;b;c\n1;2\n"), ["| a | b | c |", "|---+---+---|", "| 1 | 2 |   |"]);
+  assert.deepEqual(T.fromDelimited("a\tb\nx|y\tz"), ["| a         | b |", "|-----------+---|", "| x\\vert{}y | z |"]);
+  assert.deepEqual(T.fromDelimited('a,b\n"two\nlines",c', ","), ["| a         | b |", "|-----------+---|", "| two lines | c |"]);
+  assert.equal(T.fromDelimited("a\tb\n"), null);
+  assert.equal(T.fromDelimited("just\nprose"), null);
+});
+
+test("isTsv only accepts rows with the same tab count", () => {
+  assert.ok(T.isTsv("a\tb\n1\t2\n"));
+  assert.ok(!T.isTsv("a\tb\n"));
+  assert.ok(!T.isTsv("a\tb\nplain line\n"));
+  assert.ok(!T.isTsv("one\ntwo\n"));
+});
+
+test("toCsv quotes when needed and skips separators", () => {
+  assert.equal(T.toCsv(["| a    | b        |", "|------+----------|", '| x, y | say "hi" |', "| p\\vert{}q | |"]), 'a,b\n"x, y","say ""hi"""\np|q,\n');
+});
