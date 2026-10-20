@@ -992,8 +992,23 @@ fn context_of(f: &org::OrgFile, line: usize) -> Value {
 
 #[tauri::command]
 fn notes_new(s: State<App>, title: String) -> R<notes::Node> {
-    let (path, id) = notes::new_note(&s.cfg().notes(), &title).map_err(|e| e.to_string())?;
+    let (path, id) = notes::new_note(&s.cfg().notes(), &title, "").map_err(|e| e.to_string())?;
     Ok(notes::Node { id, title, path, line: 0 })
+}
+
+/// Move the subtree at LINE of TEXT (the live text of PATH) into a new note
+/// next to PATH, leaving a link. Returns [new text of PATH, new note's path].
+#[tauri::command]
+fn note_extract(s: State<App>, path: PathBuf, text: String, line: usize) -> R<[String; 2]> {
+    s.check(&path)?;
+    let dir = path.parent().ok_or("no folder")?;
+    let mut new = PathBuf::new();
+    let src = org::extract_subtree(&text, line, &s.kw(), |title, body| {
+        let (p, id) = notes::new_note(dir, title, body).map_err(|e| e.to_string())?;
+        new = p;
+        Ok(id)
+    })?;
+    Ok([src, new.to_string_lossy().into_owned()])
 }
 
 /// Every note's title (`#+title`, else the file name), with or without an ID.
@@ -1886,7 +1901,7 @@ pub fn run() {
             watcher::gnome_extension, watcher::screen_recording,
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, todos, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
-            org_targets, org_tags, org_refile, org_refile_same, org_refile_copy, org_refile_copy_same, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
+            org_targets, org_tags, org_refile, org_refile_same, org_refile_copy, org_refile_copy_same, note_extract, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,

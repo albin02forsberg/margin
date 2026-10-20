@@ -967,6 +967,44 @@ pub fn refile_copy_same(text: &str, line: usize, dst_line: Option<usize>) -> Res
     Ok(join(l, text))
 }
 
+static COOKIE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*\[\d*(?:/\d*|%)\]\s*").unwrap());
+
+/// Extract the subtree at LINE into a new note (org-roam-extract-subtree).
+/// MAKE gets the title (no keyword, priority, tags or `[n/m]` cookie) and the
+/// body (the heading's own text and its children, relevelled so they start at
+/// level 1) and returns the new note's ID. The source keeps the heading, its
+/// planning line and drawers (so an `:ID:` still resolves), then a link.
+pub fn extract_subtree(text: &str, line: usize, kw: &Kw, make: impl FnOnce(&str, &str) -> Result<String, String>) -> Result<String, String> {
+    let mut l = to_lines(text);
+    let hl = headline_at(&l, line).ok_or("not on a heading")?;
+    let (_, _, _, title, _) = split_headline(&l[hl], kw).ok_or("not on a heading")?;
+    let title = COOKIE.replace_all(&title, " ").trim().to_string();
+    if title.is_empty() {
+        return Err("the heading has no title".into());
+    }
+    let (_, mut e) = subtree_range(&l, hl);
+    while e > hl + 1 && l[e - 1].trim().is_empty() {
+        e -= 1; // trailing blank lines stay in the source
+    }
+    let mut s = hl + 1;
+    if l.get(s).is_some_and(|x| is_planning(x)) {
+        s += 1;
+    }
+    while s < e && l[s].trim().starts_with(':') && l[s].trim().ends_with(':') && l[s].trim().len() > 1 {
+        let Some(j) = drawer_end(&l, s) else { break };
+        s = j + 1;
+    }
+    let s = s.min(e);
+    let mut body: Vec<String> = l[s..e].to_vec();
+    relevel(&mut body, 1);
+    while body.first().is_some_and(|x| x.trim().is_empty()) {
+        body.remove(0);
+    }
+    let id = make(&title, &body.join("\n"))?;
+    l.splice(s..e, [format!("[[id:{id}][{}]]", title.replace(']', ")"))]);
+    Ok(join(l, text))
+}
+
 /// Sort the children of the heading at or above LINE (top-level headings for
 /// None or a line above the first heading) by KEY: title | priority | status
 /// | scheduled | deadline. Stable; headings without the key go last either
@@ -1690,6 +1728,27 @@ mod tests {
         assert_eq!(s("* P\n*** x\n** b\n*** z\n** a\n", Some(0), "title", false), "* P\n*** x\n** a\n** b\n*** z\n");
         assert!(sort_children("no headings\n", None, &kw(), "title", false).is_err());
         assert!(sort_children(src, Some(0), &kw(), "size", false).is_err());
+    }
+
+    #[test]
+    fn extracts_subtree_into_note() {
+        // (new source, title, body) for an extract at LINE.
+        let ex = |text: &str, line| {
+            let mut got = (String::new(), String::new());
+            extract_subtree(text, line, &kw(), |t, b| {
+                got = (t.into(), b.into());
+                Ok("N1".into())
+            })
+            .map(|s| (s, got.0, got.1))
+        };
+        let src = "* Top\n** TODO [#A] Plan [1/2] :work:\nSCHEDULED: <2026-10-02 Fri>\n:PROPERTIES:\n:ID: old\n:END:\n\nintro\n*** Child\nc\n**** Deep\n\n** Next\n";
+        let kept = "* Top\n** TODO [#A] Plan [1/2] :work:\nSCHEDULED: <2026-10-02 Fri>\n:PROPERTIES:\n:ID: old\n:END:\n[[id:N1][Plan]]\n\n** Next\n";
+        assert_eq!(ex(src, 7).unwrap(), (kept.into(), "Plan".into(), "intro\n* Child\nc\n** Deep".into()));
+        // Last heading, no trailing newline, no body.
+        assert_eq!(ex("* A\n* B [50%]", 1).unwrap(), ("* A\n* B [50%]\n[[id:N1][B]]".into(), "B".into(), String::new()));
+        assert_eq!(ex("text\n", 0).unwrap_err(), "not on a heading");
+        assert_eq!(ex("* TODO :tag:\n", 0).unwrap_err(), "the heading has no title");
+        assert_eq!(extract_subtree("* A\n", 0, &kw(), |_, _| Err("boom".into())).unwrap_err(), "boom");
     }
 
     #[test]

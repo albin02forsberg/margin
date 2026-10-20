@@ -56,11 +56,16 @@ pub fn write_note(path: &Path, title: &str) -> std::io::Result<String> {
     Ok(id)
 }
 
-/// Create `<dir>/YYYYMMDDHHMMSS-slug.org`, returning (path, id).
-pub fn new_note(dir: &Path, title: &str) -> std::io::Result<(PathBuf, String)> {
-    let stamp = chrono::Local::now().format("%Y%m%d%H%M%S");
-    let path = dir.join(format!("{stamp}-{}.org", slug(title)));
+/// Create `<dir>/YYYYMMDDHHMMSS-slug.org` (`-2`, `-3`… if taken) holding BODY
+/// under the header, returning (path, id).
+pub fn new_note(dir: &Path, title: &str, body: &str) -> std::io::Result<(PathBuf, String)> {
+    let name = format!("{}-{}", chrono::Local::now().format("%Y%m%d%H%M%S"), slug(title));
+    let path = (1..).map(|n| dir.join(if n == 1 { format!("{name}.org") } else { format!("{name}-{n}.org") })).find(|p| !p.exists()).unwrap();
     let id = write_note(&path, title)?;
+    if !body.trim().is_empty() {
+        use std::io::Write;
+        std::fs::OpenOptions::new().append(true).open(&path)?.write_all(format!("{}\n", body.trim_end()).as_bytes())?;
+    }
     Ok((path, id))
 }
 
@@ -582,6 +587,17 @@ mod tests {
         }
         assert!(folder_ok(n, "files/att", "", Path::new("/n/files/att/x")).is_err() && folder_ok(n, "files/att", "", Path::new("/n/files")).is_ok());
         assert!(folder_ok(n, "attachments", "", Path::new("/n/images")).is_ok());
+    }
+
+    #[test]
+    fn new_note_names_are_unique() {
+        let dir = std::env::temp_dir().join(format!("margin-new-{}", gen_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (a, _) = new_note(&dir, "Same", "").unwrap();
+        let (b, id) = new_note(&dir, "Same", "* Child\n").unwrap();
+        assert_ne!(a, b);
+        assert_eq!(std::fs::read_to_string(&b).unwrap(), format!(":PROPERTIES:\n:ID:       {id}\n:END:\n#+title: Same\n\n* Child\n"));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
