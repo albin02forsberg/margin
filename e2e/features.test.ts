@@ -684,15 +684,23 @@ describe("Tables, lists and attachments", () => {
   });
 
   it("Insert code block… and Insert table… add a src block and a sized table", async () => {
+    // Both commands leave insert mode on; Escape only once the editor shows it, or it's lost and later keys type text.
+    const toNormal = async () => {
+      await noPicker();
+      await find(".status .mode", "INSERT");
+      await browser.keys(Key.Escape);
+      await find(".status .mode", "NORMAL");
+    };
     await open("Ins", "ins.org");
+    await browser.keys(Key.Escape);
     await type("3G");
     await palette("Insert code block");
     await answer("Code block language", "rust");
-    await browser.keys(Key.Escape);
+    await toNormal();
     await type("G"); // below the block, so the table doesn't land inside it
     await palette("Insert table");
     await answer("Table size", "3x2");
-    await browser.keys(Key.Escape);
+    await toNormal();
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(join(d.notes, "ins.org"), (s) => /\nend\n#\+begin_src rust\n\n#\+end_src\n\| Column 1 \| Column 2 \| Column 3 \|\n\|[-+]+\|\n(\|( +\|){3}\n?){2}$/.test(s), "code block or 3x2 table not inserted");
   });

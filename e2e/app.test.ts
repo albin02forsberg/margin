@@ -393,6 +393,7 @@ describe("Margin", () => {
     const cfg = join(cfgDir, "config.toml");
     await type("ggO# dropped by e2e");
     await browser.keys(Key.Escape);
+    await find(".status .mode", "NORMAL"); // Ctrl+K in insert mode is a vim digraph, not the palette
     await browser.waitUntil(dirty, { timeoutMsg: "tab not marked unsaved" });
     await palette("Reload from disk");
     await find(".status .msg", "Reloaded from disk");
@@ -401,8 +402,10 @@ describe("Margin", () => {
   });
 
   it("Save all writes the unsaved tab", async () => {
+    await noPicker(); // the closing palette hands focus back to the editor
     await type("ggO# kept by e2e");
     await browser.keys(Key.Escape);
+    await find(".status .mode", "NORMAL");
     await browser.waitUntil(dirty, { timeoutMsg: "tab not marked unsaved" });
     await palette("Save all");
     await fileMatches(join(cfgDir, "config.toml"), (s) => s.startsWith("# kept by e2e\n") && /^profiles = \["Work", "Home"\]$/m.test(s), "Save all didn't save config.toml");
