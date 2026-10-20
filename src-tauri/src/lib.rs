@@ -681,6 +681,12 @@ fn agenda(s: State<App>, start: String, days: i64) -> R<Vec<org::Item>> {
     Ok(org::agenda(&s.files(), &s.kw(), date(&start)?, days, today()))
 }
 
+/// (path, line) of open tasks scheduled before today (see org::overdue_scheduled).
+#[tauri::command(async)]
+fn overdue_scheduled(s: State<App>) -> Vec<(PathBuf, usize)> {
+    org::overdue_scheduled(&s.files(), &s.kw(), today())
+}
+
 #[tauri::command(async)]
 fn todos(s: State<App>) -> Vec<org::Item> {
     org::todos(&s.files(), &s.kw(), false, |_, _| true, today())
@@ -701,7 +707,7 @@ fn org_heading(s: State<App>, text: String, line: usize) -> Option<org::Parts> {
 
 /// Headline edits. OP: cycle (VALUE ±1) | keyword (VALUE or none) | priority (letter or none)
 /// | priority-cycle (±1) | tags ("a:b") | title (new text) | shift ("SCHEDULED 1")
-/// | effort ("0:30", "2h"; empty clears).
+/// | effort ("0:30", "2h"; empty clears) | move ("SCHEDULED tomorrow": absolute date, keeps time and repeater).
 #[tauri::command]
 fn org_edit(s: State<App>, text: String, line: usize, op: String, value: Option<String>) -> R<String> {
     org_edit_op(&text, line, &op, value, &s.kw(), timeclock::now(), s.cfg().log_done)
@@ -726,6 +732,10 @@ fn org_edit_op(text: &str, line: usize, op: &str, value: Option<String>, kw: &or
         "shift" => {
             let (kind, days) = v.split_once(' ').ok_or("shift needs \"KIND DAYS\"")?;
             org::shift_date(text, line, kind, days.trim().parse().map_err(|_| "bad day count")?)
+        }
+        "move" => {
+            let (kind, input) = v.split_once(' ').ok_or("move needs \"KIND DATE\"")?;
+            org::move_planning(text, line, kind, date_at(input.trim(), now.date())?)
         }
         o => return Err(format!("unknown org op {o}")),
     })
@@ -1915,7 +1925,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             watcher::gnome_extension, watcher::screen_recording,
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
-            agenda, todos, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
+            agenda, overdue_scheduled, todos, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_refile_copy, org_refile_copy_same, note_extract, org_archive, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
             notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
@@ -2044,6 +2054,10 @@ mod tests {
         assert_eq!(edit(sched, "shift", Some("SCHEDULED -1")).unwrap(), "* Task\nSCHEDULED: <2026-01-07 Wed>\n");
         assert_eq!(edit(sched, "shift", Some("scheduled 3")).unwrap(), sched); // the kind is case-sensitive
         assert_eq!(edit(sched, "shift", Some("DEADLINE 3")).unwrap(), sched); // no such date: untouched
+        // move sets an absolute date (org-read-date input), keeping time and repeater (#599).
+        let old = "* Task\nSCHEDULED: <2026-01-02 Fri 09:00 +1w>\n";
+        assert_eq!(edit(old, "move", Some("SCHEDULED tomorrow")).unwrap(), "* Task\nSCHEDULED: <2026-01-09 Fri 09:00 +1w>\n");
+        assert_eq!(edit(old, "move", Some("SCHEDULED today")).unwrap(), "* Task\nSCHEDULED: <2026-01-08 Thu 09:00 +1w>\n");
         let e = "* Task\n:PROPERTIES:\n:EFFORT: 2:00\n:END:\n";
         assert_eq!(edit("* Task\n", "effort", Some("2h")).unwrap(), e);
         assert_eq!(edit(e, "effort", Some("")).unwrap(), "* Task\n");
@@ -2057,6 +2071,8 @@ mod tests {
         assert_eq!(edit("* T\n", "shift", Some("scheduled")).unwrap_err(), "shift needs \"KIND DAYS\"");
         assert_eq!(edit("* T\n", "shift", None).unwrap_err(), "shift needs \"KIND DAYS\"");
         assert_eq!(edit("* T\n", "shift", Some("SCHEDULED two")).unwrap_err(), "bad day count");
+        assert_eq!(edit("* T\n", "move", Some("SCHEDULED")).unwrap_err(), "move needs \"KIND DATE\"");
+        assert!(edit("* T\n", "move", Some("SCHEDULED blah")).is_err());
         assert_eq!(edit("* T\n", "nope", None).unwrap_err(), "unknown org op nope");
     }
 

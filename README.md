@@ -256,6 +256,10 @@ org's `org-log-done 'time`; reopening it removes the stamp. Turn this off with
 **Record when tasks are done** (`log_done = false`); the board's Done column
 then only shows what you finished from the board in this session.
 
+`T` in Today (or the palette's **Today: move overdue scheduled tasks to…**) moves every
+open task scheduled before today (the "Scheduled 3d ago" ones) to one day you pick, keeping
+each task's time and repeater; deadlines, habits and done tasks are left alone. One `u` undoes the whole move.
+
 `c` (or the **Done** button) in Today adds a **Done** group under each day:
 the tasks closed that day and when, like org agenda's log mode. In the week
 view that is a log of the week's work. It reads the `CLOSED:` stamps, so it
