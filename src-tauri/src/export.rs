@@ -426,8 +426,8 @@ pub fn html(d: &Doc, fallback_title: &str, base: &Path, ids: &Ids, print: bool) 
     page(d.title.as_deref().unwrap_or(fallback_title), &html_body(d, fallback_title, base, ids), print)
 }
 
-/// A note's title, subtitle and blocks as HTML.
-fn html_body(d: &Doc, fallback_title: &str, base: &Path, ids: &Ids) -> String {
+/// A note's title, subtitle and blocks as an HTML fragment (no page, no CSS).
+pub fn html_body(d: &Doc, fallback_title: &str, base: &Path, ids: &Ids) -> String {
     let title = d.title.as_deref().unwrap_or(fallback_title);
     let mut o = format!("<h1>{}</h1>\n", html_spans(&spans(title), base, ids));
     if let Some(s) = &d.subtitle {
@@ -599,6 +599,13 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
         assert_eq!(spans("3 + 4 + 5"), [Span::Text("3 + 4 + 5".into())]);
         assert_eq!(spans("(*x /y/*)"), [Span::Text("(".into()), Span::Mark('*', vec![Span::Text("x ".into()), Span::Mark('/', vec![Span::Text("y".into())])]), Span::Text(")".into())]);
         assert_eq!(spans("=*no*="), [Span::Mark('=', vec![Span::Text("*no*".into())])]);
+    }
+
+    #[test]
+    fn html_fragment() {
+        let h = html_body(&parse(NOTE, &kw()), "x", Path::new("/notes"), &Ids::new());
+        assert!(h.starts_with("<h1>Plans &lt;&amp;&gt;</h1>") && h.contains("<a href=\"https://x.org/?a=1&amp;b=2\">site</a>"));
+        assert!(!h.contains("<html") && !h.contains("<style") && !h.contains("@media"));
     }
 
     #[test]

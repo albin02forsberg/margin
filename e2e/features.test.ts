@@ -331,6 +331,11 @@ describe("Features", () => {
     await browser.keys(" ");
     await type("ec");
     await find(".status .msg", "Copied as Markdown");
+
+    // Copy as rich text.
+    await browser.keys(" ");
+    await type("eC");
+    await find(".status .msg", "Copied as rich text");
   });
 
   it("exports a note and the notes it links to as linked HTML pages", async () => {

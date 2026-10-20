@@ -1415,6 +1415,30 @@
     } catch { flash("Couldn't copy to the clipboard."); }
   }
 
+  /** Copy the selection (else the whole note) as rich text (HTML + Markdown flavours) to paste into mail or docs. */
+  async function copyRichText() {
+    if (!inFile()) return flash("Open a note first.");
+    const r = view.state.selection.main, text = r.empty ? view.state.doc.toString() : view.state.sliceDoc(r.from, r.to);
+    if (!text.trim()) return flash("Nothing to copy.");
+    try {
+      const [html, md] = await Promise.all([invoke<string>("export_html_fragment", { path: tab.path, text }), invoke<string>("export_markdown", { path: tab.path, text })]);
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([md], { type: "text/plain" }) })]);
+      } catch {
+        // No ClipboardItem support: select a rendered copy and use the legacy copy command.
+        const el = document.createElement("div");
+        el.contentEditable = "true"; el.innerHTML = html; el.style.cssText = "position:fixed;left:-9999px;top:0";
+        document.body.appendChild(el);
+        const sel = getSelection()!; sel.removeAllRanges();
+        const range = document.createRange(); range.selectNodeContents(el); sel.addRange(range);
+        const ok = document.execCommand("copy");
+        sel.removeAllRanges(); el.remove(); view.focus();
+        if (!ok) throw new Error("copy");
+      }
+      flash("Copied as rich text");
+    } catch { flash("Couldn't copy to the clipboard."); }
+  }
+
   /** The open note plus the notes it links to by id:, as HTML/Markdown pages in a folder that link to each other, or one PDF. */
   async function exportLinked() {
     if (!inFile()) return flash("Open a note first.");
@@ -1788,6 +1812,7 @@
     { label: "Export: note as HTML", leader: "e h", run: () => exportNote("html") },
     { label: "Export: note as Markdown", leader: "e m", run: () => exportNote("md") },
     { label: "Export: copy note as Markdown", leader: "e c", run: copyMarkdown },
+    { label: "Export: copy note as rich text", leader: "e C", run: copyRichText },
     { label: "Export: note as PDF", leader: "e p", run: () => exportNote("pdf") },
     { label: "Export: note and linked notes…", leader: "e a", run: exportLinked },
     { label: "Export: time report (HTML/PDF)…", leader: "e t", run: exportReport },
