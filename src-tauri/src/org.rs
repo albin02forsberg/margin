@@ -927,7 +927,7 @@ pub fn sort_children(text: &str, line: Option<usize>, kw: &Kw, key: &str, desc: 
         None => (0, l.len()),
     };
     let heads: Vec<usize> = (s..e).filter(|&i| heading_level(&l[i]).is_some()).collect();
-    let Some(lvl) = heads.first().and_then(|&i| heading_level(&l[i])) else { return Err("No headings to sort here.".into()) };
+    let Some(lvl) = heads.iter().filter_map(|&i| heading_level(&l[i])).min() else { return Err("No headings to sort here.".into()) };
     let starts: Vec<usize> = heads.into_iter().filter(|&i| heading_level(&l[i]).unwrap() <= lvl).collect();
     if starts.len() < 2 {
         return Err("Only one heading here; nothing to sort.".into());
@@ -1624,6 +1624,9 @@ mod tests {
         // Blank separators stay positional, so the last child doesn't glue onto the next.
         assert_eq!(s("* P\n** b\n\n** a\n* Q\n", Some(0), "title", false), "* P\n** a\n\n** b\n* Q\n");
         assert!(sort_children("* P\n** only\n", Some(0), &kw(), "title", false).is_err());
+        // A deeper first child doesn't hide its shallower siblings.
+        assert!(sort_children("* P\n*** x\n** y\n*** z\n", Some(0), &kw(), "title", true).is_err());
+        assert_eq!(s("* P\n*** x\n** b\n*** z\n** a\n", Some(0), "title", false), "* P\n*** x\n** a\n** b\n*** z\n");
         assert!(sort_children("no headings\n", None, &kw(), "title", false).is_err());
         assert!(sort_children(src, Some(0), &kw(), "size", false).is_err());
     }
