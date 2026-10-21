@@ -1049,6 +1049,69 @@ pub fn refile_copy_same(text: &str, line: usize, dst_line: Option<usize>) -> Res
     Ok(join(l, text))
 }
 
+static STEP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\+?(\d{1,4})([dwmy])$").unwrap());
+
+/// Insert N copies of the subtree at LINE right after it, copy k with every
+/// active timestamp moved k×STEP (`+1w`, `2d`, `1m`, `1y`), like
+/// org-clone-subtree-with-time-shift. Copies lose `:ID:`s, `CLOSED:` stamps,
+/// `:LOGBOOK:` drawers and `CLOCK:` lines (so clocked time isn't counted
+/// again), and done keywords go back to the first todo keyword.
+pub fn clone_shift(text: &str, line: usize, n: u32, step: &str, kw: &Kw) -> Result<String, String> {
+    let c = STEP.captures(step.trim()).ok_or_else(|| format!("can't read shift \"{step}\" (try +1w, +2d, +1m)"))?;
+    let (by, unit): (u32, char) = (c[1].parse().unwrap(), c[2].chars().next().unwrap());
+    if by == 0 || !(1..=52).contains(&n) {
+        return Err("need 1–52 copies and a shift of at least 1".into());
+    }
+    let mut l = to_lines(text);
+    let sub = copy_subtree(&l, line)?;
+    let end = subtree_range(&l, headline_at(&l, line).unwrap()).1;
+    let (mut base, mut i) = (vec![], 0);
+    while i < sub.len() {
+        let s = &sub[i];
+        if s.trim().eq_ignore_ascii_case(":LOGBOOK:") {
+            if let Some(e) = drawer_end(&sub, i) {
+                i = e + 1;
+                continue;
+            }
+        }
+        i += 1;
+        if s.trim_start().starts_with("CLOCK:") {
+            continue;
+        }
+        if let Some(lvl) = heading_level(s) {
+            let t = s[lvl..].trim_start();
+            let w = t.split(' ').next().unwrap_or("");
+            match kw.todo.first().filter(|_| kw.is_done(w)) {
+                Some(todo) => base.push(format!("{} {todo}{}", &s[..lvl], &t[w.len()..])),
+                None => base.push(s.clone()),
+            }
+        } else if is_planning(s) && CLOSED.is_match(s) {
+            let s = CLOSED.replace(s, "");
+            if !s.trim().is_empty() {
+                base.push(s.trim_end().to_string());
+            }
+        } else {
+            base.push(s.clone());
+        }
+    }
+    let shifted = |s: &str, k: u32| {
+        TS.replace_all(s, |c: &regex::Captures| {
+            let m = &c[0];
+            match NaiveDate::parse_from_str(&c[1], "%Y-%m-%d") {
+                Ok(d) => TS_HEAD.replace(m, format!("<{}", add_interval(d, k * by, unit).format("%Y-%m-%d %a"))).into_owned(),
+                Err(_) => m.to_string(),
+            }
+        })
+        .into_owned()
+    };
+    let mut copies = vec![];
+    for k in 1..=n {
+        copies.extend(base.iter().map(|s| shifted(s.as_str(), k)));
+    }
+    l.splice(end..end, copies);
+    Ok(join(l, text))
+}
+
 static COOKIE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*\[\d*(?:/\d*|%)\]\s*").unwrap());
 
 /// Extract the subtree at LINE into a new note (org-roam-extract-subtree).
@@ -1948,6 +2011,39 @@ mod tests {
         assert_eq!(a, format!("* earlier\n* DONE A\n{p}** TODO A1\n* DONE B1\n{p}note\n** DONE B1a\n* CANCELLED E\n{p}"));
         assert_eq!(archive_done("* TODO a\n", "", "/n/x.org", now, &kw), ("* TODO a\n".into(), "".into(), 0));
         assert!(archive_done("* DONE a\n", "", "/n/x.org", now, &kw).1.starts_with("#    -*- mode: org -*-\n\n\nArchived entries from file /n/x.org\n\n* DONE a\n"));
+    }
+
+    #[test]
+    fn clone_with_time_shift() {
+        let k = kw();
+        // Weekly ×3: planning (time, repeater, warning kept, weekday recomputed), body and range stamps move; inactive ones don't.
+        let t = "* A\n** TODO Check-in\nSCHEDULED: <2026-10-05 Mon 09:00 +1w> DEADLINE: <2026-10-06 Tue -1d>\n<2026-10-07 Wed>--<2026-10-08 Thu> [2026-10-01 Thu]\n* B\n";
+        let r = clone_shift(t, 2, 3, "+1w", &k).unwrap();
+        let want = |a: &str, b: &str, c: &str, d: &str| format!("** TODO Check-in\nSCHEDULED: <{a} 09:00 +1w> DEADLINE: <{b} -1d>\n<{c}>--<{d}> [2026-10-01 Thu]\n");
+        assert_eq!(
+            r,
+            format!(
+                "* A\n{}{}{}{}* B\n",
+                want("2026-10-05 Mon", "2026-10-06 Tue", "2026-10-07 Wed", "2026-10-08 Thu"),
+                want("2026-10-12 Mon", "2026-10-13 Tue", "2026-10-14 Wed", "2026-10-15 Thu"),
+                want("2026-10-19 Mon", "2026-10-20 Tue", "2026-10-21 Wed", "2026-10-22 Thu"),
+                want("2026-10-26 Mon", "2026-10-27 Tue", "2026-10-28 Wed", "2026-10-29 Thu"),
+            )
+        );
+        // Monthly from the original date: Jan 31 → Feb 29 (leap year) → Mar 31, not clamped drift.
+        let r = clone_shift("* TODO Pay\nDEADLINE: <2024-01-31 Wed>\n", 0, 2, "1m", &k).unwrap();
+        assert_eq!(r, "* TODO Pay\nDEADLINE: <2024-01-31 Wed>\n* TODO Pay\nDEADLINE: <2024-02-29 Thu>\n* TODO Pay\nDEADLINE: <2024-03-31 Sun>\n");
+        assert!(clone_shift("* TODO Pay\nDEADLINE: <2025-01-31 Fri>\n", 0, 1, "+1m", &k).unwrap().ends_with("DEADLINE: <2025-02-28 Fri>\n"));
+        // Done → first todo keyword (children too); CLOSED, LOGBOOK, stray CLOCK lines and :ID: dropped from the copy only.
+        let t = "* DONE [#A] Meet :work:\nCLOSED: [2026-10-02 Fri 10:00] SCHEDULED: <2026-10-02 Fri>\n:PROPERTIES:\n:ID: x\n:END:\n:LOGBOOK:\nCLOCK: [2026-10-02 Fri 09:00]--[2026-10-02 Fri 10:00] =>  1:00\n:END:\nCLOCK: [2026-10-01 Thu 09:00]--[2026-10-01 Thu 10:00] =>  1:00\nnotes\n** DONE Sub\nCLOSED: [2026-10-02 Fri 10:00]\n";
+        let r = clone_shift(t, 9, 1, "1d", &k).unwrap();
+        assert_eq!(r, format!("{t}* TODO [#A] Meet :work:\nSCHEDULED: <2026-10-03 Sat>\nnotes\n** TODO Sub\n"));
+        // A task without stamps is copied as is; no trailing newline kept.
+        assert_eq!(clone_shift("* x", 0, 2, "1d", &k).unwrap(), "* x\n* x\n* x");
+        for (n, s) in [(1, "1h"), (1, "0d"), (1, "-1d"), (0, "1d"), (53, "1d"), (1, "w")] {
+            assert!(clone_shift("* x\n", 0, n, s, &k).is_err(), "{n} {s}");
+        }
+        assert_eq!(clone_shift("text\n", 0, 1, "1d", &k).unwrap_err(), "not on a heading");
     }
 
     #[test]
