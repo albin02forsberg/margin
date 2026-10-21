@@ -1137,6 +1137,25 @@ fn notes_orphans(s: State<App>) -> Vec<(PathBuf, String)> {
     v.into_iter().map(|(_, p, t)| (p, t)).collect()
 }
 
+/// ITEMS (path, title, mtime secs) outside `ROOT/.trash`, newest first, at most LIMIT.
+fn recent_by_mtime(items: Vec<(PathBuf, String, u64)>, root: &Path, limit: usize) -> Vec<(PathBuf, String, u64)> {
+    let trash = root.join(".trash");
+    let mut v: Vec<_> = items.into_iter().filter(|i| !i.0.starts_with(&trash)).collect();
+    v.sort_by_key(|i| std::cmp::Reverse(i.2));
+    v.truncate(limit);
+    v
+}
+
+/// Notes (journal and inbox included, `.trash` not) most recently changed first, as (path, title, mtime in epoch seconds).
+#[tauri::command(async)]
+fn notes_recent(s: State<App>, limit: Option<usize>) -> Vec<(PathBuf, String, u64)> {
+    let items = s.files().iter().filter_map(|f| {
+        let t = std::fs::metadata(&f.path).and_then(|m| m.modified()).ok()?.duration_since(std::time::UNIX_EPOCH).ok()?;
+        Some((f.path.clone(), f.title.clone(), t.as_secs()))
+    }).collect();
+    recent_by_mtime(items, &s.cfg().notes(), limit.unwrap_or(50))
+}
+
 /// Tags used in notes (file and non-task heading tags) as (tag, count), most used first.
 #[tauri::command(async)]
 fn notes_tags(s: State<App>) -> Vec<(String, usize)> {
@@ -1986,7 +2005,7 @@ pub fn run() {
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, org_refile, org_refile_same, org_refile_copy, org_refile_copy_same, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
-            notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, notes_tags, notes_tagged, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id,
+            notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, notes_recent, notes_tags, notes_tagged, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply
@@ -2021,6 +2040,16 @@ mod tests {
         assert_eq!(month_range(Some(d(2024, 2, 10)), d(2024, 3, 5)), (d(2024, 2, 1), d(2024, 2, 29))); // leap Feb
         assert_eq!(month_range(Some(d(2025, 12, 31)), d(2026, 1, 1)), (d(2025, 12, 1), d(2025, 12, 31))); // Dec rollover
         assert_eq!(month_range(None, d(2026, 10, 21)), (d(2026, 10, 1), d(2026, 10, 31)));
+    }
+
+    #[test]
+    fn recent_notes_newest_first_limited_without_trash() {
+        let root = Path::new("/n");
+        let it = |p: &str, t| (PathBuf::from(p), String::new(), t);
+        let v = vec![it("/n/a.org", 10), it("/n/.trash/x.org", 99), it("/n/daily/2026-10-20.org", 30), it("/n/b.org", 20)];
+        let times = |v: Vec<(PathBuf, String, u64)>| v.into_iter().map(|i| i.2).collect::<Vec<_>>();
+        assert_eq!(times(recent_by_mtime(v.clone(), root, 50)), [30, 20, 10]);
+        assert_eq!(times(recent_by_mtime(v, root, 2)), [30, 20]);
     }
 
     #[test]

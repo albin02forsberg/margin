@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath } from "./paths.ts";
+import { ago, changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath } from "./paths.ts";
 
 test("resolvePath", () => {
   assert.equal(resolvePath("/n/sub", "../other/target.org"), "/n/other/target.org");
@@ -89,4 +89,17 @@ test("onlyEchoes", () => {
   const big = Array.from({ length: 10000 }, (_, i) => `/n/${i}.org`);
   assert.equal(onlyEchoes(big, big, new Set(big)), true);
   assert.equal(onlyEchoes(big, big, new Set()), false);
+});
+
+test("ago", () => {
+  const n = 1_000_000_000;
+  assert.equal(ago(n + 5, n), "just now");
+  assert.equal(ago(n - 59, n), "just now");
+  assert.equal(ago(n - 60, n), "1 min ago");
+  assert.equal(ago(n - 3599, n), "59 min ago");
+  assert.equal(ago(n - 3600, n), "1 h ago");
+  assert.equal(ago(n - 86399, n), "23 h ago");
+  assert.equal(ago(n - 86400, n), "yesterday");
+  assert.equal(ago(n - 2 * 86400, n), "2 days ago");
+  assert.equal(ago(n - 7 * 86400, n), "2001-09-02");
 });
