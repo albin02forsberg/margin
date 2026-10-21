@@ -255,6 +255,13 @@
     for (const t of tabs) await saveTab(t);
   }
 
+  /** Move the cursor to POS, widening a narrow that would hide it. */
+  function jumpTo(pos: number) {
+    const w = ed.revealEffects(view.state, pos);
+    if (w.length) flash("Widened to show the target");
+    view.dispatch({ selection: { anchor: pos }, effects: [...w, EditorView.scrollIntoView(pos, { y: "center" })] });
+  }
+
   async function openFile(path: string, line?: number) {
     let i = tabs.findIndex((t) => t.kind === "file" && t.path === path);
     if (i < 0) {
@@ -265,7 +272,7 @@
     await show(i);
     if (line != null) {
       const pos = view.state.doc.line(Math.min(line + 1, view.state.doc.lines)).from;
-      view.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: "center" }) });
+      jumpTo(pos);
     }
     if (path.startsWith(cfg.notes) && path.endsWith(".org")) {
       recent = [path, ...recent.filter((p) => p !== path)].slice(0, 12);
@@ -1032,7 +1039,7 @@
     const line = findTarget(view.state.doc.toString(), search, [...(kw().todo ?? []), ...(kw().done ?? [])]);
     if (line == null) return flash(`No match for "${search}" in ${tab?.title ?? "note"}`);
     const pos = view.state.doc.line(line + 1).from;
-    view.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: "center" }) });
+    jumpTo(pos);
   }
 
   async function noteItems() {

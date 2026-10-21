@@ -94,3 +94,9 @@ export function narrowToggle(v: EditorView): "narrow" | "widen" | null {
   v.dispatch({ effects: narrowEffect.of(r), selection: v.state.selection, scrollIntoView: true });
   return "narrow";
 }
+
+/** Effects that widen the narrow when POS lies outside it, so a jump there is not clamped back. */
+export function revealEffects(state: EditorState, pos: number): StateEffect<unknown>[] {
+  const r = state.field(narrowField, false);
+  return r && (pos < r.from || pos > r.to) ? [narrowEffect.of(null)] : [];
+}
