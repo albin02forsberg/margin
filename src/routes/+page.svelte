@@ -737,6 +737,7 @@
     link: (loc) => copyHeadingLink(loc),
     move: (loc) => moveTask(loc),
     copy: (loc) => copyTask(loc),
+    clone: (loc) => cloneTask(loc),
     archive: (loc) => archiveTask(loc),
     later: (loc, it) => edit(loc, "shift", `${dateKind(it)} 1`),
     earlier: (loc, it) => edit(loc, "shift", `${dateKind(it)} -1`),
@@ -896,6 +897,17 @@
       await toFile(loc.path, async () => newSrc);
     }
     flash(`Moved to ${t.label}`);
+  }
+
+  /** Insert copies of the subtree at LOC after it, each with its dates moved one more step (org-clone-subtree-with-time-shift); `u` undoes. */
+  async function cloneTask(loc: Loc) {
+    if (!(await heading(loc))) return flash("Not on a task.");
+    const n = await ask("Number of copies", "1");
+    if (!n?.trim()) return;
+    const step = await ask("Shift each copy by", "+1w", "+1d, +2w, +1m or +1y");
+    if (!step?.trim()) return;
+    await toFile(loc.path, (text) => call("org_clone", { text, line: loc.line, n: Math.max(0, Math.trunc(Number(n)) || 0), step }));
+    flash(`Cloned ${n.trim()}× shifting by ${step.trim()}`);
   }
 
   /** Copy the subtree at LOC under a picked file/heading (org-refile-copy); only the destination is written, so `u` undoes it. */
@@ -1972,6 +1984,7 @@
     { label: "Task: add a note…", leader: "x z", run: () => atCursor("note") },
     { label: "Task: move to…", leader: "x m", run: () => atCursor("move") },
     { label: "Task: copy to…", leader: "x M", run: () => atCursor("copy") },
+    { label: "Task: clone with date shift…", leader: "x C", run: () => atCursor("clone") },
     { label: "Task: archive", leader: "x A", run: () => atCursor("archive") },
     { label: "Note: archive all done tasks", leader: "x a", run: () => act(archiveDone) },
     { label: "Task: track time on it", leader: "x i", run: () => atCursor("clockIn") },

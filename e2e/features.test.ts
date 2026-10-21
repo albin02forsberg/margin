@@ -678,6 +678,7 @@ describe("Journal, archive and move", () => {
         writeFileSync(join(notes, "projects.org"), projects);
         writeFileSync(join(notes, "extract.org"), extract);
         writeFileSync(join(notes, "narrow.org"), "* One\nalpha\n* Two\nbeta\n");
+        writeFileSync(join(notes, "clone.org"), "* DONE Check-in\nCLOSED: [2026-10-01 Thu 10:00] SCHEDULED: <2026-10-01 Thu>\n* After\n");
       },
     });
   });
@@ -771,6 +772,18 @@ describe("Journal, archive and move", () => {
     await browser.waitUntil(async () => (await shown()).includes("beta"), { timeoutMsg: "widen didn't show the sibling again" });
     assert.equal((await texts(".status .narrowed")).length, 0);
     await fileMatches(f("narrow.org"), (s) => s === "* One\nalpha\n* Two\nbeta\n", "narrowing changed the file");
+  });
+
+  it("Space x C clones a task twice with weekly-shifted dates after it, as TODO (#618)", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "clone");
+    await find(".status .file", "clone.org");
+    await leader("xC");
+    await answer("Number of copies", "2");
+    await answer("Shift each copy by", "+1w");
+    const want = "* DONE Check-in\nCLOSED: [2026-10-01 Thu 10:00] SCHEDULED: <2026-10-01 Thu>\n* TODO Check-in\nSCHEDULED: <2026-10-08 Thu>\n* TODO Check-in\nSCHEDULED: <2026-10-15 Thu>\n* After\n";
+    await fileMatches(f("clone.org"), (s) => s === want, "copies not inserted with shifted dates");
+    await find(".status .msg", "Cloned 2×");
   });
 });
 
