@@ -1,16 +1,34 @@
 /** A project as `tc_projects` / `tc_save_project` see it (projects.toml). */
-export type Project = { export_code: string; rounding: number | null; round_up: boolean; active: boolean };
-/** One row of the project settings page; ROUNDING is "" for none. */
-export type Row = { name: string; code: string; rounding: string; up: boolean; active: boolean; dirty: boolean };
+export type Project = {
+  export_code: string; rounding: number | null; round_up: boolean; active: boolean; budget_hours?: number | null; budget_period?: string;
+};
+/** One row of the project settings page; ROUNDING and BUDGET are "" for none (a number input may hand BUDGET back as a number). */
+export type Row = { name: string; code: string; rounding: string; up: boolean; active: boolean; budget: string | number | null; period: string; dirty: boolean };
 
 export const ROUNDINGS: [string, string][] = [["0.25", "Quarter hour"], ["0.5", "Half hour"], ["1", "Whole hour"], ["", "Don't round"]];
 
-export const toRow = (name: string, p: Project): Row =>
-  ({ name, code: p.export_code, rounding: p.rounding == null ? "" : String(p.rounding), up: p.round_up, active: p.active, dirty: false });
+const period = (s: string | undefined) => (s === "week" ? "week" : "month");
 
-/** Round-up only means something with rounding, so it's saved off without. */
-export const toProject = (r: Row): Project =>
-  ({ export_code: r.code.trim(), rounding: r.rounding ? +r.rounding : null, round_up: !!r.rounding && r.up, active: r.active });
+export const toRow = (name: string, p: Project): Row => ({
+  name, code: p.export_code, rounding: p.rounding == null ? "" : String(p.rounding), up: p.round_up, active: p.active,
+  budget: p.budget_hours == null ? "" : String(p.budget_hours), period: period(p.budget_period), dirty: false,
+});
+
+/** Round-up only means something with rounding, so it's saved off without. A blank, zero or non-numeric budget is none. */
+export const toProject = (r: Row): Project => {
+  const b = String(r.budget ?? "").trim();
+  return { export_code: r.code.trim(), rounding: r.rounding ? +r.rounding : null, round_up: !!r.rounding && r.up, active: r.active,
+    budget_hours: b && +b > 0 ? +b : null, budget_period: period(r.period) };
+};
+
+export type Usage = { used: number; total: number; pct: number; over: boolean; period: "week" | "month" };
+/** Hours used of P's budget: this week's (WORKED) for a weekly one, else this month's; null without a budget. */
+export function budgetUsage(p: Pick<Project, "budget_hours" | "budget_period"> | undefined, t: { worked: number; month: number }): Usage | null {
+  const total = p?.budget_hours;
+  if (!total || !(total > 0)) return null;
+  const per = period(p.budget_period), used = per === "week" ? t.worked : t.month;
+  return { used, total, pct: (used / total) * 100, over: used > total, period: per };
+}
 
 /** Rows for PROJECTS, keeping the unsaved edits in OLD. */
 export const merge = (old: Row[], projects: Record<string, Project>): Row[] =>

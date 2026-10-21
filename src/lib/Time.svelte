@@ -15,6 +15,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { tick } from "svelte";
   import WeekBars from "./WeekBars.svelte";
+  import BudgetBar from "./BudgetBar.svelte";
   import { worked } from "./clock";
 
   let { api, active, reload }: { api: TimeApi; active: boolean; reload: number } = $props();
@@ -237,6 +238,7 @@
             <strong class="big">{hm(p.worked)}</strong>
             <small>this week · {hm(p.month)} this month · {p.billable.toFixed(2)} h billable</small>
             <div class="progress" title="Share of this week's tracked time"><i style:width="{projTotal > 0 ? (p.worked / projTotal) * 100 : 0}%"></i></div>
+            <BudgetBar project={p} worked={p.worked} month={p.month} />
             <div class="foot">
               {#if on}<small>Tracking now</small>{:else}<button onclick={() => run("start", p.project === "Other" ? undefined : p.project)}>Track</button>{/if}
             </div>

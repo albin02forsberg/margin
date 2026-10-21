@@ -41,14 +41,25 @@ pub struct Project {
     pub round_up: bool,
     #[serde(default = "yes")]
     pub active: bool,
+    /// Hours this project should get per `budget_period` ("week", else month); None for no budget.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_hours: Option<f64>,
+    #[serde(default = "month", skip_serializing_if = "is_month")]
+    pub budget_period: String,
 }
 fn yes() -> bool {
     true
 }
+fn month() -> String {
+    "month".into()
+}
+fn is_month(s: &str) -> bool {
+    s == "month"
+}
 
 impl Project {
     pub fn new(export_code: &str) -> Self {
-        Project { export_code: export_code.into(), rounding: Some(0.5), round_up: false, active: true }
+        Project { export_code: export_code.into(), rounding: Some(0.5), round_up: false, active: true, budget_hours: None, budget_period: month() }
     }
 }
 
@@ -1126,6 +1137,7 @@ pub fn import_projects(eld: &str) -> Projects {
                     rounding: field(rest, "rounding").and_then(|s| s.parse().ok()),
                     round_up: field(rest, "round-up").is_some_and(|s| s != "nil"),
                     active: field(rest, "active").is_some_and(|s| s != "nil"),
+                    ..Project::new("")
                 },
             };
             (name, p)
@@ -1328,9 +1340,18 @@ mod tests {
     }
 
     #[test]
+    fn project_budget_serde() {
+        let p: Projects = toml::from_str("[Acme]\nexport_code = \"A\"\n").unwrap();
+        assert_eq!((p["Acme"].budget_hours, p["Acme"].budget_period.as_str()), (None, "month"));
+        assert_eq!(toml::to_string(&p).unwrap(), "[Acme]\nexport_code = \"A\"\nround_up = false\nactive = true\n"); // no budget keys
+        let b = Projects::from([("B".into(), Project { budget_hours: Some(4.0), budget_period: "week".into(), ..Project::new("B") })]);
+        assert_eq!(toml::from_str::<Projects>(&toml::to_string(&b).unwrap()).unwrap(), b);
+    }
+
+    #[test]
     fn eld_import() {
         let p = import_projects(r#"(("Acme" :export-code "AC-1" :rounding 0.25 :round-up t :active t) ("Old" . "OLD-9") ("Raw" :export-code "R" :rounding nil :round-up nil :active nil))"#);
-        assert_eq!(p["Acme"], Project { export_code: "AC-1".into(), rounding: Some(0.25), round_up: true, active: true });
+        assert_eq!(p["Acme"], Project { export_code: "AC-1".into(), rounding: Some(0.25), round_up: true, ..Project::new("") });
         assert_eq!(p["Old"], Project::new("OLD-9"));
         assert_eq!(p["Raw"].rounding, None);
         assert!(!p["Raw"].active);
