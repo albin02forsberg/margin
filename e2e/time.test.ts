@@ -154,6 +154,7 @@ describe("Time tracking", () => {
       await browser.keys([Key.Ctrl, "4"]);
       await timeFocused();
       await browser.keys(" ");
+      await browser.$(".menu").waitForDisplayed(); // it listens from an effect: keys sent sooner are lost
       await type("tm");
       await answer("Month report for", "2020-01-15");
       await find(".tabs .tab > button:not(.x)", "Month report");

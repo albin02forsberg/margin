@@ -834,7 +834,17 @@ describe("Note pickers, pins and archive", () => {
   const now = new Date(), feb29 = now.getMonth() === 1 && now.getDate() === 29;
   const lastYear = isoDay(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()));
   const f = (n: string) => join(d.notes, n);
-  const leader = async (keys: string) => { await browser.keys(Key.Escape); await browser.keys(" "); await type(keys); };
+  /** Leader KEYS from normal mode, once the menu shows (it listens from an effect, so keys sent sooner go to vim). */
+  const leader = async (keys: string) => {
+    await browser.keys(Key.Escape);
+    await browser.waitUntil(async () => {
+      if ((await texts(".menu")).length) return true;
+      await browser.keys(" ");
+      await browser.pause(200);
+      return (await texts(".menu")).length > 0;
+    }, { timeoutMsg: "leader menu never opened" });
+    await type(keys);
+  };
   /** Open the note titled TITLE with Ctrl+P (re-sent if lost), then wait for FILE in the status bar and focus in the editor. */
   const open = async (title: string, file: string) => {
     await noPicker();
