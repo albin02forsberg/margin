@@ -245,7 +245,8 @@ Click the checkbox to complete a task.
 `E` (or `Space x E` in a note) sets an effort estimate, org's `:EFFORT:` property
 (`0:15` … `4:00`, or type `1:30`, `2h`, `45min`; written as `H:MM` so Emacs reads it).
 Tasks show it as a badge (`1h 30m`), and each day in Today shows the total of its open
-tasks (`~5h 30m planned`, each task counted once). Removing it drops the property drawer
+tasks (`~5h 30m planned`, each task counted once) against the day's expected hours from the
+Time calendar, less leave (`~5h 30m / 7h 30m planned`, highlighted when overbooked or planned on a day off). Removing it drops the property drawer
 only when nothing else was in it.
 Subtrees archived in place with an `:ARCHIVE:` tag (Emacs's `C-c C-x a`) are left out of Today, Tasks, reminders and the calendar feed, as in org's agenda; they stay in the note and in search.
 A time range (`<2026-10-16 Fri 10:00-11:00>`) shows as `10:00-11:00`; a date

@@ -1259,6 +1259,22 @@ fn tc_dashboard(s: State<App>) -> Value {
     })
 }
 
+/// Each of DATES' expected hours after leave, as the Time view shows them (`dashboard`'s `expected`);
+/// 0 on days off. WORKED is what the day's log holds (0 if nothing).
+fn expected_after_leave(dates: &[NaiveDate], cal: &timeclock::Calendar, leave: &[timeclock::Leave], worked: impl Fn(NaiveDate) -> f64) -> Vec<f64> {
+    dates.iter().map(|&d| { let e = timeclock::expected_hours(d, cal); e - timeclock::leave_credit(leave, d, e, worked(d)) }).collect()
+}
+
+/// Expected hours (less leave) of the active profile for each `YYYY-MM-DD` in DATES, for the agenda's planned-vs-expected.
+#[tauri::command]
+fn expected_hours_for(s: State<App>, dates: Vec<String>) -> Vec<f64> {
+    let tc = s.tc();
+    let (sessions, leave, t) = (tc.sessions(), tc.leave().into_iter().map(|x| x.1).collect::<Vec<_>>(), today());
+    let ds: Vec<NaiveDate> = dates.iter().map(|d| d.parse().unwrap_or(t)).collect();
+    let today_h = tc.status().2;
+    expected_after_leave(&ds, &tc.cal, &leave, |d| if d == t { today_h } else { sessions.iter().filter(|x| x.date == d).map(|x| x.hours).sum() })
+}
+
 /// What `dashboard` is built from, gathered by `tc_dashboard`.
 struct DashIn {
     today: NaiveDate,
@@ -2010,7 +2026,7 @@ pub fn run() {
             watcher::gnome_extension, watcher::screen_recording,
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
-            org_targets, org_tags, org_refile, org_refile_same, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard,
+            org_targets, org_tags, org_refile, org_refile_same, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, notes_recent, notes_tags, notes_tagged, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
@@ -2373,6 +2389,17 @@ mod tests {
         let gamma = v["projects"].as_array().unwrap().iter().find(|p| p["project"] == "Gamma").expect("Gamma listed for its month");
         assert_eq!((gamma["worked"].as_f64(), gamma["month"].as_f64()), (Some(0.0), Some(1.5)));
         assert!(!v["projects"].as_array().unwrap().iter().any(|p| p["project"] == "Delta"), "last month's project listed");
+    }
+
+    #[test]
+    fn expected_after_leave_subtracts_leave() {
+        let fx = dash_fixture("2026-01-08", (None, None));
+        let leave: Vec<_> = fx.leave.iter().map(|x| x.1.clone()).collect();
+        let d = |s: &str| s.parse::<NaiveDate>().unwrap();
+        // Thu 8h, Fri vacation 0h, Sat/Sun off, Tue 6th red day with Vab leave still 0.
+        let ds = [d("2026-01-08"), d("2026-01-09"), d("2026-01-10"), d("2026-01-11"), d("2026-01-06")];
+        assert_eq!(expected_after_leave(&ds, &fx.cal, &leave, |_| 0.0), [8.0, 0.0, 0.0, 0.0, 0.0]);
+        assert_eq!(expected_after_leave(&ds[..1], &fx.cal, &[], |_| 0.0), [8.0]); // without the leave list nothing changes
     }
 
     #[test]
