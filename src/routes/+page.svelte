@@ -13,7 +13,7 @@
   import type { EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
   import { linkFor, asUrl } from "$lib/weblink";
-  import { findTarget, linkHeadings, splitTarget } from "$lib/links";
+  import { findTarget, linkHeadings, retitlePlan, splitTarget } from "$lib/links";
   import { ago, changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
@@ -622,7 +622,9 @@
   let recording: { path: string; text: string }[] | null = null;
   const undoStack: { path: string; text: string }[][] = [];
 
+  /** Run F as one undo group; a nested call joins the outer group. */
   async function recorded(f: () => Promise<void>) {
+    if (recording) return f();
     recording = [];
     try {
       await f();
@@ -735,7 +737,7 @@
       const h = await heading(loc);
       if (!h) return flash("Not on a task.");
       const t = await ask("Task title", h.title);
-      if (t?.trim()) await edit(loc, "title", t);
+      if (t?.trim()) await recorded(() => retitle(loc, t));
     },
     async note(loc) {
       if (!(await heading(loc))) return flash("Not on a task.");
@@ -752,6 +754,26 @@
     clockIn: async (loc, it) => clockIn(it?.category ?? (await call("org_context", { path: loc.path, text: await textOf(loc.path), line: loc.line })).category),
     open: (loc) => openFile(loc.path, loc.line),
   };
+
+  /** Set the title of the heading at LOC to T and point the `[[*Old]]` / `[[file:…::*Old]]` links to it at the new title,
+   *  in its note, the notes linking to it and unsaved tabs (call inside `recorded` so one undo restores them all). */
+  async function retitle(loc: Loc, t: string) {
+    const before = await textOf(loc.path);
+    await edit(loc, "title", t);
+    const k = kw(), plan = retitlePlan(before, await textOf(loc.path), loc.line, [...(k.todo ?? []), ...(k.done ?? [])]);
+    if (typeof plan === "string") return flash(`Renamed; links to it left as they are (${plan}).`);
+    if (!plan) return;
+    const paths = new Set([loc.path, ...(await call<string[]>("retitle_candidates", { path: loc.path })), ...tabs.filter((x) => x.kind === "file" && x.dirty && !x.missing).map((x) => x.path!)]);
+    let n = 0;
+    for (const p of paths)
+      await toFile(p, async (text) => {
+        const r = await call<[string, number] | null>("retitle_links", { text, note: p, target: loc.path, old: plan.old, new: plan.new });
+        if (!r) return text;
+        n += r[1];
+        return r[0];
+      });
+    if (n) flash(`Renamed — updated ${n} link${n === 1 ? "" : "s"}.`);
+  }
 
   /** Copy an `[[id:…][Heading]]` link to the heading at LOC, adding an :ID: property when it has none. */
   async function copyHeadingLink(loc: Loc) {

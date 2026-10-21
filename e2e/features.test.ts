@@ -679,6 +679,7 @@ describe("Journal, archive and move", () => {
   const chores = "* TODO Archive me\n* TODO Move me\n* TODO Stay put\n";
   const projects = "#+title: Projects\n\n* Garden\n* Shed\n";
   const extract = "* TODO Big idea :x:\nwhy\n** Part\n";
+  const retitle = "* TODO Old name\nsee [[*Old name][here]] and [[*Other]]\n", retitleRef = "[[file:retitle.org::*old name]] [[*Old name]]\n";
   const f = (n: string) => join(d.notes, n);
   /** Leader key sequence KEYS from the editor's normal mode. */
   const leader = async (keys: string) => { await browser.keys(Key.Escape); await browser.keys(" "); await type(keys); };
@@ -691,6 +692,8 @@ describe("Journal, archive and move", () => {
         writeFileSync(join(notes, "chores.org"), chores);
         writeFileSync(join(notes, "projects.org"), projects);
         writeFileSync(join(notes, "extract.org"), extract);
+        writeFileSync(join(notes, "retitle.org"), retitle);
+        writeFileSync(join(notes, "linker.org"), retitleRef);
         writeFileSync(join(notes, "narrow.org"), "* One\nalpha\n* Two\nbeta\n");
         writeFileSync(join(notes, "clone.org"), "* DONE Check-in\nCLOSED: [2026-10-01 Thu 10:00] SCHEDULED: <2026-10-01 Thu>\n* After\n");
       },
@@ -771,6 +774,28 @@ describe("Journal, archive and move", () => {
     await fileMatches(f("extract.org"), (s) => s === `* TODO Big idea :x:\n[[id:${id}][Big idea]]\n`, "heading not replaced by a link");
     await leader("nu");
     await fileMatches(f("extract.org"), (s) => s === extract, "undo didn't restore the heading");
+  });
+
+  it("renaming a heading (Space x e, e) updates the links to it, and one undo restores every note", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "retitle.org");
+    await find(".status .file", "retitle.org");
+    await leader("xe");
+    await answer("Task title", "New name");
+    await fileMatches(f("retitle.org"), (s) => s === "* TODO New name\nsee [[*New name][here]] and [[*Other]]\n", "title or same-note link not updated");
+    await fileMatches(f("linker.org"), (s) => s === "[[file:retitle.org::*New name]] [[*Old name]]\n", "file link not updated (or its own [[*Old name]] touched)");
+    await find(".status .msg", "updated 2 links");
+    await leader("nu");
+    await fileMatches(f("retitle.org"), (s) => s === retitle, "undo didn't restore the renamed note");
+    await fileMatches(f("linker.org"), (s) => s === retitleRef, "undo didn't restore the linking note");
+    await browser.keys([Key.Ctrl, "2"]);
+    await (await find(".agenda .row .title", "Old name")).click();
+    await browser.keys("e");
+    await answer("Task title", "Via e");
+    await fileMatches(f("linker.org"), (s) => s === "[[file:retitle.org::*Via e]] [[*Old name]]\n", "file link not updated from the task view");
+    await browser.keys("u");
+    await fileMatches(f("retitle.org"), (s) => s === retitle, "u didn't restore the renamed note");
+    await fileMatches(f("linker.org"), (s) => s === retitleRef, "u didn't restore the linking note");
   });
 
   it("Space v n narrows to the heading at the cursor and widens again", async () => {
