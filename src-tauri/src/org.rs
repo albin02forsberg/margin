@@ -1003,6 +1003,26 @@ fn strip_ids(sub: Vec<String>) -> Vec<String> {
     out
 }
 
+/// TEXT as the body of a duplicate note: without the top-of-file properties
+/// block and `#+title:` (the new note writes its own), and without heading `:ID:`s.
+pub fn duplicate_body(text: &str) -> String {
+    let mut l = to_lines(text);
+    let first = l.iter().position(|x| !x.trim().is_empty()).unwrap_or(l.len());
+    if l.get(first).is_some_and(|x| x.trim().eq_ignore_ascii_case(":PROPERTIES:")) {
+        if let Some(end) = drawer_end(&l, first) {
+            l.drain(..=end);
+        }
+    }
+    let head = l.iter().position(|x| heading_level(x).is_some()).unwrap_or(l.len());
+    let is_title = |x: &String| x.trim_start().get(..8).is_some_and(|p| p.eq_ignore_ascii_case("#+title:"));
+    let mut n = 0;
+    l.retain(|x| {
+        n += 1;
+        n > head || !is_title(x)
+    });
+    join(strip_ids(l), text)
+}
+
 /// Copy of the subtree at LINE, without its `:ID:`s.
 fn copy_subtree(lines: &[String], line: usize) -> Result<Vec<String>, String> {
     let hl = headline_at(lines, line).ok_or("not on a heading")?;
@@ -1524,6 +1544,16 @@ mod tests {
     const DOC: &str = ":PROPERTIES:\n:ID: file-1\n:END:\n#+title: My Note\n#+category: Work\n\
 * TODO [#A] Write report :work:urgent:\nSCHEDULED: <2026-10-01 Thu> DEADLINE: <2026-10-05 Mon 10:00>\n:PROPERTIES:\n:ID: h-1\n:END:\nSee [[id:other][Other]] and [[file:b.org]].\n\
 ** NEXT Sub\n:PROPERTIES:\n:CATEGORY: Sub\n:END:\n*** DONE Deep\n* Meeting\n<2026-10-03 Sat 14:00>\n* TODO Water plants\nSCHEDULED: <2026-09-28 Mon +1w>\n";
+
+    #[test]
+    fn duplicate_body_drops_ids_and_title() {
+        let b = duplicate_body(DOC);
+        assert!(!b.contains(":ID:") && !b.to_lowercase().contains("#+title") && !b.contains("file-1"));
+        assert!(b.starts_with("#+category: Work\n* TODO [#A] Write report"), "{b}");
+        assert!(b.contains("[[id:other][Other]]") && b.contains(":CATEGORY: Sub"));
+        let b = duplicate_body(":PROPERTIES:\n:ID: x\n:ROAM_ALIASES: a\n:END:\n#+TITLE: T\n#+filetags: :a:\ntext\n");
+        assert_eq!(b, "#+filetags: :a:\ntext\n");
+    }
 
     #[test]
     fn effort_parses_org_durations() {
