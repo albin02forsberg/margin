@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bareTitle, findTarget, linkHeadings, splitTarget } from "./links.ts";
+import { bareTitle, findTarget, linkHeadings, norm, retitlePlan, splitTarget } from "./links.ts";
 
 const doc = "#+title: T\n* TODO [#A] Install :tag:\n:PROPERTIES:\n:CUSTOM_ID: setup\n:END:\nbody text\n** Usage\r\nmore\n";
 
@@ -48,4 +48,24 @@ test("linkHeadings", () => {
   );
   assert.deepEqual(got.map((h) => [h.path, h.line, h.bare]), [["a", 1, "Plan"], ["b", 2, "Plan"]]);
   assert.equal(bareTitle("  Ship  it [40%] [/]"), "Ship it");
+});
+
+// Same cases as `heading_norm_matches_links_ts` in src-tauri/src/notes.rs.
+test("norm", () => {
+  for (const [a, b] of [["Ship  it [40%] [/]", "ship it"], ["  Release [2/5]x ", "release x"], ["Plan :café:", "plan :café:"], ["ÅÄÖ Tab\there", "åäö tab here"], ["[a] [1/2/3]", "[a] [1/2/3]"], ["C++ [/]", "c++"]])
+    assert.equal(norm(a), b);
+});
+
+test("retitlePlan", () => {
+  const kw = ["TODO", "DONE"];
+  const plan = (before: string, after: string, line = 0) => retitlePlan(before, after, line, kw);
+  assert.deepEqual(plan("* TODO [#A] Old [1/2] :x:\n", "* TODO [#A] New name [1/2] :x:\n"), { old: "old", new: "New name" });
+  assert.deepEqual(plan("* a\n* Plan :café:\n", "* a\n* Done :café:\n", 1), { old: "plan :café:", new: "Done :café:" });
+  assert.equal(plan("* Old\n", "* OLD [0/1]\n"), null); // case/cookie only
+  assert.equal(plan("text\n", "text2\n"), null);
+  assert.match(plan("* Old\n* old\n", "* New\n* old\n") as string, /unique/);
+  assert.match(plan("* Old\n", "* New [x]\n") as string, /link/);
+  assert.match(plan("* Old\n", "* [1/2]\n") as string, /link/);
+  assert.match(plan("* Old\n** new\n", "* New\n** new\n") as string, /another heading/);
+  assert.deepEqual(retitlePlan("* DOING Old\n", "* DOING New\n", 0, ["DOING"]), { old: "old", new: "New" });
 });

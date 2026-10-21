@@ -176,6 +176,44 @@ pub fn relink(text: &str, note: &Path, at: &Path, old: &Path, new: &Path) -> Opt
     changed.then(|| out.into_owned())
 }
 
+static HEAD_LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[(file:[^\]\n]*?::)?(\*[^\]\n]*)\](?:\[[^\]]*\])?\]").unwrap());
+static STATS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[[0-9]*(?:/[0-9]*|%)\]").unwrap());
+
+/// A heading title as `::*Title` links compare it: statistics cookies dropped, whitespace collapsed,
+/// lowercase. Mirrors `norm` in src/lib/links.ts (the side that follows links).
+pub fn heading_norm(s: &str) -> String {
+    STATS.replace_all(s, " ").split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+}
+
+/// TEXT, the note at NOTE, with its one-line links to heading OLD (normalised, see `heading_norm`) of note
+/// TARGET pointed at `*NEW`: `[[file:…::*Old]]` resolving to TARGET and, in TARGET itself, `[[*Old]]`.
+/// Keeps path style and description. None if nothing changed, else the text and the number of links.
+pub fn retitle_links(text: &str, note: &Path, target: &Path, old: &str, new: &str) -> Option<(String, usize)> {
+    let mut n = 0;
+    let out = HEAD_LINK.replace_all(text, |c: &regex::Captures| {
+        let (all, search) = (c.get(0).unwrap(), c.get(2).unwrap());
+        let ours = match c.get(1) {
+            Some(f) => {
+                let p = f.as_str().strip_prefix("file:").and_then(|p| p.strip_suffix("::")).unwrap_or("::");
+                !p.contains("::") && resolve(note, p) == target
+            }
+            None => note == target,
+        };
+        if !ours || all.as_str().contains('\n') || heading_norm(&search.as_str()[1..]) != old {
+            return all.as_str().to_string();
+        }
+        n += 1;
+        let (a, b) = (search.start() - all.start(), search.end() - all.start());
+        format!("{}*{new}{}", &all.as_str()[..a], &all.as_str()[b..])
+    });
+    (n > 0).then(|| (out.into_owned(), n))
+}
+
+/// Notes whose indexed `[[file:…::*Heading]]` links resolve to note PATH (read-only; see `retitle_links`).
+pub fn retitle_candidates(files: &[Arc<OrgFile>], path: &Path) -> Vec<PathBuf> {
+    files.iter().filter(|f| f.links.iter().any(|l| l.file && l.target.contains("::*") && resolve(&f.path, &l.target) == path)).map(|f| f.path.clone()).collect()
+}
+
 /// Do A and B name the same existing file (e.g. differing only in case on a case-insensitive disk)?
 fn same_file(a: &Path, b: &Path) -> bool {
     #[cfg(unix)]
@@ -832,5 +870,42 @@ mod tests {
         assert_eq!(t, format!(":PROPERTIES:\n:ID:       {id}\n:CATEGORY: c\n:END:\nx\n"));
         let (t, id) = ensure_id("#+title: T\n");
         assert_eq!(t, format!(":PROPERTIES:\n:ID:       {id}\n:END:\n#+title: T\n"));
+    }
+
+    // Same cases as the "norm" test in src/lib/links.test.ts.
+    #[test]
+    fn heading_norm_matches_links_ts() {
+        for (a, b) in [("Ship  it [40%] [/]", "ship it"), ("  Release [2/5]x ", "release x"), ("Plan :café:", "plan :café:"), ("ÅÄÖ Tab\there", "åäö tab here"), ("[a] [1/2/3]", "[a] [1/2/3]"), ("C++ [/]", "c++")] {
+            assert_eq!(heading_norm(a), b, "{a}");
+        }
+    }
+
+    #[test]
+    fn retitles_heading_links() {
+        let t = Path::new("/n/sub/c.org");
+        let r = |note: &str, text: &str| retitle_links(text, Path::new(note), t, "old tip", "New");
+        // In the note itself: same-note links (description kept, case and spacing ignored) and file links to itself.
+        assert_eq!(
+            r("/n/sub/c.org", "[[*Old tip]] [[*old   TIP][desc]] [[file:c.org::*Old tip]] [[*Other]] [[#old]]"),
+            Some(("[[*New]] [[*New][desc]] [[file:c.org::*New]] [[*Other]] [[#old]]".into(), 3))
+        );
+        // Other notes: only file links resolving to the note, path style kept; their own [[*Old]] is theirs.
+        assert_eq!(
+            r("/n/a.org", "[[*Old tip]] [[file:sub/c.org::*Old tip][d]] [[file:./sub/../sub/c.org::*OLD tip]] [[file:/n/sub/c.org::*Old tip]]"),
+            Some(("[[*Old tip]] [[file:sub/c.org::*New][d]] [[file:./sub/../sub/c.org::*New]] [[file:/n/sub/c.org::*New]]".into(), 3))
+        );
+        // A different note's ::*Old, other searches, id links and links split over lines stay as they are.
+        assert_eq!(r("/n/a.org", "[[file:c.org::*Old tip]] [[file:sub/c.org::*Older]] [[file:sub/c.org::12]] [[id:x][Old tip]] [[file:sub/c.org::*Old tip][a\nb]] [[file:sub/c.org::\n*Old tip]]"), None);
+        assert_eq!(r("/n/sub/c.org", "[[*Old\ntip]]"), None);
+        if let Some(home) = std::env::home_dir() {
+            let t = home.join("n/c.org");
+            assert_eq!(retitle_links("[[file:~/n/c.org::*A]]", Path::new("/x/a.org"), &t, "a", "B"), Some(("[[file:~/n/c.org::*B]]".into(), 1)));
+        }
+    }
+
+    #[test]
+    fn retitle_candidates_are_file_heading_links() {
+        let fs = files(&[("/n/c.org", "* Old\n[[*Old]]\n"), ("/n/a.org", "[[file:c.org::*Old]]\n"), ("/n/b.org", "[[file:c.org]] [[file:x.org::*Old]]\n"), ("/n/s/d.org", "[[file:../c.org::*Q][q]]\n")]);
+        assert_eq!(retitle_candidates(&fs, Path::new("/n/c.org")), [PathBuf::from("/n/a.org"), PathBuf::from("/n/s/d.org")]);
     }
 }

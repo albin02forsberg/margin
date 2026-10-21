@@ -14,8 +14,8 @@ const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const head = (keywords?: string[]) => new RegExp(`^\\*+\\s+(?:(?:${keywords?.length ? keywords.map(esc).join("|") : KW})\\s+)?(?:\\[#[A-Z0-9]+\\]\\s+)?(.*?)(?:\\s+:[\\w@#%:]+:)?\\s*$`);
 /** A heading title without statistics cookies (`[2/5]`, `[40%]`) and with collapsed whitespace. */
 export const bareTitle = (s: string) => s.replace(/\[\d*(?:\/\d*|%)\]/g, " ").replace(/\s+/g, " ").trim();
-/** Title for comparison, as org does: bare and lowercase. */
-const norm = (s: string) => bareTitle(s).toLowerCase();
+/** Title for comparison, as org does: bare and lowercase. Mirrored by `notes::heading_norm` in Rust. */
+export const norm = (s: string) => bareTitle(s).toLowerCase();
 
 /** Headings of TARGETS a `::*Title` link can reach, with their bare title: not those whose `path:line` is in WITH_ID
  *  (they get `[[id:]]` links), nor empty titles, titles with brackets (they would break `[[…][…]]`), or a title
@@ -55,4 +55,20 @@ export function findTarget(text: string, search: string, keywords?: string[]): n
   }
   const i = lines.findIndex((l) => l.includes(search));
   return i < 0 ? null : i;
+}
+
+/** Link titles for renaming heading LINE (0-based) of BEFORE to its title in AFTER: {old: normalised old title,
+ *  new: bare new title} to rewrite `::*Old` links with, a reason to leave them alone, or null when there is nothing
+ *  to do (not a heading, or only case/cookies changed). Links are left alone when the old title isn't unique in
+ *  the note (they were ambiguous already), or the new one is empty, has brackets or is another heading's title. */
+export function retitlePlan(before: string, after: string, line: number, keywords?: string[]): { old: string; new: string } | string | null {
+  const re = head(keywords), titles = (s: string) => s.split(/\r?\n/).map((l) => re.exec(l)?.[1] ?? null);
+  const b = titles(before), a = titles(after), o = b[line], t = a[line];
+  if (o == null || t == null) return null;
+  const old = norm(o), bare = bareTitle(t);
+  if (!old || norm(bare) === old) return null;
+  if (b.filter((x) => x != null && norm(x) === old).length > 1) return "the old title isn't unique in the note";
+  if (!bare || /[[\]]/.test(bare)) return "the new title can't be a link";
+  if (a.some((x, i) => i !== line && x != null && norm(x) === norm(bare))) return "another heading has that title";
+  return { old, new: bare };
 }
