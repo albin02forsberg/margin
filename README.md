@@ -314,6 +314,7 @@ same keys. Terms are space-separated and must all match; `-` negates one:
 | `file:inbox` | File name contains |
 | `due:today`, `due:<=+7d`, `scheduled:<=fri` | Date compared with `<` `<=` `>` `>=` (none: on that day); any date input works |
 | `due:none`, `scheduled:any` | Has no / has a date |
+| `effort:<=30`, `effort:>1h`, `effort:none` | The `:EFFORT:` estimate (minutes, `0:30`, `1h`) compared with `<` `<=` `>` `>=`; `none` / `any` for unestimated / estimated (unestimated tasks never match a comparison) |
 | `closed:>=-7d`, `closed:today` | Done on that date (its `CLOSED:` stamp); searches done tasks too, so `closed:>=-7d` is a "Done this week" view |
 | other words, `"a phrase"` | Title contains |
 
