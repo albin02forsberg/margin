@@ -585,7 +585,9 @@ type Filter = Box<dyn Fn(&OrgFile, &Headline) -> bool>;
 /// `tag:work`, `pri:A`, `file:inbox` (file name contains), `scheduled:` / `due:` /
 /// `closed:` with an optional `<`, `<=`, `>`, `>=` before a read_date date (`due:<+7d`,
 /// `closed:>=-7d`) or `none` / `any`; anything else (or a `"quoted phrase"`) must appear
-/// in the title. Values may be quoted too: `tag:"my tag"`, `file:"my notes"`.
+/// in the title. `effort:` compares the `:EFFORT:` estimate the same way (`effort:<=30`,
+/// `effort:>1h`, `effort:0:45`) or takes `none` / `any`; unestimated tasks never match a
+/// comparison. Values may be quoted too: `tag:"my tag"`, `file:"my notes"`.
 /// A leading `-` negates a term. The bool says whether done tasks should be searched
 /// too, i.e. the query asks for a done keyword (`todo:DONE`) or a `closed:` date.
 pub fn query(q: &str, today: NaiveDate, kw: &Kw) -> Result<(Filter, bool), String> {
@@ -641,6 +643,18 @@ pub fn query(q: &str, today: NaiveDate, kw: &Kw) -> Result<(Filter, bool), Strin
                     }
                 }
             }
+            "effort" => match v.as_str() {
+                "none" => Box::new(|_, h| h.effort.is_none()),
+                "any" => Box::new(|_, h| h.effort.is_some()),
+                _ => {
+                    let (op, rest) = ["<=", ">=", "<", ">"].iter().find_map(|o| v.strip_prefix(o).map(|r| (*o, r))).unwrap_or(("=", &v));
+                    let m = parse_effort(rest).ok_or_else(|| format!("can't read duration in \"{word}\""))?;
+                    Box::new(move |_, h| {
+                        let Some(x) = h.effort else { return false };
+                        match op { "<=" => x <= m, ">=" => x >= m, "<" => x < m, ">" => x > m, _ => x == m }
+                    })
+                }
+            },
             _ => Box::new(move |_, h| h.title.to_lowercase().contains(&v)),
         };
         terms.push(if neg { Box::new(move |f, h| !t(f, h)) } else { t });
@@ -2194,6 +2208,22 @@ mod tests {
         assert_eq!(c("-closed:any"), ("Open".into(), false));
         assert_eq!(c("closed:none"), ("Open".into(), false));
         assert_eq!(c("closed:none todo:DONE"), ("Unstamped".into(), true));
+        // effort: unestimated tasks match only none / -any
+        let est = [Arc::new(parse(Path::new("/n/e.org"), "* TODO Quick\n:PROPERTIES:\n:EFFORT: 0:20\n:END:\n* TODO Hour\n:PROPERTIES:\n:EFFORT: 1h\n:END:\n* TODO Long\n:PROPERTIES:\n:EFFORT: 3:00\n:END:\n* TODO Vague\n", &kw()))];
+        let e = |s: &str| {
+            let (f, done) = query(s, t, &kw()).unwrap();
+            assert!(!done);
+            todos(&est, &kw(), done, f, t).into_iter().map(|i| i.title).collect::<Vec<_>>().join(", ")
+        };
+        assert_eq!(e("effort:<=30"), "Quick");
+        assert_eq!(e("effort:>1h"), "Long");
+        assert_eq!(e("effort:>=60"), "Hour, Long");
+        assert_eq!(e("effort:1h"), "Hour");
+        assert_eq!(e("effort:<=0:30"), "Quick");
+        assert_eq!(e("effort:none"), "Vague");
+        assert_eq!(e("-effort:any"), "Vague");
+        assert_eq!(e("effort:any -effort:<1h"), "Hour, Long");
+        assert!(query("effort:<soon", t, &kw()).is_err());
     }
 
     #[test]
