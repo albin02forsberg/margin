@@ -497,6 +497,20 @@ describe("Task keys", () => {
     await fileMatches(file(), (s) => s === orig, "undo didn't restore the file");
   });
 
+  it("* marks tasks, > pushes all marked and one u restores them (#633)", async () => {
+    const orig = read(file());
+    await select("Shift me");
+    await browser.keys("*");
+    await select("Due me");
+    await browser.keys("*");
+    await find(".agenda .titles span", "2 marked");
+    await browser.keys(">");
+    await fileMatches(file(), (s) => s.includes(`* TODO Shift me\nSCHEDULED: ${day(1)}\n`) && s.includes(`* TODO Due me\nSCHEDULED: ${day(1)}\n`)
+      && s.includes(`* TODO [#B] Rank me\nSCHEDULED: ${day(0)}\n`), "marked tasks not both rescheduled (or an unmarked one moved)");
+    await browser.keys("u");
+    await fileMatches(file(), (s) => s === orig, "one undo didn't restore both tasks");
+  });
+
   it("T moves every overdue task to today, keeping time and repeater, and u restores them (#599)", async () => {
     const f = join(d.notes, "overdue.org"), orig = read(f);
     await select("Shift me");

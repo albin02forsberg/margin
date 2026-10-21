@@ -14,6 +14,8 @@
   export type AgendaApi = {
     /** Run a task operation on IT (see ACTIONS; `keyword` sets ARG); resolves when the files are written. */
     run: (op: string, it: AgendaItem, arg?: string) => Promise<void>;
+    /** Run OP on every item of ITEMS as one undo step. */
+    runMany: (op: string, items: AgendaItem[], arg?: string) => Promise<void>;
     newTask: (scheduled?: string) => void;
     undo: () => Promise<void>;
     act: (f: () => unknown) => void;
@@ -55,7 +57,7 @@
     ["↵", "Open", "open"],
   ];
   const MORE: [string, string][] = [
-    ["j / k", "Move selection"], ["< / >", "Reschedule a day earlier / later"], ["+ / -", "Raise / lower priority"],
+    ["j / k", "Move selection"], ["*", "Mark / unmark (x < > + - A apply to all marked; Esc clears)"], ["< / >", "Reschedule a day earlier / later"], ["+ / -", "Raise / lower priority"],
     ["Y", "Copy the list as text"], ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["T", "Today: move all overdue tasks to a day"], ["H / L", "Board: move to the column left / right"], ["h / l", "Previous / next period"],
     [".", "Jump to today"], ["D", "Go to a date"], ["/", "Filter"], ["r", "Refresh"], ["?", "Toggle this help"],
   ];
@@ -72,6 +74,7 @@
   import { doneLog, withLog } from "./donelog";
   import { fmtEffort, overbooked, planned, plannedLabel } from "./effort";
   import { agendaText } from "./agendatext";
+  import { markKey } from "./bulk";
 
   /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions.
    *  LOGDONE: config `log_done` (the Done log needs its CLOSED: stamps). */
@@ -98,6 +101,9 @@
   const doneHere = new Set<string>();
   const keyOf = (it: AgendaItem) => `${it.path}\n${it.title}`;
   let doneItems = $state.raw<AgendaItem[]>([]);
+  /** Marked tasks (`*`, keyed by `markKey`); the BULK ops apply to all of them. */
+  let marks = $state(new Set<string>());
+  const BULK = new Set(["done", "later", "earlier", "priority-up", "priority-down", "keyword", "archive"]);
   /** Today's Done log (key c, #424): a "Done" group per day of the tasks closed that day. */
   let logOn = $state(stored("agenda-log", "") === "1");
   const logShown = $derived(mode === "agenda" && logOn);
@@ -152,9 +158,10 @@
     : `Week ${week(start)}`,
   );
   const subheading = $derived(
-    mode === "todo" ? `${items.length} ${query != null ? "found" : "open"}${query ? ` · ${query}` : ""}`
+    [mode === "todo" ? `${items.length} ${query != null ? "found" : "open"}${query ? ` · ${query}` : ""}`
     : span === 1 ? [iso(start) === today ? fmtDay(start) : "", groups[0]?.planned ? plannedLabel(groups[0].planned, groups[0].expected) : ""].filter(Boolean).join(" · ")
     : `${fmtDay(start, { day: "numeric", month: "short" })} – ${fmtDay(days[6], { day: "numeric", month: "short", year: "numeric" })}`,
+    marks.size ? `${marks.size} marked` : ""].filter(Boolean).join(" · "),
   );
 
   /** The Clock column: `tc_dashboard` (running clock, today's hours vs the target, the week). */
@@ -192,6 +199,7 @@
     logItems = logShown && logDone
       ? doneLog((await invoke<AgendaItem[]>("search_todos", { query: `closed:>=${iso(start)} closed:<=${iso(addDays(start, span - 1))}` })).filter(isDone)) : [];
     sel = Math.min(sel, Math.max(0, shown.length - 1));
+    if (marks.size) { const live = new Set(shown.map(markKey)); marks = new Set([...marks].filter((m) => live.has(m))); }
     if (mode === "agenda") {
       const ds = days.map(iso);
       invoke<number[]>("expected_hours_for", { dates: ds }).then((hs) => (expected = Object.fromEntries(ds.map((d, i) => [d, hs[i]])))).catch(() => (expected = {}));
@@ -246,15 +254,20 @@
     if (k) op("keyword", selected, k);
   }
 
-  /** Run an op on the selected item (ARG for `keyword`), then reload; on the board the selection follows the card. */
-  function op(name: string, it = selected, arg?: string) {
+  /** Run an op on the selected item (ARG for `keyword`), then reload; on the board the selection follows the card.
+   *  With marks, a BULK op runs on every marked item instead (one undo step) and clears the marks. */
+  function op(name: string, it = selected, arg?: string, bulk = true) {
     if (!it || busy) return;
-    const k = name === "keyword" ? arg : name === "done" && !isDone(it) ? done[0] : null;
-    if (boardOn && k && done.includes(k)) doneHere.add(keyOf(it));
+    const many = bulk && marks.size && BULK.has(name) ? shown.filter((x) => marks.has(markKey(x))) : null;
+    for (const x of many ?? [it]) {
+      const k = name === "keyword" ? arg : name === "done" && !isDone(x) ? done[0] : null;
+      if (boardOn && k && done.includes(k)) doneHere.add(keyOf(x));
+    }
     api.act(async () => {
       busy = true;
       try {
-        await api.run(name, it, arg);
+        if (many) { await api.runMany(name, many, arg); marks = new Set(); api.flash(`${many.length} task${many.length === 1 ? "" : "s"} changed · u undoes`); }
+        else await api.run(name, it, arg);
       } finally {
         busy = false;
       }
@@ -291,6 +304,7 @@
     else switch (k) {
       case "j": case "ArrowDown": sel = Math.min(sel + 1, shown.length - 1); break;
       case "k": case "ArrowUp": sel = Math.max(sel - 1, 0); break;
+      case "*": if (selected) { const m = markKey(selected); marks = new Set(marks); if (!marks.delete(m)) marks.add(m); sel = Math.min(sel + 1, shown.length - 1); } break;
       case "g": case "Home": sel = 0; break;
       case "G": case "End": sel = shown.length - 1; break;
       case ">": op("later"); break;
@@ -312,7 +326,7 @@
       case "/": filterInput?.focus(); break;
       case "r": api.act(refresh); break;
       case "?": help = !help; break;
-      case "Escape": help = false; filter = ""; break;
+      case "Escape": if (marks.size) marks = new Set(); else { help = false; filter = ""; } break;
       default: return;
     }
     e.preventDefault();
@@ -322,7 +336,7 @@
     const el = (e.target as HTMLElement).closest<HTMLElement>("[data-i]");
     if (!el) return;
     sel = +el.dataset.i!;
-    if ((e.target as HTMLElement).closest(".check")) op("done");
+    if ((e.target as HTMLElement).closest(".check")) op("done", shown[sel], undefined, false);
     else if (e.type === "dblclick") op("open");
   }
 
@@ -337,8 +351,9 @@
 </script>
 
 {#snippet card(it: AgendaItem, i: number)}
-  <div class="kcard" class:sel={i === sel} class:done={isDone(it)} data-i={i} role="option" aria-selected={i === sel}>
+  <div class="kcard" class:sel={i === sel} class:done={isDone(it)} class:marked={marks.has(markKey(it))} data-i={i} role="option" aria-selected={i === sel}>
     <div class="kt">
+      {#if marks.has(markKey(it))}<span class="mark" title="Marked (*)">*</span>{/if}
       <span class="check" title="Mark done (x)">{isDone(it) ? "✓" : ""}</span>
       {#if it.priority}<span class="prio p{it.priority}">{it.priority}</span>{/if}
       <span class="title">{it.title}</span>
@@ -354,7 +369,8 @@
 {/snippet}
 
 {#snippet row(it: AgendaItem, i: number)}
-  <div class="row" class:sel={i === sel} class:done={isDone(it)} data-i={i} role="option" aria-selected={i === sel}>
+  <div class="row" class:sel={i === sel} class:done={isDone(it)} class:marked={marks.has(markKey(it))} data-i={i} role="option" aria-selected={i === sel}>
+    {#if marks.has(markKey(it))}<span class="mark" title="Marked (*)">*</span>{/if}
     <span class="check" title="Mark done (x)">{isDone(it) ? "✓" : ""}</span>
     {#if it.priority}<span class="prio p{it.priority}">{it.priority}</span>{/if}
     {#if it.keyword && it.keyword !== todo[0] && !isDone(it)}<span class="kw">{it.keyword}</span>{/if}
@@ -581,6 +597,8 @@
   .row { display: flex; align-items: center; gap: var(--s2); padding: 6px var(--s2); border-radius: 8px; cursor: default; font-size: var(--fs-base); min-height: 22px; transition: background-color 120ms var(--ease); }
   .row:hover { background: var(--active); }
   .row.sel { background: var(--sel); }
+  .row.marked, .kcard.marked { box-shadow: inset 3px 0 0 var(--accent); }
+  .mark { color: var(--accent); font-weight: 700; flex: none; }
   .row.done .title { text-decoration: line-through; color: var(--dim); }
   .check { width: 15px; height: 15px; border: 1.5px solid var(--dim); border-radius: 50%; flex: none; display: grid; place-items: center; font-size: var(--fs-xs); color: var(--done); cursor: pointer; transition: border-color 120ms var(--ease); }
   .row.done .check { border-color: var(--done); }

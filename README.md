@@ -267,6 +267,11 @@ then only shows what you finished from the board in this session.
 open task scheduled before today (the "Scheduled 3d ago" ones) to one day you pick, keeping
 each task's time and repeater; deadlines, habits and done tasks are left alone. One `u` undoes the whole move.
 
+`*` in Today or Tasks marks the selected task (and moves down), like org agenda's marks;
+the header shows how many are marked and `Esc` clears them. While tasks are marked, `x`
+(done), `>`/`<` (reschedule), `+`/`-` (priority), `A` (archive) and the board's `H`/`L` apply
+to all of them at once, and one `u` undoes the whole batch. The other keys still act on the selected task.
+
 `c` (or the **Done** button) in Today adds a **Done** group under each day:
 the tasks closed that day and when, like org agenda's log mode. In the week
 view that is a log of the week's work. It reads the `CLOSED:` stamps, so it
