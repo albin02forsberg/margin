@@ -14,8 +14,8 @@
   export type AgendaApi = {
     /** Run a task operation on IT (see ACTIONS; `keyword` sets ARG); resolves when the files are written. */
     run: (op: string, it: AgendaItem, arg?: string) => Promise<void>;
-    /** Run OP on every item of ITEMS as one undo step. */
-    runMany: (op: string, items: AgendaItem[], arg?: string) => Promise<void>;
+    /** Run OP on every item of ITEMS as one undo step, asking once for a prompting op; false when cancelled (nothing written). */
+    runMany: (op: string, items: AgendaItem[], arg?: string) => Promise<boolean>;
     newTask: (scheduled?: string) => void;
     undo: () => Promise<void>;
     act: (f: () => unknown) => void;
@@ -57,7 +57,7 @@
     ["↵", "Open", "open"],
   ];
   const MORE: [string, string][] = [
-    ["j / k", "Move selection"], ["*", "Mark / unmark (x < > + - A apply to all marked; Esc clears)"], ["< / >", "Reschedule a day earlier / later"], ["+ / -", "Raise / lower priority"],
+    ["j / k", "Move selection"], ["*", "Mark / unmark (x s d # m < > + - A apply to all marked; Esc clears)"], ["< / >", "Reschedule a day earlier / later"], ["+ / -", "Raise / lower priority"],
     ["Y", "Copy the list as text"], ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["T", "Today: move all overdue tasks to a day"], ["H / L", "Board: move to the column left / right"], ["h / l", "Previous / next period"],
     [".", "Jump to today"], ["D", "Go to a date"], ["/", "Filter"], ["r", "Refresh"], ["?", "Toggle this help"],
   ];
@@ -103,7 +103,7 @@
   let doneItems = $state.raw<AgendaItem[]>([]);
   /** Marked tasks (`*`, keyed by `markKey`); the BULK ops apply to all of them. */
   let marks = $state(new Set<string>());
-  const BULK = new Set(["done", "later", "earlier", "priority-up", "priority-down", "keyword", "archive"]);
+  const BULK = new Set(["done", "later", "earlier", "priority-up", "priority-down", "keyword", "archive", "schedule", "deadline", "tags", "move"]);
   /** Today's Done log (key c, #424): a "Done" group per day of the tasks closed that day. */
   let logOn = $state(stored("agenda-log", "") === "1");
   const logShown = $derived(mode === "agenda" && logOn);
@@ -255,7 +255,7 @@
   }
 
   /** Run an op on the selected item (ARG for `keyword`), then reload; on the board the selection follows the card.
-   *  With marks, a BULK op runs on every marked item instead (one undo step) and clears the marks. */
+   *  With marks, a BULK op runs on every marked item instead (one undo step) and clears the marks (kept on cancel). */
   function op(name: string, it = selected, arg?: string, bulk = true) {
     if (!it || busy) return;
     const many = bulk && marks.size && BULK.has(name) ? shown.filter((x) => marks.has(markKey(x))) : null;
@@ -266,7 +266,7 @@
     api.act(async () => {
       busy = true;
       try {
-        if (many) { await api.runMany(name, many, arg); marks = new Set(); api.flash(`${many.length} task${many.length === 1 ? "" : "s"} changed · u undoes`); }
+        if (many) { if (await api.runMany(name, many, arg)) { marks = new Set(); api.flash(`${many.length} task${many.length === 1 ? "" : "s"} changed · u undoes`); } }
         else await api.run(name, it, arg);
       } finally {
         busy = false;

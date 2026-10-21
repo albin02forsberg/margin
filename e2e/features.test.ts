@@ -511,6 +511,27 @@ describe("Task keys", () => {
     await fileMatches(file(), (s) => s === orig, "one undo didn't restore both tasks");
   });
 
+  it("s on marked tasks asks once and schedules all; Esc on d writes nothing and keeps the marks (#638)", async () => {
+    const orig = read(file());
+    await select("Shift me");
+    await browser.keys("*");
+    await select("Due me");
+    await browser.keys("*");
+    await find(".agenda .titles span", "2 marked");
+    await browser.keys("d");
+    await find(".picker label span", "Due date for 2 tasks");
+    await browser.keys(Key.Escape);
+    await noPicker();
+    await find(".agenda .titles span", "2 marked");
+    assert.equal(read(file()), orig, "a cancelled prompt wrote the file");
+    await browser.keys("s");
+    await answer("Schedule 2 tasks for", "+2d");
+    await fileMatches(file(), (s) => s.includes(`* TODO Shift me\nSCHEDULED: ${day(2)}\n`) && s.includes(`* TODO Due me\nSCHEDULED: ${day(2)}\n`)
+      && s.includes(`* TODO [#B] Rank me\nSCHEDULED: ${day(0)}\n`), "marked tasks not both scheduled (or an unmarked one moved)");
+    await browser.keys("u");
+    await fileMatches(file(), (s) => s === orig, "one undo didn't restore both tasks");
+  });
+
   it("T moves every overdue task to today, keeping time and repeater, and u restores them (#599)", async () => {
     const f = join(d.notes, "overdue.org"), orig = read(f);
     await select("Shift me");
@@ -610,6 +631,7 @@ describe("Tags", () => {
       files: ({ notes }) => {
         writeFileSync(join(notes, "tags.org"), `* TODO Tag me :alpha:beta:\nSCHEDULED: ${day}\n* TODO Other :gamma:\n`);
         writeFileSync(join(notes, "strip.org"), "* TODO Strip me :xray:yank:\n");
+        writeFileSync(join(notes, "bulktags.org"), `* TODO Bulk one :x:\nSCHEDULED: ${day}\n* TODO Bulk two :y:\nSCHEDULED: ${day}\n`);
         writeFileSync(join(notes, "effort.org"), `* TODO Estimate me\nSCHEDULED: ${day}\n:PROPERTIES:\n:ID: e1\n:END:\n`);
         writeFileSync(join(notes, "inh.org"), "#+FILETAGS: :work:\n* Proj :proj:\n** TODO Child task\n* TODO Loose task\n");
       },
@@ -634,6 +656,22 @@ describe("Tags", () => {
     await type("done");
     await browser.keys(Key.Enter);
     await fileMatches(join(d.notes, "tags.org"), (s) => s.includes("* TODO Tag me :alpha:gamma:fresh:\nSCHEDULED:"), "tags not rewritten in order");
+  });
+
+  it("# on marked tasks: + tag adds to all, - tag removes from all, nothing toggles (#638)", async () => {
+    const f = join(d.notes, "bulktags.org");
+    const markBoth = async () => {
+      for (const t of ["Bulk one", "Bulk two"]) { await (await find(".agenda .row .title", t)).click(); await browser.keys("*"); }
+      await find(".agenda .titles span", "2 marked");
+    };
+    await markBoth();
+    await browser.keys("#");
+    await answer("Tags of 2 tasks", "+ x"); // Bulk one already has x: it must keep it
+    await fileMatches(f, (s) => s.includes("* TODO Bulk one :x:\n") && s.includes("* TODO Bulk two :y:x:\n"), "+x not added to every marked task");
+    await markBoth();
+    await browser.keys("#");
+    await answer("Tags of 2 tasks", "- y"); // only Bulk two has y
+    await fileMatches(f, (s) => s.includes("* TODO Bulk one :x:\n") && s.includes("* TODO Bulk two :x:\n"), "-y not removed from every marked task");
   });
 
   it("E sets an effort estimate: badge on the row, total in the day header, :EFFORT: in the drawer", async () => {
@@ -678,6 +716,7 @@ describe("Journal, archive and move", () => {
   let d: Dirs;
   const chores = "* TODO Archive me\n* TODO Move me\n* TODO Stay put\n";
   const projects = "#+title: Projects\n\n* Garden\n* Shed\n";
+  const bulk = "* TODO Bulk parent\n** TODO Bulk child\n* TODO Bulk solo\n";
   const extract = "* TODO Big idea :x:\nwhy\n** Part\n";
   const retitle = "* TODO Old name\nsee [[*Old name][here]] and [[*Other]]\n", retitleRef = "[[file:retitle.org::*old name]] [[*Old name]]\n";
   const f = (n: string) => join(d.notes, n);
@@ -690,6 +729,7 @@ describe("Journal, archive and move", () => {
         writeFileSync(join(notes, "daily", "2020-01-01.org"), "#+title: 2020-01-01\n\n* First day\n");
         writeFileSync(join(notes, "daily", "2020-01-02.org"), "#+title: 2020-01-02\n\n* Second day\n");
         writeFileSync(join(notes, "chores.org"), chores);
+        writeFileSync(join(notes, "bulk.org"), bulk);
         writeFileSync(join(notes, "projects.org"), projects);
         writeFileSync(join(notes, "extract.org"), extract);
         writeFileSync(join(notes, "retitle.org"), retitle);
@@ -760,6 +800,28 @@ describe("Journal, archive and move", () => {
     await fileMatches(f("chores.org"), (s) => s === chores, "source changed by the copy");
     await browser.keys("u");
     await fileMatches(f("projects.org"), (s) => s === projects, "undo didn't remove the copy");
+  });
+
+  it("m on marked tasks asks once, refuses their own file and keeps a marked child under its parent (#638)", async () => {
+    await browser.keys([Key.Ctrl, "2"]);
+    const mark = async (t: string) => { await (await find(".agenda .row .title", t)).click(); await browser.keys("*"); };
+    await mark("Bulk parent");
+    await mark("Bulk solo");
+    await find(".agenda .titles span", "2 marked");
+    await browser.keys("m");
+    await answer("Move 2 tasks to…", "bulk.org");
+    await find(".status .msg", "bulk.org holds a marked task");
+    await find(".agenda .titles span", "2 marked");
+    assert.equal(read(f("bulk.org")), bulk, "a refused move wrote the file");
+    await mark("Bulk child");
+    await find(".agenda .titles span", "3 marked");
+    await browser.keys("m");
+    await answer("Move 3 tasks to…", "projects.org / Shed");
+    await fileMatches(f("bulk.org"), (s) => !s.trim(), "marked tasks not all moved out");
+    await fileMatches(f("projects.org"), (s) => s.includes("** TODO Bulk parent\n*** TODO Bulk child\n") && s.includes("** TODO Bulk solo\n"), "marked tasks not filed under Shed (or the child flattened)");
+    await browser.keys("u");
+    await fileMatches(f("bulk.org"), (s) => s === bulk, "undo didn't restore the source");
+    await fileMatches(f("projects.org"), (s) => s === projects, "undo didn't restore the target");
   });
 
   it("Space n x extracts the heading into a new note with a link back, and Space n u restores it", async () => {
