@@ -166,8 +166,15 @@
     ? chips(shown.filter((i) => i.kind !== "closed"), iso(start), today, `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`, isDone, tc?.project != null ? tc : null) : []);
   const elapsed = (since: string) => hm(Math.max(0, now.getTime() - Date.parse(since)) / 3_600_000);
 
-  async function refresh() {
+  /** Update NOW; past midnight, a view on the old today (or its week) moves on to the new one. */
+  function setNow() {
+    const was = now, at = (t: Date) => iso(span === 7 ? monday(t) : t);
     now = new Date();
+    if (iso(was) !== iso(now) && iso(start) === at(was)) start = span === 7 ? monday(now) : now;
+  }
+
+  async function refresh() {
+    setNow();
     items = mode === "agenda" ? await invoke("agenda", { start: iso(start), days: span })
       : query != null ? await invoke("search_todos", { query }) : await invoke("todos");
     // Done column: filtered on the backend (#437); the full DONE list only for tasks done here this session.
@@ -194,7 +201,7 @@
   });
   $effect(() => {
     if (!active) return;
-    const t = setInterval(() => { now = new Date(); api.act(loadClock); }, 60_000);
+    const t = setInterval(() => { setNow(); api.act(loadClock); }, 60_000);
     return () => clearInterval(t);
   });
   $effect(() => {

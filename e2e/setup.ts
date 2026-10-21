@@ -167,9 +167,9 @@ export async function noPicker() {
   await browser.waitUntil(async () => !(await texts(".picker")).length, { timeoutMsg: "a picker is still open" });
 }
 
-/** Wait until focus is inside the Time view (its key handler is on `.time`; a key sent elsewhere is dropped). */
+/** Wait until focus is inside the Time view (its key handler is on `.time`; a key sent elsewhere, or to its profile select, is dropped). */
 export async function timeFocused() {
-  await browser.waitUntil(() => browser.execute(() => !!document.activeElement?.closest(".time")), { timeoutMsg: "time view not focused" });
+  await browser.waitUntil(() => browser.execute(() => !!document.activeElement?.closest(".time") && !document.activeElement.closest("input, select")), { timeoutMsg: "time view not focused" });
 }
 
 /** Run the palette command whose label starts with LABEL (Ctrl+K). */
