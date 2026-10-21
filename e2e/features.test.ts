@@ -679,7 +679,7 @@ describe("Journal, archive and move", () => {
   const chores = "* TODO Archive me\n* TODO Move me\n* TODO Stay put\n";
   const projects = "#+title: Projects\n\n* Garden\n* Shed\n";
   const extract = "* TODO Big idea :x:\nwhy\n** Part\n";
-  const retitle = "* TODO Old name [0/1]\nsee [[*Old name][here]] and [[*Other]]\n", retitleRef = "[[file:retitle.org::*old name]] [[*Old name]]\n";
+  const retitle = "* TODO Old name\nsee [[*Old name][here]] and [[*Other]]\n", retitleRef = "[[file:retitle.org::*old name]] [[*Old name]]\n";
   const f = (n: string) => join(d.notes, n);
   /** Leader key sequence KEYS from the editor's normal mode. */
   const leader = async (keys: string) => { await browser.keys(Key.Escape); await browser.keys(" "); await type(keys); };
@@ -781,8 +781,8 @@ describe("Journal, archive and move", () => {
     await answer("Open a note", "retitle.org");
     await find(".status .file", "retitle.org");
     await leader("xe");
-    await answer("Task title", "New name [0/1]");
-    await fileMatches(f("retitle.org"), (s) => s === "* TODO New name [0/1]\nsee [[*New name][here]] and [[*Other]]\n", "title or same-note link not updated");
+    await answer("Task title", "New name");
+    await fileMatches(f("retitle.org"), (s) => s === "* TODO New name\nsee [[*New name][here]] and [[*Other]]\n", "title or same-note link not updated");
     await fileMatches(f("linker.org"), (s) => s === "[[file:retitle.org::*New name]] [[*Old name]]\n", "file link not updated (or its own [[*Old name]] touched)");
     await find(".status .msg", "updated 2 links");
     await leader("nu");
