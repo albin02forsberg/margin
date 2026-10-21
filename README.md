@@ -203,7 +203,7 @@ profile clocks out first, and warns where old files stay (nothing is moved).
   in / out; reset with **Ctrl/Cmd+0** or `Space v 0`. The zoom level is remembered across restarts.
 - Top bar: **Today** (Ctrl+1), **Tasks** (Ctrl+2), **Inbox** (Ctrl+3, with a badge counting
   its open top-level entries; done and archived ones don't count),
-  **Journal** (Ctrl+J), **Time** (Ctrl+4), **Notes** (Ctrl+P, recent notes first), your saved
+  **Journal** (Ctrl+J), **Time** (Ctrl+4), **Notes** (Ctrl+P, pinned notes (`Space n p`) then recent ones first), your saved
   searches, the Ctrl+K search, Settings and the running clock (Pause / Stop / Start).
   Toggle it with Ctrl+\\ or `Space v s`. In a narrow window it keeps only the icons (under 760 px)
   and the links/graph panel opens over the note (under 1000 px; Esc or a click on the note closes it).
@@ -399,6 +399,8 @@ Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`, `no` p
 | Space n b | Notes linking here, plus unlinked mentions of this note's title (**Link** turns one into an `[[id:]]` link; Space n u undoes) |
 | Space n g | Graph of notes within two links of this one; click a note to open it |
 | Space n r | Rename this note (same folder, `.org` added if missing); `[[file:]]` links to it in other notes are updated after a backup, `[[id:]]` links need nothing |
+| Space n p | Pin or unpin this note: pinned notes come first in Ctrl+P (marked ★, in pin order); pins are kept per machine and follow renames and moves |
+| Space n P | Open one of the pinned notes |
 | Space n c | Duplicate this note (unsaved edits included) into a new note beside it; its properties and `:ID:`s are not copied, so `[[id:]]` links stay unambiguous |
 | Space n m | Move this note to another folder under the notes folder (pick one, or type a path like `archive/2026` to create it; not `.trash`, the attachments folder or the images folder). `[[file:]]` links to it are updated and its own relative links (attachments too) re-based, after a backup |
 | Space n D | Delete this note: after a confirm (it says how many notes link to it) the file moves to `<notes>/.trash/`, keeping its subfolder; nothing is deleted for good and links to it are left as they are |

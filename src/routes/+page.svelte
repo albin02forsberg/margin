@@ -33,6 +33,7 @@
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
   import { wordCount, wordsLabel } from "$lib/words";
   import { windowTitle } from "$lib/wintitle";
+  import { orderNotes, parsePins, togglePin } from "$lib/pins";
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
 
   type View = "agenda" | "todo" | "time" | "projects" | "settings";
@@ -84,6 +85,9 @@
   let motion = $state(false); // view-change motion, on after the first load
   let topbar = $state(stored("sidebar", "1") === "1"); // key kept from the old sidebar toggle
   let recent = $state<string[]>(JSON.parse(stored("recent", "[]")));
+  /** Pinned notes (this machine only), shown first in Ctrl+P in pin order; not capped, not reordered on open. */
+  let pinned = $state<string[]>(parsePins(stored("pinned", "[]")));
+  const savePinned = (p: string[]) => store("pinned", JSON.stringify((pinned = p)));
 
   const tab = $derived(tabs[cur]);
   // Window title follows the active tab (#589); IPC only when it changed, and a missing capability never breaks the page.
@@ -463,10 +467,12 @@
     restored = true;
   }
 
-  /** Keep only the recent notes (Ctrl P's order) and the closed tabs whose path passes KEEP (for trashed or vanished notes). */
+  /** Keep only the recent and pinned notes (Ctrl P's order) and the closed tabs whose path passes KEEP (for trashed or vanished notes). */
   function pruneRecent(keep: (p: string) => boolean) {
     const r = recent.filter(keep);
     if (r.length < recent.length) store("recent", JSON.stringify((recent = r)));
+    const pn = pinned.filter(keep);
+    if (pn.length < pinned.length) savePinned(pn);
     for (let i = closed.length; i--; ) {
       const c = closed[i];
       if ("path" in c && !keep(c.path)) closed.splice(i, 1);
@@ -1020,14 +1026,13 @@
   async function noteItems() {
     const [files, nodes, t] = await Promise.all([call<string[]>("list_files"), call<NoteNode[]>("notes_nodes"), call<Record<string, string>>("note_titles")]);
     const titles = new Map(Object.entries(t));
-    const order = (p: string) => (recent.includes(p) ? recent.indexOf(p) : 1e9);
-    return { files, nodes, titles, sorted: [...files].sort((a, b) => order(a) - order(b)) };
+    return { files, nodes, titles, sorted: orderNotes(files, recent, pinned) };
   }
 
   async function quickOpen() {
     const { files, nodes, titles, sorted } = await noteItems();
     const items = [
-      ...sorted.map((p) => ({ label: titles.get(p) ?? niceName(p), detail: rel(p), value: p as unknown })),
+      ...sorted.map((p) => ({ label: `${pinned.includes(p) ? "★ " : ""}${titles.get(p) ?? niceName(p)}`, detail: rel(p), value: p as unknown })),
       ...nodes.filter((n) => n.line > 0).map((n) => ({ label: n.title, detail: `heading in ${rel(n.path)}`, value: n as unknown })),
     ];
     const r = await pick({ prompt: "Open a note — or type a title to create one", items, allowCustom: true, hint: "Ctrl+↵ creates a note with the typed title" });
@@ -1035,6 +1040,23 @@
     if (typeof r === "object") return openFile(r.path, r.line);
     if (files.includes(r)) return openFile(r);
     await createNote(r);
+  }
+
+  /** Pin or unpin the open note (#616). */
+  function pinNote() {
+    if (!inFile() || !tab.path!.startsWith(cfg.notes)) return flash("Open a note first.");
+    const was = pinned.includes(tab.path!);
+    savePinned(togglePin(pinned, tab.path!));
+    flash(`${was ? "Unpinned" : "Pinned"} ${tab.title}`);
+  }
+
+  /** Pick one of the pinned notes that still exist, in pin order. */
+  async function pinnedNotes() {
+    const [files, t] = await Promise.all([call<string[]>("list_files"), call<Record<string, string>>("note_titles")]);
+    const ps = pinned.filter((p) => files.includes(p));
+    if (!ps.length) return flash("No pinned notes");
+    const r = await pick({ prompt: "Pinned notes", items: ps.map((p) => ({ label: t[p] ?? niceName(p), detail: rel(p), value: p as unknown })) });
+    if (r) await openFile(r as string);
   }
 
   async function findOrphans() {
@@ -1157,6 +1179,7 @@
     }
     recent = recent.map((p) => (p === from ? to : p));
     store("recent", JSON.stringify(recent));
+    if (pinned.includes(from)) savePinned(pinned.map((p) => (p === from ? to : p)));
     for (const c of closed) if ("path" in c && c.path === from) c.path = to; // so "Reopen closed tab" finds it
     syncFromDisk();
     return [to, changed];
@@ -1897,6 +1920,8 @@
     { label: "Notes: find notes with no links…", leader: "n O", run: findOrphans },
     { label: "Notes: recently changed…", leader: "n C", run: recentlyChanged },
     { label: "Notes: browse by tag…", leader: "n T", run: browseTags },
+    { label: "Note: pin / unpin (pinned notes come first in Ctrl+P)", leader: "n p", run: pinNote },
+    { label: "Notes: open a pinned note…", leader: "n P", run: pinnedNotes },
     { label: "Show note graph", leader: "n g", run: () => { showGraph = !showGraph; return refreshBacklinks(); } },
     { label: "AI chat (local model)", leader: "n a", run: toggleChat },
     { label: "Undo last edit made from a task view or the links panel", leader: "n u", run: () => undo().then(refreshBacklinks) },
@@ -2146,9 +2171,9 @@
     await refreshBacklinks();
   }
 
-  /** Drop notes that no longer exist from the recent list and the closed tabs (other files are kept); with PATHS, only checks those. */
+  /** Drop notes that no longer exist from the recent and pinned lists and the closed tabs (other files are kept); with PATHS, only checks those. */
   async function pruneMissing(paths?: string[]) {
-    const ps = [...new Set([...recent, ...closed.flatMap((c) => ("path" in c ? [c.path] : []))])].filter((p) => p.startsWith(cfg.notes) && p.endsWith(".org") && p !== renaming && changed(p, paths));
+    const ps = [...new Set([...recent, ...pinned, ...closed.flatMap((c) => ("path" in c ? [c.path] : []))])].filter((p) => p.startsWith(cfg.notes) && p.endsWith(".org") && p !== renaming && changed(p, paths));
     const have = await Promise.all(ps.map((p) => call<boolean>("file_exists", { path: p })));
     const gone = new Set(ps.filter((_, i) => !have[i]));
     if (gone.size) pruneRecent((p) => !gone.has(p));
