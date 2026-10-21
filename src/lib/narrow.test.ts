@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EditorState } from "@codemirror/state";
-import { narrowEffect, narrowField, narrowRange, narrowedTo } from "./narrow.ts";
+import { narrowEffect, narrowField, narrowRange, narrowedTo, revealEffects } from "./narrow.ts";
 
 const doc = "#+title: N\n* One\nalpha\n** Sub\nbeta\n* Two :x:\ngamma\n";
 const st = (d = doc) => EditorState.create({ doc: d, extensions: narrowField });
@@ -43,4 +43,17 @@ test("narrowField: a heading on line 1 and an effect of null widen cleanly", () 
   assert.equal(narrowedTo(s), "Only");
   s = s.update({ effects: narrowEffect.of(null) }).state;
   assert.equal(s.field(narrowField), null);
+});
+
+test("revealEffects: widens only for targets outside the narrow; jump in the same update is not clamped", () => {
+  let s = st();
+  assert.deepEqual(revealEffects(s, 3), []); // no narrow
+  s = s.update({ effects: narrowEffect.of(narrowRange(s, doc.indexOf("beta"))) }).state;
+  assert.deepEqual(revealEffects(s, doc.indexOf("beta")), []); // inside
+  const target = doc.indexOf("gamma");
+  const fx = revealEffects(s, target);
+  assert.equal(fx.length, 1);
+  s = s.update({ effects: fx, selection: { anchor: target } }).state;
+  assert.equal(s.field(narrowField), null);
+  assert.equal(s.selection.main.head, target);
 });

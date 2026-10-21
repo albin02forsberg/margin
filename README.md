@@ -384,7 +384,7 @@ Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`, `no` p
 | | |
 |---|---|
 | Tab / Shift+Tab | Fold heading / fold everything |
-| Space v n | Narrow the editor to the heading at the cursor (its subtree), like `org-narrow-to-subtree`; again widens. The status bar shows it; only the view changes, saving keeps the whole note |
+| Space v n | Narrow the editor to the heading at the cursor (its subtree), like `org-narrow-to-subtree`; again widens. The status bar shows it; only the view changes, saving keeps the whole note. Following a link to text outside the narrow widens it |
 | Alt+Enter | New heading, or next list item |
 | Alt+Shift+Enter | New task heading |
 | Alt+H / Alt+L (+Shift) | Promote / demote heading (with children) |
