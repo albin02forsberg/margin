@@ -1,7 +1,7 @@
 // End-to-end tests of features beyond the basics; setup and helpers are in setup.ts.
 import { after, before, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { answer, browser, close, fileMatches, find, isoDay, Key, launch, noPicker, orgDay, palette, read, savedView, texts, type, type Dirs } from "./setup.ts";
 
@@ -885,6 +885,127 @@ describe("Journal, archive and move", () => {
     const want = "* DONE Check-in\nCLOSED: [2026-10-01 Thu 10:00] SCHEDULED: <2026-10-01 Thu>\n* TODO Check-in\nSCHEDULED: <2026-10-08 Thu>\n* TODO Check-in\nSCHEDULED: <2026-10-15 Thu>\n* After\n";
     await fileMatches(f("clone.org"), (s) => s === want, "copies not inserted with shifted dates");
     await find(".status .msg", "Cloned 2×");
+  });
+});
+
+// Own launch: the recently-changed test needs the fixture mtimes untouched, and pins start empty.
+describe("Note pickers, pins and archive", () => {
+  let d: Dirs;
+  const arch = "#+title: Arch\n\n* DONE One\n* TODO Keep\n* DONE Two\n";
+  const twinSrc = ":PROPERTIES:\n:ID: src-file-id\n:END:\n#+title: Source\n\nbody text\n* Part\n:PROPERTIES:\n:ID: src-head-id\n:END:\n";
+  const now = new Date(), feb29 = now.getMonth() === 1 && now.getDate() === 29;
+  const lastYear = isoDay(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()));
+  const f = (n: string) => join(d.notes, n);
+  /** Leader KEYS from normal mode, once the menu shows (it listens from an effect, so keys sent sooner go to vim). */
+  const leader = async (keys: string) => {
+    await browser.keys(Key.Escape);
+    await browser.waitUntil(async () => {
+      if ((await texts(".menu")).length) return true;
+      await browser.keys(" ");
+      await browser.pause(200);
+      return (await texts(".menu")).length > 0;
+    }, { timeoutMsg: "leader menu never opened" });
+    await type(keys);
+  };
+  /** Open the note titled TITLE with Ctrl+P (re-sent if lost), then wait for FILE in the status bar and focus in the editor. */
+  const open = async (title: string, file: string) => {
+    await noPicker();
+    const shown = async () => (await texts(".picker label span")).some((t) => t.includes("Open a note"));
+    await browser.waitUntil(async () => {
+      if (await shown()) return true;
+      await browser.keys([Key.Ctrl, "p"]);
+      await browser.pause(300);
+      return shown();
+    }, { timeoutMsg: "Ctrl+P never opened the note picker" });
+    await answer("Open a note", title);
+    await find(".status .file", file);
+    await browser.waitUntil(() => browser.execute(() => !!document.activeElement?.closest(".cm-content")), { timeoutMsg: "editor not focused" });
+  };
+  before(async () => {
+    d = await launch({
+      files: ({ notes }) => {
+        mkdirSync(join(notes, "daily"));
+        writeFileSync(join(notes, "daily", `${lastYear}.org`), "#+title: Back then\n\n* A year ago\n");
+        writeFileSync(join(notes, "stale.org"), "#+title: Stale\n\nold\n");
+        writeFileSync(join(notes, "fresh.org"), "#+title: Fresh\n\nnew\n");
+        const t = Date.now() / 1000; // explicit mtimes an hour apart: files written in a row can share a second
+        utimesSync(join(notes, "stale.org"), t - 7200, t - 7200);
+        utimesSync(join(notes, "fresh.org"), t - 3600, t - 3600);
+        writeFileSync(join(notes, "tagged.org"), "#+title: Tagged\n#+FILETAGS: :work:\n\nwork stuff\n");
+        writeFileSync(join(notes, "source.org"), twinSrc);
+        writeFileSync(join(notes, "pinme.org"), "#+title: Pinme\n\npinned\n");
+        writeFileSync(join(notes, "arch.org"), arch);
+      },
+    });
+    await find(".agenda h1", "Today"); // loaded
+  });
+  after(close, { timeout: 30_000 });
+
+  it("Space n C lists notes newest change first and opens the picked one", async () => {
+    await open("Pinme", "pinme.org");
+    await leader("nC");
+    await find(".picker label span", "Recently changed notes");
+    await find(".picker li span", "Stale");
+    const items = await texts(".picker li span");
+    assert.ok(items.indexOf("Fresh") >= 0 && items.indexOf("Fresh") < items.indexOf("Stale"), `Fresh not above Stale: ${items.join(" | ")}`);
+    await answer("Recently changed notes", "Stale");
+    await find(".status .file", "stale.org");
+  });
+
+  it("Space n T browses notes by a #+FILETAGS tag", async () => {
+    await open("Pinme", "pinme.org");
+    await leader("nT");
+    await answer("Browse notes by tag", "work");
+    await answer("Tagged :work:", "Tagged");
+    await find(".status .file", "tagged.org");
+  });
+
+  it("Space n c duplicates the note under a new title with fresh IDs", async () => {
+    await open("Source", "source.org");
+    await leader("nc");
+    await answer("Duplicate note as", "Twin");
+    await find(".status .file", "twin.org");
+    const name = readdirSync(d.notes).find((n) => n.endsWith("-twin.org"))!;
+    const twin = read(f(name));
+    assert.match(twin, /#\+title: Twin\n/);
+    assert.ok(twin.includes("body text\n* Part\n"), `body not copied:\n${twin}`);
+    assert.ok(/:ID:\s+\S+/.test(twin) && !twin.includes("src-file-id") && !twin.includes("src-head-id"), `IDs not fresh:\n${twin}`);
+    assert.equal(read(f("source.org")), twinSrc);
+  });
+
+  it("Space n p pins the note first in Ctrl+P, and Space n P opens it", async () => {
+    await open("Pinme", "pinme.org");
+    await leader("np");
+    await find(".status .msg", "Pinned "); // names the tab, which may be the file name rather than the #+title
+    await open("Fresh", "fresh.org");
+    await browser.keys([Key.Ctrl, "p"]);
+    await find(".picker li span", "★ Pinme");
+    assert.equal((await texts(".picker li span"))[0], "★ Pinme");
+    await browser.keys(Key.Escape);
+    await noPicker();
+    await leader("nP");
+    await answer("Pinned notes", "Pinme");
+    await find(".status .file", "pinme.org");
+  });
+
+  it("Space x a archives every done task to <file>_archive and Space n u restores both files", async () => {
+    const archive = f("arch.org_archive");
+    await open("Arch", "arch.org");
+    await leader("xa");
+    await find(".status .msg", "Archived 2 done tasks to arch.org_archive");
+    await fileMatches(archive, (s) => s.includes("* DONE One\n") && s.includes("* DONE Two\n") && s.includes(`:ARCHIVE_FILE: ${f("arch.org")}\n`), "done tasks not in the archive file");
+    await fileMatches(f("arch.org"), (s) => s.includes("* TODO Keep\n") && !s.includes("DONE"), "done tasks not removed from the note");
+    await leader("nu");
+    await fileMatches(f("arch.org"), (s) => s === arch, "undo didn't restore the note");
+    await fileMatches(archive, (s) => s === "", "undo didn't restore the archive file"); // it didn't exist before: undo writes back ""
+  });
+
+  it("Space n t lists this day's journal entry from last year and opens it", { skip: feb29 && "no Feb 29 last year" }, async () => {
+    await open("Pinme", "pinme.org");
+    await leader("nt");
+    await find(".picker li span", `${lastYear} · 1 year ago`);
+    await answer("Journal: on this day", lastYear);
+    await find(".status .file", `${lastYear}.org`);
   });
 });
 

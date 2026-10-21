@@ -4,7 +4,7 @@ import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { answer, browser, close, fileMatches, find, isoDay, Key, launch, noPicker, pad, palette, read, texts, timeFocused, type Dirs } from "./setup.ts";
+import { answer, browser, close, fileMatches, find, isoDay, Key, launch, noPicker, pad, palette, read, texts, timeFocused, type, type Dirs } from "./setup.ts";
 
 let d: Dirs, log: string;
 type Ev = { ev: string; t: string; project?: string; note?: string };
@@ -144,6 +144,26 @@ describe("Time tracking", () => {
     await palette("Time: public holidays");
     await find(".tabs .tab > button:not(.x)", "Holidays");
     await find(".cm-content", "Christmas Day"); // a fixed-date red day, whatever year it is
+  });
+
+  it("Space t m opens a month report for the picked month with its sessions", async () => {
+    const orig = read(log);
+    try { // a fixed past month, so the report doesn't depend on today's date or the time of day
+      writeFileSync(log, `{"ev":"in","t":"2020-01-06T09:00:00","project":"Acme"}\n{"ev":"out","t":"2020-01-06T10:00:00","note":"month entry"}\n`);
+      await noPicker();
+      await browser.keys([Key.Ctrl, "4"]);
+      await timeFocused();
+      await browser.keys(" ");
+      await browser.$(".menu").waitForDisplayed(); // it listens from an effect: keys sent sooner are lost
+      await type("tm");
+      await answer("Month report for", "2020-01-15");
+      await find(".tabs .tab > button:not(.x)", "Month report");
+      await find(".cm-content", "2020-01-01 to 2020-01-31");
+      await find(".cm-content", "2020-01-06 (1.00 h)");
+      await find(".cm-content", "month entry");
+    } finally {
+      writeFileSync(log, orig);
+    }
   });
 
   it("Space t D reports a clean log, then flags an unparseable line", async () => {
