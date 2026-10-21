@@ -165,4 +165,20 @@ describe("Time tracking", () => {
       writeFileSync(log, orig);
     }
   });
+
+  it("TEMP (#623): S right after a flow that stops the clock", async () => {
+    await trackFocus();
+    for (let i = 0; i < 8; i++) {
+      await start("Acme", `stress ${i}`);
+      await browser.pause(1100); // a zero-length session is dropped
+      await (await find(".time .buttons button", "Stop")).click();
+      await answer("What did you do?", `stress ${i}`);
+      await fileMatches(log, (s) => events(s).at(-1)?.ev === "out", "not stopped");
+      await noPicker();
+      await timeFocused();
+      await browser.keys("S");
+      await find(".picker label span", "Edit a session on");
+      await browser.keys(Key.Escape);
+    }
+  });
 });
