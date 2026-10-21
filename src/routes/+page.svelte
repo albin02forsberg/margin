@@ -18,6 +18,7 @@
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
+  import { orderForEdit } from "$lib/bulk";
   import Time, { hm, type Session, type Suggestion, type TimeApi } from "$lib/Time.svelte";
   import TaskDialog from "$lib/TaskDialog.svelte";
   import TableDialog from "$lib/TableDialog.svelte";
@@ -1893,6 +1894,7 @@
   const timeApi: TimeApi = { act, run: async (name, arg) => { await timeActions[name](arg); } };
   const agendaApi: AgendaApi = {
     run: (op, it, arg) => recorded(async () => { await taskOps[op]({ path: it.path, line: it.line }, it, arg); }),
+    runMany: (op, items, arg) => recorded(async () => { for (const it of orderForEdit(items)) await taskOps[op]({ path: it.path, line: it.line }, it, arg); }),
     newTask: (s) => act(() => newTask(s ?? "")),
     undo,
     act,
