@@ -70,7 +70,7 @@
   import { columns, moveTo } from "./board";
   import { chips } from "./chips";
   import { doneLog, withLog } from "./donelog";
-  import { fmtEffort, planned } from "./effort";
+  import { fmtEffort, overbooked, planned, plannedLabel } from "./effort";
   import { agendaText } from "./agendatext";
 
   /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions.
@@ -117,10 +117,12 @@
     return xs;
   });
   const selected = $derived(shown[sel]);
+  /** Expected hours per visible day (less leave), fetched once per range; empty until loaded or if the fetch fails. */
+  let expected = $state<Record<string, number>>({});
   const groups = $derived.by(() => {
     if (mode === "todo") {
       const ks = [...new Set(shown.map((i) => i.keyword ?? ""))];
-      return ks.map((k) => ({ key: k, title: k, sub: "", today: false, planned: 0, rows: rowsOf((i) => (i.keyword ?? "") === k) }));
+      return ks.map((k) => ({ key: k, title: k, sub: "", today: false, planned: 0, expected: undefined, rows: rowsOf((i) => (i.keyword ?? "") === k) }));
     }
     return days.map((d) => ({
       key: iso(d),
@@ -129,6 +131,7 @@
       today: iso(d) === today,
       rows: rowsOf((i) => i.date === iso(d)),
       planned: planned(items.filter((i) => i.date === iso(d)), isDone),
+      expected: expected[iso(d)],
     }));
   });
   function rowsOf(pred: (i: AgendaItem) => boolean) {
@@ -150,7 +153,7 @@
   );
   const subheading = $derived(
     mode === "todo" ? `${items.length} ${query != null ? "found" : "open"}${query ? ` · ${query}` : ""}`
-    : span === 1 ? [iso(start) === today ? fmtDay(start) : "", groups[0]?.planned ? `~${fmtEffort(groups[0].planned)} planned` : ""].filter(Boolean).join(" · ")
+    : span === 1 ? [iso(start) === today ? fmtDay(start) : "", groups[0]?.planned ? plannedLabel(groups[0].planned, groups[0].expected) : ""].filter(Boolean).join(" · ")
     : `${fmtDay(start, { day: "numeric", month: "short" })} – ${fmtDay(days[6], { day: "numeric", month: "short", year: "numeric" })}`,
   );
 
@@ -189,6 +192,10 @@
     logItems = logShown && logDone
       ? doneLog((await invoke<AgendaItem[]>("search_todos", { query: `closed:>=${iso(start)} closed:<=${iso(addDays(start, span - 1))}` })).filter(isDone)) : [];
     sel = Math.min(sel, Math.max(0, shown.length - 1));
+    if (mode === "agenda") {
+      const ds = days.map(iso);
+      invoke<number[]>("expected_hours_for", { dates: ds }).then((hs) => (expected = Object.fromEntries(ds.map((d, i) => [d, hs[i]])))).catch(() => (expected = {}));
+    }
     await loadClock();
   }
 
@@ -461,7 +468,7 @@
       {#if g.rows.length || (span === 7 && mode === "agenda")}
         <section class="card" class:today={g.today}>
           {#if mode === "todo" || span === 7}
-            <h2 class:today={g.today}>{g.title} <small>{g.sub}</small>{#if g.rows.length}<small class="n">{g.rows.length}</small>{/if}{#if g.planned}<small class="planned" title="Effort of the open tasks">~{fmtEffort(g.planned)} planned</small>{/if}</h2>
+            <h2 class:today={g.today}>{g.title} <small>{g.sub}</small>{#if g.rows.length}<small class="n">{g.rows.length}</small>{/if}{#if g.planned}<small class="planned" class:over={overbooked(g.planned, g.expected)} title="Effort of the open tasks vs the day's expected hours (less leave)">{plannedLabel(g.planned, g.expected)}</small>{/if}</h2>
           {/if}
           {#each g.rows as { it, i }, j (i)}
             {#if it.kind === "closed" && g.rows[j - 1]?.it.kind !== "closed"}<h3 class="logh">Done</h3>{/if}
@@ -594,6 +601,7 @@
   .time { font: var(--fs-sm) var(--mono); color: var(--date); }
   .effort { font: var(--fs-xs) var(--mono); color: var(--dim); border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; white-space: nowrap; }
   h2 .planned { margin-left: auto; font-size: var(--fs-sm); }
+  h2 .planned.over { color: var(--warn, #d97706); }
   .meta { font-size: var(--fs-sm); color: var(--dim); white-space: nowrap; }
   .meta.warn { color: var(--todo); background: color-mix(in srgb, var(--todo) 14%, transparent); border-radius: var(--radius-sm); padding: 0 6px; }
   .cat { font-size: var(--fs-sm); color: var(--dim); max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
