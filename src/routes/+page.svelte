@@ -18,7 +18,7 @@
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
-  import { orderForEdit } from "$lib/bulk";
+  import { markKey, orderForEdit, outermost, tagChange, type TagChange } from "$lib/bulk";
   import Time, { hm, type Session, type Suggestion, type TimeApi } from "$lib/Time.svelte";
   import TaskDialog from "$lib/TaskDialog.svelte";
   import TableDialog from "$lib/TableDialog.svelte";
@@ -847,9 +847,13 @@
   const tableCmd = (op: Parameters<typeof ed.tableOp>[1]) => () => (inFile() && ed.tableOp(view, op)) || flash("Put the cursor in a table first.");
   let monoFont = $state(stored("mono-font", "0") === "1");
 
+  /** The date prompt of `s` / `d`; N > 1 names the marked tasks it applies to. */
+  const askDate = (kind: "SCHEDULED" | "DEADLINE", n = 1) =>
+    datePick(kind === "SCHEDULED" ? `Schedule${n > 1 ? ` ${n} tasks` : ""} for` : `Due date${n > 1 ? ` for ${n} tasks` : ""}`, true, kind);
+  const setDate = (loc: Loc, kind: string, input: string) => toFile(loc.path, (text) => call("org_planning", { text, line: loc.line, kind, input }));
   async function planDate(loc: Loc, kind: "SCHEDULED" | "DEADLINE") {
-    const input = await datePick(kind === "SCHEDULED" ? "Schedule for" : "Due date", true, kind);
-    if (input != null) await toFile(loc.path, (text) => call("org_planning", { text, line: loc.line, kind, input }));
+    const input = await askDate(kind);
+    if (input != null) await setDate(loc, kind, input);
   }
 
   /** Move every overdue SCHEDULED task to one picked day, keeping time and repeater; one undo step (#599). */
@@ -885,14 +889,40 @@
     await edit(loc, "tags", tags.join(":"));
   }
 
-  async function moveTask(loc: Loc) {
+  /** `+ tag` / `- tag` for a bulk `#` on LOCS (#638): add any known or typed tag to all, or remove one some of them have. */
+  async function askTagChange(locs: Loc[]): Promise<TagChange | null> {
+    const own = [...new Set((await Promise.all(locs.map(heading))).flatMap((h) => h?.tags ?? []))];
+    const all: string[] = await call("org_tags");
+    const v = await pick({
+      prompt: `Tags of ${locs.length} tasks`,
+      items: [...own.map((tag) => ({ label: `- ${tag}`, value: { add: false, tag }, detail: "remove from all" })),
+        ...[...new Set([...own, ...all])].map((tag) => ({ label: `+ ${tag}`, value: { add: true, tag }, detail: "add to all" }))],
+      allowCustom: true,
+      hint: "type +tag or -tag and press Ctrl+↵",
+    });
+    if (v == null || typeof v !== "string") return v;
+    const tag = v.trim().replace(/^[+-]\s*/, "").replace(/\s+/g, "_");
+    return tag ? { add: !/^-/.test(v.trim()), tag } : null;
+  }
+
+  /** Pick a move target, leaving out the headings at SKIP. */
+  async function askTarget(skip: Loc[]): Promise<Target | null> {
     const targets: Target[] = await call("org_targets");
-    const t: Target | null = await pick({
-      prompt: "Move to…",
-      items: targets.filter((x) => !(x.path === loc.path && x.line === loc.line)).map((x) => ({ label: x.label, value: x })),
+    return pick({
+      prompt: skip.length > 1 ? `Move ${skip.length} tasks to…` : "Move to…",
+      items: targets.filter((x) => !skip.some((l) => x.path === l.path && x.line === l.line)).map((x) => ({ label: x.label, value: x })),
       hint: "a file puts it at the top level; a heading files it underneath",
     });
+  }
+
+  async function moveTask(loc: Loc) {
+    const t = await askTarget([loc]);
     if (!t) return;
+    await refile(loc, t);
+    flash(`Moved to ${t.label}`);
+  }
+
+  async function refile(loc: Loc, t: Target) {
     if (t.path === loc.path) await toFile(loc.path, (text) => call("org_refile_same", { text, line: loc.line, dstLine: t.line }));
     else {
       const src = await textOf(loc.path);
@@ -904,7 +934,32 @@
       });
       await toFile(loc.path, async () => newSrc);
     }
-    flash(`Moved to ${t.label}`);
+  }
+
+  /** A bulk op on marked tasks; the ops that prompt ask once (#638). False when cancelled or refused: nothing is written. */
+  async function runMany(op: string, items: AgendaItem[], arg?: string) {
+    const locs: Loc[] = items.map((it) => ({ path: it.path, line: it.line }));
+    let apply = (loc: Loc, it: AgendaItem) => taskOps[op](loc, it, arg);
+    if (op === "schedule" || op === "deadline") {
+      const kind = op === "schedule" ? "SCHEDULED" : "DEADLINE", input = await askDate(kind, items.length);
+      if (input == null) return false;
+      apply = (loc) => setDate(loc, kind, input);
+    } else if (op === "tags") {
+      const c = await askTagChange(locs);
+      if (!c) return false;
+      apply = async (loc) => { const h = await heading(loc); if (h) await edit(loc, "tags", tagChange(h.tags, c).join(":")); };
+    } else if (op === "move") {
+      const t = await askTarget(locs);
+      if (!t) return false;
+      if (locs.some((l) => l.path === t.path)) return flash(`${base(t.path)} holds a marked task: move those separately.`), false;
+      const keep = new Set<string>();
+      for (const p of new Set(locs.map((l) => l.path)))
+        for (const line of outermost(await textOf(p), locs.filter((l) => l.path === p).map((l) => l.line))) keep.add(markKey({ path: p, line }));
+      items = items.filter((it) => keep.has(markKey(it)));
+      apply = (loc) => refile(loc, t);
+    }
+    await recorded(async () => { for (const it of orderForEdit(items)) await apply({ path: it.path, line: it.line }, it); });
+    return true;
   }
 
   /** Insert copies of the subtree at LOC after it, each with its dates moved one more step (org-clone-subtree-with-time-shift); `u` undoes. */
@@ -1894,7 +1949,7 @@
   const timeApi: TimeApi = { act, run: async (name, arg) => { await timeActions[name](arg); } };
   const agendaApi: AgendaApi = {
     run: (op, it, arg) => recorded(async () => { await taskOps[op]({ path: it.path, line: it.line }, it, arg); }),
-    runMany: (op, items, arg) => recorded(async () => { for (const it of orderForEdit(items)) await taskOps[op]({ path: it.path, line: it.line }, it, arg); }),
+    runMany,
     newTask: (s) => act(() => newTask(s ?? "")),
     undo,
     act,

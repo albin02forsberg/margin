@@ -269,8 +269,13 @@ each task's time and repeater; deadlines, habits and done tasks are left alone. 
 
 `*` in Today or Tasks marks the selected task (and moves down), like org agenda's marks;
 the header shows how many are marked and `Esc` clears them. While tasks are marked, `x`
-(done), `>`/`<` (reschedule), `+`/`-` (priority), `A` (archive) and the board's `H`/`L` apply
-to all of them at once, and one `u` undoes the whole batch. The other keys still act on the selected task.
+(done), `>`/`<` (reschedule), `+`/`-` (priority), `A` (archive), the board's `H`/`L`, and
+`s`/`d` (schedule / due date), `#` (tags) and `m` (move) apply to all of them at once, and one
+`u` undoes the whole batch. `s`, `d`, `#` and `m` ask once: `#` offers `+ tag` (add to every
+marked task, or type `+name`) and `- tag` (remove from every one); `m` leaves the marked tasks
+out of its targets, refuses a target in a file that holds a marked task, and moves a marked
+child with its marked parent. Cancelling the prompt changes nothing and keeps the marks. The
+other keys still act on the selected task.
 
 `c` (or the **Done** button) in Today adds a **Done** group under each day:
 the tasks closed that day and when, like org agenda's log mode. In the week
