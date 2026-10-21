@@ -4,7 +4,7 @@ import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { answer, browser, close, fileMatches, find, isoDay, Key, launch, noPicker, pad, palette, read, texts, timeFocused, type Dirs } from "./setup.ts";
+import { answer, browser, close, fileMatches, find, isoDay, Key, launch, noPicker, pad, palette, read, texts, timeFocused, trackFocus, type Dirs } from "./setup.ts";
 
 let d: Dirs, log: string;
 type Ev = { ev: string; t: string; project?: string; note?: string };
@@ -54,6 +54,8 @@ describe("Time tracking", () => {
   });
 
   it("opens the edit-session and time-off prompts from the keys S and L", async () => {
+    await trackFocus(); // TEMP (#623)
+    for (let i = 0; i < 10; i++) { // TEMP (#623): repeat to catch the race
     await noPicker();
     await timeFocused();
     await browser.keys("S");
@@ -65,6 +67,7 @@ describe("Time tracking", () => {
     await find(".picker label span", "Kind of time off");
     await browser.keys(Key.Escape);
     await noPicker();
+    }
   });
 
   it("takes a break and resumes on the same project", async () => {
