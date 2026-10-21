@@ -1205,7 +1205,7 @@ fn notes_heading_id(s: State<App>, text: String, line: usize) -> (String, String
 
 #[tauri::command(async)]
 fn notes_search(s: State<App>, query: String) -> Vec<notes::Hit> {
-    notes::search(&s.files(), &query, 300)
+    notes::search(&s.files(), &s.cfg().notes(), &query, 300)
 }
 
 // ---------------------------------------------------------------- timeclock

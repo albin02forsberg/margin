@@ -1269,6 +1269,7 @@
   async function search() {
     const h: Hit | null = await pick({
       prompt: "Search all notes",
+      hint: '"phrase" · -exclude · in:folder',
       source: async (q) =>
         q.trim().length < 2 ? [] : (await call<Hit[]>("notes_search", { query: q })).map((h) => ({ label: h.text, detail: `${h.title} · line ${h.line + 1}`, value: h })),
     });
