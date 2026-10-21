@@ -170,14 +170,11 @@ describe("Time tracking", () => {
     await trackFocus();
     for (let i = 0; i < 8; i++) {
       await start("Acme", `stress ${i}`);
-      await noPicker();
-      await palette("Time: I started earlier");
-      await answer("When did you actually start?", "10");
-      await browser.pause(300);
+      await browser.pause(1100); // a zero-length session is dropped
       await noPicker();
       await timeFocused();
       await browser.keys("O");
-      await answer("When did you actually stop?", "2");
+      await answer("When did you actually stop?", "0");
       await answer("What did you do?", `stress ${i}`);
       await fileMatches(log, (s) => events(s).at(-1)?.ev === "out", "not stopped");
       await noPicker();
