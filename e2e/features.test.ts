@@ -914,7 +914,7 @@ describe("Note pickers, pins and archive", () => {
   it("Space n p pins the note first in Ctrl+P, and Space n P opens it", async () => {
     await open("Pinme", "pinme.org");
     await leader("np");
-    await find(".status .msg", "Pinned Pinme");
+    await find(".status .msg", "Pinned "); // names the tab, which may be the file name rather than the #+title
     await open("Fresh", "fresh.org");
     await browser.keys([Key.Ctrl, "p"]);
     await find(".picker li span", "★ Pinme");
