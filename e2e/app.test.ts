@@ -390,11 +390,18 @@ describe("Margin", () => {
     await find(".cm-content", `capture_shortcut = "Nope+Bogus"`);
   });
 
-  // config.toml (still open from the last test) doesn't autosave, so its edits stay unsaved until asked.
+  // config.toml doesn't autosave, so its edits stay unsaved until asked. Each test opens it itself, so one failure doesn't cascade.
   const dirty = async () => (await texts(".tabs .tab.cur > button:not(.x)"))[0]?.endsWith(" •");
+  const openCfg = async () => {
+    await noPicker();
+    await palette("Settings: edit config.toml");
+    await find(".status .file", "config.toml");
+    await noPicker(); // the closing palette hands focus back to the editor
+  };
 
   it("Reload from disk drops the unsaved edits", async () => {
     const cfg = join(cfgDir, "config.toml");
+    await openCfg();
     await type("ggO# dropped by e2e");
     await browser.keys(Key.Escape);
     await find(".status .mode", "NORMAL"); // Ctrl+K in insert mode is a vim digraph, not the palette
@@ -406,7 +413,7 @@ describe("Margin", () => {
   });
 
   it("Save all writes the unsaved tab", async () => {
-    await noPicker(); // the closing palette hands focus back to the editor
+    await openCfg();
     await type("ggO# kept by e2e");
     await browser.keys(Key.Escape);
     await find(".status .mode", "NORMAL");

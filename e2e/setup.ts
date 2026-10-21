@@ -110,8 +110,17 @@ export async function find(css: string, text: string) {
   } catch {
     const seen = [];
     for (const el of await browser.$$(css)) seen.push(`${await el.isDisplayed()} ${JSON.stringify(await el.getText())} ${JSON.stringify(await el.getProperty("textContent"))}`);
-    throw new Error(`no ${css} with “${text}”; saw (displayed, text, textContent):\n${seen.join("\n")}`);
+    throw new Error(`no ${css} with “${text}”; saw (displayed, text, textContent):\n${seen.join("\n")}\n${await diag()}`);
   }
+}
+
+/** State dump for a failed wait: the focused element, the open picker, the clock and the message line. */
+async function diag() {
+  return browser.execute(() => {
+    const a = document.activeElement, desc = (e: Element | null) => e && `${e.tagName.toLowerCase()}${e.className && typeof e.className === "string" ? "." + e.className.trim().split(/\s+/).join(".") : ""}`;
+    const chain = []; for (let e: Element | null = a; e && e !== document.body; e = e.parentElement) chain.push(desc(e));
+    return `focus: ${chain.join(" < ") || desc(a)}; picker: ${document.querySelector(".picker label span")?.textContent ?? "none"}; now: ${new Date().toString()}; msg: ${document.querySelector(".status .msg")?.textContent ?? ""}`;
+  }).catch((e) => `diag failed: ${e}`);
 }
 
 /** Wait for a saved view named NAME in the top bar, shown or folded into More (a narrow window folds them). */
@@ -146,9 +155,9 @@ export async function noPicker() {
   await browser.waitUntil(async () => !(await texts(".picker")).length, { timeoutMsg: "a picker is still open" });
 }
 
-/** Wait until focus is inside the Time view (its key handler is on `.time`; a key sent elsewhere is dropped). */
+/** Wait until focus is inside the Time view (its key handler is on `.time`; a key sent elsewhere, or to its profile select, is dropped). */
 export async function timeFocused() {
-  await browser.waitUntil(() => browser.execute(() => !!document.activeElement?.closest(".time")), { timeoutMsg: "time view not focused" });
+  await browser.waitUntil(() => browser.execute(() => !!document.activeElement?.closest(".time") && !document.activeElement.closest("input, select")), { timeoutMsg: "time view not focused" });
 }
 
 /** Run the palette command whose label starts with LABEL (Ctrl+K). */

@@ -53,7 +53,7 @@
     const t = new Date(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10) + n);
     day = t.toLocaleDateString("sv-SE");
   };
-  const accept = (s: Suggestion, name = "acceptSuggestion") => api.act(async () => { await api.run(name, s); await refresh(); await loadSuggestions(); root?.focus(); });
+  const accept = (s: Suggestion, name = "acceptSuggestion") => api.act(async () => { await api.run(name, s); await refresh(); await loadSuggestions(); refocus(); });
   // Hidden at once; the backend keeps it hidden (by overlap) across restarts.
   const dismiss = (s: Suggestion) => api.act(async () => { sugg = sugg!.filter((x) => x !== s); await invoke("activity_dismiss", { start: s.start, end: s.end }); });
 
@@ -61,7 +61,9 @@
     if (active) tick().then(() => root?.focus());
   });
 
-  const run = (name: string, arg?: unknown) => api.act(async () => { await api.run(name, arg); root?.focus(); await refresh(); root?.focus(); });
+  /** Back to the view after a flow, unless focus moved on (a picker the next key opened would blur and cancel). */
+  const refocus = () => { const a = document.activeElement; if (!a || a === document.body || root?.contains(a)) root?.focus(); };
+  const run = (name: string, arg?: unknown) => api.act(async () => { await api.run(name, arg); refocus(); await refresh(); refocus(); });
   const clock = (iso: string) => iso?.slice(11, 16);
   const dayName = (s: string) => new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)).toLocaleDateString(undefined, { weekday: "short" });
   const weekTotal = $derived(d ? d.week.reduce((s: number, w: any) => s + w.hours, 0) : 0);
