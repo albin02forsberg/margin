@@ -561,8 +561,11 @@ project (shown, or tracked this month): hours this week and this month, billable
 its share of the week, **Track** to start the clock on it, and its open tasks, which are
 the tasks whose org category is the project's name (a file's category is its name, so
 `acme.org` holds Acme's tasks; `#+CATEGORY:` overrides it). Below the cards it lists every project
-with its export code, billable-hour rounding, round-up and whether it's offered
-when you start tracking; change any of them and press Save (or Enter) on that row.
+with its export code, billable-hour rounding, round-up, an optional hour budget a
+week or a month, and whether it's offered when you start tracking; change any of them
+and press Save (or Enter) on that row. A project with a budget shows "12.5 / 20 h this
+month" and a bar on its cards (here and in the Time view), which turns the warning
+colour once it's over.
 Below it, Time off sets each kind's export code (kept in `leave.toml`, apart from
 the projects, so time off is never offered when you start tracking; no code means
 the kind's name is exported).

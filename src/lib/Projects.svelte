@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { cards, merge, ROUNDINGS, toProject, type Card, type Project, type Row, type Task, type Tracked } from "$lib/projects";
   import { hm } from "$lib/clock";
+  import BudgetBar from "$lib/BudgetBar.svelte";
   import type { TimeApi } from "$lib/Time.svelte";
 
   /** Project cards (this week's and month's hours, open tasks, Track), then every project's settings at once, saved per
@@ -10,6 +11,7 @@
   const act = (f: () => unknown) => api.act(f);
   let rows = $state<Row[]>([]);
   let list = $state<Card[]>([]);
+  let saved = $state<Record<string, Project>>({}); // projects.toml as last loaded, for the cards' budgets
   let running = $state<string | null>(null); // the project being tracked ("Other" for none), null when not tracking
   let off = $state<{ kind: string; code: string; dirty: boolean }[]>([]);
   let error = $state("");
@@ -18,6 +20,7 @@
     try {
       const projects = await invoke<Record<string, Project>>("tc_projects");
       rows = merge(rows, projects);
+      saved = projects;
       const d = await invoke<{ projects: Tracked[]; project: string | null }>("tc_dashboard");
       list = cards(projects, d.projects, await invoke<Task[]>("todos"));
       running = d.project == null ? null : d.project || "Other";
@@ -36,6 +39,7 @@
   const save = (r: Row) => act(async () => {
     await invoke("tc_save_project", { name: r.name, project: toProject(r) });
     r.dirty = false;
+    await load(); // the card's budget line
   });
   const saveOff = (o: { kind: string; code: string; dirty: boolean }) => act(async () => {
     await invoke("tc_save_leave_code", { kind: o.kind, code: o.code });
@@ -59,6 +63,7 @@
           <strong class="big">{hm(c.worked)}</strong>
           <small>this week · {hm(c.month)} this month · {c.billable.toFixed(2)} h billable</small>
           <div class="progress" title="Share of this week's tracked time"><i style:width="{c.share * 100}%"></i></div>
+          <BudgetBar project={saved[c.project]} worked={c.worked} month={c.month} />
           <div class="foot">
             <small>{c.tasks.length} open task{c.tasks.length === 1 ? "" : "s"}</small>
             {#if c.tasks.length}<button class="link" onclick={() => run("open", { path: c.tasks[0].path })}>{base(c.tasks[0].path)}</button>{/if}
@@ -83,7 +88,7 @@
     <p class="dim">No projects yet: they're added the first time you track time on one.</p>
   {:else}
     <div class="card form"><table>
-      <thead><tr><th>Project</th><th>Export code</th><th>Round billable hours to</th><th>Always round up</th><th>Show in project list</th><th></th></tr></thead>
+      <thead><tr><th>Project</th><th>Export code</th><th>Round billable hours to</th><th>Always round up</th><th>Budget (hours)</th><th>Show in project list</th><th></th></tr></thead>
       <tbody>
         {#each rows as r, i (r.name)}
           <tr class:inactive={!r.active}>
@@ -95,13 +100,19 @@
               </select>
             </td>
             <td><input form="p{i}" type="checkbox" aria-label="Always round up {r.name}" bind:checked={r.up} disabled={!r.rounding} onchange={() => (r.dirty = true)} /></td>
+            <td class="budget">
+              <input form="p{i}" type="number" min="0" step="0.5" aria-label="Budget hours for {r.name}" placeholder="none" bind:value={r.budget} oninput={() => (r.dirty = true)} />
+              <select form="p{i}" aria-label="Budget period for {r.name}" bind:value={r.period} onchange={() => (r.dirty = true)}>
+                <option value="week">a week</option><option value="month">a month</option>
+              </select>
+            </td>
             <td><input form="p{i}" type="checkbox" aria-label="Show {r.name} in the project list" bind:checked={r.active} onchange={() => (r.dirty = true)} /></td>
             <td><button form="p{i}" type="submit" disabled={!r.dirty}>Save</button></td>
           </tr>
         {/each}
       </tbody>
     </table></div>
-    <p class="dim">Enter in an export code saves its row. Hidden projects keep their time; they just aren't offered when you start tracking.</p>
+    <p class="dim">Enter in an export code saves its row. A budget shows how much of it is used on the project's card. Hidden projects keep their time; they just aren't offered when you start tracking.</p>
   {/if}
   {#if !error}
     <h2>Time off</h2>
@@ -133,6 +144,8 @@
   th { color: var(--dim); font-weight: 500; font-size: var(--fs-sm); }
   form { margin: 0; }
   input:not([type]), select { background: var(--canvas); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s1) var(--s2); font: var(--fs-md) var(--sans); }
+  .budget { white-space: nowrap; }
+  input[type="number"] { width: 5.5em; background: var(--canvas); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s1) var(--s2); font: var(--fs-md) var(--mono); }
   input:not([type]) { width: 100%; box-sizing: border-box; font-family: var(--mono); }
   button { background: var(--accent); border: 1px solid var(--accent); color: var(--bg); border-radius: var(--radius); padding: var(--s1) var(--s3); font: 600 var(--fs-md) var(--sans); cursor: pointer; }
   button:disabled { background: var(--canvas); border-color: var(--border); color: var(--dim); cursor: default; font-weight: 400; }

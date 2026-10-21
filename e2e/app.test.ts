@@ -200,12 +200,15 @@ describe("Margin", () => {
     await find(".projects .pcard h3", "Acme"); // a card per project, with its open tasks (category = file name)
     await find(".projects .pcard li", "Acme fixture task");
     await browser.$(`select[aria-label="Rounding for Acme"]`).selectByVisibleText("Quarter hour");
+    await browser.$(`input[aria-label="Budget hours for Acme"]`).click();
+    await type("20");
     await browser.$(`input[aria-label="Export code for Acme"]`).click();
     await browser.keys([Key.Ctrl, "a"]);
     await type("ACME-2");
     await browser.keys(Key.Enter); // saves the row
     const toml = join(data, "work", "projects.toml");
-    await fileMatches(toml, (s) => /export_code = "ACME-2"/.test(s) && /rounding = 0\.25/.test(s), "project settings not saved");
+    await fileMatches(toml, (s) => /export_code = "ACME-2"/.test(s) && /rounding = 0\.25/.test(s) && /budget_hours = 20/.test(s), "project settings not saved");
+    await find(".projects .pcard .budget", "/ 20 h this month"); // the card's budget line
     await (await browser.$(".tabs .tab.cur .x")).click();
     await palette("Time: project settings");
     await browser.waitUntil(async () => (await browser.$(`input[aria-label="Export code for Acme"]`).getValue()) === "ACME-2", { timeoutMsg: "reopened page doesn't show the saved code" });

@@ -1320,7 +1320,8 @@ fn dashboard(inp: DashIn) -> Value {
     let month = |p: &str| merged.iter().filter(|x| x.project == p && in_month(x.date)).map(|x| x.hours).sum::<f64>();
     let mut per_project: Vec<Value> = by
         .into_iter()
-        .map(|(p, (w, b))| json!({ "project": if p.is_empty() { "Other".to_string() } else { p.clone() }, "code": timeclock::export_code(&p, projects), "worked": w, "billable": b, "month": month(&p) }))
+        .map(|(p, (w, b))| json!({ "project": if p.is_empty() { "Other".to_string() } else { p.clone() }, "code": timeclock::export_code(&p, projects), "worked": w, "billable": b, "month": month(&p),
+            "budget_hours": projects.get(&p).and_then(|x| x.budget_hours), "budget_period": projects.get(&p).map_or("month", |x| x.budget_period.as_str()) }))
         .collect();
     per_project.sort_by(|a, b| b["worked"].as_f64().unwrap_or(0.0).total_cmp(&a["worked"].as_f64().unwrap_or(0.0)));
     let (flex_total, flex_week, _) = timeclock::flex(sessions, projects, &leave_only, cal, Some((monday, t)));
@@ -2408,7 +2409,7 @@ mod tests {
         // The frontend contract (Time.svelte).
         assert_eq!(keys(&v), ["backup_error", "flex_total", "flex_week", "leave", "leave_time", "on_break", "profile", "profiles", "project", "projects", "since", "task", "today", "today_hours", "week"]);
         assert_eq!(keys(&v["week"][0]), ["date", "expected", "hours", "leave", "leave_hours"]);
-        assert_eq!(keys(&v["projects"][0]), ["billable", "code", "month", "project", "worked"]);
+        assert_eq!(keys(&v["projects"][0]), ["billable", "budget_hours", "budget_period", "code", "month", "project", "worked"]);
         let day = |i: usize, k: &str| v["week"][i][k].clone();
         let dates: Vec<_> = (0..7).map(|i| day(i, "date")).collect();
         assert_eq!(dates, (5..=11).map(|n| json!(format!("2026-01-{n:02}"))).collect::<Vec<_>>());
