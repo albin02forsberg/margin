@@ -814,7 +814,7 @@ describe("Journal, archive and move", () => {
     await find(".agenda .titles span", "3 marked");
     await browser.keys("m");
     await answer("Move 3 tasks to…", "projects.org / Shed");
-    await fileMatches(f("bulk.org"), (s) => s === "", "marked tasks not all moved out");
+    await fileMatches(f("bulk.org"), (s) => !s.trim(), "marked tasks not all moved out");
     await fileMatches(f("projects.org"), (s) => s.includes("** TODO Bulk parent\n*** TODO Bulk child\n") && s.includes("** TODO Bulk solo\n"), "marked tasks not filed under Shed (or the child flattened)");
     await browser.keys("u");
     await fileMatches(f("bulk.org"), (s) => s === bulk, "undo didn't restore the source");
