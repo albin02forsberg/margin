@@ -115,24 +115,12 @@ export async function find(css: string, text: string) {
 }
 
 /** State dump for a failed wait: the focused element, the open picker, the clock and the message line. */
-export async function diag() {
+async function diag() {
   return browser.execute(() => {
     const a = document.activeElement, desc = (e: Element | null) => e && `${e.tagName.toLowerCase()}${e.className && typeof e.className === "string" ? "." + e.className.trim().split(/\s+/).join(".") : ""}`;
     const chain = []; for (let e: Element | null = a; e && e !== document.body; e = e.parentElement) chain.push(desc(e));
-    return `focus: ${chain.join(" < ") || desc(a)}; picker: ${document.querySelector(".picker label span")?.textContent ?? "none"}; now: ${new Date().toString()}; msg: ${document.querySelector(".status .msg")?.textContent ?? ""}` +
-      ((window as any).__focusLog ? `\nfocus moves:\n${(window as any).__focusLog.slice(-40).join("\n")}` : "");
+    return `focus: ${chain.join(" < ") || desc(a)}; picker: ${document.querySelector(".picker label span")?.textContent ?? "none"}; now: ${new Date().toString()}; msg: ${document.querySelector(".status .msg")?.textContent ?? ""}`;
   }).catch((e) => `diag failed: ${e}`);
-}
-
-/** TEMP (#623): log focus moves so a failed wait can show who took focus. */
-export async function trackFocus() {
-  await browser.execute(() => {
-    if ((window as any).__focusLog) return;
-    const log: string[] = ((window as any).__focusLog = []);
-    const desc = (e: EventTarget | null) => (e instanceof Element ? `${e.tagName.toLowerCase()}.${String(e.className).trim().split(/\s+/).join(".")}` : String(e));
-    for (const t of ["focusin", "focusout"]) document.addEventListener(t, (e) => log.push(`${performance.now() | 0} ${t} ${desc(e.target)} rel=${desc((e as FocusEvent).relatedTarget)}`), true);
-    document.addEventListener("keydown", (e) => log.push(`${performance.now() | 0} keydown ${e.key} on ${desc(e.target)}`), true);
-  });
 }
 
 /** Wait for a saved view named NAME in the top bar, shown or folded into More (a narrow window folds them). */
