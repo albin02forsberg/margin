@@ -1678,7 +1678,13 @@ fn week_range(picked: Option<NaiveDate>, today: NaiveDate) -> (NaiveDate, NaiveD
     }
 }
 
-/// Org-formatted report text. KIND: daily | weekly | holidays | flex | doctor | backup.
+/// Inclusive range of the month report: the calendar month containing PICKED, else the one containing TODAY.
+fn month_range(picked: Option<NaiveDate>, today: NaiveDate) -> (NaiveDate, NaiveDate) {
+    let first = picked.unwrap_or(today).with_day(1).unwrap();
+    (first, first.checked_add_months(chrono::Months::new(1)).unwrap() - Duration::days(1))
+}
+
+/// Org-formatted report text. KIND: daily | weekly | monthly | holidays | flex | doctor | backup.
 #[tauri::command]
 fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<String> {
     let tc = s.tc();
@@ -1689,6 +1695,10 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
         "daily" => timeclock::daily_report(&tc.sessions(), &tc.projects(), (&leave, &codes), &tc.cal, date(date_input.as_deref().unwrap_or(""))?, &profile),
         "weekly" => {
             let (from, to) = week_range(date_input.as_deref().filter(|d| !d.trim().is_empty()).map(date).transpose()?, today());
+            timeclock::weekly_report(&tc.sessions(), &tc.projects(), (&leave, &codes), &tc.cal, from, to, &profile)
+        }
+        "monthly" => {
+            let (from, to) = month_range(date_input.as_deref().filter(|d| !d.trim().is_empty()).map(date).transpose()?, today());
             timeclock::weekly_report(&tc.sessions(), &tc.projects(), (&leave, &codes), &tc.cal, from, to, &profile)
         }
         "holidays" => timeclock::holidays_report(date(date_input.as_deref().unwrap_or(""))?.format("%Y").to_string().parse().unwrap(), &tc.cal),
@@ -1990,6 +2000,14 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn month_range_covers_calendar_month() {
+        let d = |y, m, dd| NaiveDate::from_ymd_opt(y, m, dd).unwrap();
+        assert_eq!(month_range(Some(d(2024, 2, 10)), d(2024, 3, 5)), (d(2024, 2, 1), d(2024, 2, 29))); // leap Feb
+        assert_eq!(month_range(Some(d(2025, 12, 31)), d(2026, 1, 1)), (d(2025, 12, 1), d(2025, 12, 31))); // Dec rollover
+        assert_eq!(month_range(None, d(2026, 10, 21)), (d(2026, 10, 1), d(2026, 10, 31)));
+    }
 
     #[test]
     fn week_range_is_seven_inclusive_days() {
