@@ -976,6 +976,28 @@ pub fn refile(src: &str, line: usize, dst: &str, dst_line: Option<usize>) -> Res
     Ok((join(s, src), join_nl(d)))
 }
 
+/// Cut the subtrees at LINES (none nested) out of S, returned in source order.
+fn take_many(s: &mut Vec<String>, lines: &[usize]) -> Result<Vec<Vec<String>>, String> {
+    let mut ls = lines.to_vec();
+    ls.sort_unstable_by(|a, b| b.cmp(a));
+    ls.dedup();
+    let mut subs = ls.iter().map(|&l| take_subtree(s, l)).collect::<Result<Vec<_>, _>>()?;
+    subs.reverse();
+    Ok(subs)
+}
+
+/// `refile` for several subtrees of SRC (not nested), kept in source order under DST_LINE.
+pub fn refile_many(src: &str, lines: &[usize], dst: &str, dst_line: Option<usize>) -> Result<(String, String), String> {
+    let mut s = to_lines(src);
+    let subs = take_many(&mut s, lines)?;
+    let mut d = to_lines(dst);
+    check_target(&d, dst_line)?;
+    for sub in subs {
+        insert_subtree(&mut d, dst_line, sub);
+    }
+    Ok((join(s, src), join_nl(d)))
+}
+
 /// Refile within one file.
 pub fn refile_same(text: &str, line: usize, dst_line: Option<usize>) -> Result<String, String> {
     let mut l = to_lines(text);
@@ -1261,6 +1283,13 @@ pub fn archive(src: &str, line: usize, dst: &str, src_path: &str, now: chrono::N
     let mut s = to_lines(src);
     let sub = take_subtree(&mut s, line)?;
     Ok((join(s, src), append_archived(dst, src_path, now, vec![sub])))
+}
+
+/// `archive` for several subtrees of SRC (not nested), appended in source order.
+pub fn archive_many(src: &str, lines: &[usize], dst: &str, src_path: &str, now: chrono::NaiveDateTime) -> Result<(String, String), String> {
+    let mut s = to_lines(src);
+    let subs = take_many(&mut s, lines)?;
+    Ok((join(s, src), append_archived(dst, src_path, now, subs)))
 }
 
 /// Archive every top-most done subtree of SRC (not repeaters or `:ARCHIVE:` subtrees),
@@ -2025,6 +2054,32 @@ mod tests {
         assert_eq!(a, format!("* earlier\n* DONE A\n{p}** TODO A1\n* DONE B1\n{p}note\n** DONE B1a\n* CANCELLED E\n{p}"));
         assert_eq!(archive_done("* TODO a\n", "", "/n/x.org", now, &kw), ("* TODO a\n".into(), "".into(), 0));
         assert!(archive_done("* DONE a\n", "", "/n/x.org", now, &kw).1.starts_with("#    -*- mode: org -*-\n\n\nArchived entries from file /n/x.org\n\n* DONE a\n"));
+    }
+
+    #[test]
+    fn many_keep_source_order() {
+        let now = chrono::NaiveDateTime::parse_from_str("2026-10-02 14:30", "%Y-%m-%d %H:%M").unwrap();
+        let src = "* A
+* X
+* B
+** B1
+* C
+";
+        let (s, d) = refile_many(src, &[4, 0, 2], "* T
+", Some(0)).unwrap();
+        assert_eq!((s.as_str(), d.as_str()), ("* X
+", "* T
+** A
+** B
+*** B1
+** C
+"));
+        let (s, a) = archive_many(src, &[4, 0, 2], "", "/n/x.org", now).unwrap();
+        assert_eq!(s, "* X
+");
+        let heads: Vec<&str> = a.lines().filter(|l| l.starts_with('*')).collect();
+        assert_eq!(heads, ["* A", "* B", "** B1", "* C"]);
+        assert!(refile_many("text\n", &[0], "", None).is_err());
     }
 
     #[test]
