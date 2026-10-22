@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Coordinate parallel work on the Margin repo — pick approved GitHub issues, run implementer agents in worktrees (default 4 at a time), shepherd open PRs to a merge, file follow-ups, clean up, report. Use when the owner says "ship", "work through the issues", "continue with the roadmap", or invokes /ship.
+description: Coordinate parallel work on the Margin repo — pick approved GitHub issues, run implementer agents in worktrees (default 3 at a time), shepherd open PRs to a merge, file follow-ups, clean up, report. Use when the owner says "ship", "work through the issues", "continue with the roadmap", or invokes /ship.
 argument-hint: "[issue numbers…] [--max N] [--all-ready]"
 disable-model-invocation: true
 ---
@@ -27,7 +27,7 @@ gh pr list -R albin02forsberg/margin --state open --json number,title,headRefNam
 - **Stale worktrees:** `git worktree list --porcelain`. Remove (as in step 4) each one under `.claude/worktrees/` that is not `locked` (running agents' worktrees are), whose branch has a merged PR (`gh pr list -R albin02forsberg/margin --state merged --head <branch>`) or is gone on origin with a clean `git -C <path> status --porcelain`. Never the main checkout; `--force` deletes uncommitted work.
 
 ## 2. Dispatch
-Run at most `--max` agents at once (default 4) with `isolation: "worktree"` and `run_in_background: true`.
+Run at most `--max` agents at once (default 3) with `isolation: "worktree"` and `run_in_background: true`.
 - **One agent per issue.** Prompt: `Implement issue #<n>.` plus anything specific — scope limits, the order of multi-part work, known conflicts with other running agents ("another agent is editing activity.rs — keep edits localized, expect to rebase").
 - **Issues touching the same files:** run them in sequence, not in parallel. For example, chain them in one agent ("#66, then #63, as two PRs").
 - **When an agent finishes,** start the next one from the queue.
@@ -52,7 +52,7 @@ Keep it short: what merged (PR links), what's still running, what wasn't verifie
 
 ## Rules
 - **Never:** cut a release yourself (only the `releaser` agent does, through `/autopilot`'s release gate; `/release` stays the owner's manual path), change repo settings or secrets, accept terms or create accounts, force-push `main`, or close issues by hand. Secrets, signing keys and repo settings are never covered by any approval route, and issues that change the release machinery itself still need the owner's `approved`. Issues close via `Closes #n`, or by the triager (duplicates, already-done work, or when the owner `albin02forsberg` explicitly says to close them in his own issue text or comment).
-- **Models:** defaults live in agent frontmatter: `reviewer`, `scout`, `ideator` and `implementer` on `opus`; `triager` and `pr-shepherd` on `sonnet`. Override per spawn with the Agent tool's `model`:
+- **Models:** defaults live in agent frontmatter: `reviewer`, `scout` and `implementer` on `opus`; `triager`, `pr-shepherd` and `ideator` on `sonnet`. Override per spawn with the Agent tool's `model`:
   - `implementer`: pass `model: "sonnet"` only when the plan's `**Size:**` line is exactly `S`. Ranges (`S–M`), M, L or no Size line keep `opus`.
   - `pr-shepherd`: if one comes back with CI still failing after two fix attempts, stop it and re-spawn it with `model: "opus"`.
   - `haiku` only for pure idle polling that needs no judgement (e.g. a sleep/wait helper), never for planning, reviewing or code.

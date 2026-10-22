@@ -54,7 +54,7 @@ filter='. as $l | (try ($l|fromjson) catch {type:"raw",line:$l}) as $e
 while [ ! -e "$dir/STOP" ]; do
   out=$(mktemp "$dir/out.XXXXXX")
   echo "[$(date '+%F %T')] starting: /autopilot $args" >> "$log"
-  caffeinate -i "$claude_bin" -p "/autopilot $args" --permission-mode auto \
+  caffeinate -i "$claude_bin" -p "/autopilot $args" --model "${AUTOPILOT_MODEL:-sonnet}" --permission-mode auto \
     --output-format stream-json --verbose 2>&1 | tee "$out" | jq -R --unbuffered -r "$filter" | tee -a "$log"
   code=${PIPESTATUS[0]}
   echo "[$(date '+%F %T')] exited $code" | tee -a "$log"
