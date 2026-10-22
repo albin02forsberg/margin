@@ -148,7 +148,11 @@ while [ ! -e "$dir/STOP" ]; do
   elapsed=$(( $(date +%s) - started_at ))
   say "exited $code after ${elapsed}s"
 
-  tailout=$(cat "$tailf" 2>/dev/null)
+  # Only the final result line and plain (non-JSON) errors can announce a limit. Assistant/user/rate_limit
+  # events are skipped: they hold agents' own text and "resetsAt", which must not look like a limit message.
+  tailflt="$dir/tail.filtered"
+  grep -vE '^\{"type":"(assistant|user|system|rate_limit_event|stream_event)"' "$tailf" > "$tailflt" 2>/dev/null
+  tailout=$(cat "$tailflt" 2>/dev/null)
   # limit info from this run only
   info=$(jq -c --argjson s $((started_at * 1000)) 'select(.ts >= $s)' "$limits" 2>/dev/null)
   status=$(jq -r '.status // empty' <<<"$info" 2>/dev/null); rtype=$(jq -r '.rateLimitType // empty' <<<"$info" 2>/dev/null)
@@ -159,8 +163,8 @@ while [ ! -e "$dir/STOP" ]; do
   elif [ -e "$stalled" ]; then
     wait=30; why="run stalled for ${stall}s, restarted"; say "watchdog: no events for ${stall}s, killed the run"
     notify "run stalled" "No activity for $((stall / 60)) min. Restarted."
-  elif [ "$status" = "rejected" ] || grep -qiE 'usage limit|rate limit|session limit|limit reached|resets' <<<"$tailout"; then
-    if [ -n "$rat" ] && [ "$rat" -gt "$now" ] 2>/dev/null; then wait=$((rat - now + 120)); else wait=$(reset_wait "$tailf"); wait=${wait:-1800}; fi
+  elif [ "$status" = "rejected" ] || grep -qiE 'usage limit|rate limit|session limit|limit reached|resets (at |in )?[0-9]' <<<"$tailout"; then
+    if [ -n "$rat" ] && [ "$rat" -gt "$now" ] 2>/dev/null; then wait=$((rat - now + 120)); else wait=$(reset_wait "$tailflt"); wait=${wait:-1800}; fi
     maxwait=21600; case "$rtype" in seven_day*) maxwait=$((8 * 86400));; esac
     [ "$wait" -gt "$maxwait" ] && wait=1800
     why="usage limit (${rtype:-unknown window})"
