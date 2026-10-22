@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { markKey, orderForEdit, reresolve, outermost, tagChange } from "./bulk.ts";
+import { marked, markKey, orderForEdit, reresolve, outermost, tagChange } from "./bulk.ts";
 
 test("bulk order: grouped by file, bottom line first; input untouched", () => {
   const xs = [{ path: "/b.org", line: 2 }, { path: "/a.org", line: 1 }, { path: "/b.org", line: 9 }, { path: "/a.org", line: 7 }];
@@ -36,4 +36,13 @@ test("bulk marks follow their task across a refresh (#649)", () => {
   const two = new Map([["/a.org:5", mk("/a.org", 5, "T")], ["/a.org:9", mk("/a.org", 9, "T")]]);
   const r = reresolve(two, [mk("/a.org", 3, "T"), mk("/a.org", 8, "T"), mk("/a.org", 20, "T")]);
   assert.deepEqual([...r.keys()].sort(), ["/a.org:3", "/a.org:8"]);
+});
+
+test("bulk marks hidden by a filter still count and survive a refresh (#655)", () => {
+  const mk = (path: string, line: number, title: string) => ({ path, line, title });
+  const all = [mk("/a.org", 1, "A"), mk("/a.org", 2, "B"), mk("/a.org", 2, "B")];
+  const marks = new Map([["/a.org:1", mk("/a.org", 1, "A")], ["/a.org:2", mk("/a.org", 2, "B")]]);
+  assert.deepEqual(marked(marks, all).map(markKey), ["/a.org:1", "/a.org:2"]);
+  assert.deepEqual([...reresolve(marks, all).keys()], ["/a.org:1", "/a.org:2"]);
+  assert.deepEqual(marked(new Map(), all), []);
 });
