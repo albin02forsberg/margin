@@ -16,14 +16,20 @@ const limitsFile = process.env.AUTOPILOT_LIMITS;
 const MAX = Number(process.env.AUTOPILOT_MAX) || 3;
 const CTX = Number(process.env.AUTOPILOT_CONTEXT) || 200000;
 const REPO = process.env.AUTOPILOT_REPO || "albin02forsberg/margin";
+const HEARTBEAT = process.env.AUTOPILOT_HEARTBEAT;   // touched on every event; the runner's stall watchdog reads it
+const TAIL = process.env.AUTOPILOT_TAIL;             // last raw lines, written at the end (limit/auth detection)
+const ROTATE = process.env.AUTOPILOT_ROTATE;         // marker written when the run is ended for context rotation
+const SESSION = process.env.AUTOPILOT_SESSION;       // session id of the claude process, to stop it
 const sgr = (n) => (s) => (tty ? `\x1b[${n}m${s}\x1b[0m` : s);
 const [bold, dim, red, green, yellow, cyan] = [1, 2, 31, 32, 33, 36].map(sgr);
 
 const started = Date.now();
 const st = {
   tools: 0, agents: 0, issues: 0, prs: 0, merges: 0, commits: 0, model: "", now: "starting…", recent: [],
-  ctx: 0, compactions: 0, limits: null, up: null,
+  ctx: 0, compactions: 0, limits: null, up: null, rotating: false,
 };
+const rawTail = [];
+let lastBeat = 0;
 const agents = new Map(); // Agent tool_use id -> { name, born, seen, last }
 
 const clock = (t = Date.now()) => new Date(t).toTimeString().slice(0, 8);
@@ -104,11 +110,12 @@ const gh = (args) => new Promise((res, rej) => execFile("gh", args, { maxBuffer:
 const THREE_H = 3 * 3600e3;
 async function pollUp() {
   try {
-    const [iss, prs] = await Promise.all([
+    const [iss, prs, runsJson] = await Promise.all([
       gh(["issue", "list", "-R", REPO, "--state", "open", "--limit", "80", "--json", "number,title,labels,assignees,comments,updatedAt"]),
       gh(["pr", "list", "-R", REPO, "--state", "open", "--json", "number,title,isDraft,statusCheckRollup"]),
+      gh(["run", "list", "-R", REPO, "--branch", "main", "--workflow", "ci.yml", "--limit", "6", "--json", "status,conclusion"]),
     ]);
-    const issues = JSON.parse(iss), pulls = JSON.parse(prs);
+    const issues = JSON.parse(iss), pulls = JSON.parse(prs), runs = JSON.parse(runsJson);
     const lab = (i) => i.labels.map((l) => l.name);
     const logs = /^(Scout|Release|Ideator) log$/;
     const work = issues.filter((i) => !logs.test(i.title));
@@ -123,6 +130,10 @@ async function pollUp() {
       inProgress: live.filter((i) => i.assignees.length).length,
       unplanned: live.filter((i) => !hasC(i, "## Plan") && !i.assignees.length).length,
       decisions: live.filter((i) => lab(i).includes("needs-decision")).length,
+      mainCi: (() => {
+        const done = runs.filter((r) => r.status === "completed").slice(0, 3).map((r) => r.conclusion);
+        return done.length === 3 && done.every((c) => c === "failure") ? "red" : done[0] === "failure" ? "failing" : "green";
+      })(),
       prs: pulls.map((p) => {
         const c = (p.statusCheckRollup ?? []).map((x) => x.conclusion || x.status);
         return { n: p.number, ci: c.some((x) => /FAIL|ERROR|CANCEL/i.test(x)) ? "failing" : c.length && c.every((x) => /SUCCESS|NEUTRAL|SKIPPED|COMPLETED/i.test(x)) ? "green" : "pending" };
@@ -187,6 +198,7 @@ function render() {
     for (const i of u.ready.slice(0, Math.min(3, free || 1))) L.push(`   ${cyan("▸")} #${i.number} ${dim(cut(i.title, w - 14))}`);
     L.push(`   ${bold(u.unplanned)} to triage · ${u.decisions} awaiting a decision · PRs: ${u.prs.length ? u.prs.map((p) => `#${p.n} ${p.ci === "green" ? green("green") : p.ci === "failing" ? red("failing") : yellow("pending")}`).join(", ") : dim("none open")}`);
     const full = u.ready.length >= 2 * MAX;
+    L.push(`   main CI ${u.mainCi === "green" ? green("green") : u.mainCi === "failing" ? yellow("last run failed") : red(bold("RED, 3 failures in a row"))}`);
     L.push(`   scout ${dim(due(u.scoutAt, now))} · ideator ${full ? dim(`idle, queue ≥ ${2 * MAX}`) : dim(due(u.ideatorAt, now))} · triager ${dim("watching")}`);
   }
 
@@ -203,8 +215,24 @@ function render() {
   process.stdout.write("\x1b[H\x1b[J" + L.join("\n"));
 }
 
+// End the run for a fresh coordinator context. Soft: ≥70% while no agent is busy. Hard: ≥90%.
+// Everything is in GitHub/git, so the next run adopts unfinished work.
+function checkRotate() {
+  if (st.rotating || !SESSION || !st.ctx || Date.now() - started < (Number(process.env.AUTOPILOT_ROTATE_AFTER) || 300) * 1e3) return;
+  const f = st.ctx / CTX;
+  const busy = [...agents.values()].some((a) => Date.now() - a.seen < 60e3);
+  if (f < 0.9 && !(f >= 0.7 && !busy)) return;
+  st.rotating = true;
+  st.now = `rotating: coordinator context at ${Math.round(f * 100)}%, restarting with a fresh one`;
+  note(st.now, null, "done");
+  if (ROTATE) { try { writeFileSync(ROTATE, String(Date.now())); } catch {} }
+  // pkill never signals its own parent (us), so exit ourselves once claude is stopped
+  execFile("pkill", ["-f", "--", SESSION], () => { writeTail(); process.exit(143); });
+}
+
 pollUp();
 setInterval(pollUp, 60e3).unref();
+setInterval(checkRotate, 10e3).unref();
 if (tty) {
   process.stdout.write("\x1b[?1049h\x1b[?25l"); // alternate screen, hide cursor
   const leave = () => process.stdout.write("\x1b[?25h\x1b[?1049l");
@@ -215,11 +243,18 @@ if (tty) {
 
 const rl = createInterface({ input: process.stdin });
 rl.on("line", (l) => {
+  rawTail.push(l.slice(0, 500));
+  if (rawTail.length > 20) rawTail.shift();
+  if (HEARTBEAT && Date.now() - lastBeat > 5e3) { lastBeat = Date.now(); try { writeFileSync(HEARTBEAT, ""); } catch {} }
   try { onEvent(JSON.parse(l)); }
   catch { note(l, null, "raw"); }
   if (tty) render();
 });
+const writeTail = () => { if (TAIL) { try { writeFileSync(TAIL, rawTail.join("\n") + "\n"); } catch {} } };
+// The runner/rotation stop the run with `pkill -f <session>`; the session id is also our argv[2], so we get SIGTERM too.
+process.on("SIGTERM", () => { writeTail(); process.exit(143); });
 rl.on("close", () => {
+  writeTail();
   if (tty) render();
   const sum = `run ended after ${dur(Date.now() - started)}: ${st.issues} issues, ${st.prs} PRs opened, ${st.merges} merged, ${st.tools} tool calls`;
   process.on("exit", () => console.log(`\n${sum}`));
