@@ -727,7 +727,7 @@ describe("Journal, archive and move", () => {
       files: ({ notes }) => {
         mkdirSync(join(notes, "daily"));
         writeFileSync(join(notes, "daily", "2020-01-01.org"), "#+title: 2020-01-01\n\n* First day\n");
-        writeFileSync(join(notes, "daily", "2020-01-02.org"), "#+title: 2020-01-02\n\n* Second day\n");
+        writeFileSync(join(notes, "daily", "2020-01-02.org"), "#+title: 2020-01-02\n\n* Second day\n- [X] fed cat\n- [ ] call bank\n** TODO Carry me\nbody\n");
         writeFileSync(join(notes, "chores.org"), chores);
         writeFileSync(join(notes, "bulk.org"), bulk);
         writeFileSync(join(notes, "projects.org"), projects);
@@ -756,6 +756,19 @@ describe("Journal, archive and move", () => {
     }
     await leader("n]");
     await find(".status .msg", "No later journal entry");
+  });
+
+  it("Space n k moves the previous entry's open items into today's, Space n u puts them back", async () => {
+    const prev = f(join("daily", "2020-01-02.org")), file = f(join("daily", `${isoDay(new Date())}.org`)), before = read(prev);
+    await leader("nk");
+    await find(".status .msg", "Carried over 2 items from 2020-01-02");
+    await fileMatches(file, (s) => s.includes("\n* Carried over from 2020-01-02\n- [ ] call bank\n** TODO Carry me\nbody\n"), "open items not in today's entry");
+    await fileMatches(prev, (s) => s === "#+title: 2020-01-02\n\n* Second day\n- [X] fed cat\n", "open items not removed from the old entry");
+    await leader("nk");
+    await find(".status .msg", "Nothing open in the 2020-01-02 entry");
+    await leader("nu");
+    await fileMatches(prev, (s) => s === before, "undo didn't restore the old entry");
+    await fileMatches(file, (s) => !s.includes("Carried over"), "undo didn't restore today's entry");
   });
 
   it("Space n J opens the journal for a chosen past date, creating it with a title", async () => {
