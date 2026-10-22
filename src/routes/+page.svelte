@@ -14,6 +14,7 @@
   import * as ed from "$lib/editor";
   import { linkFor, asUrl } from "$lib/weblink";
   import { findTarget, linkHeadings, retitlePlan, splitTarget } from "$lib/links";
+  import { carryEntry, extractOpen } from "$lib/carryover";
   import { ago, changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
@@ -1428,6 +1429,21 @@
     flash("Added to today's journal.");
   }
 
+  /** Move the previous entry's open checkboxes and TODO subtrees into today's journal (one undo step). */
+  async function journalCarryOver() {
+    const t = new Date(), today = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+    const prev = journalNeighbour(await call<string[]>("list_files"), cfg.config.daily_dir, today, -1);
+    if (!prev) return flash("No earlier journal entry");
+    const date = base(prev).slice(0, 10), k = kw(), { items } = extractOpen(await textOf(prev), k.todo, k.done);
+    if (!items.length) return flash(`Nothing open in the ${date} entry`);
+    await recorded(async () => {
+      const path: string = await call("capture_path", { file: journalFile(), journal: true });
+      await toFile(path, (text) => call("capture_insert", { text, heading: null, entry: carryEntry(date, items) }));
+      await toFile(prev, async (text) => extractOpen(text, k.todo, k.done).kept);
+    });
+    flash(`Carried over ${items.length} item${items.length === 1 ? "" : "s"} from ${date}`);
+  }
+
   /** Show PROMPT exactly; on YES, the local model's draft for it (null on NO or an error, which flashes). */
   async function aiDraft(prompt: string, yes: string, no: string, oneLine: boolean): Promise<string | null> {
     const model = cfg.config.ai_model;
@@ -2011,6 +2027,7 @@
     { label: "Journal: on this day…", leader: "n t", run: journalOnThisDay },
     { label: "Journal: previous entry", leader: "n [", run: () => journalStep(-1) },
     { label: "Journal: next entry", leader: "n ]", run: () => journalStep(1) },
+    { label: "Journal: carry over open items from the previous entry", leader: "n k", run: () => act(journalCarryOver) },
     { label: "Add a line to today's journal", leader: "n e", run: journalEntry },
     { label: "Journal: draft summary of today (local model)", leader: "n s", run: draftSummary },
     { label: "Insert link to a note…", keys: ["Ctrl+L"], leader: "n i", ctx: "editor", run: insertLink },

@@ -14,7 +14,10 @@ the editor has vim keys.
   step to the previous / next existing entry, `Space n t` lists
   entries from this day in earlier years and months. Set a `journal_template`
   (Settings) to give each new entry a skeleton, e.g. `* Plan`; `%t` expands
-  to that day's date (prompts and `%?` are ignored).
+  to that day's date (prompts and `%?` are ignored). `Space n k` carries
+  over the previous entry's open items: unchecked `- [ ]` items and TODO
+  subtrees (not done or `:ARCHIVE:`) move under `* Carried over from <date>`
+  in today's entry; `Space n u` puts them back.
 - **Time** — a timeclock with breaks, projects, flex balance and reports, in
   the window or the tray.
 - **Window title** shows the active tab (`• note — Margin` when unsaved), so
