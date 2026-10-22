@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Coordinate parallel work on the Margin repo — pick approved GitHub issues, run implementer agents in worktrees (default 3 at a time), shepherd open PRs to a merge, file follow-ups, clean up, report. Use when the owner says "ship", "work through the issues", "continue with the roadmap", or invokes /ship.
+description: Coordinate parallel work on the Margin repo — pick approved GitHub issues, run implementer agents in worktrees (default 4 at a time), shepherd open PRs to a merge, file follow-ups, clean up, report. Use when the owner says "ship", "work through the issues", "continue with the roadmap", or invokes /ship.
 argument-hint: "[issue numbers…] [--max N] [--all-ready]"
 disable-model-invocation: true
 ---
@@ -15,17 +15,19 @@ gh pr list -R albin02forsberg/margin --state open --json number,title,headRefNam
 ```
 - **Work queue:**
   - If issue numbers were passed, use those.
+  - Autonomous mode: the owner does not gate work. The owner's veto is the `hold` label or an overruling comment.
   - Otherwise use issues labelled `approved` without `needs-decision`.
-  - Also use issues the triager and reviewer agreed are ready: a comment starting `🤖 *Claude:* **triager + reviewer agree: ready**` (older ones say `small and clear` and imply size S) that names both agents, states the size and says why it is clear. Check that the comment really names both, the size is S or M (never L) and a reason is given; `needs-decision` still blocks. Issues from `scout` and `ideator` take this route like any other.
-  - **Owner-written issues** (body does not start with `🤖 *Claude:*`) never take the ready route or `--all-ready`: they need the `approved` label, an explicit approving comment by `albin02forsberg` after the plan ("go ahead", "approved", "start implement"), or being named in the arguments.
-  - With `--all-ready`, also take agent-filed issues that have a `## Plan` comment and no `needs-decision`.
-  - Never build an issue outside these routes.
+  - Also use *ready* issues, owner-written ones included: a comment starting `🤖 *Claude:* **triager + reviewer agree: ready**` (older ones say `small and clear` and imply size S) that names both agents, states the size and says why it is clear. Check that the comment really names both, the size is S or M (never L) and a reason is given. Issues from `scout` and `ideator` take this route like any other.
+  - `needs-decision` is resolved by the triager's decider step (a `**Decision (autonomous):**` comment, label removed); an issue still carrying the label is skipped.
+  - Size L and `epic` issues are never built directly: the triager splits them into S/M children, which enter the queue.
+  - With `--all-ready`, also take any issue that has a `## Plan` comment and no `needs-decision`.
+  - Never take issues or PRs labelled `hold`, or anything touching releases, signing/updater keys, secrets, repo settings/CI permissions, or user-file format changes without a migration + backup. Never build an issue outside these routes.
 - **Open PRs** with no agent working on them → queue a `pr-shepherd` for each.
 - Approved issues with no `## Plan` → run a `triager` pass on just those first.
 - **Stale worktrees:** `git worktree list --porcelain`. Remove (as in step 4) each one under `.claude/worktrees/` that is not `locked` (running agents' worktrees are), whose branch has a merged PR (`gh pr list -R albin02forsberg/margin --state merged --head <branch>`) or is gone on origin with a clean `git -C <path> status --porcelain`. Never the main checkout; `--force` deletes uncommitted work.
 
 ## 2. Dispatch
-Run at most `--max` agents at once (default 3) with `isolation: "worktree"` and `run_in_background: true`.
+Run at most `--max` agents at once (default 4) with `isolation: "worktree"` and `run_in_background: true`.
 - **One agent per issue.** Prompt: `Implement issue #<n>.` plus anything specific — scope limits, the order of multi-part work, known conflicts with other running agents ("another agent is editing activity.rs — keep edits localized, expect to rebase").
 - **Issues touching the same files:** run them in sequence, not in parallel. For example, chain them in one agent ("#66, then #63, as two PRs").
 - **When an agent finishes,** start the next one from the queue.
