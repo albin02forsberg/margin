@@ -49,6 +49,10 @@ while [ ! -e "$dir/STOP" ]; do
     wait=$(reset_wait "$out"); wait=${wait:-1800}
     [ "$wait" -gt 21600 ] && wait=1800
     echo "[$(date '+%F %T')] limit: sleeping ${wait}s" >> "$log"
+  elif grep -qiE 'failed to authenticate|oauth|not logged in|/login' "$out"; then
+    osascript -e 'display notification "Run `claude` and /login (or `claude setup-token`)" with title "Margin autopilot: auth expired"' 2>/dev/null
+    echo "[$(date '+%F %T')] auth expired: retrying in 300s" >> "$log"
+    wait=300
   elif [ "$code" -eq 0 ]; then
     wait=60
   else
