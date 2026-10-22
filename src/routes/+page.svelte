@@ -958,6 +958,14 @@
     }
   }
 
+  /** Run F once per file on its outermost marked lines (so a batch keeps source order, #650). */
+  async function fileMany(items: AgendaItem[], f: (path: string, lines: number[], text: string) => Promise<unknown>) {
+    for (const path of [...new Set(orderForEdit(items).map((i) => i.path))]) {
+      const text = await textOf(path);
+      await f(path, outermost(text, items.filter((i) => i.path === path).map((i) => i.line)), text);
+    }
+  }
+
   /** A bulk op on marked tasks; the ops that prompt ask once (#638). False when cancelled or refused: nothing is written. */
   async function runMany(op: string, items: AgendaItem[], arg?: string) {
     const locs: Loc[] = items.map((it) => ({ path: it.path, line: it.line }));
@@ -978,7 +986,17 @@
       for (const p of new Set(locs.map((l) => l.path)))
         for (const line of outermost(await textOf(p), locs.filter((l) => l.path === p).map((l) => l.line))) keep.add(markKey({ path: p, line }));
       items = items.filter((it) => keep.has(markKey(it)));
-      apply = (loc) => refile(loc, t);
+      await recorded(() => fileMany(items, (path, lines, text) => toFile(t.path, async (dst) => {
+        const [s, d] = await call<[string, string]>("org_refile_many", { src: text, lines, dst, dstLine: t.line });
+        return (await toFile(path, async () => s), d);
+      })));
+      return true;
+    } else if (op === "archive") {
+      await recorded(() => fileMany(items, (path, lines, text) => toFile(path + "_archive", async (dst) => {
+        const [s, d] = await call<[string, string]>("org_archive_many", { src: text, lines, dst, srcPath: path });
+        return (await toFile(path, async () => s), d);
+      })));
+      return true;
     }
     await recorded(async () => { for (const it of orderForEdit(items)) await apply({ path: it.path, line: it.line }, it); });
     return true;
