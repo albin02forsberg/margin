@@ -28,3 +28,25 @@ export function outermost(text: string, lines: number[]) {
     return true;
   });
 }
+
+/** A marked task: its location plus the title it had when marked. */
+export type Mark = Loc & { title: string };
+
+/** Re-point MARKS at ITEMS after a refresh (#649): a mark stays if its `path:line` still has the same
+ *  title, else follows the same-titled task in that file (nearest line, each task used once), else is
+ *  dropped. A renamed heading loses its mark. Matches distinct keys, since one task can be several rows. */
+export function reresolve(marks: Map<string, Mark>, items: (Loc & { title: string })[]) {
+  const cur = new Map(items.map((i) => [markKey(i), i]));
+  const out = new Map<string, Mark>(), moved: Mark[] = [];
+  for (const m of marks.values()) {
+    const c = cur.get(markKey(m));
+    if (c && c.title === m.title) out.set(markKey(m), m); else moved.push(m);
+  }
+  for (const m of moved) {
+    let best: Loc | undefined;
+    for (const c of cur.values())
+      if (c.path === m.path && c.title === m.title && !out.has(markKey(c)) && (!best || Math.abs(c.line - m.line) < Math.abs(best.line - m.line))) best = c;
+    if (best) out.set(markKey(best), { path: m.path, line: best.line, title: m.title });
+  }
+  return out;
+}
