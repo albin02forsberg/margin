@@ -11,7 +11,7 @@
   <key>WorkingDirectory</key><string>/Users/albin/code/margin</string>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key><string>/Users/albin/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>PATH</key><string>/Users/albin/.local/bin:/opt/homebrew/opt/node@24/bin:/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
