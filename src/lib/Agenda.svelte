@@ -69,12 +69,12 @@
   import type { TimeApi } from "./Time.svelte";
   import WeekBars from "./WeekBars.svelte";
   import { hm, worked } from "./clock";
-  import { columns, moveTo } from "./board";
+  import { bulkTargets, columns, moveTo } from "./board";
   import { chips } from "./chips";
   import { doneLog, withLog } from "./donelog";
   import { fmtEffort, overbooked, planned, plannedLabel } from "./effort";
   import { agendaText } from "./agendatext";
-  import { markKey, reresolve, type Mark } from "./bulk";
+  import { marked, markKey, reresolve, type Mark } from "./bulk";
 
   /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions.
    *  LOGDONE: config `log_done` (the Done log needs its CLOSED: stamps). */
@@ -103,7 +103,7 @@
   let doneItems = $state.raw<AgendaItem[]>([]);
   /** Marked tasks (`*`, keyed by `markKey`); the BULK ops apply to all of them. */
   let marks = $state(new Map<string, Mark>());
-  const BULK = new Set(["done", "later", "earlier", "priority-up", "priority-down", "keyword", "archive", "schedule", "deadline", "tags", "move"]);
+  const BULK = new Set(["done", "later", "earlier", "priority-up", "priority-down", "keyword", "column", "archive", "schedule", "deadline", "tags", "move"]);
   /** Today's Done log (key c, #424): a "Done" group per day of the tasks closed that day. */
   let logOn = $state(stored("agenda-log", "") === "1");
   const logShown = $derived(mode === "agenda" && logOn);
@@ -112,9 +112,10 @@
   const today = $derived(iso(now));
   const isDone = (it: AgendaItem) => !!it.keyword && done.includes(it.keyword);
   const days = $derived(Array.from({ length: span }, (_, i) => addDays(start, i)));
+  /** Every task of the view before the filter: marks live here, so filtering never drops or skips them. */
+  const all = $derived(boardOn ? [...items, ...doneItems] : logShown ? withLog(items, logItems) : items);
   const shown = $derived.by(() => {
     const f = filter.toLowerCase();
-    const all = boardOn ? [...items, ...doneItems] : logShown ? withLog(items, logItems) : items;
     let xs = f ? all.filter((i) => `${i.keyword ?? ""} ${i.title} ${i.tags.join(" ")} ${(i.inherited ?? []).join(" ")} ${i.category}`.toLowerCase().includes(f)) : all;
     if (mode === "todo") {
       const rank = (k: string | null) => { const r = todo.indexOf(k ?? ""); return r < 0 ? 99 : r; };
@@ -199,7 +200,7 @@
     logItems = logShown && logDone
       ? doneLog((await invoke<AgendaItem[]>("search_todos", { query: `closed:>=${iso(start)} closed:<=${iso(addDays(start, span - 1))}` })).filter(isDone)) : [];
     sel = Math.min(sel, Math.max(0, shown.length - 1));
-    if (marks.size) marks = reresolve(marks, shown);
+    if (marks.size) marks = reresolve(marks, all);
     if (mode === "agenda") {
       const ds = days.map(iso);
       invoke<number[]>("expected_hours_for", { dates: ds }).then((hs) => (expected = Object.fromEntries(ds.map((d, i) => [d, hs[i]])))).catch(() => (expected = {}));
@@ -250,6 +251,7 @@
 
   /** Board: move the selected card one column left (-1) or right (1). */
   function shift(dir: number) {
+    if (marks.size) return op("column", selected, String(dir));
     const k = selected && moveTo(selected.keyword, dir, todo, done);
     if (k) op("keyword", selected, k);
   }
@@ -258,11 +260,10 @@
    *  With marks, a BULK op runs on every marked item instead (one undo step) and clears the marks (kept on cancel). */
   function op(name: string, it = selected, arg?: string, bulk = true) {
     if (!it || busy) return;
-    const many = bulk && marks.size && BULK.has(name) ? shown.filter((x) => marks.has(markKey(x))) : null;
-    for (const x of many ?? [it]) {
-      const k = name === "keyword" ? arg : name === "done" && !isDone(x) ? done[0] : null;
-      if (boardOn && k && done.includes(k)) doneHere.add(keyOf(x));
-    }
+    const many = bulk && marks.size && BULK.has(name) ? marked(marks, all) : null;
+    if (many && !many.length) return api.flash("No marked task");
+    const xs = many ?? [it], ts = bulkTargets(name, xs.map((x) => x.keyword), arg, todo, done);
+    xs.forEach((x, i) => { if (boardOn && ts[i] && done.includes(ts[i]!)) doneHere.add(keyOf(x)); });
     api.act(async () => {
       busy = true;
       try {

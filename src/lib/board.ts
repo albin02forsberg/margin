@@ -19,3 +19,16 @@ export function moveTo(keyword: string | null, dir: number, todo: string[], done
   const i = done.includes(keyword ?? "") ? seq.length - 1 : Math.max(0, todo.indexOf(keyword ?? ""));
   return seq[i + dir] ?? null;
 }
+
+/** The keyword each task gets from a bulk OP over KEYWORDS (null = leave it alone). `done`: open tasks get the first
+ *  DONE keyword and done ones stay, unless all are done, then all reopen to the first TODO (#654). `column`: ARG (-1/1)
+ *  columns over, skipping tasks at the edge. `keyword`: ARG for every task. */
+export function bulkTargets(op: string, keywords: (string | null)[], arg: string | undefined, todo: string[], done: string[]): (string | null)[] {
+  const isDone = (k: string | null) => done.includes(k ?? "");
+  if (op === "done") {
+    const reopen = keywords.length > 0 && keywords.every(isDone);
+    return keywords.map((k) => (reopen ? todo[0] ?? null : isDone(k) ? null : done[0] ?? null));
+  }
+  if (op === "column") return keywords.map((k) => moveTo(k, Number(arg), todo, done));
+  return keywords.map(() => (op === "keyword" ? arg ?? null : null));
+}

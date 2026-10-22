@@ -50,3 +50,9 @@ export function reresolve(marks: Map<string, Mark>, items: (Loc & { title: strin
   }
   return out;
 }
+
+/** The marked tasks among ALL (the unfiltered list, so a filter never hides marks from a bulk op), one per mark key. */
+export function marked<T extends Loc>(marks: Map<string, unknown>, all: T[]) {
+  const seen = new Set<string>();
+  return all.filter((x) => { const k = markKey(x); return marks.has(k) && !seen.has(k) && !!seen.add(k); });
+}
