@@ -199,17 +199,17 @@
       "source_location": "L5"
     },
     {
-      "id": "src_lib_whatsnew_notes",
-      "label": "Notes",
+      "id": "src_lib_clock_weekday",
+      "label": "WeekDay",
       "_callable": true,
       "_callable_class": true,
       "_origin": "ast",
-      "community": 123,
-      "community_name": "whatsnew.test.ts",
+      "community": 122,
+      "community_name": "clock.ts",
       "file_type": "code",
-      "norm_label": "notes",
-      "source_file": "src/lib/whatsnew.ts",
-      "source_location": "L2"
+      "norm_label": "weekday",
+      "source_file": "src/lib/clock.ts",
+      "source_location": "L8"
     },
     {
       "id": "src_lib_board_column",
@@ -537,6 +537,19 @@
       "source_location": "L3"
     },
     {
+      "id": "src_lib_whatsnew_notes",
+      "label": "Notes",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "notes",
+      "source_file": "src/lib/whatsnew.ts",
+      "source_location": "L2"
+    },
+    {
       "id": "src_lib_agendatext_row",
       "label": "Row",
       "_callable": true,
@@ -548,19 +561,6 @@
       "norm_label": "row",
       "source_file": "src/lib/agendatext.ts",
       "source_location": "L6"
-    },
-    {
-      "id": "src_lib_clock_weekday",
-      "label": "WeekDay",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 94,
-      "community_name": "clock.ts",
-      "file_type": "code",
-      "norm_label": "weekday",
-      "source_file": "src/lib/clock.ts",
-      "source_location": "L8"
     },
     {
       "id": "src_lib_chips_chip",
@@ -754,6 +754,18 @@
       "norm_label": "row()",
       "source_file": "e2e/screenshots.ts",
       "source_location": "L322"
+    },
+    {
+      "id": "e2e_screenshots_session",
+      "label": "session()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "screenshots.ts",
+      "file_type": "code",
+      "norm_label": "session()",
+      "source_file": "e2e/screenshots.ts",
+      "source_location": "L208"
     },
     {
       "id": "e2e_screenshots_size",
@@ -1805,11 +1817,107 @@
       "_callable": true,
       "_origin": "ast",
       "community": 122,
-      "community_name": "svelte",
+      "community_name": "clock.ts",
       "file_type": "code",
       "norm_label": "r()",
       "source_file": "src/lib/agendatext.test.ts",
       "source_location": "L5"
+    },
+    {
+      "id": "src_lib_clock_daytime",
+      "label": "dayTime()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "clock.ts",
+      "file_type": "code",
+      "norm_label": "daytime()",
+      "source_file": "src/lib/clock.ts",
+      "source_location": "L44"
+    },
+    {
+      "id": "src_lib_clock_hm",
+      "label": "hm()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "clock.ts",
+      "file_type": "code",
+      "norm_label": "hm()",
+      "source_file": "src/lib/clock.ts",
+      "source_location": "L2"
+    },
+    {
+      "id": "src_lib_clock_inactivestamp",
+      "label": "inactiveStamp()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "clock.ts",
+      "file_type": "code",
+      "norm_label": "inactivestamp()",
+      "source_file": "src/lib/clock.ts",
+      "source_location": "L20"
+    },
+    {
+      "id": "src_lib_clock_naive",
+      "label": "naive()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "clock.ts",
+      "file_type": "code",
+      "norm_label": "naive()",
+      "source_file": "src/lib/clock.ts",
+      "source_location": "L24"
+    },
+    {
+      "id": "src_lib_clock_p2",
+      "label": "p2()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "clock.ts",
+      "file_type": "code",
+      "norm_label": "p2()",
+      "source_file": "src/lib/clock.ts",
+      "source_location": "L17"
+    },
+    {
+      "id": "src_lib_clock_parsewhen",
+      "label": "parseWhen()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "clock.ts",
+      "file_type": "code",
+      "norm_label": "parsewhen()",
+      "source_file": "src/lib/clock.ts",
+      "source_location": "L28"
+    },
+    {
+      "id": "src_lib_clock_test_day",
+      "label": "day()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "clock.ts",
+      "file_type": "code",
+      "norm_label": "day()",
+      "source_file": "src/lib/clock.test.ts",
+      "source_location": "L5"
+    },
+    {
+      "id": "src_lib_clock_worked",
+      "label": "worked()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "clock.ts",
+      "file_type": "code",
+      "norm_label": "worked()",
+      "source_file": "src/lib/clock.ts",
+      "source_location": "L11"
     },
     {
       "id": "src_lib_projects_each",
@@ -1817,71 +1925,59 @@
       "_callable": true,
       "_origin": "ast",
       "community": 122,
-      "community_name": "svelte",
+      "community_name": "clock.ts",
       "file_type": "code",
       "norm_label": "#each()",
       "source_file": "src/lib/Projects.svelte",
       "source_location": "L59"
     },
     {
-      "id": "src_routes_page_title",
-      "label": "title()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 122,
-      "community_name": "svelte",
-      "file_type": "code",
-      "norm_label": "title()",
-      "source_file": "src/routes/+page.svelte",
-      "source_location": "L736"
-    },
-    {
-      "id": "src_lib_whatsnew_notestext",
-      "label": "notesText()",
+      "id": "src_lib_zoom_clamp",
+      "label": "clamp()",
       "_callable": true,
       "_origin": "ast",
       "community": 123,
-      "community_name": "whatsnew.test.ts",
+      "community_name": "zoom.test.ts",
       "file_type": "code",
-      "norm_label": "notestext()",
-      "source_file": "src/lib/whatsnew.ts",
-      "source_location": "L14"
+      "norm_label": "clamp()",
+      "source_file": "src/lib/zoom.ts",
+      "source_location": "L3"
     },
     {
-      "id": "src_lib_whatsnew_notestitle",
-      "label": "notesTitle()",
+      "id": "src_lib_zoom_nextzoom",
+      "label": "nextZoom()",
       "_callable": true,
       "_origin": "ast",
       "community": 123,
-      "community_name": "whatsnew.test.ts",
+      "community_name": "zoom.test.ts",
       "file_type": "code",
-      "norm_label": "notestitle()",
-      "source_file": "src/lib/whatsnew.ts",
-      "source_location": "L13"
-    },
-    {
-      "id": "src_lib_whatsnew_notestoshow",
-      "label": "notesToShow()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 123,
-      "community_name": "whatsnew.test.ts",
-      "file_type": "code",
-      "norm_label": "notestoshow()",
-      "source_file": "src/lib/whatsnew.ts",
+      "norm_label": "nextzoom()",
+      "source_file": "src/lib/zoom.ts",
       "source_location": "L5"
     },
     {
-      "id": "src_lib_whatsnew_test_raw",
-      "label": "raw()",
+      "id": "src_lib_zoom_parsezoom",
+      "label": "parseZoom()",
       "_callable": true,
       "_origin": "ast",
       "community": 123,
-      "community_name": "whatsnew.test.ts",
+      "community_name": "zoom.test.ts",
       "file_type": "code",
-      "norm_label": "raw()",
-      "source_file": "src/lib/whatsnew.test.ts",
-      "source_location": "L5"
+      "norm_label": "parsezoom()",
+      "source_file": "src/lib/zoom.ts",
+      "source_location": "L8"
+    },
+    {
+      "id": "src_lib_zoom_wheelzoom",
+      "label": "wheelZoom()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 123,
+      "community_name": "zoom.test.ts",
+      "file_type": "code",
+      "norm_label": "wheelzoom()",
+      "source_file": "src/lib/zoom.ts",
+      "source_location": "L15"
     },
     {
       "id": "scripts_media_size_mb",
@@ -1954,6 +2050,18 @@
       "norm_label": "fakeaw()",
       "source_file": "e2e/activity.test.ts",
       "source_location": "L27"
+    },
+    {
+      "id": "e2e_setup_clickin",
+      "label": "clickIn()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 127,
+      "community_name": "activity.test.ts",
+      "file_type": "code",
+      "norm_label": "clickin()",
+      "source_file": "e2e/setup.ts",
+      "source_location": "L133"
     },
     {
       "id": "src_lib_board_columns",
@@ -3101,7 +3209,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 43,
-      "community_name": "chatctx.ts",
+      "community_name": "svelte",
       "file_type": "code",
       "norm_label": "bytes()",
       "source_file": "src/lib/chatctx.ts",
@@ -3113,7 +3221,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 43,
-      "community_name": "chatctx.ts",
+      "community_name": "svelte",
       "file_type": "code",
       "norm_label": "chatcontext()",
       "source_file": "src/lib/chatctx.ts",
@@ -3125,7 +3233,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 43,
-      "community_name": "chatctx.ts",
+      "community_name": "svelte",
       "file_type": "code",
       "norm_label": "cleanchat()",
       "source_file": "src/lib/chatctx.ts",
@@ -3137,11 +3245,23 @@
       "_callable": true,
       "_origin": "ast",
       "community": 43,
-      "community_name": "chatctx.ts",
+      "community_name": "svelte",
       "file_type": "code",
       "norm_label": "level()",
       "source_file": "src/lib/chatctx.ts",
       "source_location": "L5"
+    },
+    {
+      "id": "src_routes_page_title",
+      "label": "title()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 43,
+      "community_name": "svelte",
+      "file_type": "code",
+      "norm_label": "title()",
+      "source_file": "src/routes/+page.svelte",
+      "source_location": "L736"
     },
     {
       "id": "src_lib_orgtable_align",
@@ -3672,18 +3792,6 @@
       "source_location": "L6"
     },
     {
-      "id": "e2e_screenshots_session",
-      "label": "session()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 61,
-      "community_name": "setup.ts",
-      "file_type": "code",
-      "norm_label": "session()",
-      "source_file": "e2e/screenshots.ts",
-      "source_location": "L208"
-    },
-    {
       "id": "e2e_setup_answer",
       "label": "answer()",
       "_callable": true,
@@ -3694,18 +3802,6 @@
       "norm_label": "answer()",
       "source_file": "e2e/setup.ts",
       "source_location": "L146"
-    },
-    {
-      "id": "e2e_setup_clickin",
-      "label": "clickIn()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 61,
-      "community_name": "setup.ts",
-      "file_type": "code",
-      "norm_label": "clickin()",
-      "source_file": "e2e/setup.ts",
-      "source_location": "L133"
     },
     {
       "id": "e2e_setup_close",
@@ -4788,6 +4884,54 @@
       "source_location": "L4"
     },
     {
+      "id": "src_lib_whatsnew_notestext",
+      "label": "notesText()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "notestext()",
+      "source_file": "src/lib/whatsnew.ts",
+      "source_location": "L14"
+    },
+    {
+      "id": "src_lib_whatsnew_notestitle",
+      "label": "notesTitle()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "notestitle()",
+      "source_file": "src/lib/whatsnew.ts",
+      "source_location": "L13"
+    },
+    {
+      "id": "src_lib_whatsnew_notestoshow",
+      "label": "notesToShow()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "notestoshow()",
+      "source_file": "src/lib/whatsnew.ts",
+      "source_location": "L5"
+    },
+    {
+      "id": "src_lib_whatsnew_test_raw",
+      "label": "raw()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "raw()",
+      "source_file": "src/lib/whatsnew.test.ts",
+      "source_location": "L5"
+    },
+    {
       "id": "src_lib_wintitle_windowtitle",
       "label": "windowTitle()",
       "_callable": true,
@@ -4822,54 +4966,6 @@
       "norm_label": "wordslabel()",
       "source_file": "src/lib/words.ts",
       "source_location": "L22"
-    },
-    {
-      "id": "src_lib_zoom_clamp",
-      "label": "clamp()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 82,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "clamp()",
-      "source_file": "src/lib/zoom.ts",
-      "source_location": "L3"
-    },
-    {
-      "id": "src_lib_zoom_nextzoom",
-      "label": "nextZoom()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 82,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "nextzoom()",
-      "source_file": "src/lib/zoom.ts",
-      "source_location": "L5"
-    },
-    {
-      "id": "src_lib_zoom_parsezoom",
-      "label": "parseZoom()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 82,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "parsezoom()",
-      "source_file": "src/lib/zoom.ts",
-      "source_location": "L8"
-    },
-    {
-      "id": "src_lib_zoom_wheelzoom",
-      "label": "wheelZoom()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 82,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "wheelzoom()",
-      "source_file": "src/lib/zoom.ts",
-      "source_location": "L15"
     },
     {
       "id": "src_lib_agendatext_agendatext",
@@ -5100,99 +5196,123 @@
       "source_location": "L14"
     },
     {
-      "id": "src_lib_clock_daytime",
-      "label": "dayTime()",
+      "id": "scripts_autopilot_ui_clock",
+      "label": "clock()",
       "_callable": true,
       "_origin": "ast",
       "community": 94,
-      "community_name": "clock.ts",
+      "community_name": "autopilot-ui.mjs",
       "file_type": "code",
-      "norm_label": "daytime()",
-      "source_file": "src/lib/clock.ts",
-      "source_location": "L44"
+      "norm_label": "clock()",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L18"
     },
     {
-      "id": "src_lib_clock_hm",
-      "label": "hm()",
+      "id": "scripts_autopilot_ui_count",
+      "label": "count()",
       "_callable": true,
       "_origin": "ast",
       "community": 94,
-      "community_name": "clock.ts",
+      "community_name": "autopilot-ui.mjs",
       "file_type": "code",
-      "norm_label": "hm()",
-      "source_file": "src/lib/clock.ts",
-      "source_location": "L2"
+      "norm_label": "count()",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L32"
     },
     {
-      "id": "src_lib_clock_inactivestamp",
-      "label": "inactiveStamp()",
+      "id": "scripts_autopilot_ui_cut",
+      "label": "cut()",
       "_callable": true,
       "_origin": "ast",
       "community": 94,
-      "community_name": "clock.ts",
+      "community_name": "autopilot-ui.mjs",
       "file_type": "code",
-      "norm_label": "inactivestamp()",
-      "source_file": "src/lib/clock.ts",
-      "source_location": "L20"
+      "norm_label": "cut()",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L23"
     },
     {
-      "id": "src_lib_clock_naive",
-      "label": "naive()",
+      "id": "scripts_autopilot_ui_describe",
+      "label": "describe()",
       "_callable": true,
       "_origin": "ast",
       "community": 94,
-      "community_name": "clock.ts",
+      "community_name": "autopilot-ui.mjs",
       "file_type": "code",
-      "norm_label": "naive()",
-      "source_file": "src/lib/clock.ts",
+      "norm_label": "describe()",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L26"
+    },
+    {
+      "id": "scripts_autopilot_ui_dur",
+      "label": "dur()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 94,
+      "community_name": "autopilot-ui.mjs",
+      "file_type": "code",
+      "norm_label": "dur()",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L19"
+    },
+    {
+      "id": "scripts_autopilot_ui_note",
+      "label": "note()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 94,
+      "community_name": "autopilot-ui.mjs",
+      "file_type": "code",
+      "norm_label": "note()",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L42"
+    },
+    {
+      "id": "scripts_autopilot_ui_one",
+      "label": "one()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 94,
+      "community_name": "autopilot-ui.mjs",
+      "file_type": "code",
+      "norm_label": "one()",
+      "source_file": "scripts/autopilot-ui.mjs",
       "source_location": "L24"
     },
     {
-      "id": "src_lib_clock_p2",
-      "label": "p2()",
+      "id": "scripts_autopilot_ui_onevent",
+      "label": "onEvent()",
       "_callable": true,
       "_origin": "ast",
       "community": 94,
-      "community_name": "clock.ts",
+      "community_name": "autopilot-ui.mjs",
       "file_type": "code",
-      "norm_label": "p2()",
-      "source_file": "src/lib/clock.ts",
-      "source_location": "L17"
+      "norm_label": "onevent()",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L53"
     },
     {
-      "id": "src_lib_clock_parsewhen",
-      "label": "parseWhen()",
+      "id": "scripts_autopilot_ui_render",
+      "label": "render()",
       "_callable": true,
       "_origin": "ast",
       "community": 94,
-      "community_name": "clock.ts",
+      "community_name": "autopilot-ui.mjs",
       "file_type": "code",
-      "norm_label": "parsewhen()",
-      "source_file": "src/lib/clock.ts",
-      "source_location": "L28"
+      "norm_label": "render()",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L73"
     },
     {
-      "id": "src_lib_clock_test_day",
-      "label": "day()",
+      "id": "scripts_autopilot_ui_sgr",
+      "label": "sgr()",
       "_callable": true,
       "_origin": "ast",
       "community": 94,
-      "community_name": "clock.ts",
+      "community_name": "autopilot-ui.mjs",
       "file_type": "code",
-      "norm_label": "day()",
-      "source_file": "src/lib/clock.test.ts",
-      "source_location": "L5"
-    },
-    {
-      "id": "src_lib_clock_worked",
-      "label": "worked()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 94,
-      "community_name": "clock.ts",
-      "file_type": "code",
-      "norm_label": "worked()",
-      "source_file": "src/lib/clock.ts",
+      "norm_label": "sgr()",
+      "source_file": "scripts/autopilot-ui.mjs",
       "source_location": "L11"
     },
     {
@@ -5676,6 +5796,18 @@
       "source_location": "L23"
     },
     {
+      "id": "src_tauri_src_activity_suggestion",
+      "label": "Suggestion",
+      "_origin": "ast",
+      "_rust_declaration_count": 1,
+      "community": 22,
+      "community_name": "activity.rs",
+      "file_type": "code",
+      "norm_label": "suggestion",
+      "source_file": "src-tauri/src/activity.rs",
+      "source_location": "L34"
+    },
+    {
       "id": "src_tauri_src_export_block",
       "label": "BLOCK",
       "_origin": "ast",
@@ -5818,18 +5950,6 @@
       "norm_label": "view",
       "source_file": "src-tauri/src/config.rs",
       "source_location": "L96"
-    },
-    {
-      "id": "src_tauri_src_activity_suggestion",
-      "label": "Suggestion",
-      "_origin": "ast",
-      "_rust_declaration_count": 1,
-      "community": 39,
-      "community_name": "day_prompt",
-      "file_type": "code",
-      "norm_label": "suggestion",
-      "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L34"
     },
     {
       "id": "src_tauri_src_timeclock_session",
@@ -8840,7 +8960,7 @@
       "label": "$lib/BudgetBar.svelte",
       "_origin": "ast",
       "community": 122,
-      "community_name": "svelte",
+      "community_name": "clock.ts",
       "confidence": "EXTRACTED",
       "file_type": "code",
       "norm_label": "$lib/budgetbar.svelte",
@@ -8851,7 +8971,7 @@
       "label": "$lib/clock",
       "_origin": "ast",
       "community": 122,
-      "community_name": "svelte",
+      "community_name": "clock.ts",
       "confidence": "EXTRACTED",
       "file_type": "code",
       "norm_label": "$lib/clock",
@@ -8862,51 +8982,29 @@
       "label": "@tauri-apps/api/core",
       "_origin": "ast",
       "community": 122,
-      "community_name": "svelte",
+      "community_name": "clock.ts",
       "confidence": "EXTRACTED",
       "file_type": "code",
       "norm_label": "@tauri-apps/api/core",
       "source_file": "@tauri-apps/api/core"
     },
     {
-      "id": "lib_projects_projects",
-      "label": "$lib/projects",
-      "_origin": "ast",
-      "community": 122,
-      "community_name": "svelte",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "$lib/projects",
-      "source_file": "$lib/projects"
-    },
-    {
       "id": "settings",
       "label": "$lib/settings",
       "_origin": "ast",
       "community": 122,
-      "community_name": "svelte",
+      "community_name": "clock.ts",
       "confidence": "EXTRACTED",
       "file_type": "code",
       "norm_label": "$lib/settings",
       "source_file": "$lib/settings"
     },
     {
-      "id": "svelte",
-      "label": "svelte",
-      "_origin": "ast",
-      "community": 122,
-      "community_name": "svelte",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "svelte",
-      "source_file": "svelte"
-    },
-    {
       "id": "time_svelte",
       "label": "$lib/Time.svelte",
       "_origin": "ast",
       "community": 122,
-      "community_name": "svelte",
+      "community_name": "clock.ts",
       "confidence": "EXTRACTED",
       "file_type": "code",
       "norm_label": "$lib/time.svelte",
@@ -8917,32 +9015,32 @@
       "label": "lib/BudgetBar.svelte",
       "_origin": "ast",
       "community": 122,
-      "community_name": "svelte",
+      "community_name": "clock.ts",
       "file_type": "code",
       "norm_label": "lib/budgetbar.svelte",
       "source_file": "src/lib/BudgetBar.svelte",
       "source_location": "L1"
     },
     {
-      "id": "src_lib_chat",
-      "label": "lib/Chat.svelte",
+      "id": "src_lib_clock",
+      "label": "clock.ts",
       "_origin": "ast",
       "community": 122,
-      "community_name": "svelte",
+      "community_name": "clock.ts",
       "file_type": "code",
-      "norm_label": "lib/chat.svelte",
-      "source_file": "src/lib/Chat.svelte",
+      "norm_label": "clock.ts",
+      "source_file": "src/lib/clock.ts",
       "source_location": "L1"
     },
     {
-      "id": "src_lib_picker",
-      "label": "lib/Picker.svelte",
+      "id": "src_lib_clock_test",
+      "label": "clock.test.ts",
       "_origin": "ast",
       "community": 122,
-      "community_name": "svelte",
+      "community_name": "clock.ts",
       "file_type": "code",
-      "norm_label": "lib/picker.svelte",
-      "source_file": "src/lib/Picker.svelte",
+      "norm_label": "clock.test.ts",
+      "source_file": "src/lib/clock.test.ts",
       "source_location": "L1"
     },
     {
@@ -8950,7 +9048,7 @@
       "label": "lib/Projects.svelte",
       "_origin": "ast",
       "community": 122,
-      "community_name": "svelte",
+      "community_name": "clock.ts",
       "file_type": "code",
       "norm_label": "lib/projects.svelte",
       "source_file": "src/lib/Projects.svelte",
@@ -8961,7 +9059,7 @@
       "label": "lib/Settings.svelte",
       "_origin": "ast",
       "community": 122,
-      "community_name": "svelte",
+      "community_name": "clock.ts",
       "file_type": "code",
       "norm_label": "lib/settings.svelte",
       "source_file": "src/lib/Settings.svelte",
@@ -8972,7 +9070,7 @@
       "label": "lib/Time.svelte",
       "_origin": "ast",
       "community": 122,
-      "community_name": "svelte",
+      "community_name": "clock.ts",
       "file_type": "code",
       "norm_label": "lib/time.svelte",
       "source_file": "src/lib/Time.svelte",
@@ -8983,32 +9081,32 @@
       "label": "WeekBars.svelte",
       "_origin": "ast",
       "community": 122,
-      "community_name": "svelte",
+      "community_name": "clock.ts",
       "file_type": "code",
       "norm_label": "weekbars.svelte",
       "source_file": "src/lib/WeekBars.svelte",
       "source_location": "L1"
     },
     {
-      "id": "src_lib_whatsnew",
-      "label": "whatsnew.ts",
+      "id": "src_lib_zoom",
+      "label": "zoom.ts",
       "_origin": "ast",
       "community": 123,
-      "community_name": "whatsnew.test.ts",
+      "community_name": "zoom.test.ts",
       "file_type": "code",
-      "norm_label": "whatsnew.ts",
-      "source_file": "src/lib/whatsnew.ts",
+      "norm_label": "zoom.ts",
+      "source_file": "src/lib/zoom.ts",
       "source_location": "L1"
     },
     {
-      "id": "src_lib_whatsnew_test",
-      "label": "whatsnew.test.ts",
+      "id": "src_lib_zoom_test",
+      "label": "zoom.test.ts",
       "_origin": "ast",
       "community": 123,
-      "community_name": "whatsnew.test.ts",
+      "community_name": "zoom.test.ts",
       "file_type": "code",
-      "norm_label": "whatsnew.test.ts",
-      "source_file": "src/lib/whatsnew.test.ts",
+      "norm_label": "zoom.test.ts",
+      "source_file": "src/lib/zoom.test.ts",
       "source_location": "L1"
     },
     {
@@ -9274,28 +9372,6 @@
       "norm_label": "total",
       "source_file": "scripts/media-size.ts",
       "source_location": "L10"
-    },
-    {
-      "id": "src_lib_changelog_test",
-      "label": "changelog.test.ts",
-      "_origin": "ast",
-      "community": 125,
-      "community_name": "media-size.ts",
-      "file_type": "code",
-      "norm_label": "changelog.test.ts",
-      "source_file": "src/lib/changelog.test.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_lib_changelog_test_script",
-      "label": "script",
-      "_origin": "ast",
-      "community": 125,
-      "community_name": "media-size.ts",
-      "file_type": "code",
-      "norm_label": "script",
-      "source_file": "src/lib/changelog.test.ts",
-      "source_location": "L9"
     },
     {
       "id": "claude_agents_releaser",
@@ -9639,70 +9715,15 @@
       "source_location": "L31"
     },
     {
-      "id": "ref_codemirror_view",
-      "label": "@codemirror/view",
-      "_origin": "ast",
-      "community": 130,
-      "community_name": "narrow.ts",
-      "file_type": "concept",
-      "norm_label": "@codemirror/view",
-      "source_file": "package.json",
-      "source_location": "L32"
-    },
-    {
-      "id": "kit",
-      "label": "@sveltejs/kit",
+      "id": "lib_graph_graph",
+      "label": "$lib/graph",
       "_origin": "ast",
       "community": 131,
-      "community_name": "svelte.config.js",
+      "community_name": "$lib/graph",
       "confidence": "EXTRACTED",
       "file_type": "code",
-      "norm_label": "@sveltejs/kit",
-      "source_file": "@sveltejs/kit"
-    },
-    {
-      "id": "svelte_config",
-      "label": "svelte.config.js",
-      "_origin": "ast",
-      "community": 131,
-      "community_name": "svelte.config.js",
-      "file_type": "code",
-      "norm_label": "svelte.config.js",
-      "source_file": "svelte.config.js",
-      "source_location": "L1"
-    },
-    {
-      "id": "svelte_config_config",
-      "label": "config",
-      "_origin": "ast",
-      "community": 131,
-      "community_name": "svelte.config.js",
-      "file_type": "code",
-      "norm_label": "config",
-      "source_file": "svelte.config.js",
-      "source_location": "L9"
-    },
-    {
-      "id": "ref_sveltejs_adapter_static",
-      "label": "@sveltejs/adapter-static",
-      "_origin": "ast",
-      "community": 131,
-      "community_name": "svelte.config.js",
-      "file_type": "concept",
-      "norm_label": "@sveltejs/adapter-static",
-      "source_file": "package.json",
-      "source_location": "L41"
-    },
-    {
-      "id": "ref_sveltejs_vite_plugin_svelte",
-      "label": "@sveltejs/vite-plugin-svelte",
-      "_origin": "ast",
-      "community": 131,
-      "community_name": "svelte.config.js",
-      "file_type": "concept",
-      "norm_label": "@sveltejs/vite-plugin-svelte",
-      "source_file": "package.json",
-      "source_location": "L43"
+      "norm_label": "$lib/graph",
+      "source_file": "$lib/graph"
     },
     {
       "id": "src_lib_pins",
@@ -9804,37 +9825,15 @@
       "source_location": "L1"
     },
     {
-      "id": "vite_config",
-      "label": "vite.config.js",
+      "id": "lib_projects_projects",
+      "label": "$lib/projects",
       "_origin": "ast",
       "community": 135,
-      "community_name": "vite.config.js",
+      "community_name": "$lib/projects",
+      "confidence": "EXTRACTED",
       "file_type": "code",
-      "norm_label": "vite.config.js",
-      "source_file": "vite.config.js",
-      "source_location": "L1"
-    },
-    {
-      "id": "ref_sveltejs_kit",
-      "label": "@sveltejs/kit",
-      "_origin": "ast",
-      "community": 135,
-      "community_name": "vite.config.js",
-      "file_type": "concept",
-      "norm_label": "@sveltejs/kit",
-      "source_file": "package.json",
-      "source_location": "L42"
-    },
-    {
-      "id": "ref_vite",
-      "label": "vite",
-      "_origin": "ast",
-      "community": 135,
-      "community_name": "vite.config.js",
-      "file_type": "concept",
-      "norm_label": "vite",
-      "source_file": "package.json",
-      "source_location": "L49"
+      "norm_label": "$lib/projects",
+      "source_file": "$lib/projects"
     },
     {
       "id": "mutexguard",
@@ -9974,7 +9973,7 @@
       },
       "norm_label": "reset_wait()",
       "source_file": "scripts/autopilot-forever.sh",
-      "source_location": "L31"
+      "source_location": "L32"
     },
     {
       "id": "scripts_autopilot_forever_sh__entry",
@@ -9992,26 +9991,15 @@
       "source_location": "L1"
     },
     {
-      "id": "package_engines",
-      "label": "engines",
+      "id": "tauri_apps_api_event_event",
+      "label": "@tauri-apps/api/event",
       "_origin": "ast",
       "community": 139,
-      "community_name": "engines",
+      "community_name": "@tauri-apps/api/event",
+      "confidence": "EXTRACTED",
       "file_type": "code",
-      "norm_label": "engines",
-      "source_file": "package.json",
-      "source_location": "L6"
-    },
-    {
-      "id": "package_engines_node",
-      "label": "node",
-      "_origin": "ast",
-      "community": 139,
-      "community_name": "engines",
-      "file_type": "code",
-      "norm_label": "node",
-      "source_file": "package.json",
-      "source_location": "L7"
+      "norm_label": "@tauri-apps/api/event",
+      "source_file": "@tauri-apps/api/event"
     },
     {
       "id": "package_scripts",
@@ -10245,15 +10233,15 @@
       "source_location": "L30"
     },
     {
-      "id": "codemirror_state_state",
-      "label": "@codemirror/state",
+      "id": "tauri_apps_api_webview_webview",
+      "label": "@tauri-apps/api/webview",
       "_origin": "ast",
       "community": 141,
-      "community_name": "@codemirror/state",
+      "community_name": "@tauri-apps/api/webview",
       "confidence": "EXTRACTED",
       "file_type": "code",
-      "norm_label": "@codemirror/state",
-      "source_file": "@codemirror/state"
+      "norm_label": "@tauri-apps/api/webview",
+      "source_file": "@tauri-apps/api/webview"
     },
     {
       "id": "claude_agents_scout",
@@ -11746,17 +11734,6 @@
       "source_location": "L75"
     },
     {
-      "id": "src_tauri_src_activity_read_err",
-      "label": "read_err()",
-      "_origin": "ast",
-      "community": 22,
-      "community_name": "activity.rs",
-      "file_type": "code",
-      "norm_label": "read_err()",
-      "source_file": "src-tauri/src/activity.rs",
-      "source_location": "L446"
-    },
-    {
       "id": "src_tauri_src_activity_request",
       "label": "request()",
       "_origin": "ast",
@@ -12956,6 +12933,17 @@
       "source_file": "$lib/chatctx"
     },
     {
+      "id": "codemirror_state_state",
+      "label": "@codemirror/state",
+      "_origin": "ast",
+      "community": 29,
+      "community_name": "+page.svelte",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "@codemirror/state",
+      "source_file": "@codemirror/state"
+    },
+    {
       "id": "editor",
       "label": "$lib/editor",
       "_origin": "ast",
@@ -13119,28 +13107,6 @@
       "file_type": "code",
       "norm_label": "$lib/taskdialog.svelte",
       "source_file": "$lib/TaskDialog.svelte"
-    },
-    {
-      "id": "tauri_apps_api_event_event",
-      "label": "@tauri-apps/api/event",
-      "_origin": "ast",
-      "community": 29,
-      "community_name": "+page.svelte",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "@tauri-apps/api/event",
-      "source_file": "@tauri-apps/api/event"
-    },
-    {
-      "id": "tauri_apps_api_webview_webview",
-      "label": "@tauri-apps/api/webview",
-      "_origin": "ast",
-      "community": 29,
-      "community_name": "+page.svelte",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "@tauri-apps/api/webview",
-      "source_file": "@tauri-apps/api/webview"
     },
     {
       "id": "theme_css",
@@ -15488,22 +15454,11 @@
       "source_location": "L551"
     },
     {
-      "id": "lib_graph_graph",
-      "label": "$lib/graph",
-      "_origin": "ast",
-      "community": 4,
-      "community_name": "$lib/graph",
-      "confidence": "EXTRACTED",
-      "file_type": "code",
-      "norm_label": "$lib/graph",
-      "source_file": "$lib/graph"
-    },
-    {
       "id": "src_lib_graph_svelte_src_lib_graph",
       "label": "lib/Graph.svelte",
       "_origin": "ast",
       "community": 4,
-      "community_name": "$lib/graph",
+      "community_name": "graph",
       "file_type": "code",
       "norm_label": "lib/graph.svelte",
       "source_file": "src/lib/Graph.svelte",
@@ -15649,11 +15604,33 @@
       "source_location": "L22"
     },
     {
+      "id": "svelte",
+      "label": "svelte",
+      "_origin": "ast",
+      "community": 43,
+      "community_name": "svelte",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "svelte",
+      "source_file": "svelte"
+    },
+    {
+      "id": "src_lib_chat",
+      "label": "lib/Chat.svelte",
+      "_origin": "ast",
+      "community": 43,
+      "community_name": "svelte",
+      "file_type": "code",
+      "norm_label": "lib/chat.svelte",
+      "source_file": "src/lib/Chat.svelte",
+      "source_location": "L1"
+    },
+    {
       "id": "src_lib_chatctx",
       "label": "chatctx.ts",
       "_origin": "ast",
       "community": 43,
-      "community_name": "chatctx.ts",
+      "community_name": "svelte",
       "file_type": "code",
       "norm_label": "chatctx.ts",
       "source_file": "src/lib/chatctx.ts",
@@ -15664,7 +15641,7 @@
       "label": "enc",
       "_origin": "ast",
       "community": 43,
-      "community_name": "chatctx.ts",
+      "community_name": "svelte",
       "file_type": "code",
       "norm_label": "enc",
       "source_file": "src/lib/chatctx.ts",
@@ -15675,10 +15652,21 @@
       "label": "chatctx.test.ts",
       "_origin": "ast",
       "community": 43,
-      "community_name": "chatctx.ts",
+      "community_name": "svelte",
       "file_type": "code",
       "norm_label": "chatctx.test.ts",
       "source_file": "src/lib/chatctx.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_lib_picker",
+      "label": "lib/Picker.svelte",
+      "_origin": "ast",
+      "community": 43,
+      "community_name": "svelte",
+      "file_type": "code",
+      "norm_label": "lib/picker.svelte",
+      "source_file": "src/lib/Picker.svelte",
       "source_location": "L1"
     },
     {
@@ -16558,6 +16546,17 @@
       "source_location": ""
     },
     {
+      "id": "src_tauri_src_activity_read_err",
+      "label": "read_err()",
+      "_origin": "ast",
+      "community": 57,
+      "community_name": "ollama",
+      "file_type": "code",
+      "norm_label": "read_err()",
+      "source_file": "src-tauri/src/activity.rs",
+      "source_location": "L446"
+    },
+    {
       "id": "src_tauri_src_ai_available_gb",
       "label": "available_gb()",
       "_origin": "ast",
@@ -16567,28 +16566,6 @@
       "norm_label": "available_gb()",
       "source_file": "src-tauri/src/ai.rs",
       "source_location": "L391"
-    },
-    {
-      "id": "src_tauri_src_ai_cancel_draft",
-      "label": "cancel_draft()",
-      "_origin": "ast",
-      "community": 57,
-      "community_name": "ollama",
-      "file_type": "code",
-      "norm_label": "cancel_draft()",
-      "source_file": "src-tauri/src/ai.rs",
-      "source_location": "L376"
-    },
-    {
-      "id": "src_tauri_src_ai_cancel_hits_only_the_running_draft",
-      "label": "cancel_hits_only_the_running_draft()",
-      "_origin": "ast",
-      "community": 57,
-      "community_name": "ollama",
-      "file_type": "code",
-      "norm_label": "cancel_hits_only_the_running_draft()",
-      "source_file": "src-tauri/src/ai.rs",
-      "source_location": "L679"
     },
     {
       "id": "src_tauri_src_ai_free_gb",
@@ -18273,28 +18250,6 @@
       "source_location": "L5"
     },
     {
-      "id": "src_lib_session_test",
-      "label": "session.test.ts",
-      "_origin": "ast",
-      "community": 68,
-      "community_name": "session.ts",
-      "file_type": "code",
-      "norm_label": "session.test.ts",
-      "source_file": "src/lib/session.test.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_lib_session_test_empty",
-      "label": "empty",
-      "_origin": "ast",
-      "community": 68,
-      "community_name": "session.ts",
-      "file_type": "code",
-      "norm_label": "empty",
-      "source_file": "src/lib/session.test.ts",
-      "source_location": "L5"
-    },
-    {
       "id": "claude_agents_reviewer",
       "label": "reviewer.md",
       "_origin": "ast",
@@ -19379,6 +19334,28 @@
       "norm_label": "llamamodel",
       "source_file": "",
       "source_location": ""
+    },
+    {
+      "id": "src_tauri_src_ai_cancel_draft",
+      "label": "cancel_draft()",
+      "_origin": "ast",
+      "community": 73,
+      "community_name": "load",
+      "file_type": "code",
+      "norm_label": "cancel_draft()",
+      "source_file": "src-tauri/src/ai.rs",
+      "source_location": "L376"
+    },
+    {
+      "id": "src_tauri_src_ai_cancel_hits_only_the_running_draft",
+      "label": "cancel_hits_only_the_running_draft()",
+      "_origin": "ast",
+      "community": 73,
+      "community_name": "load",
+      "file_type": "code",
+      "norm_label": "cancel_hits_only_the_running_draft()",
+      "source_file": "src-tauri/src/ai.rs",
+      "source_location": "L679"
     },
     {
       "id": "src_tauri_src_ai_cancelled",
@@ -20976,6 +20953,17 @@
       "source_location": "L5"
     },
     {
+      "id": "kit",
+      "label": "@sveltejs/kit",
+      "_origin": "ast",
+      "community": 8,
+      "community_name": "package.json",
+      "confidence": "EXTRACTED",
+      "file_type": "code",
+      "norm_label": "@sveltejs/kit",
+      "source_file": "@sveltejs/kit"
+    },
+    {
       "id": "package",
       "label": "package.json",
       "_origin": "ast",
@@ -20996,6 +20984,28 @@
       "norm_label": "description",
       "source_file": "package.json",
       "source_location": "L4"
+    },
+    {
+      "id": "package_engines",
+      "label": "engines",
+      "_origin": "ast",
+      "community": 8,
+      "community_name": "package.json",
+      "file_type": "code",
+      "norm_label": "engines",
+      "source_file": "package.json",
+      "source_location": "L6"
+    },
+    {
+      "id": "package_engines_node",
+      "label": "node",
+      "_origin": "ast",
+      "community": 8,
+      "community_name": "package.json",
+      "file_type": "code",
+      "norm_label": "node",
+      "source_file": "package.json",
+      "source_location": "L7"
     },
     {
       "id": "package_license",
@@ -21042,6 +21052,39 @@
       "source_location": "L3"
     },
     {
+      "id": "svelte_config",
+      "label": "svelte.config.js",
+      "_origin": "ast",
+      "community": 8,
+      "community_name": "package.json",
+      "file_type": "code",
+      "norm_label": "svelte.config.js",
+      "source_file": "svelte.config.js",
+      "source_location": "L1"
+    },
+    {
+      "id": "svelte_config_config",
+      "label": "config",
+      "_origin": "ast",
+      "community": 8,
+      "community_name": "package.json",
+      "file_type": "code",
+      "norm_label": "config",
+      "source_file": "svelte.config.js",
+      "source_location": "L9"
+    },
+    {
+      "id": "vite_config",
+      "label": "vite.config.js",
+      "_origin": "ast",
+      "community": 8,
+      "community_name": "package.json",
+      "file_type": "code",
+      "norm_label": "vite.config.js",
+      "source_file": "vite.config.js",
+      "source_location": "L1"
+    },
+    {
       "id": "ref_codemirror_commands",
       "label": "@codemirror/commands",
       "_origin": "ast",
@@ -21086,6 +21129,17 @@
       "source_location": "L30"
     },
     {
+      "id": "ref_codemirror_view",
+      "label": "@codemirror/view",
+      "_origin": "ast",
+      "community": 8,
+      "community_name": "package.json",
+      "file_type": "concept",
+      "norm_label": "@codemirror/view",
+      "source_file": "package.json",
+      "source_location": "L32"
+    },
+    {
       "id": "ref_lezer_highlight",
       "label": "@lezer/highlight",
       "_origin": "ast",
@@ -21117,6 +21171,39 @@
       "norm_label": "svelte-check",
       "source_file": "package.json",
       "source_location": "L47"
+    },
+    {
+      "id": "ref_sveltejs_adapter_static",
+      "label": "@sveltejs/adapter-static",
+      "_origin": "ast",
+      "community": 8,
+      "community_name": "package.json",
+      "file_type": "concept",
+      "norm_label": "@sveltejs/adapter-static",
+      "source_file": "package.json",
+      "source_location": "L41"
+    },
+    {
+      "id": "ref_sveltejs_kit",
+      "label": "@sveltejs/kit",
+      "_origin": "ast",
+      "community": 8,
+      "community_name": "package.json",
+      "file_type": "concept",
+      "norm_label": "@sveltejs/kit",
+      "source_file": "package.json",
+      "source_location": "L42"
+    },
+    {
+      "id": "ref_sveltejs_vite_plugin_svelte",
+      "label": "@sveltejs/vite-plugin-svelte",
+      "_origin": "ast",
+      "community": 8,
+      "community_name": "package.json",
+      "file_type": "concept",
+      "norm_label": "@sveltejs/vite-plugin-svelte",
+      "source_file": "package.json",
+      "source_location": "L43"
     },
     {
       "id": "ref_tauri_apps_api",
@@ -21194,6 +21281,17 @@
       "norm_label": "typescript",
       "source_file": "package.json",
       "source_location": "L48"
+    },
+    {
+      "id": "ref_vite",
+      "label": "vite",
+      "_origin": "ast",
+      "community": 8,
+      "community_name": "package.json",
+      "file_type": "concept",
+      "norm_label": "vite",
+      "source_file": "package.json",
+      "source_location": "L49"
     },
     {
       "id": "ref_webdriverio",
@@ -21380,6 +21478,28 @@
       "source_location": "L1"
     },
     {
+      "id": "src_lib_changelog_test",
+      "label": "changelog.test.ts",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "changelog.test.ts",
+      "source_file": "src/lib/changelog.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_lib_changelog_test_script",
+      "label": "script",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "script",
+      "source_file": "src/lib/changelog.test.ts",
+      "source_location": "L9"
+    },
+    {
       "id": "src_lib_graph_test",
       "label": "graph.test.ts",
       "_origin": "ast",
@@ -21413,6 +21533,28 @@
       "source_location": "L1"
     },
     {
+      "id": "src_lib_session_test",
+      "label": "session.test.ts",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "session.test.ts",
+      "source_file": "src/lib/session.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_lib_session_test_empty",
+      "label": "empty",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "empty",
+      "source_file": "src/lib/session.test.ts",
+      "source_location": "L5"
+    },
+    {
       "id": "src_lib_weblink",
       "label": "weblink.ts",
       "_origin": "ast",
@@ -21432,6 +21574,28 @@
       "file_type": "code",
       "norm_label": "weblink.test.ts",
       "source_file": "src/lib/weblink.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_lib_whatsnew",
+      "label": "whatsnew.ts",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "whatsnew.ts",
+      "source_file": "src/lib/whatsnew.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_lib_whatsnew_test",
+      "label": "whatsnew.test.ts",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "file_type": "code",
+      "norm_label": "whatsnew.test.ts",
+      "source_file": "src/lib/whatsnew.test.ts",
       "source_location": "L1"
     },
     {
@@ -21476,28 +21640,6 @@
       "file_type": "code",
       "norm_label": "words.test.ts",
       "source_file": "src/lib/words.test.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_lib_zoom",
-      "label": "zoom.ts",
-      "_origin": "ast",
-      "community": 82,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "zoom.ts",
-      "source_file": "src/lib/zoom.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_lib_zoom_test",
-      "label": "zoom.test.ts",
-      "_origin": "ast",
-      "community": 82,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "zoom.test.ts",
-      "source_file": "src/lib/zoom.test.ts",
       "source_location": "L1"
     },
     {
@@ -23000,26 +23142,70 @@
       "source_location": "L20"
     },
     {
-      "id": "src_lib_clock",
-      "label": "clock.ts",
+      "id": "scripts_autopilot_ui",
+      "label": "autopilot-ui.mjs",
       "_origin": "ast",
       "community": 94,
-      "community_name": "clock.ts",
+      "community_name": "autopilot-ui.mjs",
       "file_type": "code",
-      "norm_label": "clock.ts",
-      "source_file": "src/lib/clock.ts",
+      "norm_label": "autopilot-ui.mjs",
+      "source_file": "scripts/autopilot-ui.mjs",
       "source_location": "L1"
     },
     {
-      "id": "src_lib_clock_test",
-      "label": "clock.test.ts",
+      "id": "scripts_autopilot_ui_agents",
+      "label": "agents",
       "_origin": "ast",
       "community": 94,
-      "community_name": "clock.ts",
+      "community_name": "autopilot-ui.mjs",
       "file_type": "code",
-      "norm_label": "clock.test.ts",
-      "source_file": "src/lib/clock.test.ts",
-      "source_location": "L1"
+      "norm_label": "agents",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L16"
+    },
+    {
+      "id": "scripts_autopilot_ui_bold_dim_red_green_yellow_cyan",
+      "label": "[bold, dim, red, green, yellow, cyan]",
+      "_origin": "ast",
+      "community": 94,
+      "community_name": "autopilot-ui.mjs",
+      "file_type": "code",
+      "norm_label": "[bold, dim, red, green, yellow, cyan]",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L12"
+    },
+    {
+      "id": "scripts_autopilot_ui_rl",
+      "label": "rl",
+      "_origin": "ast",
+      "community": 94,
+      "community_name": "autopilot-ui.mjs",
+      "file_type": "code",
+      "norm_label": "rl",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L110"
+    },
+    {
+      "id": "scripts_autopilot_ui_st",
+      "label": "st",
+      "_origin": "ast",
+      "community": 94,
+      "community_name": "autopilot-ui.mjs",
+      "file_type": "code",
+      "norm_label": "st",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L15"
+    },
+    {
+      "id": "scripts_autopilot_ui_started",
+      "label": "started",
+      "_origin": "ast",
+      "community": 94,
+      "community_name": "autopilot-ui.mjs",
+      "file_type": "code",
+      "norm_label": "started",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L14"
     },
     {
       "id": "src_lib_chips",
@@ -23404,62 +23590,38 @@
       "type": "external"
     },
     {
-      "id": "sveltekit",
-      "label": "SvelteKit",
-      "_origin": "semantic",
-      "community": 122,
-      "community_name": "svelte",
-      "confidence": "high",
-      "file_type": "concept",
-      "norm_label": "sveltekit",
-      "source_file": "package.json",
-      "type": "framework"
-    },
-    {
-      "id": "vite",
-      "label": "Vite",
-      "_origin": "semantic",
-      "community": 122,
-      "community_name": "svelte",
-      "confidence": "high",
-      "file_type": "concept",
-      "norm_label": "vite",
-      "source_file": "package.json",
-      "type": "build_tool"
-    },
-    {
-      "id": "ref_node_child_process",
-      "label": "ref_node_child_process",
+      "id": "ref_node_url",
+      "label": "ref_node_url",
       "_origin": "semantic",
       "community": 125,
       "community_name": "media-size.ts",
       "external": true,
       "file_type": "concept",
-      "norm_label": "ref_node_child_process",
+      "norm_label": "ref_node_url",
       "source_file": "",
       "type": "external"
     },
     {
-      "id": "ref_node_os",
-      "label": "ref_node_os",
+      "id": "ref_node_http",
+      "label": "ref_node_http",
       "_origin": "semantic",
-      "community": 125,
-      "community_name": "media-size.ts",
+      "community": 127,
+      "community_name": "activity.test.ts",
       "external": true,
       "file_type": "concept",
-      "norm_label": "ref_node_os",
+      "norm_label": "ref_node_http",
       "source_file": "",
       "type": "external"
     },
     {
-      "id": "ref_node_path",
-      "label": "ref_node_path",
+      "id": "ref_node_net",
+      "label": "ref_node_net",
       "_origin": "semantic",
-      "community": 125,
-      "community_name": "media-size.ts",
+      "community": 127,
+      "community_name": "activity.test.ts",
       "external": true,
       "file_type": "concept",
-      "norm_label": "ref_node_path",
+      "norm_label": "ref_node_net",
       "source_file": "",
       "type": "external"
     },
@@ -23498,18 +23660,6 @@
       "norm_label": "github releases",
       "source_file": "README.md",
       "type": "integration"
-    },
-    {
-      "id": "ref_node_process",
-      "label": "ref_node_process",
-      "_origin": "semantic",
-      "community": 135,
-      "community_name": "vite.config.js",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "ref_node_process",
-      "source_file": "",
-      "type": "external"
     },
     {
       "id": "chrono",
@@ -23860,6 +24010,30 @@
       "type": "external"
     },
     {
+      "id": "sveltekit",
+      "label": "SvelteKit",
+      "_origin": "semantic",
+      "community": 43,
+      "community_name": "svelte",
+      "confidence": "high",
+      "file_type": "concept",
+      "norm_label": "sveltekit",
+      "source_file": "package.json",
+      "type": "framework"
+    },
+    {
+      "id": "vite",
+      "label": "Vite",
+      "_origin": "semantic",
+      "community": 43,
+      "community_name": "svelte",
+      "confidence": "high",
+      "file_type": "concept",
+      "norm_label": "vite",
+      "source_file": "package.json",
+      "type": "build_tool"
+    },
+    {
       "id": "assets_icon",
       "label": "App Icon",
       "_origin": "semantic",
@@ -24028,26 +24202,14 @@
       "type": "external"
     },
     {
-      "id": "ref_node_http",
-      "label": "ref_node_http",
+      "id": "ref_node_path",
+      "label": "ref_node_path",
       "_origin": "semantic",
       "community": 61,
       "community_name": "setup.ts",
       "external": true,
       "file_type": "concept",
-      "norm_label": "ref_node_http",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "ref_node_net",
-      "label": "ref_node_net",
-      "_origin": "semantic",
-      "community": 61,
-      "community_name": "setup.ts",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "ref_node_net",
+      "norm_label": "ref_node_path",
       "source_file": "",
       "type": "external"
     },
@@ -24100,18 +24262,6 @@
       "type": "external"
     },
     {
-      "id": "ref_node_url",
-      "label": "ref_node_url",
-      "_origin": "semantic",
-      "community": 67,
-      "community_name": "coverage-ratchet.ts",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "ref_node_url",
-      "source_file": "",
-      "type": "external"
-    },
-    {
       "id": "serialize",
       "label": "serialize",
       "_origin": "semantic",
@@ -24148,6 +24298,18 @@
       "type": "external"
     },
     {
+      "id": "ref_node_process",
+      "label": "ref_node_process",
+      "_origin": "semantic",
+      "community": 8,
+      "community_name": "package.json",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "ref_node_process",
+      "source_file": "",
+      "type": "external"
+    },
+    {
       "id": "hashset",
       "label": "hashset",
       "_origin": "semantic",
@@ -24168,6 +24330,30 @@
       "external": true,
       "file_type": "concept",
       "norm_label": "ref_node_assert",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "ref_node_child_process",
+      "label": "ref_node_child_process",
+      "_origin": "semantic",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "ref_node_child_process",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "ref_node_os",
+      "label": "ref_node_os",
+      "_origin": "semantic",
+      "community": 82,
+      "community_name": "ref_node_assert",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "ref_node_os",
       "source_file": "",
       "type": "external"
     },
@@ -24196,13 +24382,57 @@
       "type": "external"
     },
     {
-      "id": "state",
-      "label": "state",
+      "id": "projects",
+      "label": "projects",
+      "community": 122,
+      "community_name": "clock.ts",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "projects",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "event",
+      "label": "event",
       "community": 29,
       "community_name": "+page.svelte",
       "external": true,
       "file_type": "concept",
-      "norm_label": "state",
+      "norm_label": "event",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "webview",
+      "label": "webview",
+      "community": 29,
+      "community_name": "+page.svelte",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "webview",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "graph",
+      "label": "graph",
+      "community": 4,
+      "community_name": "graph",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "graph",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "ref_node_readline",
+      "label": "ref_node_readline",
+      "community": 94,
+      "community_name": "autopilot-ui.mjs",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "ref_node_readline",
       "source_file": "",
       "type": "external"
     }
@@ -25489,7 +25719,127 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "scripts/autopilot-forever.sh",
-      "source_location": "L63",
+      "source_location": "L51",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui_describe",
+      "target": "scripts_autopilot_ui_one",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L29",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui_note",
+      "target": "scripts_autopilot_ui_one",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L43",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui_note",
+      "target": "scripts_autopilot_ui_clock",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L49",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui_onevent",
+      "target": "scripts_autopilot_ui_note",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L57",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui_onevent",
+      "target": "scripts_autopilot_ui_count",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L59",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui_onevent",
+      "target": "scripts_autopilot_ui_one",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L61",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui_onevent",
+      "target": "scripts_autopilot_ui_describe",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L64",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui_render",
+      "target": "scripts_autopilot_ui_dur",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L79",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui_render",
+      "target": "scripts_autopilot_ui_cut",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L81",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui_render",
+      "target": "scripts_autopilot_ui_clock",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L96",
       "weight": 1.0
     },
     {
@@ -43001,6 +43351,54 @@
       "weight": 1.0
     },
     {
+      "source": "scripts_autopilot_ui",
+      "target": "scripts_autopilot_ui_dur",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L19",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui",
+      "target": "scripts_autopilot_ui_note",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L42",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui",
+      "target": "scripts_autopilot_ui_onevent",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L53",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui",
+      "target": "scripts_autopilot_ui_render",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L73",
+      "weight": 1.0
+    },
+    {
       "source": "src_lib_agenda",
       "target": "src_lib_agenda_setnow",
       "relation": "contains",
@@ -50992,6 +51390,42 @@
       "context": "import",
       "source_file": "packaging/gnome-extension/extension.js",
       "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui",
+      "target": "ref_node_readline",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "import",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui",
+      "target": "ref_node_fs",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "import",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui",
+      "target": "ref_node_path",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "import",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L7",
       "weight": 1.0
     },
     {
@@ -64226,6 +64660,116 @@
       "confidence_score": 1.0,
       "source_file": "scripts/autopilot-forever.sh",
       "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui",
+      "target": "scripts_autopilot_ui_rl",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L110",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui",
+      "target": "scripts_autopilot_ui_bold_dim_red_green_yellow_cyan",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui",
+      "target": "scripts_autopilot_ui_started",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L14",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui",
+      "target": "scripts_autopilot_ui_st",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L15",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui",
+      "target": "scripts_autopilot_ui_agents",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui",
+      "target": "scripts_autopilot_ui_clock",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui",
+      "target": "scripts_autopilot_ui_cut",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L23",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui",
+      "target": "scripts_autopilot_ui_one",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L24",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui",
+      "target": "scripts_autopilot_ui_describe",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L26",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui",
+      "target": "scripts_autopilot_ui_count",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L32",
       "weight": 1.0
     },
     {
@@ -78459,7 +79003,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "scripts/autopilot-forever.sh",
-      "source_location": "L31",
+      "source_location": "L32",
       "weight": 1.0
     },
     {
@@ -78594,7 +79138,7 @@
     },
     {
       "source": "src_lib_budgetbar",
-      "target": "lib_projects_projects",
+      "target": "projects",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -78630,7 +79174,7 @@
     },
     {
       "source": "src_lib_graph_svelte_src_lib_graph",
-      "target": "lib_graph_graph",
+      "target": "graph",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -78675,7 +79219,7 @@
     },
     {
       "source": "src_lib_projects_svelte_src_lib_projects",
-      "target": "lib_projects_projects",
+      "target": "projects",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -78864,6 +79408,15 @@
     },
     {
       "source": "src_routes_page",
+      "target": "codemirror_state_state",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/routes/+page.svelte"
+    },
+    {
+      "source": "src_routes_page",
       "target": "core",
       "relation": "imports_from",
       "_origin": "ast",
@@ -78874,6 +79427,15 @@
     {
       "source": "src_routes_page",
       "target": "editor",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/routes/+page.svelte"
+    },
+    {
+      "source": "src_routes_page",
+      "target": "event",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -78999,15 +79561,6 @@
     },
     {
       "source": "src_routes_page",
-      "target": "state",
-      "relation": "imports_from",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/routes/+page.svelte"
-    },
-    {
-      "source": "src_routes_page",
       "target": "svelte",
       "relation": "imports_from",
       "_origin": "ast",
@@ -79027,24 +79580,6 @@
     {
       "source": "src_routes_page",
       "target": "taskdialog_svelte",
-      "relation": "imports_from",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/routes/+page.svelte"
-    },
-    {
-      "source": "src_routes_page",
-      "target": "tauri_apps_api_event_event",
-      "relation": "imports_from",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/routes/+page.svelte"
-    },
-    {
-      "source": "src_routes_page",
-      "target": "tauri_apps_api_webview_webview",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -79081,6 +79616,15 @@
     {
       "source": "src_routes_page",
       "target": "weblink",
+      "relation": "imports_from",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/routes/+page.svelte"
+    },
+    {
+      "source": "src_routes_page",
+      "target": "webview",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -80131,6 +80675,18 @@
       "context": "argument",
       "source_file": "e2e/time.test.ts",
       "source_location": "L22",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_autopilot_ui",
+      "target": "scripts_autopilot_ui_sgr",
+      "relation": "indirect_call",
+      "_origin": "ast",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "context": "argument",
+      "source_file": "scripts/autopilot-ui.mjs",
+      "source_location": "L12",
       "weight": 1.0
     },
     {
@@ -81371,5 +81927,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "7445c7c3815b7223d40bd2bfbea54a7ed2c2142d"
+  "built_at_commit": "d17cb103d7fc31688d8df1144718b23439a6a904"
 }
