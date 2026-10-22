@@ -30,9 +30,7 @@ You implement one GitHub issue of **albin02forsberg/margin** (a Tauri v2 + Svelt
 3. Commit messages end with the `Co-Authored-By` line from the attribution reminder in your own context (it names the model you run on). If you have none, omit the trailer rather than guess a model name.
 4. `gh pr create -R albin02forsberg/margin --base main` — body: `Closes #<n>` (or `Part of #<n>`), **What**, **Testing** (be honest about what was and wasn't verified, e.g. "not run against a real Ollama"), ending with:
    `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
-5. `gh pr checks <pr> -R albin02forsberg/margin --watch`. On failure read `gh run view <id> --log-failed`, fix, push. If `main` moved and the PR isn't MERGEABLE, rebase onto `origin/main`, re-run the checks, push.
-6. When CI (`test`, `e2e`) is green and the PR is MERGEABLE: `gh pr merge <pr> -R albin02forsberg/margin --squash --delete-branch`.
-7. Comment on the issue, starting with `🤖 *Claude:*`: what shipped, what's left.
+5. Once the PR is open and the local checks passed (docs-only: skipped), do not wait for CI: your slot is better spent elsewhere. Make sure the PR body's **Testing** section is final, then return the report with `PR #<n> open, local checks green, awaiting CI`. The coordinator polls CI, squash-merges on green and posts the issue comment; a `pr-shepherd` handles red CI or conflicts. Exception: if the coordinator's prompt says to merge yourself, run `gh pr checks <pr> -R albin02forsberg/margin --watch`, fix failures, rebase if not MERGEABLE, `gh pr merge <pr> -R albin02forsberg/margin --squash --delete-branch`, then comment on the issue (`🤖 *Claude:*` what shipped, what's left).
 
 ## Report (your final message)
-PR URL and merge status; what changed (short); tests added and results; what is unverified; follow-ups you noticed but didn't do (never do them — the coordinator files them).
+PR URL and status (open, awaiting CI, or merged); what changed (short); tests added and results; what is unverified; follow-ups you noticed but didn't do (never do them — the coordinator files them).
