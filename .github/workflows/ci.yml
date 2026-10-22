@@ -18,7 +18,7 @@ jobs:
         run: |
           run=true
           if [ "${{ github.event_name }}" = pull_request ]; then
-            files=$(gh pr diff ${{ github.event.pull_request.number }} -R ${{ github.repository }} --name-only) # errors abort the step: never skip CI on a failed lookup
+            files=$(gh api --paginate repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files --jq '.[].filename') # errors abort the step: never skip CI on a failed lookup
             if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qvE '^(\.claude/|docs/|README\.md$|CLAUDE\.md$)'; then run=false; fi
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
@@ -69,7 +69,7 @@ jobs:
         run: |
           run=true
           if [ "${{ github.event_name }}" = pull_request ]; then
-            files=$(gh pr diff ${{ github.event.pull_request.number }} -R ${{ github.repository }} --name-only) # errors abort the step: never skip CI on a failed lookup
+            files=$(gh api --paginate repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files --jq '.[].filename') # errors abort the step: never skip CI on a failed lookup
             if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qvE '^(\.claude/|docs/|README\.md$|CLAUDE\.md$)'; then run=false; fi
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
@@ -113,7 +113,7 @@ jobs:
     steps:
       - id: gate
         run: |
-          gh pr diff ${{ github.event.pull_request.number }} --name-only | grep -qE '^(packaging/arch/|\.github/workflows/release\.yml$)' && echo run=true >> "$GITHUB_OUTPUT" || true
+          gh api --paginate repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files --jq '.[].filename' | grep -qE '^(packaging/arch/|\.github/workflows/release\.yml$)' && echo run=true >> "$GITHUB_OUTPUT" || true
       - if: steps.gate.outputs.run == 'true'
         uses: actions/checkout@v5
       - if: steps.gate.outputs.run == 'true'
@@ -134,7 +134,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh pr diff ${{ github.event.pull_request.number }} -R ${{ github.repository }} --name-only | grep -qE '^(src-tauri/|\.github/workflows/ci\.yml$)' && echo run=true >> "$GITHUB_OUTPUT" || true
+          gh api --paginate repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files --jq '.[].filename' | grep -qE '^(src-tauri/|\.github/workflows/ci\.yml$)' && echo run=true >> "$GITHUB_OUTPUT" || true
       - if: steps.gate.outputs.run == 'true'
         uses: actions/checkout@v5
       - if: steps.gate.outputs.run == 'true'
@@ -166,7 +166,7 @@ jobs:
         run: |
           run=true
           if [ "${{ github.event_name }}" = pull_request ]; then
-            files=$(gh pr diff ${{ github.event.pull_request.number }} -R ${{ github.repository }} --name-only) # errors abort the step: never skip CI on a failed lookup
+            files=$(gh api --paginate repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files --jq '.[].filename') # errors abort the step: never skip CI on a failed lookup
             if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qvE '^(\.claude/|docs/|README\.md$|CLAUDE\.md$)'; then run=false; fi
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"

@@ -90,7 +90,7 @@ Parallel work runs through checked-in agents and skills (see `.claude/`):
 
 ## Tools
 
-- **graphify** (`graphify-out/`): for architecture / "where is X" questions, read `graphify-out/GRAPH_REPORT.md` and use `graphify query|path|explain` before grepping. The `graphify` workflow refreshes the graph on `main` after each merge; do not commit `graphify-out/` changes in feature PRs.
+- **graphify** (`graphify-out/`): for architecture / "where is X" questions, read `graphify-out/GRAPH_REPORT.md` and use `graphify query|path|explain` before grepping. The graph is not tracked (`.gitignore`): run `graphify update .` locally to build or refresh it before querying; never commit it.
 - **ponytail** ([plugin](https://github.com/dietrichgebert/ponytail), enabled in `.claude/settings.json`): write the minimum code that works — reuse what exists, stdlib before dependencies, no speculative abstractions, one runnable check for non-trivial logic.
 
 ## Permission Mode
