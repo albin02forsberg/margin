@@ -26,6 +26,7 @@ trap 'rm -rf "$lock"' EXIT
 
 claude_bin=${CLAUDE_BIN:-claude}
 args=${AUTOPILOT_ARGS:---hours 5}
+why=""
 
 # Seconds until the reset time named in a limit message ("resets 3pm", "resets at 15:00"), else empty.
 reset_wait() {
@@ -38,44 +39,36 @@ reset_wait() {
   echo $((target - now + 120))
 }
 
-# One line per event: timestamp, subagent marker, text or tool call.
-filter='. as $l | (try ($l|fromjson) catch {type:"raw",line:$l}) as $e
-  | (now|strflocaltime("%H:%M:%S")) as $t
-  | (if $e.parent_tool_use_id then "   ↳ " else "" end) as $p
-  | if $e.type=="assistant" then
-      $e.message.content[]?
-      | if .type=="text" then "\($t) \($p)💬 \(.text|gsub("\n";" ")|.[0:240])"
-        elif .type=="tool_use" then "\($t) \($p)🔧 \(.name) \((.input.description // .input.command // .input.prompt // .input.file_path // .input.pattern // "")|tostring|gsub("\n";" ")|.[0:160])"
-        else empty end
-    elif $e.type=="result" then "\($t) ✅ run finished: \(($e.result // $e.subtype)|tostring|gsub("\n";" ")|.[0:300])"
-    elif $e.type=="raw" then "\($t) \($e.line)"
-    else empty end'
-
 while [ ! -e "$dir/STOP" ]; do
   out=$(mktemp "$dir/out.XXXXXX")
   echo "[$(date '+%F %T')] starting: /autopilot $args" >> "$log"
   caffeinate -i "$claude_bin" -p "/autopilot $args" --model "${AUTOPILOT_MODEL:-sonnet}" --permission-mode auto \
-    --output-format stream-json --verbose 2>&1 | tee "$out" | jq -R --unbuffered -r "$filter" | tee -a "$log"
+    --output-format stream-json --verbose 2>&1 | tee "$out" | AUTOPILOT_LOG="$log" node scripts/autopilot-ui.mjs
   code=${PIPESTATUS[0]}
   echo "[$(date '+%F %T')] exited $code" | tee -a "$log"
   tailout=$(tail -n 5 "$out")   # limit/auth errors show up at the end of the stream
   if grep -qiE 'usage limit|rate limit|session limit|limit reached|resets' <<<"$tailout"; then
     wait=$(reset_wait "$out"); wait=${wait:-1800}
     [ "$wait" -gt 21600 ] && wait=1800
+    why="usage limit"
     echo "[$(date '+%F %T')] limit: sleeping ${wait}s" >> "$log"
   elif grep -qiE 'failed to authenticate|oauth|not logged in|/login' <<<"$tailout"; then
     osascript -e 'display notification "Run `claude` and /login (or `claude setup-token`)" with title "Margin autopilot: auth expired"' 2>/dev/null
     echo "[$(date '+%F %T')] auth expired: retrying in 300s" >> "$log"
-    wait=300
+    wait=300; why="auth expired: run 'claude' and /login"
   elif [ "$code" -eq 0 ]; then
-    wait=60
+    wait=60; why="run finished"
   else
-    wait=900
+    wait=900; why="run failed (exit $code)"
   fi
   rm -f "$out"
-  # sleep in short slices so STOP is honoured
-  while [ "$wait" -gt 0 ] && [ ! -e "$dir/STOP" ]; do
-    s=$(( wait < 30 ? wait : 30 )); sleep "$s"; wait=$((wait - s))
+  # countdown in short slices so STOP is honoured
+  until=$(( $(date +%s) + wait ))
+  while [ "$(date +%s)" -lt "$until" ] && [ ! -e "$dir/STOP" ]; do
+    left=$(( until - $(date +%s) ))
+    printf '\r\033[K💤 %s - next run in %dm%02ds (touch %s/STOP to quit)' "$why" $((left / 60)) $((left % 60)) "$dir"
+    sleep 5
   done
+  printf '\r\033[K'
 done
 echo "[$(date '+%F %T')] STOP found, exiting" >> "$log"
