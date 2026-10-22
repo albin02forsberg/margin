@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { columns, moveTo } from "./board.ts";
+import { bulkTargets, columns, moveTo } from "./board.ts";
 
 const todo = ["TODO", "NEXT", "WAIT"], done = ["DONE", "CANCELLED"];
 const it = (title: string, keyword: string | null) => ({ title, keyword });
@@ -18,4 +18,14 @@ test("board moves: left/right along the columns, null at the edges", () => {
   assert.equal(moveTo("CANCELLED", -1, todo, done), "WAIT");
   assert.equal(moveTo("DONE", 1, todo, done), null);
   assert.equal(moveTo("TODO", -1, todo, done), null);
+});
+
+test("bulk targets: done closes only the open ones, reopens when all are done; column skips the edge (#654)", () => {
+  const todo = ["TODO", "DOING"], done = ["DONE"];
+  assert.deepEqual(bulkTargets("done", ["TODO", "DONE", "DOING"], undefined, todo, done), ["DONE", null, "DONE"]);
+  assert.deepEqual(bulkTargets("done", ["DONE", "DONE"], undefined, todo, done), ["TODO", "TODO"]);
+  assert.deepEqual(bulkTargets("column", ["TODO", "DOING", "DONE"], "1", todo, done), ["DOING", "DONE", null]);
+  assert.deepEqual(bulkTargets("column", ["TODO", "DOING", "DONE"], "-1", todo, done), [null, "TODO", "DOING"]);
+  assert.deepEqual(bulkTargets("keyword", ["TODO"], "DOING", todo, done), ["DOING"]);
+  assert.deepEqual(bulkTargets("later", ["TODO"], undefined, todo, done), [null]);
 });

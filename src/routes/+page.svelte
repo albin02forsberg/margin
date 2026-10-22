@@ -19,6 +19,7 @@
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
   import { markKey, orderForEdit, outermost, tagChange, type TagChange } from "$lib/bulk";
+  import { bulkTargets } from "$lib/board";
   import Time, { hm, type Session, type Suggestion, type TimeApi } from "$lib/Time.svelte";
   import TaskDialog from "$lib/TaskDialog.svelte";
   import TableDialog from "$lib/TableDialog.svelte";
@@ -997,6 +998,10 @@
         return (await toFile(path, async () => s), d);
       })));
       return true;
+    }
+    if (op === "done" || op === "column") {
+      const k = kw(), tg = bulkTargets(op, items.map((x) => x.keyword), arg, k.todo, k.done), ts = new Map(items.map((it, i) => [markKey(it), tg[i]]));
+      apply = (loc) => { const t = ts.get(markKey(loc)); return t ? edit(loc, "keyword", t) : Promise.resolve(); };
     }
     await recorded(async () => { for (const it of orderForEdit(items)) await apply({ path: it.path, line: it.line }, it); });
     return true;

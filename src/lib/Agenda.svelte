@@ -69,7 +69,7 @@
   import type { TimeApi } from "./Time.svelte";
   import WeekBars from "./WeekBars.svelte";
   import { hm, worked } from "./clock";
-  import { columns, moveTo } from "./board";
+  import { bulkTargets, columns, moveTo } from "./board";
   import { chips } from "./chips";
   import { doneLog, withLog } from "./donelog";
   import { fmtEffort, overbooked, planned, plannedLabel } from "./effort";
@@ -103,7 +103,7 @@
   let doneItems = $state.raw<AgendaItem[]>([]);
   /** Marked tasks (`*`, keyed by `markKey`); the BULK ops apply to all of them. */
   let marks = $state(new Map<string, Mark>());
-  const BULK = new Set(["done", "later", "earlier", "priority-up", "priority-down", "keyword", "archive", "schedule", "deadline", "tags", "move"]);
+  const BULK = new Set(["done", "later", "earlier", "priority-up", "priority-down", "keyword", "column", "archive", "schedule", "deadline", "tags", "move"]);
   /** Today's Done log (key c, #424): a "Done" group per day of the tasks closed that day. */
   let logOn = $state(stored("agenda-log", "") === "1");
   const logShown = $derived(mode === "agenda" && logOn);
@@ -251,6 +251,7 @@
 
   /** Board: move the selected card one column left (-1) or right (1). */
   function shift(dir: number) {
+    if (marks.size) return op("column", selected, String(dir));
     const k = selected && moveTo(selected.keyword, dir, todo, done);
     if (k) op("keyword", selected, k);
   }
@@ -261,10 +262,8 @@
     if (!it || busy) return;
     const many = bulk && marks.size && BULK.has(name) ? marked(marks, all) : null;
     if (many && !many.length) return api.flash("No marked task");
-    for (const x of many ?? [it]) {
-      const k = name === "keyword" ? arg : name === "done" && !isDone(x) ? done[0] : null;
-      if (boardOn && k && done.includes(k)) doneHere.add(keyOf(x));
-    }
+    const xs = many ?? [it], ts = bulkTargets(name, xs.map((x) => x.keyword), arg, todo, done);
+    xs.forEach((x, i) => { if (boardOn && ts[i] && done.includes(ts[i]!)) doneHere.add(keyOf(x)); });
     api.act(async () => {
       busy = true;
       try {
