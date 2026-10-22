@@ -528,6 +528,9 @@ fn parse_query(query: &str) -> Query {
                 }
                 ph.push(c);
             }
+            if !matches!(word.as_str(), "" | "-" | "in:") {
+                flush(&mut word, false); // `foo"bar"`: the glued word stands alone
+            }
             word.push_str(&ph);
             flush(&mut word, true);
         } else if c.is_whitespace() {
@@ -559,7 +562,13 @@ pub fn search(files: &[Arc<OrgFile>], root: &Path, query: &str, limit: usize) ->
         if !q.folders.is_empty() {
             let Some(dirs) = f.path.strip_prefix(root).ok().and_then(Path::parent) else { continue };
             let names: Vec<String> = dirs.components().map(|c| c.as_os_str().to_string_lossy().to_lowercase()).collect();
-            if !q.folders.iter().any(|d| names.iter().any(|n| n.starts_with(d.as_str()))) {
+            // `in:a/b`: a run of consecutive folders, the last one matched as a prefix.
+            let hit = |d: &String| {
+                let segs: Vec<&str> = d.split(['/', '\\']).filter(|s| !s.is_empty()).collect();
+                let Some((last, init)) = segs.split_last() else { return false };
+                names.windows(segs.len()).any(|w| w[..init.len()].iter().zip(init).all(|(n, s)| n == s) && w[init.len()].starts_with(last))
+            };
+            if !q.folders.iter().any(hit) {
                 continue;
             }
         }
@@ -601,6 +610,13 @@ mod tests {
         assert_eq!(lines("report -\"report draft\"", 10), vec![2]);
         assert_eq!(lines("-alpha", 10), Vec::<usize>::new());
         assert_eq!(lines("in:x", 10), Vec::<usize>::new());
+        assert_eq!(lines("meeting\"about alpha\"", 10), vec![1]);
+        assert_eq!(lines("report -draft\"x\"", 10), Vec::<usize>::new());
+        assert_eq!(lines("report\"draft\" -\"x\"", 10), vec![2, 3]);
+        assert_eq!(parse_query("in:proj\"x\"").folders, ["proj"]);
+        let q = parse_query("-foo\"bar\"");
+        assert_eq!((q.exclude, q.include), (vec!["foo".to_string()], vec!["bar".to_string()]));
+        assert_eq!(parse_query("in:\"a b\"").folders, ["a b"]);
     }
 
     #[test]
@@ -613,6 +629,11 @@ mod tests {
         assert_eq!(hits("meeting in:ALPHA"), ["/n/Projects/alpha/x.org"]);
         assert_eq!(hits("meeting in:journal in:alpha"), ["/n/Projects/alpha/x.org", "/n/journal/j.org"]);
         assert_eq!(hits("meeting in:\"my folder\""), ["/n/my folder/m.org"]);
+        assert_eq!(hits("meeting in:projects/alp"), ["/n/Projects/alpha/x.org"]);
+        assert_eq!(hits("meeting in:Projects\\alpha/"), ["/n/Projects/alpha/x.org"]);
+        assert_eq!(hits("meeting in:alpha/projects"), Vec::<String>::new());
+        assert_eq!(hits("meeting in:projects/journal"), Vec::<String>::new());
+        assert_eq!(hits("meeting in:\"my folder/x\""), Vec::<String>::new());
         assert_eq!(hits("meeting in:other"), Vec::<String>::new());
         assert_eq!(hits("meeting").len(), 5);
         let lines = |q: &str| search(&files[..1], Path::new("/n"), q, 100).iter().map(|h| h.line).collect::<Vec<_>>();
