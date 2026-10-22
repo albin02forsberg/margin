@@ -1014,6 +1014,27 @@ pub fn refile_same(text: &str, line: usize, dst_line: Option<usize>) -> Result<S
     Ok(join(l, text))
 }
 
+/// `refile_same` for several subtrees (not nested), kept in source order; also returns
+/// DST_LINE adjusted for the lines cut above it.
+pub fn refile_same_many(text: &str, lines: &[usize], dst_line: Option<usize>) -> Result<(String, Option<usize>), String> {
+    let mut l = to_lines(text);
+    check_target(&l, dst_line)?;
+    let mut dst = dst_line;
+    if let Some(d) = dst_line {
+        let mut ranges = lines.iter().map(|&n| headline_at(&l, n).map(|h| subtree_range(&l, h)).ok_or("not on a heading")).collect::<Result<Vec<_>, _>>()?;
+        ranges.sort_unstable();
+        ranges.dedup();
+        if ranges.iter().any(|r| (r.0..r.1).contains(&d)) {
+            return Err("can't refile a subtree under itself".into());
+        }
+        dst = Some(d - ranges.iter().filter(|r| r.1 <= d).map(|r| r.1 - r.0).sum::<usize>());
+    }
+    for sub in take_many(&mut l, lines)? {
+        insert_subtree(&mut l, dst, sub);
+    }
+    Ok((join(l, text), dst))
+}
+
 /// Drop every `:ID:` property in SUB (so the copy doesn't duplicate it), and a
 /// `:PROPERTIES:` drawer that this leaves empty.
 fn strip_ids(sub: Vec<String>) -> Vec<String> {
@@ -2080,6 +2101,22 @@ mod tests {
         let heads: Vec<&str> = a.lines().filter(|l| l.starts_with('*')).collect();
         assert_eq!(heads, ["* A", "* B", "** B1", "* C"]);
         assert!(refile_many("text\n", &[0], "", None).is_err());
+    }
+
+    #[test]
+    fn same_many_shifts_target() {
+        let src = "* A\n* T\n* B\n** B1\n* U\n* C\n";
+        // target between marks: A cut above it, so T moves up one
+        assert_eq!(refile_same_many(src, &[5, 0, 2], Some(1)).unwrap(), ("* T\n** A\n** B\n*** B1\n** C\n* U\n".into(), Some(0)));
+        // target below all marks but C
+        assert_eq!(refile_same_many(src, &[0, 2], Some(4)).unwrap(), ("* T\n* U\n** A\n** B\n*** B1\n* C\n".into(), Some(1)));
+        // target above the marks
+        assert_eq!(refile_same_many(src, &[2, 5], Some(0)).unwrap(), ("* A\n** B\n*** B1\n** C\n* T\n* U\n".into(), Some(0)));
+        // top level: to the end
+        assert_eq!(refile_same_many(src, &[0], None).unwrap(), ("* T\n* B\n** B1\n* U\n* C\n* A\n".into(), None));
+        assert_eq!(refile_same_many(src, &[2], Some(3)).unwrap_err(), "can't refile a subtree under itself");
+        assert_eq!(refile_same_many("* A\ntext\n", &[0], Some(1)).unwrap_err(), "refile target is not a heading");
+        assert!(refile_same_many("text\n* A\n", &[0], Some(1)).is_err());
     }
 
     #[test]

@@ -815,17 +815,22 @@ describe("Journal, archive and move", () => {
     await fileMatches(f("projects.org"), (s) => s === projects, "undo didn't remove the copy");
   });
 
-  it("m on marked tasks asks once, refuses their own file and keeps a marked child under its parent (#638)", async () => {
+  it("m on marked tasks asks once, moves within their own file and keeps a marked child under its parent (#638, #662)", async () => {
     await browser.keys([Key.Ctrl, "2"]);
     const mark = async (t: string) => { await (await find(".agenda .row .title", t)).click(); await browser.keys("*"); };
+    // a mark above the target in its own file plus one in another file: the target line shifts before the other file is filed
     await mark("Bulk parent");
-    await mark("Bulk solo");
+    await mark("Move me");
     await find(".agenda .titles span", "2 marked");
     await browser.keys("m");
-    await answer("Move 2 tasks to…", "bulk.org");
-    await find(".status .msg", "bulk.org holds a marked task");
-    await find(".agenda .titles span", "2 marked");
-    assert.equal(read(f("bulk.org")), bulk, "a refused move wrote the file");
+    await answer("Move 2 tasks to…", "bulk.org / Bulk solo");
+    await fileMatches(f("bulk.org"), (s) => s === "* TODO Bulk solo\n** TODO Bulk parent\n*** TODO Bulk child\n** TODO Move me\n", "same-file move not filed under Bulk solo");
+    await fileMatches(f("chores.org"), (s) => s === "* TODO Archive me\n* TODO Stay put\n", "other file's mark not moved out");
+    await browser.keys("u");
+    await fileMatches(f("bulk.org"), (s) => s === bulk, "undo didn't restore the target file");
+    await fileMatches(f("chores.org"), (s) => s === chores, "undo didn't restore the other file");
+    await mark("Bulk parent");
+    await mark("Bulk solo");
     await mark("Bulk child");
     await find(".agenda .titles span", "3 marked");
     await browser.keys("m");

@@ -983,15 +983,23 @@
     } else if (op === "move") {
       const t = await askTarget(locs);
       if (!t) return false;
-      if (locs.some((l) => l.path === t.path)) return flash(`${base(t.path)} holds a marked task: move those separately.`), false;
       const keep = new Set<string>();
       for (const p of new Set(locs.map((l) => l.path)))
         for (const line of outermost(await textOf(p), locs.filter((l) => l.path === p).map((l) => l.line))) keep.add(markKey({ path: p, line }));
       items = items.filter((it) => keep.has(markKey(it)));
-      await recorded(() => fileMany(items, (path, lines, text) => toFile(t.path, async (dst) => {
-        const [s, d] = await call<[string, string]>("org_refile_many", { src: text, lines, dst, dstLine: t.line });
-        return (await toFile(path, async () => s), d);
-      })));
+      // the target file's own marks go first: cutting them shifts the target line the other files then use (#662)
+      const own = items.filter((it) => it.path === t.path).map((it) => it.line);
+      let dstLine = t.line;
+      await recorded(async () => {
+        if (own.length) await toFile(t.path, async (text) => {
+          const [s, d] = await call<[string, number | null]>("org_refile_same_many", { text, lines: own, dstLine });
+          return (dstLine = d, s);
+        });
+        await fileMany(items.filter((it) => it.path !== t.path), (path, lines, text) => toFile(t.path, async (dst) => {
+          const [s, d] = await call<[string, string]>("org_refile_many", { src: text, lines, dst, dstLine });
+          return (await toFile(path, async () => s), d);
+        }));
+      });
       return true;
     } else if (op === "archive") {
       await recorded(() => fileMany(items, (path, lines, text) => toFile(path + "_archive", async (dst) => {

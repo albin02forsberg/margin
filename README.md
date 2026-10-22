@@ -279,9 +279,9 @@ the header shows how many are marked and `Esc` clears them. While tasks are mark
 `s`/`d` (schedule / due date), `#` (tags) and `m` (move) apply to all of them at once, and one
 `u` undoes the whole batch. `s`, `d`, `#` and `m` ask once: `#` offers `+ tag` (add to every
 marked task, or type `+name`) and `- tag` (remove from every one); `m` leaves the marked tasks
-out of its targets, refuses a target in a file that holds a marked task, and moves a marked
-child with its marked parent. Cancelling the prompt changes nothing and keeps the marks. The
-other keys still act on the selected task.
+out of its targets, also files into a file that holds marked tasks (in source order),
+refuses a target inside a marked subtree, and moves a marked child with its marked
+parent. Cancelling the prompt changes nothing and keeps the marks. The other keys still act on the selected task.
 
 `c` (or the **Done** button) in Today adds a **Done** group under each day:
 the tasks closed that day and when, like org agenda's log mode. In the week
