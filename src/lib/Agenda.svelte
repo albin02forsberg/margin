@@ -74,7 +74,7 @@
   import { doneLog, withLog } from "./donelog";
   import { fmtEffort, overbooked, planned, plannedLabel } from "./effort";
   import { agendaText } from "./agendatext";
-  import { markKey } from "./bulk";
+  import { markKey, reresolve, type Mark } from "./bulk";
 
   /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions.
    *  LOGDONE: config `log_done` (the Done log needs its CLOSED: stamps). */
@@ -102,7 +102,7 @@
   const keyOf = (it: AgendaItem) => `${it.path}\n${it.title}`;
   let doneItems = $state.raw<AgendaItem[]>([]);
   /** Marked tasks (`*`, keyed by `markKey`); the BULK ops apply to all of them. */
-  let marks = $state(new Set<string>());
+  let marks = $state(new Map<string, Mark>());
   const BULK = new Set(["done", "later", "earlier", "priority-up", "priority-down", "keyword", "archive", "schedule", "deadline", "tags", "move"]);
   /** Today's Done log (key c, #424): a "Done" group per day of the tasks closed that day. */
   let logOn = $state(stored("agenda-log", "") === "1");
@@ -199,7 +199,7 @@
     logItems = logShown && logDone
       ? doneLog((await invoke<AgendaItem[]>("search_todos", { query: `closed:>=${iso(start)} closed:<=${iso(addDays(start, span - 1))}` })).filter(isDone)) : [];
     sel = Math.min(sel, Math.max(0, shown.length - 1));
-    if (marks.size) { const live = new Set(shown.map(markKey)); marks = new Set([...marks].filter((m) => live.has(m))); }
+    if (marks.size) marks = reresolve(marks, shown);
     if (mode === "agenda") {
       const ds = days.map(iso);
       invoke<number[]>("expected_hours_for", { dates: ds }).then((hs) => (expected = Object.fromEntries(ds.map((d, i) => [d, hs[i]])))).catch(() => (expected = {}));
@@ -266,7 +266,7 @@
     api.act(async () => {
       busy = true;
       try {
-        if (many) { if (await api.runMany(name, many, arg)) { marks = new Set(); api.flash(`${many.length} task${many.length === 1 ? "" : "s"} changed · u undoes`); } }
+        if (many) { if (await api.runMany(name, many, arg)) { marks = new Map(); api.flash(`${many.length} task${many.length === 1 ? "" : "s"} changed · u undoes`); } }
         else await api.run(name, it, arg);
       } finally {
         busy = false;
@@ -304,7 +304,7 @@
     else switch (k) {
       case "j": case "ArrowDown": sel = Math.min(sel + 1, shown.length - 1); break;
       case "k": case "ArrowUp": sel = Math.max(sel - 1, 0); break;
-      case "*": if (selected) { const m = markKey(selected); marks = new Set(marks); if (!marks.delete(m)) marks.add(m); sel = Math.min(sel + 1, shown.length - 1); } break;
+      case "*": if (selected) { const m = markKey(selected); marks = new Map(marks); if (!marks.delete(m)) marks.set(m, { path: selected.path, line: selected.line, title: selected.title }); sel = Math.min(sel + 1, shown.length - 1); } break;
       case "g": case "Home": sel = 0; break;
       case "G": case "End": sel = shown.length - 1; break;
       case ">": op("later"); break;
@@ -326,7 +326,7 @@
       case "/": filterInput?.focus(); break;
       case "r": api.act(refresh); break;
       case "?": help = !help; break;
-      case "Escape": if (marks.size) marks = new Set(); else { help = false; filter = ""; } break;
+      case "Escape": if (marks.size) marks = new Map(); else { help = false; filter = ""; } break;
       default: return;
     }
     e.preventDefault();
