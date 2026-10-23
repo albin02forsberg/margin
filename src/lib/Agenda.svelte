@@ -60,7 +60,7 @@
   ];
   const MORE: [string, string][] = [
     ["j / k", "Move selection"], ["*", "Mark / unmark (x s d # m < > + - A apply to all marked; Esc clears)"], ["< / >", "Reschedule a day earlier / later"], ["+ / -", "Raise / lower priority"],
-    ["Y", "Copy the list as text"], ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["T", "Today: move all overdue tasks to a day"], ["H / L", "Board: move to the column left / right"], ["h / l", "Previous / next period"],
+    ["Y", "Copy the list as text"], ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["w", "Today: day plan on an hour grid (overlaps, free time)"], ["T", "Today: move all overdue tasks to a day"], ["H / L", "Board: move to the column left / right"], ["h / l", "Previous / next period"],
     [".", "Jump to today"], ["D", "Go to a date"], ["/", "Filter"], ["r", "Refresh"], ["?", "Toggle this help"],
   ];
 </script>
@@ -76,6 +76,7 @@
   import { doneLog, withLog } from "./donelog";
   import { fmtEffort, fmtSpent, overbooked, planned, plannedLabel } from "./effort";
   import { agendaText } from "./agendatext";
+  import { blocks, gapLabel, gaps, hhmm } from "./dayplan";
   import { marked, markKey, reresolve, type Mark } from "./bulk";
 
   /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions.
@@ -110,6 +111,8 @@
   let logOn = $state(stored("agenda-log", "") === "1");
   const logShown = $derived(mode === "agenda" && logOn);
   let logItems = $state.raw<AgendaItem[]>([]);
+  /** Day plan (key w, #705): the Day view's timed tasks on an hour grid, working hours 08:00-18:00 widened to fit. */
+  let gridOn = $state(stored("agenda-grid", "") === "1");
 
   const today = $derived(iso(now));
   const isDone = (it: AgendaItem) => !!it.keyword && done.includes(it.keyword);
@@ -177,6 +180,14 @@
   /** Chips strip (Day view): the day's timed items and the running clock; a chip's `i` indexes `shown`. */
   const strip = $derived(mode === "agenda" && span === 1
     ? chips(shown.filter((i) => i.kind !== "closed"), iso(start), today, `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`, isDone, tc?.project != null ? tc : null) : []);
+  const plan = $derived.by(() => {
+    if (mode !== "agenda" || span !== 1 || !gridOn) return null;
+    const day = iso(start), n = now.getHours() * 60 + now.getMinutes();
+    const bs = blocks(shown.map((x) => (x.kind === "closed" ? { ...x, time: null } : x)), day, isDone);
+    const from = Math.min(480, ...bs.map((b) => Math.floor(b.start / 60) * 60)), to = Math.max(1080, ...bs.map((b) => Math.ceil(b.end / 60) * 60));
+    return { from, to, blocks: bs, gaps: gaps(bs, 480, 1080, day === today ? n : day < today ? 1440 : undefined),
+      now: day === today && n >= from && n <= to ? n : null, hours: Array.from({ length: (to - from) / 60 + 1 }, (_, h) => from + h * 60) };
+  });
   const elapsed = (since: string) => hm(Math.max(0, now.getTime() - Date.parse(since)) / 3_600_000);
 
   /** Update NOW; past midnight, a view on the old today (or its week) moves on to the new one. */
@@ -234,6 +245,11 @@
   function setLog(on: boolean) {
     logOn = on;
     try { localStorage.setItem("agenda-log", on ? "1" : ""); } catch {}
+  }
+  function setGrid(on: boolean) {
+    gridOn = on;
+    if (on && span === 7) setSpan(1);
+    try { localStorage.setItem("agenda-grid", on ? "1" : ""); } catch {}
   }
   const move = (d: number) => (start = addDays(start, d * span));
   async function goTo() {
@@ -318,6 +334,7 @@
       case "n": api.newTask(dayInput()); break;
       case "u": api.act(async () => { await api.undo(); await refresh(); }); break;
       case "c": if (mode === "agenda") setLog(!logOn); break;
+      case "w": if (mode === "agenda") setGrid(!(gridOn && span === 1)); break;
       case "T": if (mode === "agenda") api.act(async () => { await api.moveOverdue(); await refresh(); }); break;
       case "v": if (mode === "agenda") setSpan(span === 1 ? 7 : 1); else setBoard(!board); break;
       case "H": if (boardOn) shift(-1); break;
@@ -420,6 +437,7 @@
         <button onclick={goToday} title="Today (.)">Today</button>
         <button onclick={() => move(1)} title="Next (l)">›</button>
         <button class="toggle" class:on={logOn} onclick={() => setLog(!logOn)} title="Show tasks done each day (c)" aria-pressed={logOn}>Done</button>
+        <button class="toggle" class:on={gridOn && span === 1} onclick={() => setGrid(!(gridOn && span === 1))} title="Day plan on an hour grid (w)" aria-pressed={gridOn && span === 1}>Plan</button>
       {:else}
         <div class="seg" title="List / board (v)">
           <button class:on={!board} onclick={() => setBoard(false)}>List</button>
@@ -488,6 +506,22 @@
   {:else}
   <div class="list">
     {#if logShown && !logDone}<p class="hint">Turn on “Record when tasks are done” in Settings to list the tasks done each day here.</p>{/if}
+    {#if plan}
+      {@const y = (m: number) => `${m - plan.from}px`}
+      <section class="card dayplan" aria-label="Day plan">
+        <h2>Day plan <small>{plan.blocks.some((b) => b.overlap) ? "overlaps highlighted" : ""}</small></h2>
+        <div class="grid" style:height={y(plan.to)}>
+          {#each plan.hours as h}<div class="hr" style:top={y(h)}><span>{hhmm(h)}</span></div>{/each}
+          {#each plan.gaps as g}<div class="gap" style:top={y(g.start)} style:height="{g.end - g.start}px">{#if g.end - g.start >= 20}<span>{gapLabel(g)}</span>{/if}</div>{/each}
+          {#each plan.blocks as b (b.i)}
+            <div class="blk" class:sel={b.i === sel} class:done={b.done} class:overlap={b.overlap} data-i={b.i} role="option" aria-selected={b.i === sel}
+              style:top={y(b.start)} style:height="{Math.max(b.end - b.start, 18)}px" style:left="calc(52px + (100% - 52px) * {b.lane / b.lanes})" style:width="calc((100% - 52px) / {b.lanes} - 4px)"
+              title="{hhmm(b.start)}–{hhmm(b.end)} {b.title}{b.overlap ? ' (overlaps)' : ''}"><b>{hhmm(b.start)}</b> {b.title}</div>
+          {/each}
+          {#if plan.now != null}<div class="nowline" style:top={y(plan.now)}></div>{/if}
+        </div>
+      </section>
+    {/if}
     {#each groups as g (g.key)}
       {@const ni = g.today ? nowIndex(g.rows) : -1}
       {#if g.rows.length || (span === 7 && mode === "agenda")}
@@ -650,6 +684,20 @@
   .now { display: flex; align-items: center; gap: var(--s2); color: var(--accent); font-size: var(--fs-xs); margin: 2px 0; }
   .now::after { content: ""; flex: 1; border-top: 1px dashed var(--accent); }
   .controls .toggle.on { background: var(--sel); font-weight: 500; }
+  /* Day plan (#705): 1px per minute, hour lines, blocks side by side where they overlap */
+  .list > .dayplan { flex: none; padding: var(--s3) var(--s3) var(--s4); }
+  .list > .dayplan:hover { transform: none; box-shadow: var(--soft); }
+  .grid { position: relative; margin: var(--s2) var(--s2) 0; }
+  .hr { position: absolute; left: 0; right: 0; border-top: 1px solid var(--border); }
+  .hr span { position: absolute; top: -0.7em; left: 0; padding-right: 6px; background: var(--card); font: var(--fs-xs) var(--mono); color: var(--dim); }
+  .gap { position: absolute; left: 52px; right: 0; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--done) 7%, transparent) 6px 12px); }
+  .gap span { font-size: var(--fs-xs); color: var(--done); }
+  .blk { position: absolute; box-sizing: border-box; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 1px 6px; border-radius: 6px; font-size: var(--fs-sm); background: color-mix(in srgb, var(--accent) 16%, var(--card)); border-left: 3px solid var(--accent); cursor: default; }
+  .blk b { font: 500 var(--fs-xs) var(--mono); color: var(--date); }
+  .blk.overlap { background: color-mix(in srgb, var(--warn, #d97706) 18%, var(--card)); border-left-color: var(--warn, #d97706); }
+  .blk.done { opacity: .55; text-decoration: line-through; }
+  .blk.sel { box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .nowline { position: absolute; left: 44px; right: 0; border-top: 2px solid var(--accent); pointer-events: none; }
   .logh { font-size: var(--fs-sm); font-weight: 600; color: var(--done); margin: var(--s2) 0 2px; padding: 0 var(--s2); }
   .hint { color: var(--dim); font-size: var(--fs-sm); margin: 0 0 0 var(--s2); }
   .none { color: var(--dim); margin: 0 0 0 var(--s2); font-size: var(--fs-sm); }

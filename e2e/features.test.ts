@@ -1080,6 +1080,24 @@ describe("Note pickers, pins and archive", () => {
 });
 
 // Own launch: in the Tables suite the first keys typed into this note, and into the next one opened, got garbled.
+describe("Day plan", () => {
+  before(async () => {
+    const at = (t: string) => `<${orgDay(new Date())} ${t}>`;
+    await launch({ files: ({ notes }) => writeFileSync(join(notes, "plan.org"), `* TODO Plan e2e call\nSCHEDULED: ${at("14:00")}\n* TODO Plan e2e review\nSCHEDULED: ${at("14:00")}\n:PROPERTIES:\n:EFFORT: 1:00\n:END:\n* TODO Plan e2e untimed\nSCHEDULED: <${orgDay(new Date())}>\n`) });
+  });
+  after(close, { timeout: 30_000 });
+
+  it("w shows Today's timed tasks on an hour grid, two at 14:00 overlapping, untimed ones only in the list", async () => {
+    await (await find(".agenda .row .title", "Plan e2e untimed")).click();
+    await browser.keys("w");
+    await find(".dayplan .blk.overlap", "Plan e2e call");
+    await find(".dayplan .blk.overlap", "Plan e2e review");
+    assert.ok(!(await texts(".dayplan .blk")).some((t) => t.includes("untimed")), "untimed task on the grid");
+    await browser.keys("w");
+    await browser.waitUntil(async () => !(await browser.$(".dayplan").isExisting()), { timeoutMsg: "grid still shown" });
+  });
+});
+
 describe("Insert commands", () => {
   let d: Dirs;
   before(async () => { d = await launch({ files: ({ notes }) => writeFileSync(join(notes, "ins.org"), "#+title: Ins\n") }); });
