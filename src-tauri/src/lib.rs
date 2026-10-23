@@ -764,6 +764,10 @@ fn org_edit_op(text: &str, line: usize, op: &str, value: Option<String>, kw: &or
         "note" if v.trim().is_empty() => return Err("The note is empty.".into()),
         "note" => org::add_note(text, line, &v, now),
         "effort" => org::set_effort(text, line, opt().map(|e| org::parse_effort(e).ok_or_else(|| format!("Not a duration: {e} (try 0:30, 2h or 45min)"))).transpose()?),
+        "file-prop" => {
+            let (k, val) = v.split_once('=').ok_or("file-prop needs \"KEY=VALUE\"")?;
+            org::set_file_prop(text, k, val)?
+        }
         "tags" => org::set_tags(text, line, kw, v.split(':').map(|t| t.trim().to_string()).collect()),
         "shift" => {
             let (kind, days) = v.split_once(' ').ok_or("shift needs \"KIND DAYS\"")?;
@@ -2332,6 +2336,7 @@ mod tests {
         assert_eq!(edit("* T\n", "shift", Some("SCHEDULED two")).unwrap_err(), "bad day count");
         assert_eq!(edit("* T\n", "move", Some("SCHEDULED")).unwrap_err(), "move needs \"KIND DATE\"");
         assert!(edit("* T\n", "move", Some("SCHEDULED blah")).is_err());
+        assert_eq!(edit("* T\n", "file-prop", Some("mood")).unwrap_err(), "file-prop needs \"KEY=VALUE\"");
         assert_eq!(edit("* T\n", "nope", None).unwrap_err(), "unknown org op nope");
     }
 

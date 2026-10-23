@@ -1554,6 +1554,17 @@
     flash("Added to today's journal.");
   }
 
+  /** Log a daily metric (mood, energy, sleep…) into today's journal file's top property drawer (`:MOOD: 4`). */
+  async function journalMetric() {
+    const name = await pick({ prompt: "Log metric", hint: "pick one, or type a new name (add it to Settings > Daily metrics to keep it)", items: cfg.config.metrics, allowCustom: true }) as string | null;
+    if (!name?.trim()) return;
+    const value = await ask(`${name.trim()} today`);
+    if (!value?.trim()) return;
+    const path: string = await call("capture_path", { file: journalFile(), journal: true });
+    await toFile(path, (text) => call("org_edit", { text, line: 0, op: "file-prop", value: `${name}=${value}` }));
+    flash(`Logged ${name.trim()}: ${value.trim()}`);
+  }
+
   /** Move the previous entry's open checkboxes and TODO subtrees into today's journal (one undo step). */
   async function journalCarryOver() {
     const t = new Date(), today = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
@@ -2215,6 +2226,7 @@
     { label: "Journal: next entry", leader: "n ]", run: () => journalStep(1) },
     { label: "Journal: carry over open items from the previous entry", leader: "n k", run: () => act(journalCarryOver) },
     { label: "Add a line to today's journal", leader: "n e", run: journalEntry },
+    { label: "Log a daily metric (mood, energy, sleep)", leader: "n j", run: journalMetric },
     { label: "Journal: draft summary of today (local model)", leader: "n s", run: draftSummary },
     { label: "Insert link to a note…", keys: ["Ctrl+L"], leader: "n i", ctx: "editor", run: insertLink },
     { label: "Show notes linking here", leader: "n b", run: () => { showBacklinks = !showBacklinks; return refreshBacklinks(); } },

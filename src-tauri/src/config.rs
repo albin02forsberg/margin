@@ -27,6 +27,8 @@ pub struct Config {
     /// Org text put in new journal files after the title; `%t`/`%T`/`%u`/`%U` expand for that day,
     /// prompts and `%?` don't. Empty = nothing.
     pub journal_template: String,
+    /// Daily metrics offered by `Space n j` (stored upper-cased in the journal day's top drawer).
+    pub metrics: Vec<String>,
     /// Where new tasks go by default, relative to notes_dir.
     pub inbox: String,
     /// Stamp `CLOSED: [date time]` on tasks when they are marked done (org-log-done 'time).
@@ -192,6 +194,7 @@ impl Default for Config {
             stuck_next_keywords: v(&["NEXT", "DOING"]),
             daily_dir: "daily".into(),
             journal_template: String::new(),
+            metrics: v(&["mood", "energy", "sleep"]),
             inbox: "inbox.org".into(),
             log_done: true,
             close_to_tray: true,

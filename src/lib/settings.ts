@@ -11,6 +11,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "export_dir", label: "Export folder" },
     { key: "daily_dir", label: "Journal folder", hint: rel },
     { key: "journal_template", label: "Journal template", kind: "multiline", hint: "org text added to each new journal entry, e.g. * Plan; %t and %u expand to that day's date, prompts and %? don't; empty = nothing" },
+    { key: "metrics", label: "Daily metrics", kind: "list", hint: "one per line; offered by Space n j, which logs mood, energy, sleep… into the journal day's property drawer" },
     { key: "inbox", label: "Inbox file", hint: `new tasks go here, ${rel}` },
     { key: "attachments_dir", label: "Attachments folder", hint: rel },
     { key: "images_dir", label: "Images folder", hint: "pasted and dropped images go here, in the note's own folder and shared by its notes; empty = the attachments folder" },
