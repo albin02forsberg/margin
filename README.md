@@ -26,6 +26,9 @@ the editor has vim keys.
   later day of the same week, in the entry that already holds the block.
 - **Time** — a timeclock with breaks, projects, flex balance and reports, in
   the window or the tray.
+  `Space t T` shows one day's timeline: clocked sessions, tasks closed and
+  notes edited, in time order. Enter opens a task or note (or edits a
+  session); the first row copies the day as a Markdown list.
 - **Window title** shows the active tab (`• note — Margin` when unsaved), so
   the taskbar and window switcher tell Margin windows apart.
 - **Stays in sync** with Emacs, git or any sync tool editing the same files,
