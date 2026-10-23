@@ -980,6 +980,27 @@ pub fn weekly_report(sessions: &[Session], projects: &Projects, leave: (&[Leave]
     o
 }
 
+/// Body of a `#+BEGIN: clocktable` block (#693): worked hours START..=END per project (only PROJECT when
+/// given), a bold subtotal row each with its session descriptions below, and a total row.
+pub fn clocktable(sessions: &[Session], project: Option<&str>, start: NaiveDate, end: NaiveDate) -> String {
+    let mut by: BTreeMap<&str, BTreeMap<&str, f64>> = BTreeMap::new();
+    let merged = prepare_report_sessions(sessions);
+    for s in merged.iter().filter(|s| start <= s.date && s.date <= end && project.is_none_or(|p| s.project == p)) {
+        *by.entry(&s.project).or_default().entry(s.desc.trim()).or_default() += s.hours;
+    }
+    let mut projs: Vec<_> = by.into_iter().map(|(p, m)| (p, m.values().sum::<f64>(), m.into_iter().collect::<Vec<_>>())).collect();
+    projs.sort_by(|a, b| b.1.total_cmp(&a.1)); // stable sorts: ties keep name order
+    projs.iter_mut().for_each(|p| p.2.sort_by(|a, b| b.1.total_cmp(&a.1)));
+    let mut rows = vec![["Project", "Task (description)", "Hours"].map(String::from).to_vec()];
+    for (p, h, tasks) in &projs {
+        rows.push(vec![format!("*{}*", or_other(p)), String::new(), format!("*{h:.2}*")]);
+        tasks.iter().for_each(|(d, h)| rows.push(vec![String::new(), if d.is_empty() { "(no description)".into() } else { d.to_string() }, format!("{h:.2}")]));
+    }
+    let total = projs.iter().fold(0.0, |a, p| a + p.1); // not sum(): an empty f64 sum is -0.0
+    rows.push(vec!["*Total*".into(), String::new(), format!("*{total:.2}*")]);
+    org_table(&rows)
+}
+
 pub fn holidays_report(year: i32, cal: &Calendar) -> String {
     let mut o = format!("#+TITLE: {}Public Holidays {year}\n\n", if cal.swedish { "Swedish " } else { "" });
     if cal.swedish {
@@ -1256,6 +1277,27 @@ mod tests {
         let (r, carry) = apply_carry(&[s(0.4), s(0.4), s(0.4)], &Projects::new());
         assert_eq!(r.iter().map(|s| s.hours).collect::<Vec<_>>(), vec![0.5, 0.5, 0.0]);
         assert!((carry - 0.2).abs() < 1e-9);
+    }
+
+    #[test]
+    fn clocktable_groups_by_project_and_description() {
+        let s = |date: &str, p: &str, desc: &str, h| Session { date: d(date), project: p.into(), desc: desc.into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None };
+        let log = [s("2026-10-01", "Acme", "fix", 1.0), s("2026-10-02", "Acme", " fix", 1.5), s("2026-10-02", "Acme", "docs", 0.5), s("2026-10-03", "Beta", "call", 4.0), s("2026-11-01", "Acme", "fix", 9.0)];
+        let (from, to) = (d("2026-10-01"), d("2026-10-31"));
+        let t = clocktable(&log, None, from, to);
+        let rows: Vec<Vec<&str>> = t.lines().map(|l| l.split('|').map(str::trim).collect()).collect();
+        assert_eq!(rows.len(), 8, "{t}");
+        assert!(t.starts_with("| Project | Task (description) | Hours  |\n|---------+"), "{t}");
+        assert_eq!(rows[2][1..4], ["*Beta*", "", "*4.00*"], "{t}"); // biggest project first
+        assert_eq!(rows[4][1..4], ["*Acme*", "", "*3.00*"], "{t}");
+        assert_eq!(rows[5][1..4], ["", "fix", "2.50"], "{t}"); // across days, trimmed, November left out
+        assert_eq!(rows[6][1..4], ["", "docs", "0.50"], "{t}");
+        assert!(t.ends_with("| *Total* |                    | *7.00* |\n"), "{t}");
+        assert_eq!(clocktable(&log, None, from, to), t); // idempotent
+        let acme = clocktable(&log, Some("Acme"), from, to);
+        assert!(!acme.contains("Beta") && acme.contains("*Total*") && acme.contains("*3.00*"), "{acme}");
+        let none = clocktable(&log, None, d("2020-01-01"), d("2020-01-31"));
+        assert!(none.ends_with("| *Total* |                    | *0.00* |\n"), "{none}");
     }
 
     #[test]

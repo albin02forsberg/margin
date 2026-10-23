@@ -1827,6 +1827,46 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
     })
 }
 
+/// Options of a `#+BEGIN: clocktable` header after the name: `:block today|thisweek|thismonth|YYYY-MM` (required)
+/// and `:project NAME` ("quoted" for spaces). Any other option is an error, so Emacs-only blocks stay untouched.
+fn clocktable_opts(args: &str, today: NaiveDate) -> R<(Option<String>, NaiveDate, NaiveDate)> {
+    let mut words = vec![];
+    let mut rest = args.trim();
+    while !rest.is_empty() {
+        let (w, r) = match rest.strip_prefix('"') {
+            Some(q) => q.split_once('"').ok_or("clocktable: unclosed quote")?,
+            None => rest.split_once(char::is_whitespace).unwrap_or((rest, "")),
+        };
+        words.push(w);
+        rest = r.trim_start();
+    }
+    let (mut project, mut range) = (None, None);
+    for pair in words.chunks(2) {
+        let val = *pair.get(1).ok_or_else(|| format!("clocktable: {} needs a value", pair[0]))?;
+        match pair[0] {
+            ":project" => project = Some(val.to_string()),
+            ":block" => {
+                range = Some(match val {
+                    "today" => (today, today),
+                    "thisweek" => week_range(Some(today), today),
+                    "thismonth" => month_range(Some(today), today),
+                    m => month_range(Some(NaiveDate::parse_from_str(&format!("{m}-01"), "%Y-%m-%d").map_err(|_| format!("clocktable: unknown :block {m}"))?), today),
+                })
+            }
+            o => return Err(format!("clocktable: unsupported option {o}")),
+        }
+    }
+    let (from, to) = range.ok_or("clocktable: needs :block today|thisweek|thismonth|YYYY-MM")?;
+    Ok((project, from, to))
+}
+
+/// Body of a clocktable block with header options ARGS (#693).
+#[tauri::command]
+fn tc_clocktable(s: State<App>, args: String) -> R<String> {
+    let (project, from, to) = clocktable_opts(&args, today())?;
+    Ok(timeclock::clocktable(&s.tc().sessions(), project.as_deref(), from, to))
+}
+
 #[tauri::command]
 fn tc_csv(s: State<App>, start: String, end: String, path: PathBuf) -> R<String> {
     let path = csv_target(path, &config::expand(&s.cfg().export_dir));
@@ -2082,7 +2122,7 @@ pub fn run() {
             org_targets, org_tags, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, org_stuck, notes_recent, notes_tags, notes_tagged, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply
         ])
         .build(tauri::generate_context!())
@@ -2125,6 +2165,19 @@ mod tests {
         let times = |v: Vec<(PathBuf, String, u64)>| v.into_iter().map(|i| i.2).collect::<Vec<_>>();
         assert_eq!(times(recent_by_mtime(v.clone(), root, 50)), [30, 20, 10]);
         assert_eq!(times(recent_by_mtime(v, root, 2)), [30, 20]);
+    }
+
+    #[test]
+    fn clocktable_options() {
+        let d = |m, day| NaiveDate::from_ymd_opt(2026, m, day).unwrap();
+        let t = d(10, 22); // a Thursday
+        assert_eq!(clocktable_opts(":block today", t), Ok((None, t, t)));
+        assert_eq!(clocktable_opts(":block thisweek", t), Ok((None, d(10, 19), d(10, 25))));
+        assert_eq!(clocktable_opts(" :project \"Big Co\"  :block thismonth ", t), Ok((Some("Big Co".into()), d(10, 1), d(10, 31))));
+        assert_eq!(clocktable_opts(":block 2026-02 :project Acme", t), Ok((Some("Acme".into()), d(2, 1), d(2, 28))));
+        for bad in [":scope file :block thismonth", ":block lastweek", ":block 2026-13", ":project Acme", ":block", ":project \"Acme :block today", ""] {
+            assert!(clocktable_opts(bad, t).is_err(), "{bad}");
+        }
     }
 
     #[test]
