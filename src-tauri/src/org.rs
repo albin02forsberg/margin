@@ -940,6 +940,29 @@ pub fn set_effort(text: &str, line: usize, minutes: Option<u32>) -> String {
     join(lines, text)
 }
 
+/// Set `:KEY: VALUE` in the file-level property drawer (the one before the first heading,
+/// creating it above everything else), replacing an existing KEY. KEY is upper-cased with
+/// spaces as `_`; anything but letters, digits, `_` and `-` is an error.
+pub fn set_file_prop(text: &str, key: &str, val: &str) -> Result<String, String> {
+    let key = key.trim().replace(' ', "_").to_uppercase();
+    if key.is_empty() || !key.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+        return Err(format!("Not a property name: {key}"));
+    }
+    let entry = format!(":{key}: {}", val.trim());
+    let mut lines = to_lines(text);
+    let top = lines.iter().position(|l| !l.trim().is_empty() && !l.starts_with("#+")).filter(|&i| lines[i].trim().eq_ignore_ascii_case(":PROPERTIES:"));
+    let Some(i) = top else {
+        lines.splice(0..0, [":PROPERTIES:".to_string(), entry, ":END:".to_string()]);
+        return Ok(join(lines, text));
+    };
+    let Some(end) = drawer_end(&lines, i) else { return Err("Unclosed property drawer".into()) };
+    match (i + 1..end).find(|&j| PROP.captures(&lines[j]).is_some_and(|c| c[1].eq_ignore_ascii_case(&key))) {
+        Some(j) => lines[j] = entry,
+        None => lines.insert(end, entry),
+    }
+    Ok(join(lines, text))
+}
+
 /// Add `- Note taken on [date time] \\` plus NOTE (indented) under the
 /// headline at LINE, below its planning line and drawers, newest first like
 /// org with `org-log-into-drawer` nil.
@@ -1764,6 +1787,18 @@ mod tests {
         }
         let f = parse(Path::new("/n/x.org"), "* TODO A\n:PROPERTIES:\n:Effort: 0:30\n:END:\n* TODO B\n:PROPERTIES:\n:EFFORT: later\n:END:\n", &kw());
         assert_eq!(f.headlines.iter().map(|h| h.effort).collect::<Vec<_>>(), [Some(30), None]);
+    }
+
+    #[test]
+    fn set_file_prop_writes_the_top_drawer() {
+        let t = ":PROPERTIES:\n:ID:       x\n:END:\n#+title: D\n\n* 09:00 hi\n:PROPERTIES:\n:MOOD: 1\n:END:\n";
+        let a = set_file_prop(t, "mood", "4").unwrap();
+        assert_eq!(a, t.replacen(":END:", ":MOOD: 4\n:END:", 1));
+        let b = set_file_prop(&a, " Mood ", " 5 ").unwrap();
+        assert_eq!(b, a.replace(":MOOD: 4", ":MOOD: 5"));
+        assert_eq!(b.matches(":MOOD:").count(), 2); // the entry's own drawer is untouched
+        assert_eq!(set_file_prop("#+title: D\n", "sleep time", "7").unwrap(), ":PROPERTIES:\n:SLEEP_TIME: 7\n:END:\n#+title: D\n");
+        assert!(set_file_prop(t, "a:b", "1").is_err() && set_file_prop(t, " ", "1").is_err());
     }
 
     #[test]
