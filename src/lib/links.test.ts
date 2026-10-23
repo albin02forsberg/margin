@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bareTitle, findTarget, linkHeadings, norm, retitlePlan, splitTarget } from "./links.ts";
+import { bareTitle, bracketRetitle, findTarget, linkHeadings, norm, retitlePlan, splitTarget } from "./links.ts";
 
 const doc = "#+title: T\n* TODO [#A] Install :tag:\n:PROPERTIES:\n:CUSTOM_ID: setup\n:END:\nbody text\n** Usage\r\nmore\n";
 
@@ -68,4 +68,11 @@ test("retitlePlan", () => {
   assert.match(plan("* Old\n", "* [1/2]\n") as string, /link/);
   assert.match(plan("* Old\n** new\n", "* New\n** new\n") as string, /another heading/);
   assert.deepEqual(retitlePlan("* DOING Old\n", "* DOING New\n", 0, ["DOING"]), { old: "old", new: "New" });
+});
+
+test("bracketRetitle", () => {
+  assert.deepEqual(bracketRetitle("* Old\n", "* New [x]\n", 0), { old: "old", new: "New [x]" });
+  assert.equal(bracketRetitle("* Old\n* Old\n", "* New [x]\n* Old\n", 0), null);
+  assert.equal(bracketRetitle("* Old\n", "* New\n", 0), null);
+  assert.equal(findTarget("* New [x]\n", "*New [x]"), 0);
 });

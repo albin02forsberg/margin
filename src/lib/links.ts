@@ -63,6 +63,14 @@ export function findTarget(text: string, search: string, keywords?: string[]): n
  *  new: bare new title} to rewrite `::*Old` links with, a reason to leave them alone, or null when there is nothing
  *  to do (not a heading, or only case/cookies changed). Links are left alone when the old title isn't unique in
  *  the note (they were ambiguous already), or the new one is empty, has brackets or is another heading's title. */
+export const NOT_A_LINK = "the new title can't be a link";
+/** The title change of the heading at LINE when the new title has brackets (so links are left alone) but is otherwise a safe rename: for re-anchoring bookmarks. */
+export function bracketRetitle(before: string, after: string, line: number, keywords?: string[]): { old: string; new: string } | null {
+  if (retitlePlan(before, after, line, keywords) !== NOT_A_LINK) return null;
+  const re = head(keywords), t = after.split(/\r?\n/)[line], m = re.exec(t);
+  const o = re.exec(before.split(/\r?\n/)[line]);
+  return m && o ? { old: norm(o[1]), new: bareTitle(m[1]) } : null;
+}
 export function retitlePlan(before: string, after: string, line: number, keywords?: string[]): { old: string; new: string } | string | null {
   const re = head(keywords), titles = (s: string) => s.split(/\r?\n/).map((l) => re.exec(l)?.[1] ?? null);
   const b = titles(before), a = titles(after), o = b[line], t = a[line];
@@ -70,7 +78,7 @@ export function retitlePlan(before: string, after: string, line: number, keyword
   const old = norm(o), bare = bareTitle(t);
   if (!old || norm(bare) === old) return null;
   if (b.filter((x) => x != null && norm(x) === old).length > 1) return "the old title isn't unique in the note";
-  if (!bare || /[[\]]/.test(bare)) return "the new title can't be a link";
+  if (!bare || /[[\]]/.test(bare)) return NOT_A_LINK;
   if (a.some((x, i) => i !== line && x != null && norm(x) === norm(bare))) return "another heading has that title";
   return { old, new: bare };
 }

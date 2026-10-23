@@ -13,7 +13,7 @@
   import type { EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
   import { linkFor, asUrl } from "$lib/weblink";
-  import { bareTitle, findTarget, linkHeadings, retitlePlan, splitTarget } from "$lib/links";
+  import { bareTitle, bracketRetitle, findTarget, linkHeadings, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
   import { isoWeek, putReview, reviewBody, reviewEntry } from "$lib/review";
@@ -628,17 +628,18 @@
   }
 
   // Undo for edits made from the task views: each action records the files' previous text.
-  let recording: { path: string; text: string }[] | null = null;
-  const undoStack: { path: string; text: string }[][] = [];
+  type Group = { texts: { path: string; text: string }[]; bookmarks: { name: string; heading?: string }[] };
+  let recording: Group | null = null;
+  const undoStack: Group[] = [];
 
   /** Run F as one undo group; a nested call joins the outer group. */
   async function recorded(f: () => Promise<void>) {
     if (recording) return f();
-    recording = [];
+    recording = { texts: [], bookmarks: [] };
     try {
       await f();
     } finally {
-      if (recording.length) undoStack.push(recording);
+      if (recording.texts.length || recording.bookmarks.length) undoStack.push(recording);
       recording = null;
     }
   }
@@ -646,7 +647,8 @@
   async function undo() {
     const group = undoStack.pop();
     if (!group) return flash("Nothing to undo.");
-    for (const r of group.reverse()) await toFile(r.path, async () => r.text);
+    for (const r of group.texts.reverse()) await toFile(r.path, async () => r.text);
+    if (group.bookmarks.length) saveBookmarks(bookmarks.map((b) => { const o = group.bookmarks.find((x) => x.name === b.name); return o ? { ...b, heading: o.heading } : b; }));
     flash("Undone.");
   }
 
@@ -656,7 +658,7 @@
     const old = await textOf(path);
     const next = await f(old);
     if (next === old) return;
-    if (recording && !recording.some((r) => r.path === path)) recording.push({ path, text: old });
+    if (recording && !recording.texts.some((r) => r.path === path)) recording.texts.push({ path, text: old });
     if (!t) {
       const warn: string = await call("write_file", { path, text: next });
       if (warn) flash(`⚠ ${warn}`);
@@ -773,10 +775,16 @@
     const before = await textOf(loc.path);
     await edit(loc, "title", t);
     const k = kw(), plan = retitlePlan(before, await textOf(loc.path), loc.line, [...(k.todo ?? []), ...(k.done ?? [])]);
+    const bp = typeof plan === "string" ? bracketRetitle(before, await textOf(loc.path), loc.line, [...(k.todo ?? []), ...(k.done ?? [])]) : plan;
+    if (bp) {
+      const rb = retitleBookmarks(bookmarks, loc.path, bp.old, bp.new);
+      if (rb.some((b, i) => b !== bookmarks[i])) {
+        recording?.bookmarks.push(...bookmarks.filter((b, i) => b !== rb[i]).map((b) => ({ name: b.name, heading: b.heading })));
+        saveBookmarks(rb);
+      }
+    }
     if (typeof plan === "string") return flash(`Renamed; links to it left as they are (${plan}).`);
     if (!plan) return;
-    const rb = retitleBookmarks(bookmarks, loc.path, plan.old, plan.new);
-    if (rb.some((b, i) => b !== bookmarks[i])) saveBookmarks(rb);
     const paths = new Set([loc.path, ...(await call<string[]>("retitle_candidates", { path: loc.path })), ...tabs.filter((x) => x.kind === "file" && x.dirty && !x.missing).map((x) => x.path!)]);
     let n = 0;
     for (const p of paths)
