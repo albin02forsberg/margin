@@ -17,7 +17,12 @@ the editor has vim keys.
   to that day's date (prompts and `%?` are ignored). `Space n k` carries
   over the previous entry's open items: unchecked `- [ ]` items and TODO
   subtrees (not done or `:ARCHIVE:`) move under `* Carried over from <date>`
-  in today's entry; `Space n u` puts them back.
+  in today's entry; `Space n u` puts them back. `Space t R` writes a
+  `* Weekly review <2026-W43>` into today's entry: Inbox count, tasks closed
+  this week, hours per project, overdue tasks and what's scheduled next week,
+  then empty `** Went well` / `** To change` headings. Running it again
+  replaces only the generated lines between `# review-begin` and
+  `# review-end` (edits there are overwritten; the rest is kept).
 - **Time** — a timeclock with breaks, projects, flex balance and reports, in
   the window or the tray.
 - **Window title** shows the active tab (`• note — Margin` when unsaved), so
