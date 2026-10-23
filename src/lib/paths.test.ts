@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ago, changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath } from "./paths.ts";
+import { ago, changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath, weekJournals } from "./paths.ts";
 
 test("resolvePath", () => {
   assert.equal(resolvePath("/n/sub", "../other/target.org"), "/n/other/target.org");
@@ -102,4 +102,9 @@ test("ago", () => {
   assert.equal(ago(n - 86400, n), "yesterday");
   assert.equal(ago(n - 2 * 86400, n), "2 days ago");
   assert.equal(ago(n - 7 * 86400, n), "2001-09-02");
+});
+
+test("weekJournals", () => {
+  const f = ["/n/daily/2026-09-29.org", "/n/daily/2026-10-01.org", "/n/daily/2026-09-28.org", "/n/other/2026-09-30.org", "/n/daily/x.org", "/n/daily/2026-10-02.org"];
+  assert.deepEqual(weekJournals(f, "daily", "2026-09-28", "2026-10-01"), ["/n/daily/2026-09-28.org", "/n/daily/2026-09-29.org", "/n/daily/2026-10-01.org"]);
 });

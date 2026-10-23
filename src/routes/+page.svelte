@@ -17,7 +17,7 @@
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
   import { isoWeek, putReview, reviewBody, reviewEntry } from "$lib/review";
-  import { ago, changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath } from "$lib/paths";
+  import { ago, changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath, weekJournals } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
@@ -1558,10 +1558,12 @@
     const done = doneLog(closed.filter((i) => i.keyword && kw().done.includes(i.keyword))), seen = new Set<string>();
     const overdue = [...sched, ...due].filter((i) => !i.habit && !seen.has(`${i.path}\n${i.line}`) && !!seen.add(`${i.path}\n${i.line}`));
     const body = reviewBody(done, dash.projects, overdue, next.filter((i) => !i.habit), inbox);
-    const path: string = await call("capture_path", { file: journalFile(), journal: true });
+    let path = "";
+    for (const f of weekJournals(await call<string[]>("list_files"), cfg.config.daily_dir, off(0), day(t))) if (putReview(await textOf(f), body) !== null) { path = f; break; }
+    if (!path) path = await call("capture_path", { file: journalFile(), journal: true });
     await recorded(() => toFile(path, async (text) => putReview(text, body) ?? call("capture_insert", { text, heading: null, entry: reviewEntry(isoWeek(day(t)), body) })));
     await journal();
-    flash("Weekly review written to today's journal; a re-run replaces the marked block (Space n u to undo).");
+    flash(`Weekly review written to ${base(path)}; a re-run replaces the marked block (Space n u to undo).`);
   }
 
   /** Show PROMPT exactly; on YES, the local model's draft for it (null on NO or an error, which flashes). */

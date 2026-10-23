@@ -28,6 +28,11 @@ export function journalNeighbour(files: string[], daily: string, date: string, d
   return days.filter((x) => (dir > 0 ? x.n > date : x.n < date)).sort((a, b) => dir * a.n.localeCompare(b.n))[0]?.f;
 }
 
+/** The existing journal entries (in DAILY) dated FROM..TO (YYYY-MM-DD, inclusive) among FILES, oldest first. */
+export const weekJournals = (files: string[], daily: string, from: string, to: string) =>
+  files.filter((f) => journalNeighbour([f], daily, "0000-00-00", 1)).map((f) => ({ f, n: f.split(/[\\/]+/).pop()!.slice(0, 10) }))
+    .filter((x) => x.n >= from && x.n <= to).sort((a, b) => a.n.localeCompare(b.n)).map((x) => x.f);
+
 /** Journal entries (in DAILY) on the same day of an earlier year (same month), then of an earlier month this year, newest first, relative to TODAY (YYYY-MM-DD).
  *  Months/years lacking that day (Feb 29, the 31st) simply have no entry to match. `ago` is e.g. "1 year ago" / "3 months ago". */
 export function onThisDay(files: string[], daily: string, today: string): { path: string; date: string; ago: string }[] {
