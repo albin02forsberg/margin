@@ -920,6 +920,29 @@ pub fn set_effort(text: &str, line: usize, minutes: Option<u32>) -> String {
     set_prop(text, line, "EFFORT", minutes.map(|m| format!("{}:{:02}", m / 60, m % 60)).as_deref())
 }
 
+/// Set (Some VAL) or remove `:KEY:` (matched case-insensitively, written as given) in the
+/// property drawer at line AT, or create one there if `lines[AT]` is not a drawer. Removing
+/// the last entry drops the drawer. False if the drawer is unclosed (nothing changed).
+fn upsert_prop(lines: &mut Vec<String>, at: usize, key: &str, val: Option<&str>) -> bool {
+    let entry = val.map(|v| format!(":{key}: {v}"));
+    if !lines.get(at).is_some_and(|l| l.trim().eq_ignore_ascii_case(":PROPERTIES:")) {
+        if let Some(e) = entry {
+            lines.splice(at..at, [":PROPERTIES:".to_string(), e, ":END:".to_string()]);
+        }
+        return true;
+    }
+    let Some(end) = drawer_end(lines, at) else { return false };
+    let old = (at + 1..end).find(|&j| PROP.captures(&lines[j]).is_some_and(|c| c[1].eq_ignore_ascii_case(key)));
+    match (old, entry) {
+        (Some(j), Some(e)) => lines[j] = e,
+        (None, Some(e)) => lines.insert(end, e),
+        (Some(_), None) if end == at + 2 => { lines.drain(at..=end); },
+        (Some(j), None) => { lines.remove(j); },
+        (None, None) => {}
+    }
+    true
+}
+
 /// Set (Some value) or remove the property KEY (matched case-insensitively) in the
 /// drawer of the heading at LINE, creating the drawer below the planning line if
 /// needed. Removing the last entry drops the drawer; an unclosed drawer is left alone.
@@ -927,23 +950,7 @@ pub fn set_prop(text: &str, line: usize, key: &str, val: Option<&str>) -> String
     let mut lines = to_lines(text);
     let Some(hl) = headline_at(&lines, line) else { return text.to_string() };
     let i = if lines.get(hl + 1).is_some_and(|l| is_planning(l)) { hl + 2 } else { hl + 1 };
-    let entry = val.map(|v| format!(":{key}: {v}"));
-    if !lines.get(i).is_some_and(|l| l.trim().eq_ignore_ascii_case(":PROPERTIES:")) {
-        if let Some(e) = entry {
-            lines.splice(i..i, [":PROPERTIES:".to_string(), e, ":END:".to_string()]);
-        }
-        return join(lines, text);
-    }
-    let Some(end) = drawer_end(&lines, i) else { return text.to_string() };
-    let old = (i + 1..end).find(|&j| PROP.captures(&lines[j]).is_some_and(|c| c[1].eq_ignore_ascii_case(key)));
-    match (old, entry) {
-        (Some(j), Some(e)) => lines[j] = e,
-        (None, Some(e)) => lines.insert(end, e),
-        (Some(_), None) if end == i + 2 => { lines.drain(i..=end); },
-        (Some(j), None) => { lines.remove(j); },
-        (None, None) => {}
-    }
-    join(lines, text)
+    if upsert_prop(&mut lines, i, key, val) { join(lines, text) } else { text.to_string() }
 }
 
 /// Set `:KEY: VALUE` in the file-level property drawer (the one before the first heading,
@@ -954,17 +961,10 @@ pub fn set_file_prop(text: &str, key: &str, val: &str) -> Result<String, String>
     if key.is_empty() || !key.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
         return Err(format!("Not a property name: {key}"));
     }
-    let entry = format!(":{key}: {}", val.trim());
     let mut lines = to_lines(text);
     let top = lines.iter().position(|l| !l.trim().is_empty() && !l.starts_with("#+")).filter(|&i| lines[i].trim().eq_ignore_ascii_case(":PROPERTIES:"));
-    let Some(i) = top else {
-        lines.splice(0..0, [":PROPERTIES:".to_string(), entry, ":END:".to_string()]);
-        return Ok(join(lines, text));
-    };
-    let Some(end) = drawer_end(&lines, i) else { return Err("Unclosed property drawer".into()) };
-    match (i + 1..end).find(|&j| PROP.captures(&lines[j]).is_some_and(|c| c[1].eq_ignore_ascii_case(&key))) {
-        Some(j) => lines[j] = entry,
-        None => lines.insert(end, entry),
+    if !upsert_prop(&mut lines, top.unwrap_or(0), &key, Some(val.trim())) {
+        return Err("Unclosed property drawer".into());
     }
     Ok(join(lines, text))
 }
@@ -1874,6 +1874,12 @@ mod tests {
         // An empty drawer stays; an unclosed one is left alone.
         assert_eq!(set_effort("* A\n:PROPERTIES:\n:END:\n", 0, None), "* A\n:PROPERTIES:\n:END:\n");
         assert_eq!(set_effort("* A\n:PROPERTIES:\n* B\n", 0, Some(15)), "* A\n:PROPERTIES:\n* B\n");
+    }
+
+    #[test]
+    fn set_file_prop_edge_cases() {
+        assert!(set_file_prop(":PROPERTIES:\n:A: 1\n* H\n", "b", "2").is_err());
+        assert_eq!(set_file_prop("#+title: D\n* H\n", "k", "v").unwrap(), ":PROPERTIES:\n:K: v\n:END:\n#+title: D\n* H\n");
     }
 
     #[test]
