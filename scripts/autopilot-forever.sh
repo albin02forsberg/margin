@@ -10,6 +10,8 @@
 #           AUTOPILOT_MODEL        coordinator model (default sonnet)
 #           AUTOPILOT_WEEKLY_CAP   pause new runs at this weekly utilization, 0-1 (default 0.95,
 #                                  leaves a little for your own sessions; 1 = use everything)
+#           AUTOPILOT_WEEKLY_TARGET pace runs so weekly usage reaches about this by the reset (default 0.9;
+#                                  sleeps between runs while ahead of pace; 0 = no pacing)
 #           AUTOPILOT_STALL        kill and restart a run with no events for this many seconds (default 1200)
 #           AUTOPILOT_MIN_DISK_GB  clean the agents' build cache, then pause, below this (default 8)
 #           AUTOPILOT_CONTEXT      coordinator context window in tokens for rotation (default 200000)
@@ -43,6 +45,7 @@ trap 'rm -rf "$lock"' EXIT
 claude_bin=${CLAUDE_BIN:-claude}
 args=${AUTOPILOT_ARGS:---hours 5}
 cap=${AUTOPILOT_WEEKLY_CAP:-0.95}
+target=${AUTOPILOT_WEEKLY_TARGET:-0.9}
 stall=${AUTOPILOT_STALL:-1200}
 min_disk=${AUTOPILOT_MIN_DISK_GB:-8}
 export AUTOPILOT_LIMITS="$limits" AUTOPILOT_HEARTBEAT="$hb" AUTOPILOT_TAIL="$tailf" AUTOPILOT_ROTATE="$rotate"
@@ -97,6 +100,26 @@ weekly_gate() {  # at the weekly cap: wait out the week
   countdown $((r - now + 120)) "weekly cap reached"
 }
 
+# pace_wait <u> <resetsAt> <now> <target>: seconds to sleep so weekly usage tracks target * elapsed
+# fraction of the week (plus a 3% head-start), 0 = run. Capped at 6 h and at the reset.
+pace_wait() {
+  awk -v u="$1" -v r="$2" -v now="$3" -v t="$4" 'BEGIN{
+    left = r - now; if (r == "" || u == "" || left <= 0 || t <= 0) { print 0; exit }
+    f = 1 - left / 604800; if (u <= t * f + 0.03) { print 0; exit }
+    w = (u / t - f) * 604800; if (w > 21600) w = 21600; if (w > left + 120) w = left + 120
+    printf "%d\n", w }'
+}
+pace_gate() {  # ahead of the weekly pace: sleep until it catches up (re-evaluated after at most 6 h)
+  [ -s "$limits" ] || return 1
+  local u r w
+  u=$(jq -r '.unifiedWindows.seven_day.utilization // empty' "$limits" 2>/dev/null)
+  r=$(jq -r '.unifiedWindows.seven_day.resetsAt // empty' "$limits" 2>/dev/null)
+  w=$(pace_wait "$u" "$r" "$(date +%s)" "$target")
+  [ "${w:-0}" -gt 0 ] 2>/dev/null || return 1
+  say "weekly usage $u ahead of pace to $target: sleeping ${w}s"
+  countdown "$w" "pacing to $(awk -v t="$target" 'BEGIN{printf "%d", t*100}')% of the week"
+}
+
 free_gb() { df -k / | awk 'NR==2{printf "%d", $4/1048576}'; }
 disk_gate() {  # low disk: drop the agents' build cache (safe to rebuild), else pause
   [ "$(free_gb)" -ge "$min_disk" ] && return 1
@@ -116,6 +139,7 @@ fixes=0; fast=0
 while [ ! -e "$dir/STOP" ]; do
   [ "$(stat -f %z "$log" 2>/dev/null || echo 0)" -gt 5242880 ] && mv -f "$log" "$log.1"
   weekly_gate && continue
+  pace_gate && continue
   disk_gate && continue
 
   prompt="/autopilot $args"; kind=normal
