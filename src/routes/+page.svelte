@@ -790,6 +790,7 @@
     }
     if (typeof plan === "string") return flash(`Renamed; links to it left as they are (${plan}).`);
     if (!plan) return;
+    const sessions = await retitleSessions(loc, before);
     const paths = new Set([loc.path, ...(await call<string[]>("retitle_candidates", { path: loc.path })), ...tabs.filter((x) => x.kind === "file" && x.dirty && !x.missing).map((x) => x.path!)]);
     let n = 0;
     for (const p of paths)
@@ -799,7 +800,24 @@
         n += r[1];
         return r[0];
       });
-    if (n) flash(`Renamed — updated ${n} link${n === 1 ? "" : "s"}.`);
+    if (n || sessions) flash(`Renamed — updated ${[n && `${n} link${n === 1 ? "" : "s"}`, sessions && `${sessions} clocked session${sessions === 1 ? "" : "s"}`].filter(Boolean).join(" and ")}.`);
+  }
+
+  /** After renaming the heading at LOC (BEFORE: its note before), offer to rename the time-log sessions clocked on
+   *  the old title (in its project, as its clocked-time badge counts them) so they keep adding up on it. Returns how many were renamed. */
+  async function retitleSessions(loc: Loc, before: string) {
+    const at = (text: string) => call<{ category: string; title: string }>("org_context", { path: loc.path, text, line: loc.line });
+    const [o, t] = [await at(before), await at(await textOf(loc.path))];
+    const args = { category: o.category, old: o.title, new: t.title };
+    const by = await call<Record<string, number>>("tc_rename_task", { ...args, apply: false });
+    const n = Object.values(by).reduce((a, b) => a + b, 0);
+    if (!n) return 0;
+    const prompt = `Also rename ${n} clocked session${n === 1 ? "" : "s"} on ${Object.keys(by).join(", ")} from “${o.title}” to “${t.title}”? Undo won't change them back; the work diary keeps the old text.`;
+    if (!(await pick({ prompt, items: [{ label: "Rename the sessions", value: true }, { label: "Leave them as they are", value: false }] }))) return 0;
+    await call("tc_rename_task", { ...args, apply: true });
+    await refreshTc();
+    reload++;
+    return n;
   }
 
   /** Copy an `[[id:…][Heading]]` link to the heading at LOC, adding an :ID: property when it has none. */

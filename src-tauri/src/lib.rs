@@ -1536,6 +1536,16 @@ fn tc_edit_session(s: State<App>, line: usize, note: String, old_hours: f64, new
     Ok("✅ Session updated.".into())
 }
 
+/// Sessions clocked on task OLD per project (timeclock `Tc::rename_task`), renamed to NEW when APPLY (after a heading rename).
+#[tauri::command(async)]
+fn tc_rename_task(s: State<App>, category: String, old: String, new: String, apply: bool) -> R<std::collections::BTreeMap<String, usize>> {
+    let by = timeclock::locked(|| s.tc().rename_task(&category, &old, &new, apply))?;
+    if apply && !by.is_empty() {
+        s.backup();
+    }
+    Ok(by)
+}
+
 /// Log a finished session after the fact (an accepted suggestion).
 #[tauri::command(async)]
 fn tc_add_session(s: State<App>, start: NaiveDateTime, end: NaiveDateTime, project: String, export_code: Option<String>, note: String) -> R<String> {
@@ -2152,7 +2162,7 @@ pub fn run() {
             org_targets, org_tags, drill_cards, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, org_stuck, notes_recent, notes_tags, notes_tagged, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply
         ])
         .build(tauri::generate_context!())
