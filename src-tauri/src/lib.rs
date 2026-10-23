@@ -743,7 +743,7 @@ fn org_heading(s: State<App>, text: String, line: usize) -> Option<org::Parts> {
 
 /// Headline edits. OP: cycle (VALUE ±1) | keyword (VALUE or none) | priority (letter or none)
 /// | priority-cycle (±1) | tags ("a:b") | title (new text) | shift ("SCHEDULED 1")
-/// | effort ("0:30", "2h"; empty clears) | move ("SCHEDULED tomorrow": absolute date, keeps time and repeater).
+/// | effort ("0:30", "2h"; empty clears) | prop (a "KEY VALUE" per line; no VALUE removes KEY) | move ("SCHEDULED tomorrow": absolute date, keeps time and repeater).
 #[tauri::command]
 fn org_edit(s: State<App>, text: String, line: usize, op: String, value: Option<String>) -> R<String> {
     org_edit_op(&text, line, &op, value, &s.kw(), timeclock::now(), s.cfg().log_done)
@@ -768,6 +768,11 @@ fn org_edit_op(text: &str, line: usize, op: &str, value: Option<String>, kw: &or
             let (k, val) = v.split_once('=').ok_or("file-prop needs \"KEY=VALUE\"")?;
             org::set_file_prop(text, k, val)?
         }
+        "prop" => v.lines().filter(|l| !l.trim().is_empty()).try_fold(text.to_string(), |t, l| {
+            let (k, val) = l.trim().split_once(' ').map_or((l.trim(), ""), |(k, v)| (k, v.trim()));
+            if k.contains(':') { return Err(format!("bad property name {k}")) }
+            Ok(org::set_prop(&t, line, k, Some(val).filter(|v| !v.is_empty())))
+        })?,
         "tags" => org::set_tags(text, line, kw, v.split(':').map(|t| t.trim().to_string()).collect()),
         "shift" => {
             let (kind, days) = v.split_once(' ').ok_or("shift needs \"KIND DAYS\"")?;
@@ -790,6 +795,12 @@ fn org_sort(s: State<App>, text: String, line: Option<usize>, key: String) -> R<
 #[tauri::command(async)]
 fn org_targets(s: State<App>) -> Vec<org::Target> {
     org::targets(&s.files(), &s.cfg().notes())
+}
+
+/// Flashcards: headings tagged `:drill:` (see org::drill_cards).
+#[tauri::command(async)]
+fn drill_cards(s: State<App>) -> Vec<org::Card> {
+    org::drill_cards(&s.files())
 }
 
 #[tauri::command(async)]
@@ -2138,7 +2149,7 @@ pub fn run() {
             watcher::gnome_extension, watcher::screen_recording,
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
-            org_targets, org_tags, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
+            org_targets, org_tags, drill_cards, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, org_stuck, notes_recent, notes_tags, notes_tagged, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tc_csv, tc_switch_profile, tc_import, backup_now,
@@ -2325,6 +2336,10 @@ mod tests {
         assert_eq!(edit("* Task\n", "effort", Some("2h")).unwrap(), e);
         assert_eq!(edit(e, "effort", Some("")).unwrap(), "* Task\n");
         assert_eq!(edit("* T\n", "effort", Some("soon")).unwrap_err(), "Not a duration: soon (try 0:30, 2h or 45min)");
+        let d = edit(e, "prop", Some("DRILL_DUE 2026-01-09\nDRILL_EASE  2.5 \n")).unwrap();
+        assert_eq!(d, "* Task\n:PROPERTIES:\n:EFFORT: 2:00\n:DRILL_DUE: 2026-01-09\n:DRILL_EASE: 2.5\n:END:\n");
+        assert_eq!(edit(&d, "prop", Some("DRILL_DUE\nDRILL_EASE")).unwrap(), e);
+        assert!(edit(e, "prop", Some("A:B 1")).is_err());
     }
 
     #[test]

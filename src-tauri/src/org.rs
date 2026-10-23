@@ -917,19 +917,25 @@ pub fn set_tags(text: &str, line: usize, kw: &Kw, tags: Vec<String>) -> String {
 /// Set (Some minutes, written `H:MM` like org) or remove the `:EFFORT:` of the
 /// heading at LINE. Removing it drops the drawer only when nothing else is left in it.
 pub fn set_effort(text: &str, line: usize, minutes: Option<u32>) -> String {
+    set_prop(text, line, "EFFORT", minutes.map(|m| format!("{}:{:02}", m / 60, m % 60)).as_deref())
+}
+
+/// Set (Some value) or remove the property KEY (matched case-insensitively) in the
+/// drawer of the heading at LINE, creating the drawer below the planning line if
+/// needed. Removing the last entry drops the drawer; an unclosed drawer is left alone.
+pub fn set_prop(text: &str, line: usize, key: &str, val: Option<&str>) -> String {
     let mut lines = to_lines(text);
     let Some(hl) = headline_at(&lines, line) else { return text.to_string() };
     let i = if lines.get(hl + 1).is_some_and(|l| is_planning(l)) { hl + 2 } else { hl + 1 };
-    let entry = minutes.map(|m| format!(":EFFORT: {}:{:02}", m / 60, m % 60));
+    let entry = val.map(|v| format!(":{key}: {v}"));
     if !lines.get(i).is_some_and(|l| l.trim().eq_ignore_ascii_case(":PROPERTIES:")) {
         if let Some(e) = entry {
             lines.splice(i..i, [":PROPERTIES:".to_string(), e, ":END:".to_string()]);
         }
         return join(lines, text);
     }
-    // An unclosed drawer is left alone.
     let Some(end) = drawer_end(&lines, i) else { return text.to_string() };
-    let old = (i + 1..end).find(|&j| PROP.captures(&lines[j]).is_some_and(|c| c[1].eq_ignore_ascii_case("EFFORT")));
+    let old = (i + 1..end).find(|&j| PROP.captures(&lines[j]).is_some_and(|c| c[1].eq_ignore_ascii_case(key)));
     match (old, entry) {
         (Some(j), Some(e)) => lines[j] = e,
         (None, Some(e)) => lines.insert(end, e),
@@ -1562,6 +1568,55 @@ pub fn all_tags(files: &[Arc<OrgFile>]) -> Vec<String> {
     t
 }
 
+/// A flashcard: a heading tagged `:drill:`, its title the question and its own text the answer.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Card {
+    pub path: PathBuf,
+    pub line: usize,
+    pub title: String,
+    pub body: String,
+    /// `:DRILL_DUE:`, `:DRILL_INTERVAL:` (days), `:DRILL_EASE:`; None on a new card.
+    pub due: Option<NaiveDate>,
+    pub interval: Option<u32>,
+    pub ease: Option<f64>,
+}
+
+/// Headings with their own `:drill:` tag, outside ARCHIVE, whose text below the
+/// planning line and drawers isn't empty (subheadings aren't part of the answer).
+pub fn drill_cards(files: &[Arc<OrgFile>]) -> Vec<Card> {
+    let mut out = vec![];
+    for f in files {
+        let lines = to_lines(&f.text);
+        for h in f.headlines.iter().filter(|h| h.tags.iter().any(|t| t == "drill") && !h.archived()) {
+            let end = heading_end(&lines, h.line);
+            let mut i = h.line + 1;
+            if lines.get(i).is_some_and(|l| is_planning(l)) {
+                i += 1;
+            }
+            let mut props = HashMap::new();
+            while i < end && lines[i].trim().starts_with(':') && lines[i].trim().ends_with(':') {
+                let Some(e) = drawer_end(&lines, i) else { break };
+                if lines[i].trim().eq_ignore_ascii_case(":PROPERTIES:") {
+                    props.extend((i + 1..e).filter_map(|j| PROP.captures(&lines[j]).map(|c| (c[1].to_uppercase(), c[2].to_string()))));
+                }
+                i = e + 1;
+            }
+            let body = lines[i.min(end)..end].join("\n").trim().to_string();
+            if body.is_empty() {
+                continue;
+            }
+            let p = |k: &str| props.get(k).map(String::as_str);
+            out.push(Card {
+                path: f.path.clone(), line: h.line, title: h.title.clone(), body,
+                due: p("DRILL_DUE").and_then(|s| s.parse().ok()),
+                interval: p("DRILL_INTERVAL").and_then(|s| s.parse().ok()),
+                ease: p("DRILL_EASE").and_then(|s| s.parse().ok()).filter(|e: &f64| e.is_finite()),
+            });
+        }
+    }
+    out
+}
+
 fn join_nl(lines: Vec<String>) -> String {
     let mut s = lines.join("\n");
     s.push('\n');
@@ -1819,6 +1874,29 @@ mod tests {
         // An empty drawer stays; an unclosed one is left alone.
         assert_eq!(set_effort("* A\n:PROPERTIES:\n:END:\n", 0, None), "* A\n:PROPERTIES:\n:END:\n");
         assert_eq!(set_effort("* A\n:PROPERTIES:\n* B\n", 0, Some(15)), "* A\n:PROPERTIES:\n* B\n");
+    }
+
+    #[test]
+    fn set_prop_adds_updates_and_removes_keys() {
+        let a = set_prop("* Q :drill:\nanswer\n", 1, "DRILL_DUE", Some("2026-10-24"));
+        assert_eq!(a, "* Q :drill:\n:PROPERTIES:\n:DRILL_DUE: 2026-10-24\n:END:\nanswer\n");
+        let b = set_prop(&set_effort(&a, 0, Some(30)), 0, "drill_due", Some("2026-11-01"));
+        assert_eq!(b, "* Q :drill:\n:PROPERTIES:\n:drill_due: 2026-11-01\n:EFFORT: 0:30\n:END:\nanswer\n");
+        let c = set_prop(&b, 0, "DRILL_DUE", None);
+        assert_eq!(c, "* Q :drill:\n:PROPERTIES:\n:EFFORT: 0:30\n:END:\nanswer\n");
+        assert_eq!(parse(Path::new("/x.org"), &c, &kw()).headlines[0].effort, Some(30));
+        assert_eq!(set_prop("no heading\n", 0, "K", Some("v")), "no heading\n");
+    }
+
+    #[test]
+    fn drill_cards_reads_tagged_headings() {
+        let text = "* What is 2+2? :drill:\nSCHEDULED: <2026-10-01 Thu>\n:PROPERTIES:\n:DRILL_DUE: 2026-10-20\n:DRILL_INTERVAL: 6\n:DRILL_EASE: 2.36\n:END:\n:LOGBOOK:\nx\n:END:\n4\n\n** sub\nnot the answer\n\
+                    * New :drill:\nfresh\n* Empty :drill:\n:PROPERTIES:\n:DRILL_EASE: nan\n:END:\n* Plain\nno\n* Old :ARCHIVE:\n** Gone :drill:\nx\n";
+        let files = [Arc::new(parse(Path::new("/n/d.org"), text, &kw()))];
+        let c = drill_cards(&files);
+        assert_eq!(c.iter().map(|c| (c.title.as_str(), c.body.as_str(), c.line)).collect::<Vec<_>>(), [("What is 2+2?", "4", 0), ("New", "fresh", 14)]);
+        assert_eq!((c[0].due, c[0].interval, c[0].ease), ("2026-10-20".parse().ok(), Some(6), Some(2.36)));
+        assert_eq!((c[1].due, c[1].interval, c[1].ease), (None, None, None));
     }
 
     #[test]

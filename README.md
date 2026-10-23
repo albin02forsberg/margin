@@ -72,6 +72,14 @@ email addresses don't count, journal included); `Enter` jumps there.
 
 <img src="docs/gifs/links.gif" width="800" alt="Opening a note, showing its backlinks and graph, and following a link with Enter">
 
+**Flashcards** — tag a heading `:drill:` and it becomes a card: the title is the question, its
+own text (below any planning line and drawers, subheadings excluded) the answer. `Space n d`
+reviews the due cards across all notes: `Space`/`Enter` shows the answer, then `1`–`4` grades it
+(again / hard / good / easy; "again" comes back later in the session). Scheduling is a simple
+SM-2 variant stored in the card's drawer (`:DRILL_DUE:`, `:DRILL_INTERVAL:` in days,
+`:DRILL_EASE:`), so it stays plain text; cards under `:ARCHIVE:` are skipped and `Space n u`
+undoes the last grade.
+
 **Vim editing** — the editor has vim keys: search, `ciw`, `o`, `dd`, `u`, `:w`.
 
 <img src="docs/gifs/vim.gif" width="800" alt="Editing an org note with vim keys: search, change a word, add a checkbox line, delete and undo, save">
