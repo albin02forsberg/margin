@@ -490,6 +490,10 @@ pub fn mentions_of(files: &[Arc<OrgFile>], root: &Path, name: &str) -> Vec<Menti
     let trash = root.join(".trash");
     let mut out = vec![];
     for f in files.iter().filter(|f| !f.path.starts_with(&trash)) {
+        // Any per-line hit is also a whole-text hit (`\n` counts as a non-word prefix), so skip the rest cheaply.
+        if !re.is_match(&f.text) {
+            continue;
+        }
         let tasks: BTreeSet<usize> = f.headlines.iter().filter(|h| h.keyword.is_some()).map(|h| h.line).collect();
         for (i, l) in f.text.lines().enumerate().filter(|(i, _)| !tasks.contains(i)) {
             if let Some(m) = re.captures(l).and_then(|c| c.get(1)) {
@@ -761,6 +765,10 @@ mod tests {
         // tag, plain mention, a line-ending one after "@annabel"; not emails, tasks or trash.
         assert_eq!(got, vec![(1, 8, 5), (2, 4, 5), (4, 13, 5)]);
         assert!(mentions_of(&files, Path::new("/n"), " @ ").is_empty());
+        // First line, after a newline, and a file without any mention.
+        let more = [Arc::new(parse(Path::new("/n/a.org"), "@anna first\nx\n@anna\n", &kw)), Arc::new(parse(Path::new("/n/b.org"), "nothing\n", &kw))];
+        let got: Vec<_> = mentions_of(&more, Path::new("/n"), "anna").into_iter().map(|m| (m.line, m.col)).collect();
+        assert_eq!(got, vec![(0, 0), (2, 0)]);
     }
 
     #[test]
