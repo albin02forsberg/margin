@@ -91,6 +91,15 @@ describe("Margin", () => {
     await find(".agenda .row .title", "Water the e2e plants");
   });
 
+  it("takes a date, tag and priority typed at the end of the title", async () => {
+    await browser.keys([Key.Ctrl, "n"]);
+    await browser.$(".dialog input.title").addValue("Call e2e Anna today #work !A");
+    await find(".dialog .qa .tok", "today");
+    await browser.keys(Key.Enter);
+    await fileMatches(join(notes, "inbox.org"), (s) => /\* TODO \[#A\] Call e2e Anna\s+:work:\n\s*SCHEDULED: </.test(s), "quick-add tokens not applied");
+    await find(".agenda .row .title", "Call e2e Anna");
+  });
+
   it("marks a task done with x in Today", async () => {
     await (await find(".agenda .row .title", "Fixture task")).click();
     await browser.keys("x");

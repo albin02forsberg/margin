@@ -38,7 +38,9 @@ the editor has vim keys.
 ## Features
 
 **Capture a task** — `Ctrl+N` (or "New task" in the `Ctrl+K` palette) asks for a title and
-a date; from anywhere, the global quick-capture shortcut does the same.
+a date; from anywhere, the global quick-capture shortcut does the same. In the dialog a date,
+`#tags` and `!A`/`!B`/`!C` typed at the end of the title are picked up (`Call Anna fri 14:00 #work !A`)
+and shown as chips; the fields below win when you fill them in too.
 
 <img src="docs/gifs/capture.gif" width="800" alt="Ctrl+K, New task, typing a title and today, and the task showing up in Today">
 
