@@ -17,6 +17,8 @@
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
   import { isoWeek, putReview, reviewBody, reviewEntry } from "$lib/review";
+  import { estimates, pct } from "$lib/estimates";
+  import { fmtEffort } from "$lib/effort";
   import { buildTimeline, timelineMarkdown, type Entry as TimelineEntry } from "$lib/timeline";
   import { clockBlocks } from "$lib/clocktable";
   import { ago, changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath, weekJournals } from "$lib/paths";
@@ -1656,6 +1658,24 @@
     else if (e.session) await editSession(e.session as Session);
   }
 
+  /** Estimates vs actuals (#719): done tasks of the last 7/30/90 days with an :EFFORT:, per project and in total,
+   *  and the 5 largest overruns (Enter opens one); the prompt gives the planning factor (clocked / estimated). */
+  async function estimateReport() {
+    const days = await pick({ prompt: "Estimates vs actuals over", items: [7, 30, 90].map((n) => ({ label: `Last ${n} days`, value: n as unknown })) });
+    if (days == null) return;
+    const t = new Date(), from = new Date(t.getFullYear(), t.getMonth(), t.getDate() - (days as number) + 1);
+    const closed = await call<AgendaItem[]>("search_todos", { query: `closed:>=${from.getFullYear()}-${pad(from.getMonth() + 1)}-${pad(from.getDate())}` });
+    const r = estimates(closed.filter((i) => i.keyword && kw().done.includes(i.keyword)));
+    if (!r.total.n) return flash(`No done task of the last ${days} days has both an estimate and clocked time${r.unclocked ? ` (${r.unclocked} estimated without clocked time)` : ""}.`);
+    const row = (s: { n: number; est: number; spent: number }) => `${s.n} task${s.n === 1 ? "" : "s"} · est ${fmtEffort(s.est)} · clocked ${fmtEffort(s.spent)} · ${pct(s)}`;
+    const it = await pick({
+      prompt: `Estimates vs actuals, last ${days} days: planning factor ×${(r.total.spent / r.total.est).toFixed(2)}${r.unclocked ? ` (${r.unclocked} estimated task${r.unclocked === 1 ? "" : "s"} without clocked time left out)` : ""}`,
+      items: [{ label: "All projects", detail: row(r.total), value: null as unknown }, ...r.projects.map((p) => ({ label: p.project || "(no project)", detail: row(p), value: null as unknown })),
+        ...r.worst.map((w) => ({ label: `+${fmtEffort(w.spent! - w.effort!)} ${w.title}`, detail: `${fmtEffort(w.spent!)} / ${fmtEffort(w.effort!)} · ${rel(w.path)}`, value: w as unknown }))],
+    });
+    if (it) await openFile((it as AgendaItem).path, (it as AgendaItem).line);
+  }
+
   /** Regenerate every `#+BEGIN: clocktable` block of the open note (#693) in one edit (one undo step, saved like
    *  typing); a block with options Margin doesn't know is left alone and named in the message. */
   async function updateClockTables() {
@@ -2213,7 +2233,7 @@
     weekly: weeklyReport, monthly: monthlyReport, doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
     backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), open: (loc) => openFile(loc.path, loc.line), import: importEmacs, acceptSuggestion, editSuggestion,
     flex: async () => flash(await call("tc_report", { kind: "flex" })), leave: async () => flash(await call("tc_leave_time")), diary: () => openFile(cfg.diary_path),
-    timeOff, logSession,
+    timeOff, logSession, estimates: () => estimateReport(),
   };
   const timeApi: TimeApi = { act, run: async (name, arg) => { await timeActions[name](arg); } };
   const agendaApi: AgendaApi = {
@@ -2412,6 +2432,7 @@
     { label: "Time: log a past session…", leader: "t n", run: t("logSession") },
     { label: "Time: update clock reports (#+BEGIN: clocktable) in this note", leader: "t u", run: () => act(updateClockTables) },
     { label: "Weekly review into today's journal (re-run replaces the marked block)", leader: "t R", run: () => act(weeklyReview) },
+    { label: "Time: estimates vs actuals (how far off are my :EFFORT: guesses?)…", leader: "t A", run: () => act(estimateReport) },
     { label: "Time: day timeline (sessions, tasks closed, notes edited)…", leader: "t T", run: () => act(dayTimeline) },
     { label: "Time: import from Emacs…", leader: "t M", run: t("import") },
 
