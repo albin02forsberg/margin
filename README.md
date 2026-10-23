@@ -22,7 +22,8 @@ the editor has vim keys.
   this week, hours per project, overdue tasks and what's scheduled next week,
   then empty `** Went well` / `** To change` headings. Running it again
   replaces only the generated lines between `# review-begin` and
-  `# review-end` (edits there are overwritten; the rest is kept).
+  `# review-end` (edits there are overwritten; the rest is kept), also on a
+  later day of the same week, in the entry that already holds the block.
 - **Time** — a timeclock with breaks, projects, flex balance and reports, in
   the window or the tray.
 - **Window title** shows the active tab (`• note — Margin` when unsaved), so
