@@ -2386,6 +2386,13 @@
     { label: "Insert table…", leader: "i t", run: insertTable },
     { label: "Insert code block…", leader: "i c", run: insertCodeBlock },
     { label: "Insert quote block", leader: "i q", run: () => inFile() && ed.insertBlock(view, "quote") },
+    { label: "Insert snippet… (or type <key, then Tab)", run: () => act(async () => {
+      if (!inFile()) return flash("Open a note first.");
+      if (!cfg?.snippets?.length) return flash("No snippets yet: add them in Settings → Snippets.");
+      const s = await pick({ prompt: "Insert snippet", items: cfg.snippets.map((s: ed.Snippet) => ({ label: `<${s.key}`, detail: s.text.split("\n")[0], value: s })) });
+      if (s) ed.insertSnippet(view, s);
+      view.focus();
+    }) },
     { label: "Insert web link…", leader: "i w", run: insertWebLink },
     { label: "Insert link to a note…", leader: "i l", run: insertLink },
     { label: "Insert date…", leader: "i d", run: insertDate },
@@ -2669,6 +2676,7 @@
       ed.hooks.close = () => act(() => closeTab());
       ed.hooks.follow = (target) => act(() => followLink(target ?? ed.linkAtCursor(view)));
       ed.hooks.tab = (d) => act(() => cycleTab(d));
+      ed.hooks.snippets = () => cfg?.snippets ?? [];
       await openView("agenda");
       requestAnimationFrame(() => (motion = true)); // nothing animates on first load
       await restoreSession();

@@ -1,9 +1,9 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { CATEGORIES, changes, checkTemplates, checkViews, GROUPS, needsMacPrompt, refresh, refreshRows, shows, toForm, type Field, type Form, type Row } from "$lib/settings";
+  import { CATEGORIES, changes, checkSnippets, checkTemplates, checkViews, GROUPS, needsMacPrompt, refresh, refreshRows, shows, toForm, type Field, type Form, type Row } from "$lib/settings";
 
-  type List = "views" | "templates";
+  type List = "views" | "templates" | "snippets";
   /** The config.toml settings as a form, saved per group; unsaved fields survive a reload of CONFIG. */
   /** ERROR: why config.toml couldn't be loaded; MISSING: it's gone, so RECREATE can write it from the current settings. */
   let { version, config, defaults, error, missing, save, edit, recreate, active, reload }: { version: string; config: Record<string, unknown>; defaults: Record<string, unknown>; error: string | null; missing: boolean; save: (values: Record<string, unknown>, reset?: string[], tables?: Partial<Record<List, Row[]>>) => Promise<void>; edit: () => void; recreate: () => Promise<void>; active: boolean; reload: number } = $props();
@@ -12,11 +12,11 @@
   let errors = $state<Record<string, string>>({});
   /** Fields with unsaved edits here that config.toml also changed underneath. */
   let clash = $state<string[]>([]);
-  /** Saved views and capture templates (`[[views]]`, `[[templates]]`) as edited here, as last
-   *  loaded, and whether config.toml changed them under unsaved edits. */
-  let rows = $state<Record<List, Row[]>>({ views: [], templates: [] });
-  let rowsBase = $state<Record<List, Row[]>>({ views: [], templates: [] });
-  let rowsClash = $state<Record<List, boolean>>({ views: false, templates: false });
+  /** Saved views, capture templates and snippets (`[[views]]`, `[[templates]]`, `[[snippets]]`) as
+   *  edited here, as last loaded, and whether config.toml changed them under unsaved edits. */
+  let rows = $state<Record<List, Row[]>>({ views: [], templates: [], snippets: [] });
+  let rowsBase = $state<Record<List, Row[]>>({ views: [], templates: [], snippets: [] });
+  let rowsClash = $state<Record<List, boolean>>({ views: false, templates: false, snippets: false });
   /** Keys of the templates folder's files, which capture_templates lists after config.toml's. */
   let fileKeys = $state<string[]>([]);
   $effect(() => {
@@ -25,7 +25,7 @@
       let more: string[];
       [form, base, more] = refresh(form, base, c);
       clash = [...new Set([...more, ...clash.filter((k) => form[k] !== base[k])])];
-      for (const k of ["views", "templates"] as const) {
+      for (const k of ["views", "templates", "snippets"] as const) {
         let changed: boolean;
         [rows[k], rowsBase[k], changed] = refreshRows(rows[k], rowsBase[k], c[k]);
         rowsClash[k] = changed || (rowsClash[k] && dirtyRows(k));
@@ -38,7 +38,7 @@
   const fileClash = $derived([...new Set(rows.templates.map((t) => t.key.trim()).filter((k) => fileKeys.includes(k)))]);
   async function saveRows(k: List) {
     try {
-      await save({}, [], { [k]: k === "views" ? checkViews(rows.views) : checkTemplates(rows.templates) });
+      await save({}, [], { [k]: ({ views: checkViews, templates: checkTemplates, snippets: checkSnippets })[k](rows[k]) });
       await tick();
       rows[k] = rowsBase[k].map((v) => ({ ...v }));
       rowsClash[k] = false;
@@ -127,9 +127,9 @@
   let q = $state("");
   let filterInput = $state<HTMLInputElement>();
   const fieldsOf = (g: (typeof GROUPS)[number]) => g.fields.filter((f) => shows(cat, q, g.name, f.label, f.hint, f.key));
-  const VIEWS = "task searches query", TPLS = "capture key file heading body";
+  const VIEWS = "task searches query", TPLS = "capture key file heading body", SNIPS = "editor tab key text insert";
   const showRules = $derived(!!(rules.length || errors.rules) && shows(cat, q, "Integrations", "Learned activity rules"));
-  const none = $derived(!GROUPS.some((g) => fieldsOf(g).length) && !shows(cat, q, "Saved views", VIEWS) && !shows(cat, q, "Capture templates", TPLS) && !showRules);
+  const none = $derived(!GROUPS.some((g) => fieldsOf(g).length) && !shows(cat, q, "Saved views", VIEWS) && !shows(cat, q, "Capture templates", TPLS) && !shows(cat, q, "Snippets", SNIPS) && !showRules);
   function key(e: KeyboardEvent) {
     if (e.target === filterInput) {
       if (e.key === "Escape") { q = ""; filterInput?.blur(); e.preventDefault(); }
@@ -274,6 +274,23 @@
       <button type="button" class="link" onclick={() => rows.templates.push({ key: "", name: "", file: "", heading: "", body: "" })}>Add template</button>
       {#if fileClash.length}<p class="error">⚠ Key {fileClash.join(", ")} is also used by a file in the templates folder.</p>{/if}
       {@render foot("templates", "templates")}
+    </fieldset>
+  </form>
+  <form class="card wide" hidden={!shows(cat, q, "Snippets", SNIPS)} onsubmit={(e) => { e.preventDefault(); saveRows("snippets"); }}>
+    <fieldset disabled={!!error} class="list">
+      <legend>Snippets</legend>
+      <small>In a note, type {"<key"} alone on a line and press Tab (or pick one with "Insert snippet…" in the command palette). Yours win over the built-in blocks ({"<s <q <e <v <c <C <l <h <a <el"}). Text: %t/%T today's date/time, %u/%U inactive ones, %? the cursor; later lines get the line's indent. Saving rewrites the [[snippets]] tables of config.toml; comments inside them are not kept.</small>
+      {#each rows.snippets as s, i}
+        <div class="tpl">
+          <div class="row key">
+            <input aria-label="Snippet key" placeholder="Key, e.g. mtg" bind:value={s.key} />
+            {@render buttons(rows.snippets, i)}
+          </div>
+          <textarea aria-label="Snippet text" rows={Math.max(2, s.text.split("\n").length)} placeholder={"* Meeting %u\n- %?"} bind:value={s.text}></textarea>
+        </div>
+      {/each}
+      <button type="button" class="link" onclick={() => rows.snippets.push({ key: "", text: "" })}>Add snippet</button>
+      {@render foot("snippets", "snippets")}
     </fieldset>
   </form>
   <section class="card wide about" hidden={cat !== "All" || !!q.trim()}>

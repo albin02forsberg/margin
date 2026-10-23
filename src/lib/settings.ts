@@ -66,7 +66,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
 ];
 
 /** The settings page's category chips: all, each field group, then the list cards. */
-export const CATEGORIES = ["All", ...GROUPS.map((g) => g.name), "Saved views", "Capture templates"];
+export const CATEGORIES = ["All", ...GROUPS.map((g) => g.name), "Saved views", "Capture templates", "Snippets"];
 /** Whether a card or field of group NAME shows under category CAT and filter Q: Q (any case) is
  *  in the group name or one of TEXT (a field's label, hint and key). */
 export function shows(cat: string, q: string, name: string, ...text: (string | undefined)[]) {
@@ -119,7 +119,7 @@ export function refresh(form: Form, base: Form, config: Record<string, unknown>)
   return [kept, next, clash];
 }
 
-/** A `[[views]]`/`[[templates]]` entry on the settings page. */
+/** A `[[views]]`/`[[templates]]`/`[[snippets]]` entry on the settings page. */
 export type Row = Record<string, string>;
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -148,6 +148,19 @@ export function checkTemplates(tpls: Row[]): Row[] {
     if ([...r.key].length !== 1) throw new Error(`Template ${i + 1} needs a one-character key`);
     if (other < i) throw new Error(`Templates ${other + 1} and ${i + 1} have the same key`);
     if (!r.name) throw new Error(`Template ${i + 1} needs a name`);
+    return r;
+  });
+}
+
+/** SNIPPETS trimmed for save_config (a leading `<` dropped, text kept as typed); throws unless each
+ *  has a key of its own that `<key` can type (letters, digits, `_`, `-`). */
+export function checkSnippets(snips: Row[]): Row[] {
+  const key = (s: Row) => (s.key ?? "").trim().replace(/^</, "");
+  return snips.map((s, i) => {
+    const r: Row = { key: key(s), text: s.text ?? "" };
+    if (!/^[\w-]+$/.test(r.key)) throw new Error(`Snippet ${i + 1} needs a key of letters, digits, _ or -`);
+    const other = snips.findIndex((u) => key(u) === r.key);
+    if (other < i) throw new Error(`Snippets ${other + 1} and ${i + 1} have the same key`);
     return r;
   });
 }
