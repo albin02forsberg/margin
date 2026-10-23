@@ -17,6 +17,8 @@ import { applySet, type NumOpts } from "./setopt";
 import { EMPH, toggleEmphasis } from "./emphasis";
 import { FN, addFootnote, footnoteTarget } from "./footnote";
 import { headingAt, level, narrowField, subtreeEnd } from "./narrow";
+import { block, expandSnippet, snippetAt, type Snippet } from "./snippet";
+export type { Snippet } from "./snippet";
 
 /** Set by the app; vim ex commands, mappings and clicks call through these. */
 export const hooks = {
@@ -24,6 +26,8 @@ export const hooks = {
   close: () => {},
   follow: (_target?: string) => {},
   tab: (_d: number) => {},
+  /** The user's `[[snippets]]` (config.toml), expanded by `<key` + Tab. */
+  snippets: (): Snippet[] => [],
 };
 
 Vim.defineEx("write", "w", () => hooks.save());
@@ -509,25 +513,31 @@ export function applyText(view: EditorView, text: string) {
   if (old !== text) view.dispatch({ changes: diffChange(old, text) });
 }
 
-/** Org's "<s" + Tab: expand a block template. */
+/** Org's "<s" + Tab (org-tempo): expand a block template or a user snippet (hooks.snippets). */
 function expandTemplate(v: EditorView): boolean {
   const ln = curLine(v);
-  const m = /^(\s*)<([sqevc])$/.exec(ln.text);
-  if (!m || v.state.selection.main.head !== ln.to) return false;
-  const kind = { s: "src", q: "quote", e: "example", v: "verse", c: "center" }[m[2]]!;
-  insertBlock(v, kind, "", { from: ln.from, to: ln.to, indent: m[1] });
+  const x = v.state.selection.main.head === ln.to && snippetAt(ln.text, hooks.snippets());
+  if (!x) return false;
+  v.dispatch({ changes: { from: ln.from, to: ln.to, insert: x.text }, selection: { anchor: ln.from + x.cursor } });
+  insertMode(v);
   return true;
 }
 
-export function insertBlock(v: EditorView, kind: string, lang = "", at?: { from: number; to: number; indent: string }) {
+/** Insert user snippet S at the cursor, later lines indented like the cursor line (palette "Insert snippet…"). */
+export function insertSnippet(v: EditorView, s: Snippet) {
+  const { from, to } = v.state.selection.main;
+  const indent = /^\s*/.exec(curLine(v).text)![0];
+  const x = expandSnippet(s.text, indent, new Date()); // its first line's indent is already there
+  v.dispatch({ changes: { from, to, insert: x.text.slice(indent.length) }, selection: { anchor: from + x.cursor - indent.length } });
+  insertMode(v);
+}
+
+export function insertBlock(v: EditorView, kind: string, lang = "") {
   const ln = curLine(v);
-  const indent = at?.indent ?? /^\s*/.exec(ln.text)![0];
-  const from = at?.from ?? (ln.text.trim() ? ln.to : ln.from);
-  const lead = !at && ln.text.trim() ? "\n" : "";
-  const begin = `${indent}#+begin_${kind}${kind === "src" ? " " + lang : ""}`;
-  const insert = `${lead}${begin}\n${indent}\n${indent}#+end_${kind}`;
-  const cursor = kind === "src" && !lang ? from + lead.length + begin.length : from + lead.length + begin.length + 1 + indent.length;
-  v.dispatch({ changes: { from, to: at?.to ?? from, insert }, selection: { anchor: cursor } });
+  const lead = ln.text.trim() ? "\n" : "";
+  const from = lead ? ln.to : ln.from;
+  const x = block(lang ? `${kind} ${lang}` : kind, /^\s*/.exec(ln.text)![0]);
+  v.dispatch({ changes: { from, insert: lead + x.text }, selection: { anchor: from + lead.length + x.cursor } });
   insertMode(v);
 }
 

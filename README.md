@@ -521,7 +521,8 @@ cursor as CSV.
 | Alt+H/J/K/L in a table | Move column / row |
 | Alt+Shift+H/L, Alt+Shift+J/K | Delete / insert column, insert / delete row |
 | `\|-` then Tab | Expands into a separator line |
-| `<s`, `<q`, `<e`, `<v` + Tab | Code, quote, example, verse block |
+| `<s`, `<q`, `<e`, `<v`, `<c`, `<C` + Tab | Code, quote, example, verse, center, comment block (`<l` / `<h` / `<a` export latex / html / ascii, `<el` emacs-lisp code) |
+| `<key` + Tab | Your own snippet (see [Snippets](#snippets)) |
 | Ctrl+Shift+O | Go to a heading in this note |
 | Space n H | Go to a heading in any note (type to filter by note and outline path) |
 | Space i … | Insert table, code block, quote, link, date, rule, footnote (`Space i f` adds the next `[fn:N]` and types its definition under a `* Footnotes` heading at the end); `Space i D` stamps the current time as an inactive `[2026-10-12 Mon 09:05]` (`Space i d` takes the full date syntax: `fri 14:00-15:30`, `fri +1w` repeat, `fri -3d` warning) |
@@ -546,6 +547,27 @@ links to and moves the ones you pick to `attachments/.trash/` or `images/.trash/
 
 Code blocks (`#+begin_src python` …) are syntax highlighted for any language
 CodeMirror knows (python, rust, js/ts, sh, sql, go, java, c, html, css, yaml, …).
+
+### Snippets
+
+Boilerplate you type often (meeting notes, a bug report, a 1:1 agenda) can be a
+snippet: type `<key` alone on a line and press Tab, or pick one with **Insert
+snippet…** in the command palette. Add them under **Settings → Snippets**, or in
+`config.toml`:
+
+```toml
+[[snippets]]
+key = "mtg"
+text = """
+* Meeting %u
+- %?"""
+```
+
+`%t` / `%T` insert today's date / date and time (`<2026-10-12 Mon 09:05>`), `%u` /
+`%U` the inactive `[…]` ones, `%?` places the cursor (else it ends up after the
+text), `%%` is a literal `%`. Lines after the first get the indent of the line you
+typed the key on. Your keys win over the built-in blocks (`<s`, `<q`, …). When no
+key matches, Tab folds the heading as usual.
 
 ### Table formulas
 

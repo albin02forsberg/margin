@@ -56,6 +56,8 @@ pub struct Config {
     pub templates: Vec<Template>,
     /// More templates, one per .org file, relative to notes_dir; empty to disable.
     pub templates_dir: String,
+    /// Editor snippets: `<key` + Tab inserts text (`[[snippets]] key text`, %t/%U dates, %? cursor).
+    pub snippets: Vec<Snippet>,
     /// Dropped and pasted files go to <attachments_dir>/<note name>/, relative to notes_dir.
     pub attachments_dir: String,
     /// Dropped and pasted images go to <images_dir>/ in the note's own folder, shared by the
@@ -104,6 +106,12 @@ pub struct Config {
 pub struct View {
     pub name: String,
     pub query: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Snippet {
+    pub key: String,
+    pub text: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -212,6 +220,7 @@ impl Default for Config {
                 Template { key: "m".into(), name: "Meeting notes".into(), file: "meetings.org".into(), heading: None, body: "* %^{Meeting} :meeting:\n%U\n- %?".into() },
             ],
             templates_dir: "templates".into(),
+            snippets: vec![],
             attachments_dir: "attachments".into(),
             images_dir: "images".into(),
             activitywatch_url: String::new(),
@@ -383,10 +392,10 @@ pub fn setup(text: &str, notes_dir: &str, data_dir: &str, profiles: &str) -> Res
 
 /// TEXT with the settings page's VALUES (top-level keys) set via set_key and the RESET keys
 /// removed (back to their defaults); errors on a key that isn't a setting (or is
-/// `views`/`templates`, which stay in the file) or a value Config won't load.
+/// one of TABLES, which stay in the file) or a value Config won't load.
 pub fn save(text: &str, values: toml::Table, reset: &[String]) -> Result<(String, Config), String> {
     let known = toml::Table::try_from(Config::default()).map_err(|e| e.to_string())?;
-    if let Some(key) = values.keys().chain(reset).find(|k| !known.contains_key(*k) || *k == "views" || *k == "templates") {
+    if let Some(key) = values.keys().chain(reset).find(|k| !known.contains_key(*k) || TABLES.contains(&k.as_str())) {
         return Err(format!("{key} can't be set here; edit config.toml"));
     }
     let mut out = text.to_string();
@@ -403,11 +412,14 @@ pub fn save(text: &str, values: toml::Table, reset: &[String]) -> Result<(String
     Ok((out, c))
 }
 
-/// TEXT with the `[[KEY]]` tables (`views` or `templates`) replaced by ITEMS, appended at the end;
+/// The lists of tables the settings page edits whole (set_tables), not via save.
+pub const TABLES: [&str; 3] = ["views", "templates", "snippets"];
+
+/// TEXT with the `[[KEY]]` tables (one of TABLES) replaced by ITEMS, appended at the end;
 /// other lines stay as written, comments inside the old tables are dropped. An empty list is
 /// written `KEY = []` (a missing `templates` means the built-in ones). Errors if anything else would change.
 pub fn set_tables(text: &str, key: &str, items: Vec<toml::Table>) -> Result<(String, Config), String> {
-    if key != "views" && key != "templates" {
+    if !TABLES.contains(&key) {
         return Err(format!("{key} isn't a list of tables"));
     }
     let err = |e: toml::de::Error| format!("can't update config.toml: {e}");
@@ -638,6 +650,13 @@ mod tests {
         assert!(set_tables(body, "templates", tpl).is_err_and(|e| e.contains("by hand")));
         assert!(set_tables(mine, "views", views("views = [{ name = 1, query = 'a' }]")).is_err()); // bad type
         assert!(set_tables(mine, "profiles", vec![]).is_err());
+        // Snippets: old configs load with none; a multi-line text round-trips; `save` won't touch them.
+        assert!(toml::from_str::<Config>(mine).unwrap().snippets.is_empty());
+        let sn = views("views = [{ key = 'mtg', text = \"* Meeting %u\\n- %?\" }]");
+        let (s, c) = set_tables(mine, "snippets", sn).unwrap();
+        assert!(c.snippets[0].key == "mtg" && c.snippets[0].text == "* Meeting %u\n- %?" && c.views.len() == 2, "{s}");
+        assert_eq!(toml::from_str::<Config>(&s).unwrap().snippets[0].text, c.snippets[0].text);
+        assert!(save(&s, toml::Table::new(), &["snippets".into()]).is_err());
     }
 
     #[test]

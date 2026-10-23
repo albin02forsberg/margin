@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changes, checkTemplates, checkViews, GROUPS, needsMacPrompt, refresh, refreshRows, shows, type Field } from "./settings.ts";
+import { changes, checkSnippets, checkTemplates, checkViews, GROUPS, needsMacPrompt, refresh, refreshRows, shows, type Field } from "./settings.ts";
 
 const config = { notes_dir: "~/notes", expected_daily_hours: 8, profiles: ["Work", "Home"], reminders: true };
 const fields: Field[] = GROUPS.flatMap((g) => g.fields).filter((f) => f.key in config);
@@ -55,6 +55,13 @@ test("templates need a unique one-character key and a name", () => {
   assert.throws(() => checkTemplates([t, { ...t, key: "k" }, { ...t, key: "j" }]), /Templates 1 and 3/);
   assert.throws(() => checkTemplates([{ ...t, name: "" }]), /needs a name/);
   assert.deepEqual(refreshRows([], [], [{ key: "n", heading: null }])[1], [{ key: "n", heading: "" }]);
+});
+
+test("snippets need a typeable key of their own; text is kept as typed", () => {
+  assert.deepEqual(checkSnippets([{ key: " <mtg ", text: "  * %?\n" }]), [{ key: "mtg", text: "  * %?\n" }]);
+  assert.throws(() => checkSnippets([{ key: "", text: "x" }]), /Snippet 1 needs a key/);
+  assert.throws(() => checkSnippets([{ key: "a b", text: "x" }]), /needs a key/);
+  assert.throws(() => checkSnippets([{ key: "m", text: "" }, { key: "<m", text: "" }]), /Snippets 1 and 2/);
 });
 
 test("the macOS watcher dialog shows once, only when turning it on without the permission", () => {
