@@ -1002,6 +1002,7 @@ describe("Note pickers, pins and archive", () => {
         utimesSync(join(notes, "stale.org"), t - 7200, t - 7200);
         utimesSync(join(notes, "fresh.org"), t - 3600, t - 3600);
         writeFileSync(join(notes, "tagged.org"), "#+title: Tagged\n#+FILETAGS: :work:\n\nwork stuff\n");
+        writeFileSync(join(notes, "people.org"), "#+title: People\n\n* TODO Call Ola :@ola:\n* Sync\nAsk @Ola about the budget\n");
         writeFileSync(join(notes, "source.org"), twinSrc);
         writeFileSync(join(notes, "pinme.org"), "#+title: Pinme\n\npinned\n");
         writeFileSync(join(notes, "arch.org"), arch);
@@ -1028,6 +1029,15 @@ describe("Note pickers, pins and archive", () => {
     await answer("Browse notes by tag", "work");
     await answer("Tagged :work:", "Tagged");
     await find(".status .file", "tagged.org");
+  });
+
+  it("Space n @ lists a person's open tasks and mentions", async () => {
+    await open("Pinme", "pinme.org");
+    await leader("n@");
+    await answer("Person", "@ola");
+    await find(".picker li span", "TODO Call Ola");
+    await answer("@ola", "budget");
+    await find(".status .file", "people.org");
   });
 
   it("Space n c duplicates the note under a new title with fresh IDs", async () => {

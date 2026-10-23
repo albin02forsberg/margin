@@ -65,6 +65,11 @@ pick a tag from `#+FILETAGS:` or a non-task heading's own tags (with counts, any
 the note or heading to open. `Space n C` lists recently changed notes (journal included), newest
 first, with how long ago each changed.
 
+**People** — tag a heading or task `:@anna:` or write `@anna` in a note. `Space n @` picks a
+person (from the `@` tags, or type any name) and lists their open tasks (tagged, inheriting the
+tag, or naming `@anna` in the title) and then every other line mentioning `@anna` (any case;
+email addresses don't count, journal included); `Enter` jumps there.
+
 <img src="docs/gifs/links.gif" width="800" alt="Opening a note, showing its backlinks and graph, and following a link with Enter">
 
 **Vim editing** — the editor has vim keys: search, `ciw`, `o`, `dd`, `u`, `:w`.

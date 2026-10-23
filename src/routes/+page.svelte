@@ -41,6 +41,7 @@
   import { wordCount, wordsLabel } from "$lib/words";
   import { windowTitle } from "$lib/wintitle";
   import { orderNotes, parsePins, togglePin } from "$lib/pins";
+  import { peopleFrom, personName, personRows } from "$lib/people";
   import { addBookmark, bookmarkAt, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, retitleBookmarks, type Bookmark } from "$lib/bookmarks";
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
 
@@ -1298,6 +1299,18 @@
     if (r) await openFile(...(r as [string, number]));
   }
 
+  /** Pick a person (`@name` tag, or type one), then one of their open tasks or a line mentioning them (#704). */
+  async function personView() {
+    const people = peopleFrom(await call<string[]>("org_tags"));
+    const v = await pick({ prompt: "Person", items: people.map((n) => ({ label: `@${n}`, value: n as unknown })), allowCustom: true, hint: people.length ? "or type a name and press Ctrl+↵" : "no :@name: tags yet; type a name and press Ctrl+↵" });
+    const name = v == null ? "" : personName(String(v));
+    if (!name) return;
+    const rows = personRows(await call("person_view", { name }), rel);
+    if (!rows.length) return flash(`Nothing for @${name} yet: tag a task :@${name}: or write @${name} in a note`);
+    const r = await pick({ prompt: `@${name}`, items: rows });
+    if (r) await openFile(...(r as [string, number]));
+  }
+
   async function createNote(title: string) {
     const n: NoteNode = await call("notes_new", { title });
     await openFile(n.path);
@@ -2209,6 +2222,7 @@
     { label: "Notes: find notes with no links…", leader: "n O", run: findOrphans },
     { label: "Notes: recently changed…", leader: "n C", run: recentlyChanged },
     { label: "Notes: browse by tag…", leader: "n T", run: browseTags },
+    { label: "People: a person's open tasks and mentions (@name)…", leader: "n @", run: personView },
     { label: "Note: pin / unpin (pinned notes come first in Ctrl+P)", leader: "n p", run: pinNote },
     { label: "Notes: open a pinned note…", leader: "n P", run: pinnedNotes },
     { label: "Bookmark: add at cursor…", leader: "m m", run: addBookmarkHere },
