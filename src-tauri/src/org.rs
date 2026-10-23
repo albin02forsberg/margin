@@ -1586,8 +1586,12 @@ pub struct Card {
 pub fn drill_cards(files: &[Arc<OrgFile>]) -> Vec<Card> {
     let mut out = vec![];
     for f in files {
+        let is_drill = |h: &&Headline| h.tags.iter().any(|t| t == "drill");
+        if !f.headlines.iter().any(|h| is_drill(&h)) {
+            continue;
+        }
         let lines = to_lines(&f.text);
-        for h in f.headlines.iter().filter(|h| h.tags.iter().any(|t| t == "drill") && !h.archived()) {
+        for h in f.headlines.iter().filter(|h| is_drill(h) && !h.archived()) {
             let end = heading_end(&lines, h.line);
             let mut i = h.line + 1;
             if lines.get(i).is_some_and(|l| is_planning(l)) {
@@ -1903,6 +1907,9 @@ mod tests {
         assert_eq!(c.iter().map(|c| (c.title.as_str(), c.body.as_str(), c.line)).collect::<Vec<_>>(), [("What is 2+2?", "4", 0), ("New", "fresh", 14)]);
         assert_eq!((c[0].due, c[0].interval, c[0].ease), ("2026-10-20".parse().ok(), Some(6), Some(2.36)));
         assert_eq!((c[1].due, c[1].interval, c[1].ease), (None, None, None));
+        let plain = Arc::new(parse(Path::new("/n/p.org"), "* Plain\nbody\n", &kw()));
+        let both = [plain, files[0].clone()];
+        assert_eq!(drill_cards(&both).len(), 2);
     }
 
     #[test]
