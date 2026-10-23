@@ -35,6 +35,10 @@ pub struct Config {
     pub capture_shortcut: String,
     /// Ask what to do with the time after this long away from a running timer; 0 to disable.
     pub idle_threshold_minutes: i64,
+    /// Nudge a break after this many minutes of one running session (since its clock-in or resume); 0 = off.
+    pub focus_minutes: i64,
+    /// The break length that nudge suggests.
+    pub focus_break_minutes: i64,
     /// Desktop notifications for timed entries and upcoming deadlines.
     pub reminders: bool,
     pub remind_before_minutes: i64,
@@ -190,6 +194,8 @@ impl Default for Config {
             close_to_tray: true,
             capture_shortcut: "Super+Shift+N".into(),
             idle_threshold_minutes: 10,
+            focus_minutes: 0,
+            focus_break_minutes: 5,
             reminders: true,
             remind_before_minutes: 10,
             deadline_warning_days: 1,

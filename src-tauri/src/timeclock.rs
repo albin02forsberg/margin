@@ -832,6 +832,12 @@ pub fn day_done(now: NaiveDateTime, worked: f64, cal: &Calendar, leave: &[Leave]
     running && !on_break && !off && remaining_secs(day, worked, cal, leave).is_some_and(|s| s <= 0)
 }
 
+/// Whether to nudge a break: the block that started at SINCE (the open `in`; a resume or switch starts
+/// a new one) has run FOCUS_MIN minutes by NOW and wasn't nudged yet (LAST_NOTIFIED is its start). 0 = off.
+pub fn focus_due(since: NaiveDateTime, now: NaiveDateTime, focus_min: i64, last_notified: Option<NaiveDateTime>) -> bool {
+    focus_min > 0 && now - since >= Duration::minutes(focus_min) && last_notified != Some(since)
+}
+
 /// When to leave today, flex ignored: what is left of NOW's expected hours (CAL, less LEAVE) after
 /// WORKED, rounded up to whole minutes; with the clock RUNNING, the time it runs out.
 pub fn leave_time(now: NaiveDateTime, worked: f64, cal: &Calendar, leave: &[Leave], running: bool, on_break: bool) -> String {
@@ -1293,6 +1299,17 @@ mod tests {
         assert_eq!(leave_time(mon, 2.0, &w(8.0), &[l(Some(4.0), false)], true, false), "Leave at 16:24 (2h 00m left)."); // half day off
         assert_eq!(leave_time(mon, 3.0, &w(8.0), &[l(None, true)], true, false), "Done for today."); // rest of the day off
         assert_eq!(leave_time(mon, 0.0, &w(8.0), &[l(None, false)], false, false), "Done for today."); // whole day off
+    }
+
+    #[test]
+    fn focus_due_once_per_block() {
+        let since = dt("2026-10-12 23:30");
+        assert!(!focus_due(since, dt("2026-10-13 00:19"), 50, None));
+        assert!(focus_due(since, dt("2026-10-13 00:20"), 50, None)); // past midnight
+        assert!(!focus_due(since, dt("2026-10-13 02:00"), 50, Some(since))); // no repeat
+        assert!(focus_due(dt("2026-10-13 00:30"), dt("2026-10-13 01:20"), 50, Some(since))); // a resume starts a new block
+        assert!(!focus_due(since, dt("2026-10-13 05:00"), 0, None)); // off
+        assert_eq!(format!("{since:?}").parse::<NaiveDateTime>(), Ok(since)); // how remind::focus stores it
     }
 
     #[test]

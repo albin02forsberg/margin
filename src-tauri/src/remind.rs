@@ -67,11 +67,12 @@ pub fn start(app: &AppHandle) {
 fn tick(app: &AppHandle) {
     let s = app.state::<App>();
     let c = s.cfg();
+    let now = crate::timeclock::now();
+    let today = now.date();
+    focus(app, &s, c.focus_minutes, c.focus_break_minutes, now);
     if !c.reminders {
         return;
     }
-    let now = crate::timeclock::now();
-    let today = now.date();
     let files = s.files();
     // Wide enough for the longest per-deadline warning cookie.
     let span = files.iter().flat_map(|f| &f.headlines).filter_map(|h| h.deadline.as_ref().and_then(org::warn_days)).fold(c.deadline_warning_days, i64::max);
@@ -94,6 +95,25 @@ fn tick(app: &AppHandle) {
     }
     if changed {
         let _ = std::fs::write(&file, sent.into_iter().map(|k| k + "\n").collect::<String>());
+    }
+}
+
+/// Nudge a break once per block of FOCUS minutes on the running clock (timeclock::focus_due). The
+/// nudged block start is kept in memory (a block past midnight) and in focus-sent.txt (a restart).
+fn focus(app: &AppHandle, s: &App, focus: i64, rest: i64, now: NaiveDateTime) {
+    static LAST: std::sync::Mutex<Option<NaiveDateTime>> = std::sync::Mutex::new(None);
+    let Some((since, project, _)) = s.tc().current().filter(|_| focus > 0) else { return };
+    let file = s.cfg().data().join("focus-sent.txt");
+    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+    if last.is_none() {
+        *last = std::fs::read_to_string(&file).ok().and_then(|t| t.trim().parse().ok());
+    }
+    if crate::timeclock::focus_due(since, now, focus, *last) {
+        *last = Some(since);
+        let _ = std::fs::write(&file, format!("{since:?}")); // ISO 8601, what parse() reads
+        let what = if project.is_empty() { String::new() } else { format!(" on {project}") };
+        let body = format!("{}{what}. Take {rest} min? Pause is in the top-bar clock.", crate::timeclock::format_hm((now - since).num_seconds() as f64 / 3600.0));
+        let _ = app.notification().builder().title("Time for a break").body(body).show();
     }
 }
 

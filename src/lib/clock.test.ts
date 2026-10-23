@@ -1,6 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { worked, parseWhen, naive, dayTime, inactiveStamp } from "./clock.ts";
+import { worked, parseWhen, naive, dayTime, inactiveStamp, focusLeft } from "./clock.ts";
+
+test("focus countdown: minutes to the break, due once reached, empty when off", () => {
+  const now = new Date(2026, 9, 13, 10, 0, 30);
+  assert.equal(focusLeft("2026-10-13T09:22:00", 50, now), "break in 12m"); // 11.5 left, rounded up
+  assert.equal(focusLeft("2026-10-13T09:00:00", 90, now), "break in 30m");
+  assert.equal(focusLeft("2026-10-13T08:00:00", 150, now), "break in 30m");
+  assert.equal(focusLeft("2026-10-13T07:00:00", 240, now), "break in 1h 00m");
+  assert.equal(focusLeft("2026-10-13T09:10:00", 50, now), "break due");
+  assert.equal(focusLeft("2026-10-13T09:22:00", 0, now), "");
+  assert.equal(focusLeft(null, 50, now), "");
+});
 
 const day = (date: string, hours: number, expected: number) => ({ date, hours, expected, leave: "", leave_hours: 0 });
 

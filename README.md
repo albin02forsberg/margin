@@ -605,6 +605,13 @@ turns it off. On Wayland this uses the compositor's idle notifications
 (KDE Plasma 6, Sway/wlroots, GNOME 46+), and the threshold applies after a restart;
 elsewhere only sleep and suspend are noticed.
 
+Focus breaks (pomodoro): set `focus_minutes` (e.g. 50; 0 = off, the default) and,
+after that long on one running session, a notification suggests a
+`focus_break_minutes` break (5 by default). The top-bar clock counts down
+("break in 12m", then "break due"); Pause there takes the break and Resume
+starts a new block, as do clocking in on another project and discarding idle
+time. It nudges once per block and works with `reminders` off.
+
 ### Suggested time from ActivityWatch
 
 If you run [ActivityWatch](https://activitywatch.net/), set
