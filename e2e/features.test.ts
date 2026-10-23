@@ -735,6 +735,7 @@ describe("Journal, archive and move", () => {
         writeFileSync(join(notes, "retitle.org"), retitle);
         writeFileSync(join(notes, "linker.org"), retitleRef);
         writeFileSync(join(notes, "narrow.org"), "* One\nalpha\n* Two\nbeta\n");
+        writeFileSync(join(notes, "marks.org"), "* Intro\nx\n* Target\nfirst\nsecond\n");
         writeFileSync(join(notes, "clone.org"), "* DONE Check-in\nCLOSED: [2026-10-01 Thu 10:00] SCHEDULED: <2026-10-01 Thu>\n* After\n");
       },
     });
@@ -876,6 +877,27 @@ describe("Journal, archive and move", () => {
     await browser.keys("u");
     await fileMatches(f("retitle.org"), (s) => s === retitle, "u didn't restore the renamed note");
     await fileMatches(f("linker.org"), (s) => s === retitleRef, "u didn't restore the linking note");
+  });
+
+  it("Space m m bookmarks the cursor and Space ' jumps back after lines are added above (#672)", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "marks");
+    await find(".status .file", "marks.org");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, Key.Shift, "o"]);
+    await answer("Go to heading", "Target");
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("* Target")), { timeoutMsg: "cursor not on the heading" });
+    await type("jj");
+    await leader("mm");
+    await answer("Bookmark name", "spot");
+    await find(".status .msg", "Added bookmark spot");
+    await noPicker();
+    await type("ggOadded above");
+    await browser.keys(Key.Escape);
+    await type("gg");
+    await leader("'");
+    await answer("Jump to bookmark", "spot");
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("second")), { timeoutMsg: "bookmark didn't land on its line" });
   });
 
   it("Space v n narrows to the heading at the cursor and widens again", async () => {
