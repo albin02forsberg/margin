@@ -37,7 +37,7 @@
   import { wordCount, wordsLabel } from "$lib/words";
   import { windowTitle } from "$lib/wintitle";
   import { orderNotes, parsePins, togglePin } from "$lib/pins";
-  import { addBookmark, bookmarkAt, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, type Bookmark } from "$lib/bookmarks";
+  import { addBookmark, bookmarkAt, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, retitleBookmarks, type Bookmark } from "$lib/bookmarks";
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
 
   type View = "agenda" | "todo" | "time" | "projects" | "settings";
@@ -772,6 +772,8 @@
     const k = kw(), plan = retitlePlan(before, await textOf(loc.path), loc.line, [...(k.todo ?? []), ...(k.done ?? [])]);
     if (typeof plan === "string") return flash(`Renamed; links to it left as they are (${plan}).`);
     if (!plan) return;
+    const rb = retitleBookmarks(bookmarks, loc.path, plan.old, plan.new);
+    if (rb.some((b, i) => b !== bookmarks[i])) saveBookmarks(rb);
     const paths = new Set([loc.path, ...(await call<string[]>("retitle_candidates", { path: loc.path })), ...tabs.filter((x) => x.kind === "file" && x.dirty && !x.missing).map((x) => x.path!)]);
     let n = 0;
     for (const p of paths)

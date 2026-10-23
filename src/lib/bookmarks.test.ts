@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addBookmark, bookmarkAt, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark } from "./bookmarks.ts";
+import { addBookmark, bookmarkAt, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, retitleBookmarks } from "./bookmarks.ts";
 
 const note = "#+title: Log\nintro\n* Projects\n** TODO [#A] Next steps [1/2] :work:\n- one\n- two\n* Log\n";
 
@@ -37,4 +37,10 @@ test("parseBookmarks drops bad entries and falls back to []", () => {
   assert.deepEqual(parseBookmarks('{"a":1}'), []);
   assert.deepEqual(parseBookmarks('[{"name":"a","file":"x","line":3,"heading":"H","offset":1},{"name":"b"},null,{"name":"c","file":"y","line":0}]'),
     [{ name: "a", file: "x", line: 3, offset: 1, heading: "H" }, { name: "c", file: "y", line: 0, offset: 0 }]);
+});
+
+test("retitleBookmarks re-anchors bookmarks on a renamed heading in that file only", () => {
+  const a = bookmarkAt("a", "a.org", note, 2), b = { ...a, name: "b", file: "b.org" };
+  assert.deepEqual(retitleBookmarks([a, b], "a.org", "projects", "Work"), [{ ...a, heading: "Work" }, b]);
+  assert.equal(retitleBookmarks([a], "a.org", "other", "Work")[0], a);
 });
