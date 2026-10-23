@@ -14,7 +14,15 @@ export function worked(week: WeekDay[], today: string) {
   return { hours, expected, progress: expected > 0 ? Math.min(1, hours / expected) : hours > 0 ? 1 : 0, left: Math.max(0, expected - hours) };
 }
 
-const p2 = (n: number) => String(n).padStart(2, "0");
+/** Top-bar countdown to the focus break: "break in 12m" from SINCE (naive ISO, the open clock-in) and
+ *  FOCUS minutes at NOW, "break due" once reached; "" when off or not clocked in. */
+export function focusLeft(since: string | null | undefined, focus: number, now: Date): string {
+  if (!since || !(focus > 0)) return "";
+  const left = Math.ceil(focus - (now.getTime() - new Date(since).getTime()) / 60000);
+  return left > 0 ? `break in ${hm(left / 60)}` : "break due";
+}
+
+const p2 =(n: number) => String(n).padStart(2, "0");
 
 /** Org inactive timestamp "[2026-10-12 Mon 09:05]" for D, local time; English weekday regardless of locale. */
 export const inactiveStamp = (d: Date) =>

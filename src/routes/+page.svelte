@@ -31,7 +31,7 @@
   import { chatContext } from "$lib/chatctx";
   import { bugReportUrl, isError, osName } from "$lib/bugreport";
   import { notesText, notesTitle, notesToShow, type Notes } from "$lib/whatsnew";
-  import { dayTime, inactiveStamp, naive, parseWhen } from "$lib/clock";
+  import { dayTime, focusLeft, inactiveStamp, naive, parseWhen } from "$lib/clock";
   import { parseSession, type Entry } from "$lib/session";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
   import { wordCount, wordsLabel } from "$lib/words";
@@ -2632,6 +2632,8 @@
           <span class="dot"></span>
           <b>{tc.project != null ? tc.project || "No project" : tc.on_break != null ? `Break · ${tc.on_break}` : "Not tracking"}</b>
           <span class="today">{tc.today}</span>
+          <!-- tc is refetched every minute, which re-runs this -->
+          {#if tc.project != null}{@const f = focusLeft(tc.since, cfg.config.focus_minutes, new Date())}{#if f}<span class="focus" class:due={f === "break due"}>· {f}</span>{/if}{/if}
         </button>
         {#if tc.project != null}
           <button onclick={() => act(t("pause"))} title="Take a break">Pause</button>
@@ -2762,6 +2764,8 @@
   .clockchip .what b { color: var(--fg); font-weight: 600; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
   .clockchip .today { font-family: var(--mono); }
   .clockchip.on .today { color: var(--done); }
+  .clockchip .focus { color: var(--dim); white-space: nowrap; }
+  .clockchip .focus.due { color: var(--todo); }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; }
   .clockchip.on .dot { background: var(--done); }
   .warn { color: var(--todo); font-size: var(--fs-xs); padding-right: var(--s2); white-space: nowrap; }
@@ -2816,7 +2820,7 @@
     .topnav { gap: 2px; padding: var(--s1) var(--s2); }
     .logo { margin-right: var(--s1); }
     .views button, .topnav .cmdk { padding: 6px 8px; }
-    .topnav .lbl, .topnav kbd, .clockchip b, .clockchip .warn, .clockchip button:not(.what) { display: none; }
+    .topnav .lbl, .topnav kbd, .clockchip b, .clockchip .warn, .clockchip .focus:not(.due), .clockchip button:not(.what) { display: none; }
   }
   @media (max-width: 559px) {
     .status .file, .status .words, .hint:not(.cancel) { display: none; }
