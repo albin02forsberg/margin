@@ -259,7 +259,7 @@ Time clocked on a task shows in that badge against its estimate (`1:10 / 2:00`, 
 just `1:10` without an estimate), on Today, Tasks and the Done log. It counts time-log sessions named like the heading
 (case and surrounding spaces ignored; the clock-out note, else the task clocked in on, including the running clock,
 breaks left out), on the task's category when that is a Time project and on any project otherwise.
-Tracking time from a task (`I`, `Space x i`) offers its title first as what you're working on, so the time adds up there.
+Tracking time from a task (`I`, `Space x i`) offers its title first as what you're working on, so the time adds up there. The same works from an open note: the heading at the cursor is offered (nothing above the first heading).
 Subtrees archived in place with an `:ARCHIVE:` tag (Emacs's `C-c C-x a`) are left out of Today, Tasks, reminders and the calendar feed, as in org's agenda; they stay in the note and in search.
 A time range (`<2026-10-16 Fri 10:00-11:00>`) shows as `10:00-11:00`; a date
 range (`<2026-10-19 Mon>--<2026-10-21 Wed>`) shows on each of its days with a
