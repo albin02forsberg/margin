@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Live dashboard for scripts/autopilot-forever.sh: reads `claude --output-format stream-json`
 // on stdin and shows what is happening now, usage limits, context and what comes next.
-// Plain timestamped lines when stdout is not a TTY.
+// Plain timestamped lines when stdout is not a TTY (only if AUTOPILOT_LOG is unset, so lines aren't written twice).
 // Env: AUTOPILOT_LOG (append plain lines), AUTOPILOT_LIMITS (write last rate-limit info as JSON),
 //      AUTOPILOT_MAX (agent slots, default 3), AUTOPILOT_CONTEXT (context window tokens, default 200000),
 //      AUTOPILOT_REPO (default albin02forsberg/margin).
@@ -81,7 +81,7 @@ function note(text, parent, kind) {
   st.recent.push({ t: Date.now(), who: a?.name, kind, line });
   if (st.recent.length > 40) st.recent.shift();
   if (logFile) { try { appendFileSync(logFile, `${clock()} ${a ? `[${a.name}] ` : ""}${line}\n`); } catch {} }
-  if (!tty) console.log(`${clock()} ${a ? `  ↳ ${a.name}: ` : ""}${line}`);
+  if (!tty && !logFile) console.log(`${clock()} ${a ? `  ↳ ${a.name}: ` : ""}${line}`);
 }
 
 function onEvent(e) {

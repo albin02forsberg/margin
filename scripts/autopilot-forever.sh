@@ -68,18 +68,19 @@ limit_summary() {
   jq -r '.unifiedWindows // {} | "5h \((.five_hour.utilization // 0) * 100 | round)% · week \((.seven_day.utilization // 0) * 100 | round)%"' "$limits" 2>/dev/null
 }
 
-# countdown <seconds> <why>: one updating line, honours STOP.
+# countdown <seconds> <why>: one updating line on a TTY, silent otherwise (launchd log); honours STOP.
 countdown() {
   local until left sum
   until=$(( $(date +%s) + $1 ))
   sum=$(limit_summary)
   while [ "$(date +%s)" -lt "$until" ] && [ ! -e "$dir/STOP" ]; do
     left=$(( until - $(date +%s) ))
-    printf '\r\033[K💤 %s - next run in %dd %dh %02dm %02ds%s (STOP file: ~/.cache/margin-autopilot/STOP)' "$2" \
+    [ -t 1 ] && printf '\r\033[K💤 %s - next run in %dd %dh %02dm %02ds%s (STOP file: ~/.cache/margin-autopilot/STOP)' "$2" \
       $((left / 86400)) $((left % 86400 / 3600)) $((left % 3600 / 60)) $((left % 60)) "${sum:+ · $sum}"
     sleep 5
   done
-  printf '\r\033[K'
+  [ -t 1 ] && printf '\r\033[K'
+  return 0
 }
 
 # Gates return 0 when they paused (the caller restarts the loop), 1 when clear.
