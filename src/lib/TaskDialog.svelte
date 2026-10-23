@@ -6,6 +6,7 @@
   // "New task" form. SUBMIT throws to keep the dialog open with an error.
   import { invoke } from "@tauri-apps/api/core";
   import { tick } from "svelte";
+  import { parseQuickAdd } from "./quickadd";
 
   let active = $state(false);
   let spec = $state<TaskSpec>({ title: "", scheduled: "", deadline: "", priority: "", tags: [], file: "" });
@@ -41,9 +42,34 @@
     closed();
   }
 
+  // Quick-add tokens typed at the end of the title; explicit fields win over them.
+  const qa = $derived(parseQuickAdd(spec.title));
+  let qdate = $state<{ title: string; date: string } | null>(null);
+  const valid = async (d: string) => {
+    const p = await preview(d, "SCHEDULED");
+    return !!p && !p.startsWith("✗");
+  };
+  async function findDate() {
+    if (spec.scheduled.trim()) return null;
+    for (const c of qa.dates) if (await valid(c.date)) return c;
+    return null;
+  }
+  $effect(() => {
+    const dates = qa.dates, off = !!spec.scheduled.trim();
+    if (off || !dates.length) return void (qdate = null);
+    const t = setTimeout(async () => (qdate = await findDate()), 100);
+    return () => clearTimeout(t);
+  });
+
   async function save() {
     try {
-      await submit({ ...spec, tags: tagText.split(/[\s,:]+/).filter(Boolean) });
+      const d = await findDate();
+      const tags = [...new Set([...tagText.split(/[\s,:]+/).filter(Boolean), ...qa.tags])];
+      const s = { ...spec, tags };
+      if (d) (s.title = d.title), (s.scheduled = d.date);
+      else if (qa.tags.length || qa.priority) s.title = qa.title;
+      if (!spec.priority) s.priority = qa.priority;
+      await submit(s);
       close();
     } catch (e) {
       error = String(e);
@@ -79,6 +105,13 @@
   <div class="dialog" onkeydown={key} role="dialog" aria-label="New task" tabindex="-1">
     <h2>New task</h2>
     <input class="title" bind:this={titleInput} bind:value={spec.title} placeholder="What needs to be done?" spellcheck="false" />
+    {#if qdate || qa.tags.length || qa.priority}
+      <div class="chips qa" aria-label="Recognised from title">
+        {#if qdate}<span class="tok">{qdate.date}</span>{/if}
+        {#if qa.priority}<span class="tok">!{qa.priority}</span>{/if}
+        {#each qa.tags as t}<span class="tok">#{t}</span>{/each}
+      </div>
+    {/if}
 
     <div class="grid">
       <label for="sched">When</label>
@@ -146,6 +179,8 @@
   .chips button { background: var(--bg); border: 1px solid var(--border); color: var(--fg); border-radius: 999px; padding: 3px 10px; font: var(--fs-sm) var(--sans); cursor: pointer; }
   .chips button.on { border-color: var(--accent); color: var(--accent); }
   .prio.pA.on { border-color: var(--todo); color: var(--todo); }
+  .qa { margin: -8px 0 12px; }
+  .tok { border: 1px solid var(--accent); color: var(--accent); border-radius: 999px; padding: 1px 9px; font-size: var(--fs-sm); }
   .pv { font-size: var(--fs-sm); color: var(--done); margin-left: var(--s1); }
   .pv.bad { color: var(--todo); }
   .error { color: var(--todo); font-size: var(--fs-md); margin: var(--s3) 0 0; }
