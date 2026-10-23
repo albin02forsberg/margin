@@ -22,3 +22,10 @@ export const plannedLabel = (planned: number, expected?: number) =>
 
 /** Whether PLANNED minutes overbook a day with EXPECTED hours (undefined: unknown, never). A day off (0) is overbooked by any plan. */
 export const overbooked = (planned: number, expected?: number) => expected != null && planned > Math.round(expected * 60);
+
+/** Clocked time against the estimate, "1:10 / 2:00" (just "1:10" unestimated), OVER when past it; null when nothing was clocked. */
+export function fmtSpent(spent?: number | null, est?: number | null) {
+  if (!spent) return null;
+  const c = (m: number) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+  return { text: est ? `${c(spent)} / ${c(est)}` : c(spent), over: !!est && spent > est };
+}

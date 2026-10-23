@@ -676,9 +676,23 @@ fn trash_attachments(s: State<App>, files: Vec<PathBuf>) -> R<()> {
 
 // ---------------------------------------------------------------- org
 
+type SpentFn = std::rc::Rc<dyn Fn(&str, &str) -> Option<u32>>;
+
+/// Minutes clocked on a heading by (category, title), from the time log (see timeclock::spent_on).
+fn spent_lookup(s: &App) -> SpentFn {
+    let tc = s.tc();
+    let (spent, projects) = (timeclock::spent_by_task(&tc.events(), timeclock::now()), tc.projects());
+    std::rc::Rc::new(move |cat, title| timeclock::spent_on(&spent, &projects, cat, title))
+}
+
+/// ITEMS with their clocked minutes (from SPENT, a spent_lookup) filled in.
+fn with_spent(spent: &dyn Fn(&str, &str) -> Option<u32>, items: Vec<org::Item>) -> Vec<org::Item> {
+    items.into_iter().map(|i| org::Item { spent: spent(&i.category, &i.title), ..i }).collect()
+}
+
 #[tauri::command(async)]
 fn agenda(s: State<App>, start: String, days: i64) -> R<Vec<org::Item>> {
-    Ok(org::agenda(&s.files(), &s.kw(), date(&start)?, days, today()))
+    Ok(with_spent(&*spent_lookup(&s), org::agenda(&s.files(), &s.kw(), date(&start)?, days, today())))
 }
 
 /// (path, line) of open tasks scheduled before today (see org::overdue_scheduled).
@@ -689,15 +703,16 @@ fn overdue_scheduled(s: State<App>) -> Vec<(PathBuf, usize)> {
 
 #[tauri::command(async)]
 fn todos(s: State<App>) -> Vec<org::Item> {
-    org::todos(&s.files(), &s.kw(), false, |_, _| true, today())
+    with_spent(&*spent_lookup(&s), org::todos(&s.files(), &s.kw(), false, |_, _| true, today()))
 }
 
 /// Tasks matching QUERY (see org::query).
 #[tauri::command(async)]
 fn search_todos(s: State<App>, query: String) -> R<Vec<org::Item>> {
-    let kw = s.kw();
-    let (keep, done) = org::query(&query, today(), &kw)?;
-    Ok(org::todos(&s.files(), &kw, done, keep, today()))
+    let (kw, f) = (s.kw(), spent_lookup(&s));
+    let g = f.clone();
+    let (keep, done) = org::query(&query, today(), &kw, move |h| g(&h.category, &h.title))?;
+    Ok(with_spent(&*f, org::todos(&s.files(), &kw, done, keep, today())))
 }
 
 #[tauri::command]

@@ -753,7 +753,10 @@
     archive: (loc) => archiveTask(loc),
     later: (loc, it) => edit(loc, "shift", `${dateKind(it)} 1`),
     earlier: (loc, it) => edit(loc, "shift", `${dateKind(it)} -1`),
-    clockIn: async (loc, it) => clockIn(it?.category ?? (await call("org_context", { path: loc.path, text: await textOf(loc.path), line: loc.line })).category),
+    clockIn: async (loc, it) => {
+      const c = it ?? (await call<{ category: string; title: string }>("org_context", { path: loc.path, text: await textOf(loc.path), line: loc.line }));
+      await clockIn(c.category, c.title);
+    },
     open: (loc) => openFile(loc.path, loc.line),
   };
 
@@ -1654,14 +1657,16 @@
     return { project, code };
   }
 
-  async function clockIn(suggested?: string) {
+  /** Clock in, suggesting project SUGGESTED and, from a task, its heading TITLE first (so its clocked time adds up on it). */
+  async function clockIn(suggested?: string, title?: string) {
     if (suggested == null && tab?.kind === "file") {
       suggested = (await call("org_context", { path: tab.path, text: view.state.doc.toString(), line: curLine0() })).category;
     }
     const p = await pickProject("Track time on project", suggested);
     if (!p) return;
     const sugg: string[] = await call("tc_suggestions", { project: p.project });
-    const task = (await pick({ prompt: `What are you working on? (optional)`, items: sugg, allowCustom: true, hint: "Esc to skip" })) ?? "";
+    const items = title?.trim() ? [{ label: title, detail: "this task", value: title }, ...sugg.filter((s) => s !== title)] : sugg;
+    const task = (await pick({ prompt: `What are you working on? (optional)`, items, allowCustom: true, hint: "Esc to skip" })) ?? "";
     await tcDo("tc_in", { project: p.project, task, exportCode: p.code });
   }
 

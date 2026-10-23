@@ -10,6 +10,8 @@
     closed?: string | null;
     /** `:EFFORT:` estimate in minutes. */
     effort?: number | null;
+    /** Minutes clocked on it (time log sessions named like the heading). */
+    spent?: number | null;
   };
   export type AgendaApi = {
     /** Run a task operation on IT (see ACTIONS; `keyword` sets ARG); resolves when the files are written. */
@@ -72,7 +74,7 @@
   import { bulkTargets, columns, moveTo } from "./board";
   import { chips } from "./chips";
   import { doneLog, withLog } from "./donelog";
-  import { fmtEffort, overbooked, planned, plannedLabel } from "./effort";
+  import { fmtEffort, fmtSpent, overbooked, planned, plannedLabel } from "./effort";
   import { agendaText } from "./agendatext";
   import { marked, markKey, reresolve, type Mark } from "./bulk";
 
@@ -351,6 +353,12 @@
   const dateChip = (s: string) => (s.length === 10 ? fmtDay(parse(s), { weekday: "short", day: "numeric", month: "short" }) : "");
 </script>
 
+{#snippet effort(it: AgendaItem)}
+  {@const s = fmtSpent(it.spent, it.effort)}
+  {#if s}<span class="effort" class:over={s.over} title={s.over ? "Clocked: over the estimate" : "Clocked / estimated"}>{s.text}</span>
+  {:else if it.effort}<span class="effort" title="Effort estimate">{fmtEffort(it.effort)}</span>{/if}
+{/snippet}
+
 {#snippet card(it: AgendaItem, i: number)}
   <div class="kcard" class:sel={i === sel} class:done={isDone(it)} class:marked={marks.has(markKey(it))} data-i={i} role="option" aria-selected={i === sel}>
     <div class="kt">
@@ -361,7 +369,7 @@
     </div>
     <div class="kmeta">
       {#each it.tags as t}<span class="tag">{t}</span>{/each}{#each it.inherited ?? [] as t}<span class="tag inh" title="Inherited">{t}</span>{/each}
-      {#if it.effort}<span class="effort" title="Effort estimate">{fmtEffort(it.effort)}</span>{/if}
+      {@render effort(it)}
       {#if dateChip(it.date)}<span class="meta">{dateChip(it.date)}</span>{/if}
       <span class="spacer"></span>
       <span class="cat">{it.category}</span>
@@ -378,7 +386,7 @@
     <span class="title">{it.title}</span>
     {#each it.tags as t}<span class="tag">{t}</span>{/each}{#each it.inherited ?? [] as t}<span class="tag inh" title="Inherited">{t}</span>{/each}
     <span class="spacer"></span>
-    {#if it.effort}<span class="effort" title="Effort estimate">{fmtEffort(it.effort)}</span>{/if}
+    {@render effort(it)}
     {#if it.habit}
       <span class="habit" title="Last {it.habit.bar.length} days: green done, amber due (not yet overdue), red overdue, grey not due">
         {#each it.habit.bar as c}<i class:x={c === "x"} class:ok={c === "-"} class:due={c === "!"}></i>{/each}
@@ -619,6 +627,7 @@
   .habit i.due { background: var(--todo); }
   .time { font: var(--fs-sm) var(--mono); color: var(--date); }
   .effort { font: var(--fs-xs) var(--mono); color: var(--dim); border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; white-space: nowrap; }
+  .effort.over { color: var(--warn, #d97706); border-color: currentColor; }
   h2 .planned { margin-left: auto; font-size: var(--fs-sm); }
   h2 .planned.over { color: var(--warn, #d97706); }
   .meta { font-size: var(--fs-sm); color: var(--dim); white-space: nowrap; }
