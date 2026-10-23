@@ -473,6 +473,34 @@ pub fn unlinked(files: &[Arc<OrgFile>], path: &Path) -> Vec<Mention> {
     out
 }
 
+/// `@NAME` (case-insensitive) not inside a word or an email address; `:@name:` tags match too.
+pub fn person_re(name: &str) -> Option<Regex> {
+    let name = name.trim().trim_start_matches('@');
+    if name.is_empty() {
+        return None;
+    }
+    let end = if name.ends_with(|c: char| c.is_alphanumeric() || c == '_') { r"\b" } else { "" };
+    Regex::new(&format!(r"(?i)(?:^|[^\w@.])(@{}){end}", regex::escape(name))).ok()
+}
+
+/// Lines (first hit each) that mention person `@NAME`, outside `.trash` under ROOT; task headlines are
+/// left out (the person view lists open ones as tasks).
+pub fn mentions_of(files: &[Arc<OrgFile>], root: &Path, name: &str) -> Vec<Mention> {
+    let Some(re) = person_re(name) else { return vec![] };
+    let trash = root.join(".trash");
+    let mut out = vec![];
+    for f in files.iter().filter(|f| !f.path.starts_with(&trash)) {
+        let tasks: BTreeSet<usize> = f.headlines.iter().filter(|h| h.keyword.is_some()).map(|h| h.line).collect();
+        for (i, l) in f.text.lines().enumerate().filter(|(i, _)| !tasks.contains(i)) {
+            if let Some(m) = re.captures(l).and_then(|c| c.get(1)) {
+                let (col, len) = (l[..m.start()].encode_utf16().count(), m.as_str().encode_utf16().count());
+                out.push(Mention { path: f.path.clone(), title: f.title.clone(), line: i, col, len, text: l.trim().to_string() });
+            }
+        }
+    }
+    out
+}
+
 /// TEXT with a file-level `:ID:` (reusing one in a top property drawer), and that ID.
 pub fn ensure_id(text: &str) -> (String, String) {
     let lines: Vec<&str> = text.lines().collect();
@@ -722,6 +750,17 @@ mod tests {
         let g = graph(&files(&docs), Path::new("/n/0.org"), 2);
         assert_eq!((g.nodes.len(), g.hidden, g.edges.len()), (MAX_NODES, 200 - MAX_NODES, MAX_NODES - 1));
         assert_eq!(resolve(Path::new("/n/sub/c.org"), "../d.org::foo"), PathBuf::from("/n/d.org"));
+    }
+
+    #[test]
+    fn person_mentions() {
+        let kw = Kw { todo: vec!["TODO".into()], done: vec!["DONE".into()] };
+        let doc = "#+title: Meet\n* Sync :@Anna:\nAsk @anna about it\nmail anna@anna.se or x.@anna\n@annabel and @ANNA.\n* TODO Call @anna\n* DONE Paid @anna\n";
+        let files = [Arc::new(parse(Path::new("/n/m.org"), doc, &kw)), Arc::new(parse(Path::new("/n/.trash/t.org"), "@anna\n", &kw))];
+        let got: Vec<_> = mentions_of(&files, Path::new("/n"), "@Anna").into_iter().map(|m| (m.line, m.col, m.len)).collect();
+        // tag, plain mention, a line-ending one after "@annabel"; not emails, tasks or trash.
+        assert_eq!(got, vec![(1, 8, 5), (2, 4, 5), (4, 13, 5)]);
+        assert!(mentions_of(&files, Path::new("/n"), " @ ").is_empty());
     }
 
     #[test]

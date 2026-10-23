@@ -721,6 +721,21 @@ fn search_todos(s: State<App>, query: String) -> R<Vec<org::Item>> {
     Ok(with_spent(&*f, org::todos(&s.files(), &kw, done, keep, today())))
 }
 
+/// Open tasks tagged (own or inherited) `@NAME` or naming `@NAME` in the title, and other lines mentioning it.
+fn person(files: &[Arc<org::OrgFile>], root: &Path, kw: &org::Kw, name: &str) -> (Vec<org::Item>, Vec<notes::Mention>) {
+    let Some(re) = notes::person_re(name) else { return (vec![], vec![]) };
+    let tag = format!("@{}", name.trim().trim_start_matches('@'));
+    let keep = |_: &org::OrgFile, h: &org::Headline| h.tags.iter().chain(&h.inherited).any(|t| t.eq_ignore_ascii_case(&tag)) || re.is_match(&h.title);
+    (org::todos(files, kw, false, keep, today()), notes::mentions_of(files, root, name))
+}
+
+/// The person view (`Space n @`): `{ tasks, notes }` for `@NAME`.
+#[tauri::command(async)]
+fn person_view(s: State<App>, name: String) -> Value {
+    let (tasks, notes) = person(&s.files(), &s.cfg().notes(), &s.kw(), &name);
+    json!({ "tasks": with_spent(&*spent_lookup(&s), tasks), "notes": notes })
+}
+
 #[tauri::command]
 fn org_heading(s: State<App>, text: String, line: usize) -> Option<org::Parts> {
     org::heading(&text, line, &s.kw())
@@ -2120,7 +2135,7 @@ pub fn run() {
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
-            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, org_stuck, notes_recent, notes_tags, notes_tagged, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id,
+            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, org_stuck, notes_recent, notes_tags, notes_tagged, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply
@@ -2148,6 +2163,19 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn person_view_lists_open_tagged_tasks_and_mentions() {
+        let kw = org::Kw { todo: vec!["TODO".into()], done: vec!["DONE".into()] };
+        let doc = "#+title: W\n* Project :@anna:\n** TODO Inherited\n* TODO Call @Anna\n* TODO Mail bob@anna.se\n* DONE Paid @anna\nnotes for @anna\n";
+        let files = [Arc::new(org::parse(Path::new("/n/w.org"), doc, &kw))];
+        let (tasks, notes) = person(&files, Path::new("/n"), &kw, "Anna");
+        let mut t: Vec<_> = tasks.iter().map(|i| i.title.as_str()).collect();
+        t.sort();
+        assert_eq!(t, ["Call @Anna", "Inherited"]);
+        assert_eq!(notes.iter().map(|m| m.line).collect::<Vec<_>>(), [1, 6]);
+        assert_eq!(person(&files, Path::new("/n"), &kw, "@").0.len(), 0);
+    }
 
     #[test]
     fn month_range_covers_calendar_month() {
