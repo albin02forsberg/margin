@@ -25,6 +25,12 @@ the editor has vim keys.
   replaces only the generated lines between `# review-begin` and
   `# review-end` (edits there are overwritten; the rest is kept), also on a
   later day of the same week, in the entry that already holds the block.
+  `Space n j` logs a daily metric (Settings > Daily metrics: mood, energy,
+  sleep…) as `:MOOD: 4` in the entry's top property drawer; `Space n M` shows
+  them over the last 30 / 90 / 365 days (`r` switches): a sparkline per metric
+  with latest, mean, range and days logged, its mean on workdays with at least
+  the expected hours clocked vs shorter ones (days off left out), and a day
+  table with hours clocked, where `Enter` opens that day's entry.
 - **Time** — a timeclock with breaks, projects, flex balance and reports, in
   the window or the tray.
   `Space t T` shows one day's timeline: clocked sessions, tasks closed and

@@ -1033,16 +1033,103 @@ pub fn set_prop(text: &str, line: usize, key: &str, val: Option<&str>) -> String
 /// creating it above everything else), replacing an existing KEY. KEY is upper-cased with
 /// spaces as `_`; anything but letters, digits, `_` and `-` is an error.
 pub fn set_file_prop(text: &str, key: &str, val: &str) -> Result<String, String> {
-    let key = key.trim().replace(' ', "_").to_uppercase();
+    let key = prop_key(key);
     if key.is_empty() || !key.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
         return Err(format!("Not a property name: {key}"));
     }
     let mut lines = to_lines(text);
-    let top = lines.iter().position(|l| !l.trim().is_empty() && !l.starts_with("#+")).filter(|&i| lines[i].trim().eq_ignore_ascii_case(":PROPERTIES:"));
-    if !upsert_prop(&mut lines, top.unwrap_or(0), &key, Some(val.trim())) {
+    let at = top_drawer(&lines).unwrap_or(0);
+    if !upsert_prop(&mut lines, at, &key, Some(val.trim())) {
         return Err("Unclosed property drawer".into());
     }
     Ok(join(lines, text))
+}
+
+/// A file property name as `set_file_prop` stores it: upper-cased, spaces as `_`.
+pub fn prop_key(key: &str) -> String {
+    key.trim().replace(' ', "_").to_uppercase()
+}
+
+/// Line of the file-level `:PROPERTIES:` (first line that isn't blank or `#+`), if there is one.
+fn top_drawer(lines: &[String]) -> Option<usize> {
+    lines.iter().position(|l| !l.trim().is_empty() && !l.starts_with("#+")).filter(|&i| lines[i].trim().eq_ignore_ascii_case(":PROPERTIES:"))
+}
+
+/// The file-level drawer's `(KEY upper-cased, value)` entries, as `set_file_prop` writes them;
+/// empty without one or when it is unclosed.
+pub fn file_props(text: &str) -> Vec<(String, String)> {
+    let lines = to_lines(text);
+    let Some(end) = top_drawer(&lines).and_then(|i| drawer_end(&lines, i).map(|e| (i, e))) else { return vec![] };
+    lines[end.0 + 1..end.1].iter().filter_map(|l| PROP.captures(l)).map(|c| (c[1].to_uppercase(), c[2].to_string())).collect()
+}
+
+/// One day for `metric_trend`: its journal file props (empty without one), hours clocked
+/// and expected hours after leave.
+pub struct MetricDay {
+    pub date: NaiveDate,
+    pub props: Vec<(String, String)>,
+    pub hours: f64,
+    pub expected: f64,
+}
+
+/// A metric's summary over the range; `long`/`rest` are its mean on days with hours >= expected
+/// vs the other days with expected hours (days without expected hours are in neither).
+#[derive(Serialize, Debug, PartialEq)]
+pub struct MetricStat {
+    pub name: String,
+    pub n: usize,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub mean: Option<f64>,
+    pub latest: Option<f64>,
+    pub long: Option<f64>,
+    pub rest: Option<f64>,
+}
+
+/// A day row: each metric's value (None: not logged or not a number) and hours clocked.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct MetricRow {
+    pub date: String,
+    pub values: Vec<Option<f64>>,
+    pub hours: f64,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct MetricTrend {
+    pub stats: Vec<MetricStat>,
+    pub days: Vec<MetricRow>,
+}
+
+/// A logged value as a number (`7,5` too); anything else is None.
+fn metric_value(v: &str) -> Option<f64> {
+    v.trim().replace(',', ".").parse::<f64>().ok().filter(|x| x.is_finite())
+}
+
+/// METRICS (config names) over DAYS (oldest first): a row per day and a summary per metric (#721).
+pub fn metric_trend(days: &[MetricDay], metrics: &[String]) -> MetricTrend {
+    let keys: Vec<String> = metrics.iter().map(|m| prop_key(m)).collect();
+    let days_out: Vec<MetricRow> = days.iter().map(|d| MetricRow {
+        date: d.date.to_string(),
+        values: keys.iter().map(|k| d.props.iter().find(|(p, _)| p == k).and_then(|(_, v)| metric_value(v))).collect(),
+        hours: d.hours,
+    }).collect();
+    let mean = |xs: &[f64]| (!xs.is_empty()).then(|| xs.iter().sum::<f64>() / xs.len() as f64);
+    let stats = metrics.iter().enumerate().map(|(i, name)| {
+        let vals: Vec<(f64, &MetricDay)> = days_out.iter().zip(days).filter_map(|(r, d)| r.values[i].map(|v| (v, d))).collect();
+        let xs: Vec<f64> = vals.iter().map(|v| v.0).collect();
+        let split = |long: bool| vals.iter().filter(|(_, d)| d.expected > 0.0 && (d.hours >= d.expected) == long).map(|v| v.0).collect::<Vec<_>>();
+        MetricStat {
+            name: name.trim().to_string(),
+            n: xs.len(),
+            min: xs.iter().copied().reduce(f64::min),
+            max: xs.iter().copied().reduce(f64::max),
+            mean: mean(&xs),
+            latest: xs.last().copied(),
+            long: mean(&split(true)),
+            rest: mean(&split(false)),
+        }
+    }).collect();
+    MetricTrend { stats, days: days_out }
 }
 
 /// Add `- Note taken on [date time] \\` plus NOTE (indented) under the
@@ -1991,6 +2078,45 @@ mod tests {
     fn set_file_prop_edge_cases() {
         assert!(set_file_prop(":PROPERTIES:\n:A: 1\n* H\n", "b", "2").is_err());
         assert_eq!(set_file_prop("#+title: D\n* H\n", "k", "v").unwrap(), ":PROPERTIES:\n:K: v\n:END:\n#+title: D\n* H\n");
+    }
+
+    #[test]
+    fn file_props_reads_back_what_set_file_prop_wrote() {
+        let mut t = "#+title: 2026-10-23\n\n* 09:00 hi\n:PROPERTIES:\n:MOOD: 1\n:END:\n".to_string();
+        assert_eq!(file_props(&t), []); // a heading's drawer is not the file's
+        for (k, v) in [("mood", "4"), ("Sleep time", " 7,5 "), ("mood", "5")] {
+            t = set_file_prop(&t, k, v).unwrap();
+        }
+        let s = |a: &str, b: &str| (a.to_string(), b.to_string());
+        assert_eq!(file_props(&t), [s("MOOD", "5"), s("SLEEP_TIME", "7,5")]);
+        assert_eq!(file_props(":properties:\n:id: x\n:Mood: 3\n:end:\n"), [s("ID", "x"), s("MOOD", "3")]);
+        assert_eq!(file_props(":PROPERTIES:\n:MOOD: 3\n* H\n"), []); // unclosed
+    }
+
+    #[test]
+    fn metric_trend_summarises_and_splits_by_expected_hours() {
+        let day = |date: &str, props: &[(&str, &str)], hours: f64, expected: f64| MetricDay {
+            date: d(date), props: props.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(), hours, expected,
+        };
+        let days = [
+            day("2026-10-17", &[("MOOD", "2"), ("SLEEP_TIME", "6,5")], 3.0, 0.0), // Saturday: in neither half
+            day("2026-10-19", &[("MOOD", "3")], 9.0, 8.0),                         // long day
+            day("2026-10-20", &[("MOOD", "meh")], 9.0, 8.0),                       // not a number
+            day("2026-10-21", &[], 5.0, 8.0),                                      // hours, no journal
+            day("2026-10-22", &[("MOOD", "5"), ("SLEEP_TIME", "8")], 6.0, 8.0),    // short day
+        ];
+        let t = metric_trend(&days, &["mood".into(), "sleep time".into(), "energy".into()]);
+        assert_eq!(t.days.iter().map(|r| r.values.clone()).collect::<Vec<_>>(), [
+            vec![Some(2.0), Some(6.5), None], vec![Some(3.0), None, None], vec![None; 3], vec![None; 3], vec![Some(5.0), Some(8.0), None],
+        ]);
+        assert_eq!((t.days[3].date.as_str(), t.days[3].hours), ("2026-10-21", 5.0));
+        let mood = &t.stats[0];
+        assert_eq!((mood.name.as_str(), mood.n, mood.min, mood.max, mood.latest), ("mood", 3, Some(2.0), Some(5.0), Some(5.0)));
+        assert!((mood.mean.unwrap() - 10.0 / 3.0).abs() < 1e-9);
+        assert_eq!((mood.long, mood.rest), (Some(3.0), Some(5.0)));
+        assert_eq!((t.stats[1].n, t.stats[1].long, t.stats[1].rest), (2, None, Some(8.0)));
+        assert_eq!(t.stats[2], MetricStat { name: "energy".into(), n: 0, min: None, max: None, mean: None, latest: None, long: None, rest: None });
+        assert_eq!(metric_trend(&[], &["mood".into()]).stats[0].n, 0);
     }
 
     #[test]

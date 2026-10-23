@@ -794,6 +794,23 @@ describe("Journal, archive and move", () => {
     await fileMatches(file, (s) => s.includes("#+title: 2021-03-04\n"), "journal for the chosen date not created");
   });
 
+  it("Space n j logs a metric, Space n M shows its trend and Enter opens that journal day (#721)", async () => {
+    const day = isoDay(new Date()), file = f(join("daily", `${day}.org`));
+    await leader("nj");
+    await answer("Log metric", "mood");
+    await answer("mood today", "4");
+    await fileMatches(file, (s) => /^:PROPERTIES:\n:ID: +\S+\n:MOOD: 4\n:END:\n/.test(s), "metric not logged");
+    await leader("nJ");
+    await answer("Open journal for", "2020-01-01");
+    await find(".status .file", "2020-01-01.org");
+    await leader("nM");
+    await find(".metrics .stat .latest", "4");
+    await find(".metrics tr.sel td", day);
+    await browser.keys(Key.Enter);
+    await find(".status .file", `${day}.org`);
+    assert.equal((await texts(".metrics")).length, 0, "view still open");
+  });
+
   it("A archives a task to <file>_archive and u restores both files", async () => {
     const archive = f("chores.org_archive");
     await browser.keys([Key.Ctrl, "2"]);
