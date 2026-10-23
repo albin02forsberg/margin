@@ -736,6 +736,7 @@ describe("Journal, archive and move", () => {
         writeFileSync(join(notes, "linker.org"), retitleRef);
         writeFileSync(join(notes, "narrow.org"), "* One\nalpha\n* Two\nbeta\n");
         writeFileSync(join(notes, "marks.org"), "* Intro\nx\n* Target\nfirst\nsecond\n");
+        writeFileSync(join(notes, "stuck.org"), "* TODO Moving\n** NEXT Go\n* TODO Launch site\n** TODO Pick a host\n** TODO Write copy\n");
         writeFileSync(join(notes, "clone.org"), "* DONE Check-in\nCLOSED: [2026-10-01 Thu 10:00] SCHEDULED: <2026-10-01 Thu>\n* After\n");
       },
     });
@@ -908,6 +909,15 @@ describe("Journal, archive and move", () => {
     await leader("'");
     await answer("Jump to bookmark", "spot");
     await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("second")), { timeoutMsg: "bookmark didn't land on its line" });
+  });
+
+  it("Space x S lists stuck projects and Enter jumps to the heading (#671)", async () => {
+    await leader("xS");
+    await find(".picker label span", "Stuck projects");
+    await find(".picker", "2 open");
+    await answer("Stuck projects", "Launch");
+    await find(".status .file", "stuck.org");
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("TODO Launch site")), { timeoutMsg: "didn't land on the project heading" });
   });
 
   it("Space v n narrows to the heading at the cursor and widens again", async () => {

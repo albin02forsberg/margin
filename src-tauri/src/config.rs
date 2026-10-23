@@ -20,6 +20,8 @@ pub struct Config {
     pub profiles: Vec<String>,
     pub todo_keywords: Vec<String>,
     pub done_keywords: Vec<String>,
+    /// Keywords that count as a next action for stuck projects (`Space x S`).
+    pub stuck_next_keywords: Vec<String>,
     /// Daily journal folder, relative to notes_dir.
     pub daily_dir: String,
     /// Org text put in new journal files after the title; `%t`/`%T`/`%u`/`%U` expand for that day,
@@ -183,6 +185,7 @@ impl Default for Config {
             profiles: v(&["Work", "Personal"]),
             todo_keywords: v(&["TODO", "NEXT", "WAIT"]),
             done_keywords: v(&["DONE", "CANCELLED"]),
+            stuck_next_keywords: v(&["NEXT", "DOING"]),
             daily_dir: "daily".into(),
             journal_template: String::new(),
             inbox: "inbox.org".into(),
