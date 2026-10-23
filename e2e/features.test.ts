@@ -842,6 +842,16 @@ describe("Journal, archive and move", () => {
     await fileMatches(f("projects.org"), (s) => s === projects, "undo didn't restore the target");
   });
 
+  it("x on marked tasks in one file (one nested) flips all of them and one u restores it (#677)", async () => {
+    await browser.keys([Key.Ctrl, "2"]);
+    for (const t of ["Bulk parent", "Bulk child", "Bulk solo"]) { await (await find(".agenda .row .title", t)).click(); await browser.keys("*"); }
+    await find(".agenda .titles span", "3 marked");
+    await browser.keys("x");
+    await fileMatches(f("bulk.org"), (s) => !s.includes("TODO") && (s.match(/^\*+ DONE Bulk /gm) ?? []).length === 3, "not every marked task done");
+    await browser.keys("u");
+    await fileMatches(f("bulk.org"), (s) => s === bulk, "one undo didn't restore the file");
+  });
+
   it("Space n x extracts the heading into a new note with a link back, and Space n u restores it", async () => {
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "extract");
