@@ -29,6 +29,8 @@
   import TaskDialog from "$lib/TaskDialog.svelte";
   import TableDialog from "$lib/TableDialog.svelte";
   import FormulaDialog from "$lib/FormulaDialog.svelte";
+  import Drill from "$lib/Drill.svelte";
+  import { due as drillDue, grade as drillGrade, propValue as drillProps, type Card } from "$lib/drill";
   import Projects from "$lib/Projects.svelte";
   import Settings from "$lib/Settings.svelte";
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
@@ -74,6 +76,7 @@
   let taskDialog = $state<TaskDialog>();
   let tableDialog = $state<TableDialog>();
   let formulaDialog = $state<FormulaDialog>();
+  let drill = $state<Drill>();
   let mode = $state("normal");
   let words = $state("");
   /** Title of the heading the editor is narrowed to (Space v n), or "". */
@@ -1285,6 +1288,19 @@
     if (r) await openFile(r as string);
   }
 
+  /** Review the due `:drill:` flashcards (#703); each grade writes the card's schedule to its drawer (undo: Space n u). */
+  async function reviewDrill() {
+    const t = new Date(), today = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+    const cards = drillDue(await call<Card[]>("drill_cards"), today);
+    if (!cards.length) return flash("No flashcards due (tag a heading :drill:, its text is the answer)");
+    const n = await drill!.open(cards, async (c, g) => {
+      // The file may have changed since the cards were collected: only grade the same heading.
+      if ((await heading(c))?.title !== c.title) return flash(`Skipped "${c.title}": the note changed`), false;
+      return recorded(() => edit(c, "prop", drillProps(drillGrade(c, g, today)))).then(() => true, (e) => (flash(`${e}`), false));
+    });
+    if (n) flash(`Reviewed ${n} card${n === 1 ? "" : "s"}`);
+  }
+
   /** Pick a tag used in notes, then a note or heading carrying it (#609). */
   async function browseTags() {
     const tags = await call<[string, number][]>("notes_tags");
@@ -2235,6 +2251,7 @@
     { label: "Notes: recently changed…", leader: "n C", run: recentlyChanged },
     { label: "Notes: browse by tag…", leader: "n T", run: browseTags },
     { label: "People: a person's open tasks and mentions (@name)…", leader: "n @", run: personView },
+    { label: "Flashcards: review due :drill: headings", leader: "n d", run: reviewDrill },
     { label: "Note: pin / unpin (pinned notes come first in Ctrl+P)", leader: "n p", run: pinNote },
     { label: "Notes: open a pinned note…", leader: "n P", run: pinnedNotes },
     { label: "Bookmark: add at cursor…", leader: "m m", run: addBookmarkHere },
@@ -2426,7 +2443,7 @@
   const closeDrawer = () => { showGraph = showBacklinks = showChat = false; };
 
   function onKey(e: KeyboardEvent) {
-    if (picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen() || tableDialog?.isOpen() || formulaDialog?.isOpen()) return;
+    if (picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen() || tableDialog?.isOpen() || formulaDialog?.isOpen() || drill?.isOpen()) return;
     const inEditor = isText(tab) && view.contentDOM.contains(e.target as Node);
     if (e.key === "Escape" && !inEditor && drawerOpen()) { closeDrawer(); e.preventDefault(); return; }
     const idle = inEditor && ed.vimIdle(view);
@@ -2832,6 +2849,7 @@
 <TaskDialog bind:this={taskDialog} />
 <TableDialog bind:this={tableDialog} />
 <FormulaDialog bind:this={formulaDialog} />
+<Drill bind:this={drill} />
 
 <style>
   :global(html, body) { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: var(--fs-base) var(--sans); overflow: hidden; }

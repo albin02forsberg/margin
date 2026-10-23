@@ -719,6 +719,7 @@ describe("Journal, archive and move", () => {
   const bulk = "* TODO Bulk parent\n** TODO Bulk child\n* TODO Bulk solo\n";
   const extract = "* TODO Big idea :x:\nwhy\n** Part\n";
   const retitle = "* TODO Old name\nsee [[*Old name][here]] and [[*Other]]\n", retitleRef = "[[file:retitle.org::*old name]] [[*Old name]]\n";
+  const drill = "* Capital of France? :drill:\nParis\n* Later :drill:\n:PROPERTIES:\n:DRILL_DUE: 2999-01-01\n:END:\nnot due\n";
   const f = (n: string) => join(d.notes, n);
   /** Leader key sequence KEYS from the editor's normal mode. */
   const leader = async (keys: string) => { await browser.keys(Key.Escape); await browser.keys(" "); await type(keys); };
@@ -737,6 +738,7 @@ describe("Journal, archive and move", () => {
         writeFileSync(join(notes, "narrow.org"), "* One\nalpha\n* Two\nbeta\n");
         writeFileSync(join(notes, "marks.org"), "* Intro\nx\n* Target\nfirst\nsecond\n");
         writeFileSync(join(notes, "stuck.org"), "* TODO Moving\n** NEXT Go\n* TODO Launch site\n** TODO Pick a host\n** TODO Write copy\n");
+        writeFileSync(join(notes, "drill.org"), drill);
         writeFileSync(join(notes, "clone.org"), "* DONE Check-in\nCLOSED: [2026-10-01 Thu 10:00] SCHEDULED: <2026-10-01 Thu>\n* After\n");
       },
     });
@@ -955,6 +957,26 @@ describe("Journal, archive and move", () => {
     const want = "* DONE Check-in\nCLOSED: [2026-10-01 Thu 10:00] SCHEDULED: <2026-10-01 Thu>\n* TODO Check-in\nSCHEDULED: <2026-10-08 Thu>\n* TODO Check-in\nSCHEDULED: <2026-10-15 Thu>\n* After\n";
     await fileMatches(f("clone.org"), (s) => s === want, "copies not inserted with shifted dates");
     await find(".status .msg", "Cloned 2×");
+  });
+
+  it("Space n d reviews due :drill: cards, grading writes the schedule and Space n u undoes it (#703)", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "drill");
+    await find(".status .file", "drill.org");
+    await leader("nd");
+    await find(".dialog .q", "Capital of France?");
+    assert.equal((await texts(".dialog .a")).length, 0, "answer shown before Space");
+    await browser.keys(" ");
+    await find(".dialog .a", "Paris");
+    await browser.keys("3");
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const graded = drill.replace("France? :drill:\n", `France? :drill:\n:PROPERTIES:\n:DRILL_DUE: ${isoDay(tomorrow)}\n:DRILL_INTERVAL: 1\n:DRILL_EASE: 2.5\n:END:\n`);
+    await fileMatches(f("drill.org"), (s) => s === graded, "grade not written to the drawer");
+    await find(".status .msg", "Reviewed 1 card");
+    assert.equal((await texts(".dialog")).length, 0, "not-due card was shown");
+    await leader("nu");
+    await fileMatches(f("drill.org"), (s) => s === drill, "undo didn't restore the card");
   });
 });
 
