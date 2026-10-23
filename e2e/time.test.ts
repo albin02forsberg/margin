@@ -126,6 +126,19 @@ describe("Time tracking", () => {
     await fileMatches(log, (s) => events(s).some((e) => e.ev === "out" && e.t === `${day}T11:00:00` && e.note === "edited entry") && !s.includes("late entry"), "session not edited");
   });
 
+  it("Space t T shows that day's timeline with the session; Enter on it opens the session editor", async () => {
+    const day = isoDay(new Date(Date.now() - 3 * 86_400_000));
+    await noPicker();
+    await palette("Time: day timeline");
+    await answer("Timeline for", day);
+    await find(".picker label span", `Timeline for ${day}`);
+    await find(".picker li", "Copy as Markdown");
+    await answer(`Timeline for ${day}`, "edited entry");
+    await find(".picker label span", "Description");
+    await browser.keys(Key.Escape);
+    await noPicker();
+  });
+
   it("reads a weekday name as the previous such day when logging a session", async () => {
     const name = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][new Date(Date.now() - 2 * 86_400_000).getDay()];
     const day = isoDay(new Date(Date.now() - 2 * 86_400_000));

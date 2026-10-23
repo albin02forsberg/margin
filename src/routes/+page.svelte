@@ -17,6 +17,7 @@
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
   import { isoWeek, putReview, reviewBody, reviewEntry } from "$lib/review";
+  import { buildTimeline, timelineMarkdown, type Entry as TimelineEntry } from "$lib/timeline";
   import { ago, changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath, weekJournals } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
@@ -1566,6 +1567,28 @@
     flash(`Weekly review written to ${base(path)}; a re-run replaces the marked block (Space n u to undo).`);
   }
 
+  /** One day's sessions, tasks closed and notes edited in time order (#694); Enter opens one, the first row copies Markdown. */
+  async function dayTimeline() {
+    const input = await pastDatePick("Timeline for");
+    if (input == null) return;
+    const d = await call<string>("read_past_date", { input });
+    const [ss, st, closed, notes] = await Promise.all([
+      call<Session[]>("tc_sessions_on", { dateInput: d }), call<any>("tc_status"),
+      call<AgendaItem[]>("search_todos", { query: `closed:>=${d} closed:<=${d}` }), call<[string, string, number][]>("notes_recent", { limit: 100000 }),
+    ]);
+    const tl = buildTimeline(d, ss, st, doneLog(closed.filter((i) => i.keyword && kw().done.includes(i.keyword))), notes);
+    const r = await pick({
+      prompt: `Timeline for ${d}`,
+      items: [{ label: "Copy as Markdown", detail: `${tl.length} entr${tl.length === 1 ? "y" : "ies"}`, value: "copy" as unknown },
+        ...tl.map((e) => ({ label: e.text, detail: e.kind === "session" ? (e.session ? "edit session" : "") : rel(e.path), dim: e.kind === "session" && !e.session, value: e as unknown }))],
+    });
+    if (r === "copy") return navigator.clipboard.writeText(timelineMarkdown(d, tl)).then(() => flash(`Copied the ${d} timeline`), () => flash("Couldn't copy to the clipboard."));
+    const e = r as TimelineEntry | null;
+    if (!e) return;
+    if (e.kind !== "session") await openFile(e.path, e.kind === "done" ? e.line : undefined);
+    else if (e.session) await editSession(e.session as Session);
+  }
+
   /** Show PROMPT exactly; on YES, the local model's draft for it (null on NO or an error, which flashes). */
   async function aiDraft(prompt: string, yes: string, no: string, oneLine: boolean): Promise<string | null> {
     const model = cfg.config.ai_model;
@@ -2304,6 +2327,7 @@
     { label: "Time: log time off…", leader: "t l", run: t("timeOff") },
     { label: "Time: log a past session…", leader: "t n", run: t("logSession") },
     { label: "Weekly review into today's journal (re-run replaces the marked block)", leader: "t R", run: () => act(weeklyReview) },
+    { label: "Time: day timeline (sessions, tasks closed, notes edited)…", leader: "t T", run: () => act(dayTimeline) },
     { label: "Time: import from Emacs…", leader: "t M", run: t("import") },
 
     { label: "Export: note as HTML", leader: "e h", run: () => exportNote("html") },
