@@ -16,8 +16,11 @@
 #           CLAUDE_BIN             (default claude)
 # Guards:   limits (sleeps to the exact 5h/weekly reset), hang watchdog, fast-exit backoff,
 #           context rotation (fresh coordinator at 70-90% context), main-CI circuit breaker
-#           (3 red runs in a row: a fix-only run, then a pause), low-disk guard, log rotation.
+#           (3 red runs in a row: a fix-only run, then a pause), low-disk guard, log rotation,
+#           self-update (re-execs itself between runs when this file changes and still parses).
 set -u
+self=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
+self_sum=$(shasum "$self")
 cd "$(dirname "$0")/.."
 dir="$HOME/.cache/margin-autopilot"
 mkdir -p "$dir"
@@ -62,6 +65,18 @@ reset_wait() {
   echo $((target - now + 120))
 }
 
+# Between runs: when this file changed (e.g. a `git pull`), re-exec the new version if it parses.
+self_update() {
+  local sum; sum=$(shasum "$self" 2>/dev/null) || return 0
+  [ "$sum" = "$self_sum" ] && return 0
+  self_sum=$sum
+  if ! bash -n "$self" 2>/dev/null; then say "script changed but has a syntax error, keeping the old version"; return 0; fi
+  say "script changed: restarting"
+  [ -t 1 ] && printf '\r\033[K'
+  rm -rf "$lock"   # exec skips the EXIT trap; the new process would see its own pid as "already running"
+  exec bash "$self"   # via bash: works without the execute bit
+}
+
 # Short summary of the last known limits for the countdown line.
 limit_summary() {
   [ -s "$limits" ] || return 0
@@ -78,6 +93,7 @@ countdown() {
     [ -t 1 ] && printf '\r\033[K💤 %s - next run in %dd %dh %02dm %02ds%s (STOP file: ~/.cache/margin-autopilot/STOP)' "$2" \
       $((left / 86400)) $((left % 86400 / 3600)) $((left % 3600 / 60)) $((left % 60)) "${sum:+ · $sum}"
     sleep 5
+    self_update
   done
   [ -t 1 ] && printf '\r\033[K'
   return 0
@@ -115,6 +131,7 @@ ci_state() {  # "red" when the last 3 completed ci.yml runs on main all failed
 fixes=0; fast=0
 while [ ! -e "$dir/STOP" ]; do
   [ "$(stat -f %z "$log" 2>/dev/null || echo 0)" -gt 5242880 ] && mv -f "$log" "$log.1"
+  self_update
   weekly_gate && continue
   disk_gate && continue
 
