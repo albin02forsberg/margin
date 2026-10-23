@@ -12,6 +12,8 @@ const KW = "TODO|DONE|NEXT|WAIT\\w*|CANCEL\\w*";
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** Heading regex capturing the title after an optional keyword (from KEYWORDS, else the defaults), priority and tags. */
 const head = (keywords?: string[]) => new RegExp(`^\\*+\\s+(?:(?:${keywords?.length ? keywords.map(esc).join("|") : KW})\\s+)?(?:\\[#[A-Z0-9]+\\]\\s+)?(.*?)(?:\\s+:[\\w@#%:]+:)?\\s*$`);
+/** Title of heading LINE (keyword, priority and tags stripped), or null when LINE isn't a heading. */
+export const headTitle = (line: string, keywords?: string[]) => head(keywords).exec(line)?.[1] ?? null;
 /** A heading title without statistics cookies (`[2/5]`, `[40%]`) and with collapsed whitespace. */
 export const bareTitle = (s: string) => s.replace(/\[\d*(?:\/\d*|%)\]/g, " ").replace(/\s+/g, " ").trim();
 /** Title for comparison, as org does: bare and lowercase. Mirrored by `notes::heading_norm` in Rust. */

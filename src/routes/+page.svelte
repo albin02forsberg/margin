@@ -13,7 +13,7 @@
   import type { EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
   import { linkFor, asUrl } from "$lib/weblink";
-  import { findTarget, linkHeadings, retitlePlan, splitTarget } from "$lib/links";
+  import { bareTitle, findTarget, linkHeadings, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { ago, changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
@@ -37,6 +37,7 @@
   import { wordCount, wordsLabel } from "$lib/words";
   import { windowTitle } from "$lib/wintitle";
   import { orderNotes, parsePins, togglePin } from "$lib/pins";
+  import { addBookmark, bookmarkAt, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, type Bookmark } from "$lib/bookmarks";
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
 
   type View = "agenda" | "todo" | "time" | "projects" | "settings";
@@ -91,6 +92,9 @@
   /** Pinned notes (this machine only), shown first in Ctrl+P in pin order; not capped, not reordered on open. */
   let pinned = $state<string[]>(parsePins(stored("pinned", "[]")));
   const savePinned = (p: string[]) => store("pinned", JSON.stringify((pinned = p)));
+  /** Named positions (#672), this machine only; kept when their note is gone (shown dimmed). */
+  let bookmarks = $state<Bookmark[]>(parseBookmarks(stored("bookmarks", "[]")));
+  const saveBookmarks = (b: Bookmark[]) => store("bookmarks", JSON.stringify((bookmarks = b)));
 
   const tab = $derived(tabs[cur]);
   // Window title follows the active tab (#589); IPC only when it changed, and a missing capability never breaks the page.
@@ -1188,6 +1192,44 @@
     if (r) await openFile(r as string);
   }
 
+  const kwAll = () => [...(kw().todo ?? []), ...(kw().done ?? [])];
+
+  /** Bookmark the cursor position under a name (Space m m); the same name replaces the old one. */
+  async function addBookmarkHere() {
+    if (!inFile()) return flash("Open a note first.");
+    const path = tab.path!, line = curLine0(), text = view.state.doc.toString();
+    const b0 = bookmarkAt("", path, text, line, kwAll());
+    const name = (await ask("Bookmark name", b0.heading ? bareTitle(b0.heading) : tab.title))?.trim();
+    if (!name) return;
+    const had = bookmarks.some((b) => b.name === name);
+    saveBookmarks(addBookmark(bookmarks, { ...b0, name }));
+    flash(`${had ? "Replaced" : "Added"} bookmark ${name}`);
+  }
+
+  /** Pick a bookmark, resolved against its note's current text; stale ones (note, heading or line gone) are dimmed. */
+  async function pickBookmark(prompt: string): Promise<{ b: Bookmark; line: number; stale: boolean } | null> {
+    if (!bookmarks.length) return (flash("No bookmarks yet: Space m m adds one"), null);
+    const items = await Promise.all(bookmarks.map(async (b) => {
+      const r = resolveBookmark(b, await textOf(b.file).catch(() => null), kwAll());
+      return { label: b.name, detail: `${rel(b.file)}${b.heading ? ` › ${bareTitle(b.heading)}` : `:${b.line + 1}`}${r.stale ? " (stale)" : ""}`, dim: r.stale, value: { b, ...r } as unknown };
+    }));
+    return pick({ prompt, items });
+  }
+
+  async function jumpBookmark() {
+    const r = await pickBookmark("Jump to bookmark");
+    if (!r) return;
+    try { await openFile(r.b.file, r.line); } catch { return flash(`${rel(r.b.file)} is gone`); }
+    if (r.stale) flash(r.b.heading ? `Heading "${bareTitle(r.b.heading)}" not found; jumped to the saved line` : "The saved line is past the end of the note");
+  }
+
+  async function deleteBookmark() {
+    const r = await pickBookmark("Delete bookmark");
+    if (!r) return;
+    saveBookmarks(removeBookmark(bookmarks, r.b.name));
+    flash(`Deleted bookmark ${r.b.name}`);
+  }
+
   async function findOrphans() {
     const o = await call<[string, string][]>("notes_orphans");
     if (!o.length) return flash("No orphan notes");
@@ -1309,6 +1351,7 @@
     recent = recent.map((p) => (p === from ? to : p));
     store("recent", JSON.stringify(recent));
     if (pinned.includes(from)) savePinned(pinned.map((p) => (p === from ? to : p)));
+    if (bookmarks.some((b) => b.file === from)) saveBookmarks(moveBookmarks(bookmarks, from, to));
     for (const c of closed) if ("path" in c && c.path === from) c.path = to; // so "Reopen closed tab" finds it
     syncFromDisk();
     return [to, changed];
@@ -2069,6 +2112,9 @@
     { label: "Notes: browse by tag…", leader: "n T", run: browseTags },
     { label: "Note: pin / unpin (pinned notes come first in Ctrl+P)", leader: "n p", run: pinNote },
     { label: "Notes: open a pinned note…", leader: "n P", run: pinnedNotes },
+    { label: "Bookmark: add at cursor…", leader: "m m", run: addBookmarkHere },
+    { label: "Bookmark: delete…", leader: "m d", run: deleteBookmark },
+    { label: "Bookmark: jump to…", leader: "'", run: jumpBookmark },
     { label: "Show note graph", leader: "n g", run: () => { showGraph = !showGraph; return refreshBacklinks(); } },
     { label: "AI chat (local model)", leader: "n a", run: toggleChat },
     { label: "Undo last edit made from a task view or the links panel", leader: "n u", run: () => undo().then(refreshBacklinks) },
@@ -2214,13 +2260,13 @@
     { label: "Export: time report (HTML/PDF)…", leader: "e t", run: exportReport },
   ];
 
-  const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", i: "Insert", T: "Table", t: "Time tracking", e: "Export", v: "Go to & view", b: "Tabs" };
+  const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", i: "Insert", T: "Table", m: "Bookmarks", t: "Time tracking", e: "Export", v: "Go to & view", b: "Tabs" };
   const leader: MenuNode[] = (() => {
     const root: MenuNode[] = Object.entries(GROUPS).map(([key, label]) => ({ key, label, children: [] }));
     for (const c of cmds) {
       if (!c.leader) continue;
       const [a, b] = c.leader.split(" ");
-      const node = { key: b ?? a, label: c.label.replace(/^(Task|Time|Export): /, ""), run: () => act(c.run) };
+      const node = { key: b ?? a, label: c.label.replace(/^(Task|Time|Export|Bookmark): /, ""), run: () => act(c.run) };
       if (b) root.find((g) => g.key === a)!.children!.push(node);
       else root.unshift(node);
     }
