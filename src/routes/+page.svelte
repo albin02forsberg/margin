@@ -19,7 +19,7 @@
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
-  import { markKey, orderForEdit, outermost, tagChange, type TagChange } from "$lib/bulk";
+  import { byFile, markKey, orderForEdit, outermost, tagChange, type TagChange } from "$lib/bulk";
   import { bulkTargets } from "$lib/board";
   import Time, { hm, type Session, type Suggestion, type TimeApi } from "$lib/Time.svelte";
   import TaskDialog from "$lib/TaskDialog.svelte";
@@ -978,15 +978,24 @@
   /** A bulk op on marked tasks; the ops that prompt ask once (#638). False when cancelled or refused: nothing is written. */
   async function runMany(op: string, items: AgendaItem[], arg?: string) {
     const locs: Loc[] = items.map((it) => ({ path: it.path, line: it.line }));
-    let apply = (loc: Loc, it: AgendaItem) => taskOps[op](loc, it, arg);
+    // STEP edits one task in its file's in-progress text, so each file is read and written once (#677)
+    const orgEdit = (text: string, it: AgendaItem, o: string, value?: string): Promise<string> => call("org_edit", { text, line: it.line, op: o, value });
+    let step: ((text: string, it: AgendaItem) => Promise<string>) | undefined =
+      op === "later" || op === "earlier" ? (text, it) => orgEdit(text, it, "shift", `${dateKind(it)} ${op === "later" ? 1 : -1}`)
+      : op === "priority-up" || op === "priority-down" ? (text, it) => orgEdit(text, it, "priority-cycle", op === "priority-up" ? "1" : "-1")
+      : op === "keyword" ? (text, it) => orgEdit(text, it, "keyword", String(arg ?? ""))
+      : undefined;
     if (op === "schedule" || op === "deadline") {
       const kind = op === "schedule" ? "SCHEDULED" : "DEADLINE", input = await askDate(kind, items.length);
       if (input == null) return false;
-      apply = (loc) => setDate(loc, kind, input);
+      step = (text, it) => call("org_planning", { text, line: it.line, kind, input });
     } else if (op === "tags") {
       const c = await askTagChange(locs);
       if (!c) return false;
-      apply = async (loc) => { const h = await heading(loc); if (h) await edit(loc, "tags", tagChange(h.tags, c).join(":")); };
+      step = async (text, it) => {
+        const h = await call<Parts | null>("org_heading", { text, line: it.line });
+        return h ? orgEdit(text, it, "tags", tagChange(h.tags, c).join(":")) : text;
+      };
     } else if (op === "move") {
       const t = await askTarget(locs);
       if (!t) return false;
@@ -1017,9 +1026,13 @@
     }
     if (op === "done" || op === "column") {
       const k = kw(), tg = bulkTargets(op, items.map((x) => x.keyword), arg, k.todo, k.done), ts = new Map(items.map((it, i) => [markKey(it), tg[i]]));
-      apply = (loc) => { const t = ts.get(markKey(loc)); return t ? edit(loc, "keyword", t) : Promise.resolve(); };
+      step = async (text, it) => { const t = ts.get(markKey(it)); return t ? orgEdit(text, it, "keyword", t) : text; };
     }
-    await recorded(async () => { for (const it of orderForEdit(items)) await apply({ path: it.path, line: it.line }, it); });
+    const f = step;
+    await recorded(async () => {
+      if (!f) for (const it of orderForEdit(items)) await taskOps[op]({ path: it.path, line: it.line }, it, arg);
+      else for (const [path, its] of byFile(items)) await toFile(path, async (text) => { for (const it of its) text = await f(text, it); return text; });
+    });
     return true;
   }
 

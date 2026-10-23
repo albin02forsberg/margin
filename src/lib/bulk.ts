@@ -9,6 +9,13 @@ export const markKey = (it: Loc) => `${it.path}:${it.line}`;
 export const orderForEdit = <T extends Loc>(items: T[]) =>
   [...items].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : b.line - a.line));
 
+/** A batch per file, each in edit order (bottom up), keeping nested marks: one write per file (#677). */
+export function byFile<T extends Loc>(items: T[]) {
+  const m = new Map<string, T[]>();
+  for (const it of orderForEdit(items)) (m.get(it.path) ?? m.set(it.path, []).get(it.path)!).push(it);
+  return [...m];
+}
+
 /** A bulk tag change (#638): add TAG to every marked task, or remove it from every one. */
 export type TagChange = { add: boolean; tag: string };
 export const tagChange = (tags: string[], c: TagChange) =>
