@@ -1,9 +1,10 @@
 // Weekly review (#670): a `* Weekly review` section in today's journal entry, built from the week's tasks and time.
 import { hm } from "./clock.ts";
+import { estimateLine } from "./estimates.ts";
 
 export const BEGIN = "# review-begin", END = "# review-end";
 
-type Task = { title: string; category: string; date: string; closed?: string | null };
+type Task = { title: string; category: string; date: string; closed?: string | null; effort?: number | null; spent?: number | null };
 type Hours = { project: string; worked: number };
 
 /** ISO week of DAY (yyyy-mm-dd) as "2026-W43". */
@@ -17,7 +18,7 @@ export function isoWeek(day: string) {
 const list = (xs: string[], none: string) => (xs.length ? xs.map((x) => `- ${x}`) : [`- ${none}`]);
 const task = (t: Task) => `${t.title}${t.category ? ` (${t.category})` : ""}`;
 
-/** The generated part, between the BEGIN/END markers: DONE (doneLog rows, by close time), the week's HOURS
+/** The generated part, between the BEGIN/END markers: DONE (doneLog rows, by close time; with their estimates vs clocked time), the week's HOURS
  *  per project (tc_dashboard `projects`), OVERDUE and NEXT (scheduled next week) tasks and the INBOX count. */
 export function reviewBody(done: Task[], hours: Hours[], overdue: Task[], next: Task[], inbox: number) {
   const worked = hours.filter((h) => h.worked > 0), total = worked.reduce((a, h) => a + h.worked, 0);
@@ -26,6 +27,7 @@ export function reviewBody(done: Task[], hours: Hours[], overdue: Task[], next: 
     `Inbox: ${inbox} entr${inbox === 1 ? "y" : "ies"} waiting.`,
     `** Done (${done.length})`,
     ...list(done.map((t) => `${t.date} ${task(t)}`), "nothing closed"),
+    ...[estimateLine(done)].filter((l) => l !== null),
     `** Hours per project (${hm(total)})`,
     ...list(worked.map((h) => `${h.project}: ${hm(h.worked)}`), "no time tracked"),
     `** Overdue (${overdue.length})`,

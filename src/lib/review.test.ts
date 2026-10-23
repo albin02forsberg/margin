@@ -25,6 +25,11 @@ test("reviewBody lists each part, with a placeholder when empty", () => {
   assert.match(reviewBody([], [], [], [], 0), /no time tracked/);
 });
 
+test("reviewBody adds the estimates line after Done when tasks have an estimate and clocked time", () => {
+  const body = reviewBody([{ ...t("Ship it", "2026-10-20"), effort: 60, spent: 72 }], [], [], [], 0).split("\n");
+  assert.equal(body[body.indexOf("- 2026-10-20 Ship it (work)") + 1], "Estimates: 120% of plan (1 task).");
+});
+
 test("putReview: no markers means a fresh entry; a re-run replaces only the marked span", () => {
   assert.equal(putReview("* 09:00 standup\n", "x"), null);
   const first = `* 09:00 standup\n${reviewEntry("2026-W43", reviewBody([], [], [], [], 0))}\n`;

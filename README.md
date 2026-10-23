@@ -19,7 +19,8 @@ the editor has vim keys.
   subtrees (not done or `:ARCHIVE:`) move under `* Carried over from <date>`
   in today's entry; `Space n u` puts them back. `Space t R` writes a
   `* Weekly review <2026-W43>` into today's entry: Inbox count, tasks closed
-  this week, hours per project, overdue tasks and what's scheduled next week,
+  this week (with `Estimates: 120% of plan` when they had an `:EFFORT:` and
+  clocked time), hours per project, overdue tasks and what's scheduled next week,
   then empty `** Went well` / `** To change` headings. Running it again
   replaces only the generated lines between `# review-begin` and
   `# review-end` (edits there are overwritten; the rest is kept), also on a
@@ -29,6 +30,11 @@ the editor has vim keys.
   `Space t T` shows one day's timeline: clocked sessions, tasks closed and
   notes edited, in time order. Enter opens a task or note (or edits a
   session); the first row copies the day as a Markdown list.
+  `Space t A` (or *Estimates vs actuals…* in the Time view) compares
+  `:EFFORT:` with clocked time on tasks closed in the last 7, 30 or 90 days:
+  per project and in total, the 5 largest overruns (Enter opens one) and a
+  planning factor (clocked / estimated) to apply to new estimates. Tasks with
+  an estimate but no clocked time are left out of the ratio.
 - **Window title** shows the active tab (`• note — Margin` when unsaved), so
   the taskbar and window switcher tell Margin windows apart.
 - **Stays in sync** with Emacs, git or any sync tool editing the same files,
