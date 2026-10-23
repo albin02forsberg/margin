@@ -773,6 +773,16 @@ describe("Journal, archive and move", () => {
     await fileMatches(file, (s) => !s.includes("Carried over"), "undo didn't restore today's entry");
   });
 
+  it("Space t R writes a weekly review into today's entry; a re-run replaces only the marked block", async () => {
+    const file = f(join("daily", `${isoDay(new Date())}.org`));
+    await leader("tR");
+    await find(".status .msg", "Weekly review written");
+    await fileMatches(file, (s) => /\n\* Weekly review \d{4}-W\d\d\n# review-begin\nInbox: \d+ entr/.test(s) && s.includes("# review-end\n** Went well\n** To change"), "review not written");
+    await leader("tR");
+    await find(".status .msg", "Weekly review written");
+    await fileMatches(file, (s) => s.split("# review-begin").length === 2 && s.split("* Weekly review").length === 2, "re-run added a second block");
+  });
+
   it("Space n J opens the journal for a chosen past date, creating it with a title", async () => {
     const file = f(join("daily", "2021-03-04.org"));
     await leader("nJ");

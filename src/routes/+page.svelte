@@ -15,6 +15,8 @@
   import { linkFor, asUrl } from "$lib/weblink";
   import { bareTitle, findTarget, linkHeadings, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
+  import { doneLog } from "$lib/donelog";
+  import { isoWeek, putReview, reviewBody, reviewEntry } from "$lib/review";
   import { ago, changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
@@ -1544,6 +1546,24 @@
     flash(`Carried over ${items.length} item${items.length === 1 ? "" : "s"} from ${date}`);
   }
 
+  /** This week's review in today's journal entry (#670); a re-run replaces only its `# review-begin`..`# review-end` block. */
+  async function weeklyReview() {
+    const t = new Date(), day = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const off = (n: number) => day(new Date(t.getFullYear(), t.getMonth(), t.getDate() - ((t.getDay() + 6) % 7) + n));
+    const q = (query: string) => call<AgendaItem[]>("search_todos", { query });
+    const [closed, sched, due, next, inbox, dash] = await Promise.all([
+      q(`closed:>=${off(0)} closed:<=${off(6)}`), q(`scheduled:<${day(t)}`), q(`due:<${day(t)}`), q(`scheduled:>=${off(7)} scheduled:<=${off(13)}`),
+      call<number>("inbox_count"), call<{ projects: { project: string; worked: number }[] }>("tc_dashboard"),
+    ]);
+    const done = doneLog(closed.filter((i) => i.keyword && kw().done.includes(i.keyword))), seen = new Set<string>();
+    const overdue = [...sched, ...due].filter((i) => !i.habit && !seen.has(`${i.path}\n${i.line}`) && !!seen.add(`${i.path}\n${i.line}`));
+    const body = reviewBody(done, dash.projects, overdue, next.filter((i) => !i.habit), inbox);
+    const path: string = await call("capture_path", { file: journalFile(), journal: true });
+    await recorded(() => toFile(path, async (text) => putReview(text, body) ?? call("capture_insert", { text, heading: null, entry: reviewEntry(isoWeek(day(t)), body) })));
+    await journal();
+    flash("Weekly review written to today's journal; a re-run replaces the marked block (Space n u to undo).");
+  }
+
   /** Show PROMPT exactly; on YES, the local model's draft for it (null on NO or an error, which flashes). */
   async function aiDraft(prompt: string, yes: string, no: string, oneLine: boolean): Promise<string | null> {
     const model = cfg.config.ai_model;
@@ -2281,6 +2301,7 @@
     { label: "Time: backup log", leader: "t L", run: t("backupLog") },
     { label: "Time: log time off…", leader: "t l", run: t("timeOff") },
     { label: "Time: log a past session…", leader: "t n", run: t("logSession") },
+    { label: "Weekly review into today's journal (re-run replaces the marked block)", leader: "t R", run: () => act(weeklyReview) },
     { label: "Time: import from Emacs…", leader: "t M", run: t("import") },
 
     { label: "Export: note as HTML", leader: "e h", run: () => exportNote("html") },
