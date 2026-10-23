@@ -4,6 +4,7 @@ use crate::org::{self, Item, Kw};
 use crate::App;
 use chrono::{Duration, NaiveDateTime, NaiveTime};
 use std::collections::BTreeSet;
+use std::path::Path;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_notification::NotificationExt;
 
@@ -79,10 +80,7 @@ fn tick(app: &AppHandle) {
     let items = org::agenda(&files, &s.kw(), today, span.max(0) + 2, today);
     let due = due(&items, &s.kw(), now, Duration::minutes(c.remind_before_minutes), c.deadline_warning_days);
     let file = c.data().join("reminders-sent.txt");
-    let mut sent: BTreeSet<String> = std::fs::read_to_string(&file).unwrap_or_default().lines().map(str::to_string).collect();
-    let before = sent.len();
-    sent.retain(|k| k.get(..10).and_then(|d| d.parse::<chrono::NaiveDate>().ok()).is_some_and(|d| d >= today));
-    let mut changed = sent.len() != before;
+    let (mut sent, mut changed) = load_sent(&file, today);
     if once_a_day(&mut sent, today, "day-done", || crate::day_done_now(&s)) {
         changed = true;
         let _ = app.notification().builder().title("Margin").body("Today's hours are done.").show();
@@ -103,18 +101,34 @@ fn tick(app: &AppHandle) {
 fn focus(app: &AppHandle, s: &App, focus: i64, rest: i64, now: NaiveDateTime) {
     static LAST: std::sync::Mutex<Option<NaiveDateTime>> = std::sync::Mutex::new(None);
     let Some((since, project, _)) = s.tc().current().filter(|_| focus > 0) else { return };
-    let file = s.cfg().data().join("focus-sent.txt");
     let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
-    if last.is_none() {
-        *last = std::fs::read_to_string(&file).ok().and_then(|t| t.trim().parse().ok());
-    }
-    if crate::timeclock::focus_due(since, now, focus, *last) {
-        *last = Some(since);
-        let _ = std::fs::write(&file, format!("{since:?}")); // ISO 8601, what parse() reads
-        let what = if project.is_empty() { String::new() } else { format!(" on {project}") };
-        let body = format!("{}{what}. Take {rest} min? Pause is in the top-bar clock.", crate::timeclock::format_hm((now - since).num_seconds() as f64 / 3600.0));
+    if let Some(body) = focus_nudge(&mut last, &s.cfg().data().join("focus-sent.txt"), since, &project, now, focus, rest) {
         let _ = app.notification().builder().title("Time for a break").body(body).show();
     }
+}
+
+/// The break nudge's body when the block starting SINCE is due and not yet nudged (LAST, else FILE);
+/// records it in both.
+fn focus_nudge(last: &mut Option<NaiveDateTime>, file: &Path, since: NaiveDateTime, project: &str, now: NaiveDateTime, focus: i64, rest: i64) -> Option<String> {
+    if last.is_none() {
+        *last = std::fs::read_to_string(file).ok().and_then(|t| t.trim().parse().ok());
+    }
+    if !crate::timeclock::focus_due(since, now, focus, *last) {
+        return None;
+    }
+    *last = Some(since);
+    let _ = std::fs::write(file, format!("{since:?}")); // ISO 8601, what parse() reads
+    let what = if project.is_empty() { String::new() } else { format!(" on {project}") };
+    Some(format!("{}{what}. Take {rest} min? Pause is in the top-bar clock.", crate::timeclock::format_hm((now - since).num_seconds() as f64 / 3600.0)))
+}
+
+/// Sent reminder keys from FILE, without those dated before TODAY; and whether any were dropped.
+fn load_sent(file: &Path, today: chrono::NaiveDate) -> (BTreeSet<String>, bool) {
+    let mut sent: BTreeSet<String> = std::fs::read_to_string(file).unwrap_or_default().lines().map(str::to_string).collect();
+    let before = sent.len();
+    sent.retain(|k| k.get(..10).and_then(|d| d.parse::<chrono::NaiveDate>().ok()).is_some_and(|d| d >= today));
+    let changed = sent.len() != before;
+    (sent, changed)
 }
 
 /// Whether the once-a-day event NAME should fire now (COND holds and it was not sent today); records it in SENT.
@@ -144,7 +158,6 @@ fn notify(app: &AppHandle, d: Due) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
     use std::sync::Arc;
 
     #[test]
@@ -154,6 +167,41 @@ mod tests {
         assert!(once_a_day(&mut sent, day, "day-done", || true));
         assert!(!once_a_day(&mut sent, day, "day-done", || panic!("not evaluated once sent")));
         assert!(sent.contains("2026-10-02 day-done"));
+    }
+
+    #[test]
+    fn load_sent_drops_old_keys() {
+        let dir = std::env::temp_dir().join(format!("margin-remind-{}", crate::notes::gen_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("reminders-sent.txt");
+        let day = "2026-10-02".parse().unwrap();
+        assert_eq!(load_sent(&file, day), (BTreeSet::new(), false));
+        std::fs::write(&file, "2026-10-01 day-done\n2026-10-02 day-done\nbad\n").unwrap();
+        assert_eq!(load_sent(&file, day), (BTreeSet::from(["2026-10-02 day-done".to_string()]), true));
+        std::fs::write(&file, "2026-10-03 deadline /n/a.org:0\n").unwrap();
+        assert!(!load_sent(&file, day).1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn focus_nudges_once_per_block_across_restarts() {
+        let dir = std::env::temp_dir().join(format!("margin-focus-{}", crate::notes::gen_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("focus-sent.txt");
+        let day: chrono::NaiveDate = "2026-10-02".parse().unwrap();
+        let (since, now) = (day.and_hms_opt(9, 0, 0).unwrap(), day.and_hms_opt(9, 50, 0).unwrap());
+        let mut last = None;
+        assert_eq!(focus_nudge(&mut last, &file, since, "", day.and_hms_opt(9, 20, 0).unwrap(), 45, 5), None);
+        assert_eq!(focus_nudge(&mut last, &file, since, "Acme", now, 45, 5).as_deref(), Some("50m on Acme. Take 5 min? Pause is in the top-bar clock."));
+        assert_eq!(last, Some(since));
+        assert_eq!(focus_nudge(&mut last, &file, since, "Acme", now, 45, 5), None);
+        // A restart reads the nudged block back from the file.
+        let mut fresh = None;
+        assert_eq!(focus_nudge(&mut fresh, &file, since, "", now, 45, 5), None);
+        assert_eq!(fresh, Some(since));
+        let later = day.and_hms_opt(11, 0, 0).unwrap();
+        assert_eq!(focus_nudge(&mut fresh, &file, later, "", day.and_hms_opt(12, 30, 0).unwrap(), 45, 5).as_deref(), Some("1h 30m. Take 5 min? Pause is in the top-bar clock."));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
