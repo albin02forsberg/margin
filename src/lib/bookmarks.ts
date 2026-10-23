@@ -1,5 +1,5 @@
 /** Named positions in notes (#672): a file plus the heading above the cursor, so edits above don't break them. */
-import { findTarget, headTitle } from "./links.ts";
+import { findTarget, headTitle, norm } from "./links.ts";
 
 /** HEADING is the title of the nearest heading at or above LINE (0-based), OFFSET the line's distance below it. */
 export type Bookmark = { name: string; file: string; heading?: string; offset: number; line: number };
@@ -22,6 +22,9 @@ export const addBookmark = (list: Bookmark[], b: Bookmark) => [...removeBookmark
 export const removeBookmark = (list: Bookmark[], name: string) => list.filter((b) => b.name !== name);
 /** LIST with bookmarks in FROM pointing at TO (a renamed or moved note). */
 export const moveBookmarks = (list: Bookmark[], from: string, to: string) => list.map((b) => (b.file === from ? { ...b, file: to } : b));
+/** LIST with bookmarks in FILE anchored to the heading titled OLD (normalised, as `retitlePlan` returns it) re-anchored to NEW. */
+export const retitleBookmarks = (list: Bookmark[], file: string, old: string, new_: string) =>
+  list.map((b) => (b.file === file && b.heading != null && norm(b.heading) === old ? { ...b, heading: new_ } : b));
 
 /** A bookmark NAME for LINE of FILE's TEXT, anchored to the nearest heading at or above it (none above the first). */
 export function bookmarkAt(name: string, file: string, text: string, line: number, keywords?: string[]): Bookmark {
