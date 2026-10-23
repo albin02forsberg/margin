@@ -293,6 +293,12 @@ Tracking time from a task (`I`, `Space x i`) offers its title first as what you'
 `Space x S` lists stuck projects, as org's `org-stuck-projects`: open tasks with open subtasks of which none is scheduled,
 has a deadline or carries a next-action keyword (**Next-action keywords**, `stuck_next_keywords`, default `NEXT` and `DOING`).
 Plain headings such as `* Inbox` never count, and of nested stuck projects only the innermost is listed; Enter jumps to it.
+Task dependencies, as org's `:ORDERED:` and org-depend's `:BLOCKER:`: under a heading with `:ORDERED: t` in its drawer a
+subtask is blocked while an earlier sibling task is still open (nested orderings and the blocked task's own subtasks too),
+and a task with `:BLOCKER: [[id:…]]` (one or more `id:` links or bare IDs, in any file) is blocked while any of those tasks is open.
+Today and Tasks hide blocked tasks, so only the next actionable one shows; finishing it brings up the next. Blocked tasks
+scheduled or due today or earlier stay, dimmed, so no deadline goes missing. `B` (or the **Blocked** button) shows them all
+with a `blocked` chip; `blocked:yes` / `blocked:no` searches for them. Unknown IDs, done tasks and blocker cycles block nothing.
 Subtrees archived in place with an `:ARCHIVE:` tag (Emacs's `C-c C-x a`) are left out of Today, Tasks, reminders and the calendar feed, as in org's agenda; they stay in the note and in search.
 A time range (`<2026-10-16 Fri 10:00-11:00>`) shows as `10:00-11:00`; a date
 range (`<2026-10-19 Mon>--<2026-10-21 Wed>`) shows on each of its days with a
@@ -372,6 +378,7 @@ same keys. Terms are space-separated and must all match; `-` negates one:
 | `due:none`, `scheduled:any` | Has no / has a date |
 | `effort:<=30`, `effort:>1h`, `effort:none` | The `:EFFORT:` estimate (minutes, `0:30`, `1h`) compared with `<` `<=` `>` `>=`; `none` / `any` for unestimated / estimated (unestimated tasks never match a comparison) |
 | `spent:>=1:00`, `spent:none`, `over:yes` | Time clocked on the task, compared the same way (`none` / `any`: never / ever clocked); `over:yes` / `over:no` whether an estimated task ran over its estimate |
+| `blocked:yes`, `blocked:no` | Waits on an earlier sibling under `:ORDERED:` or an open `:BLOCKER:` task |
 | `closed:>=-7d`, `closed:today` | Done on that date (its `CLOSED:` stamp); searches done tasks too, so `closed:>=-7d` is a "Done this week" view |
 | other words, `"a phrase"` | Title contains |
 

@@ -6,7 +6,7 @@
 use chrono::{Datelike, Duration, Months, NaiveDate, NaiveDateTime, Weekday};
 use regex::Regex;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::SystemTime;
@@ -24,6 +24,8 @@ pub(crate) static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[(id|
 static TAGS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+(:[^\s]+:)\s*$").unwrap());
 static STATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^\s*- State "([^"]+)"\s+from .*?\[(\d{4}-\d{2}-\d{2})"#).unwrap());
 static CLOSED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"CLOSED:\s*\[(\d{4}-\d{2}-\d{2})(?:\s+[^\s\]\d]+)?(?:\s+(\d{1,2}:\d{2}))?[^\]]*\]\s*").unwrap());
+/// An id in a `:BLOCKER:` value: `[[id:x][desc]]` or a bare `x`.
+static BLOCKER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[id:([^\]]+)\](?:\[[^\]]*\])?\]|(\S+)").unwrap());
 static PROP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*:([^:\s]+):\s*(.*?)\s*$").unwrap());
 static EFFORT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(?:(\d{1,5}):(\d{2})|(?:(\d{1,5})\s*h)?\s*(?:(\d+)\s*m(?:in)?)?)$").unwrap());
 
@@ -103,6 +105,10 @@ pub struct Headline {
     pub closed: Option<NaiveDateTime>,
     /// `:EFFORT:` in minutes.
     pub effort: Option<u32>,
+    /// `:ORDERED: t`: a child task is blocked while an earlier sibling task is open.
+    pub ordered: bool,
+    /// IDs in `:BLOCKER:` (org-depend): blocked while any of them is an open task.
+    pub blockers: Vec<String>,
 }
 
 impl Headline {
@@ -276,6 +282,10 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
                     h.habit = c[2].eq_ignore_ascii_case("habit");
                 } else if c[1].eq_ignore_ascii_case("EFFORT") {
                     h.effort = parse_effort(&c[2]);
+                } else if c[1].eq_ignore_ascii_case("ORDERED") {
+                    h.ordered = !matches!(c[2].to_lowercase().as_str(), "" | "nil");
+                } else if c[1].eq_ignore_ascii_case("BLOCKER") {
+                    h.blockers = BLOCKER.captures_iter(&c[2]).map(|b| b.get(1).or(b.get(2)).unwrap().as_str().to_string()).collect();
                 }
             }
             continue;
@@ -365,6 +375,8 @@ pub struct Item {
     pub effort: Option<u32>,
     /// Minutes clocked on the task (timeclock::spent_on); filled in by the commands.
     pub spent: Option<u32>,
+    /// Can't be done yet: an earlier sibling under `:ORDERED:` or a `:BLOCKER:` task is open (see blocked).
+    pub blocked: bool,
     /// A deadline's own warning period in days (`-3d` cookie), for reminders.
     #[serde(skip)]
     pub warn: Option<i64>,
@@ -393,6 +405,7 @@ fn item(f: &OrgFile, h: &Headline, date: NaiveDate, kind: &'static str, label: S
         closed: h.closed,
         effort: h.effort,
         spent: None,
+        blocked: false,
         warn: None,
     }
 }
@@ -490,6 +503,7 @@ fn occurrences(ts: &Ts, start: NaiveDate, end: NaiveDate) -> Vec<NaiveDate> {
 pub fn agenda(files: &[Arc<OrgFile>], kw: &Kw, start: NaiveDate, days: i64, today: NaiveDate) -> Vec<Item> {
     let end = start + Duration::days(days - 1);
     let today_in = start <= today && today <= end;
+    let bl = blocked(files, kw);
     let mut out = vec![];
     for f in files {
         for h in f.headlines.iter().filter(|h| !h.archived()) {
@@ -543,6 +557,9 @@ pub fn agenda(files: &[Arc<OrgFile>], kw: &Kw, start: NaiveDate, days: i64, toda
                 }
             }
         }
+    }
+    for i in &mut out {
+        i.blocked = bl.contains(&(i.path.clone(), i.line));
     }
     let rank = |k: &str| ["overdue", "deadline", "scheduled", "warning", "timestamp"].iter().position(|x| *x == k);
     out.sort_by(|a, b| {
@@ -602,14 +619,60 @@ pub fn stuck(files: &[Arc<OrgFile>], kw: &Kw, next: &[String]) -> Vec<Stuck> {
     out
 }
 
+/// (path, line) of open tasks that can't be done yet, as org-depend: one of its ancestors (or itself)
+/// sits under an `:ORDERED:` parent after a still-open sibling task, or a `:BLOCKER:` id names an open
+/// task (unknown ids and non-tasks don't block; neither does a blocker that is itself waiting on this
+/// task, so a cycle hides nothing).
+pub fn blocked(files: &[Arc<OrgFile>], kw: &Kw) -> HashSet<(PathBuf, usize)> {
+    let open = |h: &Headline| h.keyword.as_deref().is_some_and(|k| !kw.is_done(k));
+    let ids: HashMap<&str, &Headline> = files.iter().flat_map(|f| &f.headlines).filter_map(|h| Some((h.id.as_deref()?, h))).collect();
+    // Whether open task FROM reaches id TO through `:BLOCKER:` links.
+    let reaches = |from: &str, to: &str| {
+        let (mut seen, mut stack) = (HashSet::new(), vec![from]);
+        while let Some(x) = stack.pop() {
+            if x == to {
+                return true;
+            }
+            if seen.insert(x) {
+                stack.extend(ids.get(x).filter(|h| open(h)).into_iter().flat_map(|h| h.blockers.iter().map(String::as_str)));
+            }
+        }
+        false
+    };
+    let mut out = HashSet::new();
+    for f in files {
+        let hs = &f.headlines;
+        // Ancestors of the current heading; each heading's parent, and whether it waits on an earlier ordered sibling.
+        let mut path: Vec<usize> = vec![];
+        let (mut parent, mut waits) = (vec![None; hs.len()], vec![false; hs.len()]);
+        for (i, h) in hs.iter().enumerate() {
+            while path.last().is_some_and(|&p| hs[p].level >= h.level) {
+                path.pop();
+            }
+            parent[i] = path.last().copied();
+            if let Some(p) = parent[i].filter(|&p| hs[p].ordered) {
+                waits[i] = (p + 1..i).any(|j| parent[j] == Some(p) && open(&hs[j]) && !hs[j].archived());
+            }
+            let up = waits[i] || path.iter().any(|&p| waits[p]);
+            let by_id = h.blockers.iter().any(|b| ids.get(b.as_str()).is_some_and(|x| open(x) && h.id.as_deref().is_none_or(|me| !reaches(b, me))));
+            if open(h) && !h.archived() && (up || by_id) {
+                out.insert((f.path.clone(), h.line));
+            }
+            path.push(i);
+        }
+    }
+    out
+}
+
 /// Tasks for which KEEP holds (open ones only, unless DONE), by priority then date.
 pub fn todos(files: &[Arc<OrgFile>], kw: &Kw, done: bool, keep: impl Fn(&OrgFile, &Headline) -> bool, today: NaiveDate) -> Vec<Item> {
+    let bl = blocked(files, kw);
     let mut out = vec![];
     for f in files {
         for h in f.headlines.iter().filter(|h| !h.archived()) {
             if let Some(k) = h.keyword.as_deref().filter(|k| (done || !kw.is_done(k)) && keep(f, h)) {
                 let date = h.scheduled.as_ref().or(h.deadline.as_ref()).map_or(NaiveDate::MAX, |t| t.date);
-                out.push(Item { habit: habit(h, today), ..item(f, h, date, "todo", k.to_string(), None) });
+                out.push(Item { habit: habit(h, today), blocked: bl.contains(&(f.path.clone(), h.line)), ..item(f, h, date, "todo", k.to_string(), None) });
             }
         }
     }
@@ -630,12 +693,20 @@ type Minutes = std::rc::Rc<dyn Fn(&Headline) -> Option<u32>>;
 /// in the title. `effort:` compares the `:EFFORT:` estimate the same way (`effort:<=30`,
 /// `effort:>1h`, `effort:0:45`) or takes `none` / `any`; unestimated tasks never match a
 /// comparison. `spent:` compares the minutes clocked on it (SPENT) the same way, and `over:yes`
-/// / `over:no` whether an estimated task ran over its estimate. Values may be quoted too: `tag:"my tag"`, `file:"my notes"`.
+/// / `over:no` whether an estimated task ran over its estimate, `blocked:yes` / `blocked:no` whether
+/// BLOCKED holds for it (see blocked). Values may be quoted too: `tag:"my tag"`, `file:"my notes"`.
 /// A leading `-` negates a term. The bool says whether done tasks should be searched
 /// too, i.e. the query asks for a done keyword (`todo:DONE`) or a `closed:` date.
-pub fn query(q: &str, today: NaiveDate, kw: &Kw, spent: impl Fn(&Headline) -> Option<u32> + 'static) -> Result<(Filter, bool), String> {
+pub fn query(
+    q: &str,
+    today: NaiveDate,
+    kw: &Kw,
+    spent: impl Fn(&Headline) -> Option<u32> + 'static,
+    blocked: impl Fn(&OrgFile, &Headline) -> bool + 'static,
+) -> Result<(Filter, bool), String> {
     use std::rc::Rc;
     let spent: Minutes = Rc::new(spent);
+    let blocked: Rc<Filter> = Rc::new(Box::new(blocked));
     let mut words = vec![];
     let (mut cur, mut quoted) = (String::new(), false);
     for c in q.chars() {
@@ -707,6 +778,11 @@ pub fn query(q: &str, today: NaiveDate, kw: &Kw, spent: impl Fn(&Headline) -> Op
                 let want = match v.as_str() { "yes" => true, "no" => false, _ => return Err(format!("over: takes yes or no, not \"{val}\"")) };
                 let s = spent.clone();
                 Box::new(move |_, h| h.effort.is_some_and(|e| s(h).unwrap_or(0) > e) == want)
+            }
+            "blocked" => {
+                let want = match v.as_str() { "yes" => true, "no" => false, _ => return Err(format!("blocked: takes yes or no, not \"{val}\"")) };
+                let b = blocked.clone();
+                Box::new(move |f, h| b(f, h) == want)
             }
             _ => Box::new(move |_, h| h.title.to_lowercase().contains(&v)),
         };
@@ -1827,6 +1903,37 @@ mod tests {
     }
 
     #[test]
+    fn blocked_tasks() {
+        let p = |s: &str| ":PROPERTIES:\n".to_string() + s + "\n:END:\n";
+        let a = format!(
+            "* Move flat\n{}** DONE Find flat\n** TODO Book van\n** Notes\n** TODO Pack\n*** TODO Wrap plates\n** TODO Hand over keys\n\
+* Nested\n{}** TODO Phase 1\n{}*** TODO Step a\n*** TODO Step b\n** TODO Phase 2\n*** TODO Step c\n\
+* TODO Waiting\n{}* TODO Free\n{}* TODO Cyc A\n{}* TODO Cyc B\n{}",
+            p(":ORDERED: t"), p(":ORDERED: t"), p(":ORDERED: t"), p(":BLOCKER: [[id:dep][the dep]] missing-id"), p(":BLOCKER: done-id nope"),
+            p(":ID: ca\n:BLOCKER: cb"), p(":ID: cb\n:BLOCKER: ca"),
+        );
+        let b = format!("* TODO Dep\n{}* DONE Done one\n{}", p(":ID: dep"), p(":ID: done-id"));
+        let files = [Arc::new(parse(Path::new("/n/a.org"), &a, &kw())), Arc::new(parse(Path::new("/n/b.org"), &b, &kw()))];
+        let h = &files[0].headlines;
+        assert_eq!((h[0].ordered, h[1].ordered, &h[13].blockers), (true, false, &vec!["dep".to_string(), "missing-id".into()]));
+        let t = d("2026-10-02");
+        let titles = |q: &str| {
+            let bl = blocked(&files, &kw());
+            let (f, _) = query(q, t, &kw(), |_| None, move |o, h| bl.contains(&(o.path.clone(), h.line))).unwrap();
+            let mut v: Vec<_> = todos(&files, &kw(), false, f, t).into_iter().map(|i| (i.title, i.blocked)).collect();
+            v.sort();
+            v
+        };
+        let names = |v: Vec<(String, bool)>| v.into_iter().map(|(t, _)| t).collect::<Vec<_>>().join(", ");
+        // Ordered siblings (non-tasks and DONE ones don't count), nested orderings, a blocker in another file.
+        assert_eq!(names(titles("blocked:yes")), "Hand over keys, Pack, Phase 2, Step b, Step c, Waiting, Wrap plates");
+        // A DONE or unknown blocker, and a cycle, block nothing.
+        assert_eq!(names(titles("blocked:no")), "Book van, Cyc A, Cyc B, Dep, Free, Phase 1, Step a");
+        assert!(titles("").iter().all(|(t, b)| *b == names(titles("blocked:yes")).split(", ").any(|x| x == t)), "Item.blocked disagrees");
+        assert!(query("blocked:maybe", t, &kw(), |_| None, |_, _| false).is_err());
+    }
+
+    #[test]
     fn duplicate_body_drops_ids_and_title() {
         let b = duplicate_body(DOC);
         assert!(!b.contains(":ID:") && !b.to_lowercase().contains("#+title") && !b.contains("file-1"));
@@ -2426,7 +2533,7 @@ mod tests {
 * TODO [#B] Plan trip :home:work:\nSCHEDULED: <2026-10-20 Tue> DEADLINE: <2026-11-01 Sun>\n* DONE Old report :work:\n";
         let files = [Arc::new(parse(Path::new("/n/inbox.org"), doc, &kw())), Arc::new(parse(Path::new("/n/projects.org"), "* TODO Report draft\n", &kw()))];
         let q = |s: &str| {
-            let (f, done) = query(s, t, &kw(), |_| None).unwrap();
+            let (f, done) = query(s, t, &kw(), |_| None, |_, _| false).unwrap();
             todos(&files, &kw(), done, f, t).into_iter().map(|i| i.title).collect::<Vec<_>>().join(", ")
         };
         assert_eq!(q(""), "Write report, Plan trip, Call mum, Report draft");
@@ -2439,7 +2546,7 @@ mod tests {
         let h = &inh[0].headlines;
         assert_eq!((h[0].inherited.clone(), h[1].tags.clone(), h[1].inherited.clone()), (vec!["client".into()], vec!["money".into()], vec!["client".into(), "work".into()]));
         assert_eq!((h[2].inherited.clone(), h[3].inherited.clone()), (vec!["client".to_string(), "work".into(), "money".into()], vec!["client".to_string()]));
-        let iq = |s: &str| todos(&inh, &kw(), false, query(s, t, &kw(), |_| None).unwrap().0, t).into_iter().map(|i| i.title).collect::<Vec<_>>().join(", ");
+        let iq = |s: &str| todos(&inh, &kw(), false, query(s, t, &kw(), |_| None, |_, _| false).unwrap().0, t).into_iter().map(|i| i.title).collect::<Vec<_>>().join(", ");
         assert_eq!(iq("tag:work"), "Invoice, Send");
         assert_eq!(iq("-tag:work"), "Lunch");
         assert_eq!(iq("tag:client"), "Invoice, Send, Lunch");
@@ -2479,16 +2586,16 @@ mod tests {
         assert_eq!(q("-tag:\"home\" todo:\"next\""), "Write report");
         assert_eq!(q("-file:\"my notes\" -tag:\"x y\" report"), "Write report, Report draft");
         let mine = [Arc::new(parse(Path::new("/n/my notes.org"), "* TODO My idea :idea:\n", &kw()))];
-        let (f, _) = query("file:\"MY NOTES\" tag:\"idea\" -tag:\"x y\"", t, &kw(), |_| None).unwrap();
+        let (f, _) = query("file:\"MY NOTES\" tag:\"idea\" -tag:\"x y\"", t, &kw(), |_| None, |_, _| false).unwrap();
         assert_eq!(todos(&mine, &kw(), false, f, t).len(), 1);
         assert_eq!(q("todo:TODO tag:home scheduled:<+1m"), "Plan trip, Call mum");
         assert_eq!(q("report -pri:a"), "Report draft");
-        assert!(query("due:<someday", t, &kw(), |_| None).is_err());
+        assert!(query("due:<someday", t, &kw(), |_| None, |_, _| false).is_err());
         // closed: (pre-CLOSED done tasks, like Old report, never match a date)
         let fin = [Arc::new(parse(Path::new("/n/log.org"), "* DONE Shipped :work:\nCLOSED: [2026-09-29 Tue 10:00]\n\
 * DONE Ancient\nCLOSED: [2026-08-01 Sat]\n* DONE Today\nCLOSED: [2026-10-02 Fri 08:00]\n* DONE Unstamped\n* TODO Open\n", &kw()))];
         let c = |s: &str| {
-            let (f, done) = query(s, t, &kw(), |_| None).unwrap();
+            let (f, done) = query(s, t, &kw(), |_| None, |_, _| false).unwrap();
             (todos(&fin, &kw(), done, f, t).into_iter().map(|i| i.title).collect::<Vec<_>>().join(", "), done)
         };
         assert_eq!(c("closed:>=-7d"), ("Shipped, Today".into(), true));
@@ -2501,7 +2608,7 @@ mod tests {
         // effort: unestimated tasks match only none / -any
         let est = [Arc::new(parse(Path::new("/n/e.org"), "* TODO Quick\n:PROPERTIES:\n:EFFORT: 0:20\n:END:\n* TODO Hour\n:PROPERTIES:\n:EFFORT: 1h\n:END:\n* TODO Long\n:PROPERTIES:\n:EFFORT: 3:00\n:END:\n* TODO Vague\n", &kw()))];
         let e = |s: &str| {
-            let (f, done) = query(s, t, &kw(), |_| None).unwrap();
+            let (f, done) = query(s, t, &kw(), |_| None, |_, _| false).unwrap();
             assert!(!done);
             todos(&est, &kw(), done, f, t).into_iter().map(|i| i.title).collect::<Vec<_>>().join(", ")
         };
@@ -2513,10 +2620,10 @@ mod tests {
         assert_eq!(e("effort:none"), "Vague");
         assert_eq!(e("-effort:any"), "Vague");
         assert_eq!(e("effort:any -effort:<1h"), "Hour, Long");
-        assert!(query("effort:<soon", t, &kw(), |_| None).is_err());
+        assert!(query("effort:<soon", t, &kw(), |_| None, |_, _| false).is_err());
         // spent: / over: against clocked minutes (Quick 25 of 20, Hour 30 of 60, Vague 10, Long none)
         let sp = |h: &Headline| match h.title.as_str() { "Quick" => Some(25), "Hour" => Some(30), "Vague" => Some(10), _ => None };
-        let st = |s: &str| todos(&est, &kw(), false, query(s, t, &kw(), sp).unwrap().0, t).into_iter().map(|i| i.title).collect::<Vec<_>>().join(", ");
+        let st = |s: &str| todos(&est, &kw(), false, query(s, t, &kw(), sp, |_, _| false).unwrap().0, t).into_iter().map(|i| i.title).collect::<Vec<_>>().join(", ");
         assert_eq!(st("over:yes"), "Quick");
         assert_eq!(st("over:no"), "Hour, Long, Vague"); // unestimated never runs over
         assert_eq!(st("-over:yes effort:any"), "Hour, Long");
@@ -2524,8 +2631,8 @@ mod tests {
         assert_eq!(st("spent:<30"), "Quick, Vague");
         assert_eq!(st("spent:none"), "Long");
         assert_eq!(st("spent:any effort:none"), "Vague");
-        assert!(query("over:maybe", t, &kw(), sp).is_err());
-        assert!(query("spent:>lots", t, &kw(), sp).is_err());
+        assert!(query("over:maybe", t, &kw(), sp, |_, _| false).is_err());
+        assert!(query("spent:>lots", t, &kw(), sp, |_, _| false).is_err());
     }
 
     #[test]
