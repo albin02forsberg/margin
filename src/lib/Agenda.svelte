@@ -12,6 +12,8 @@
     effort?: number | null;
     /** Minutes clocked on it (time log sessions named like the heading). */
     spent?: number | null;
+    /** Waits on an earlier sibling under `:ORDERED:` or an open `:BLOCKER:` task (#718). */
+    blocked?: boolean;
   };
   export type AgendaApi = {
     /** Run a task operation on IT (see ACTIONS; `keyword` sets ARG); resolves when the files are written. */
@@ -60,7 +62,7 @@
   ];
   const MORE: [string, string][] = [
     ["j / k", "Move selection"], ["*", "Mark / unmark (x s d # m < > + - A apply to all marked; Esc clears)"], ["< / >", "Reschedule a day earlier / later"], ["+ / -", "Raise / lower priority"],
-    ["Y", "Copy the list as text"], ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["w", "Today: day plan on an hour grid (overlaps, free time)"], ["T", "Today: move all overdue tasks to a day"], ["H / L", "Board: move to the column left / right"], ["h / l", "Previous / next period"],
+    ["Y", "Copy the list as text"], ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["B", "Show blocked tasks (else only ones due by today, dimmed)"], ["w", "Today: day plan on an hour grid (overlaps, free time)"], ["T", "Today: move all overdue tasks to a day"], ["H / L", "Board: move to the column left / right"], ["h / l", "Previous / next period"],
     [".", "Jump to today"], ["D", "Go to a date"], ["/", "Filter"], ["r", "Refresh"], ["?", "Toggle this help"],
   ];
 </script>
@@ -78,6 +80,7 @@
   import { agendaText } from "./agendatext";
   import { blocks, gapLabel, gaps, hhmm } from "./dayplan";
   import { marked, markKey, reresolve, type Mark } from "./bulk";
+  import { visible } from "./blocked";
 
   /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions.
    *  LOGDONE: config `log_done` (the Done log needs its CLOSED: stamps). */
@@ -113,6 +116,8 @@
   let logItems = $state.raw<AgendaItem[]>([]);
   /** Day plan (key w, #705): the Day view's timed tasks on an hour grid, working hours 08:00-18:00 widened to fit. */
   let gridOn = $state(stored("agenda-grid", "") === "1");
+  /** Show every blocked task (key B, #718); else only those dated today or earlier. Searches always show them. */
+  let blockedOn = $state(stored("agenda-blocked", "") === "1");
 
   const today = $derived(iso(now));
   const isDone = (it: AgendaItem) => !!it.keyword && done.includes(it.keyword);
@@ -121,7 +126,8 @@
   const all = $derived(boardOn ? [...items, ...doneItems] : logShown ? withLog(items, logItems) : items);
   const shown = $derived.by(() => {
     const f = filter.toLowerCase();
-    let xs = f ? all.filter((i) => `${i.keyword ?? ""} ${i.title} ${i.tags.join(" ")} ${(i.inherited ?? []).join(" ")} ${i.category}`.toLowerCase().includes(f)) : all;
+    let xs = query != null ? all : all.filter((i) => visible(i, today, blockedOn));
+    xs = f ? xs.filter((i) => `${i.keyword ?? ""} ${i.title} ${i.tags.join(" ")} ${(i.inherited ?? []).join(" ")} ${i.category}`.toLowerCase().includes(f)) : xs;
     if (mode === "todo") {
       const rank = (k: string | null) => { const r = todo.indexOf(k ?? ""); return r < 0 ? 99 : r; };
       xs = [...xs].sort((a, b) => rank(a.keyword) - rank(b.keyword));
@@ -246,6 +252,10 @@
     logOn = on;
     try { localStorage.setItem("agenda-log", on ? "1" : ""); } catch {}
   }
+  function setBlocked(on: boolean) {
+    blockedOn = on;
+    try { localStorage.setItem("agenda-blocked", on ? "1" : ""); } catch {}
+  }
   function setGrid(on: boolean) {
     gridOn = on;
     if (on && span === 7) setSpan(1);
@@ -334,6 +344,7 @@
       case "n": api.newTask(dayInput()); break;
       case "u": api.act(async () => { await api.undo(); await refresh(); }); break;
       case "c": if (mode === "agenda") setLog(!logOn); break;
+      case "B": setBlocked(!blockedOn); break;
       case "w": if (mode === "agenda") setGrid(!(gridOn && span === 1)); break;
       case "T": if (mode === "agenda") api.act(async () => { await api.moveOverdue(); await refresh(); }); break;
       case "v": if (mode === "agenda") setSpan(span === 1 ? 7 : 1); else setBoard(!board); break;
@@ -377,7 +388,7 @@
 {/snippet}
 
 {#snippet card(it: AgendaItem, i: number)}
-  <div class="kcard" class:sel={i === sel} class:done={isDone(it)} class:marked={marks.has(markKey(it))} data-i={i} role="option" aria-selected={i === sel}>
+  <div class="kcard" class:sel={i === sel} class:done={isDone(it)} class:blocked={it.blocked} class:marked={marks.has(markKey(it))} data-i={i} role="option" aria-selected={i === sel}>
     <div class="kt">
       {#if marks.has(markKey(it))}<span class="mark" title="Marked (*)">*</span>{/if}
       <span class="check" title="Mark done (x)">{isDone(it) ? "✓" : ""}</span>
@@ -387,6 +398,7 @@
     <div class="kmeta">
       {#each it.tags as t}<span class="tag">{t}</span>{/each}{#each it.inherited ?? [] as t}<span class="tag inh" title="Inherited">{t}</span>{/each}
       {@render effort(it)}
+      {#if it.blocked}<span class="blk-chip" title="Waits on another task (:ORDERED: / :BLOCKER:)">blocked</span>{/if}
       {#if dateChip(it.date)}<span class="meta">{dateChip(it.date)}</span>{/if}
       <span class="spacer"></span>
       <span class="cat">{it.category}</span>
@@ -395,7 +407,7 @@
 {/snippet}
 
 {#snippet row(it: AgendaItem, i: number)}
-  <div class="row" class:sel={i === sel} class:done={isDone(it)} class:marked={marks.has(markKey(it))} data-i={i} role="option" aria-selected={i === sel}>
+  <div class="row" class:sel={i === sel} class:done={isDone(it)} class:blocked={it.blocked} class:marked={marks.has(markKey(it))} data-i={i} role="option" aria-selected={i === sel}>
     {#if marks.has(markKey(it))}<span class="mark" title="Marked (*)">*</span>{/if}
     <span class="check" title="Mark done (x)">{isDone(it) ? "✓" : ""}</span>
     {#if it.priority}<span class="prio p{it.priority}">{it.priority}</span>{/if}
@@ -403,6 +415,7 @@
     <span class="title">{it.title}</span>
     {#each it.tags as t}<span class="tag">{t}</span>{/each}{#each it.inherited ?? [] as t}<span class="tag inh" title="Inherited">{t}</span>{/each}
     <span class="spacer"></span>
+    {#if it.blocked}<span class="blk-chip" title="Waits on another task (:ORDERED: / :BLOCKER:)">blocked</span>{/if}
     {@render effort(it)}
     {#if it.habit}
       <span class="habit" title="Last {it.habit.bar.length} days: green done, amber due (not yet overdue), red overdue, grey not due">
@@ -444,6 +457,7 @@
           <button class:on={board} onclick={() => setBoard(true)}>Board</button>
         </div>
       {/if}
+      {#if query == null}<button class="toggle" class:on={blockedOn} onclick={() => setBlocked(!blockedOn)} title="Show blocked tasks (B)" aria-pressed={blockedOn}>Blocked</button>{/if}
       <input bind:this={filterInput} bind:value={filter} placeholder="Filter  /" spellcheck="false" />
       <button class="primary" onclick={() => api.newTask(dayInput())} title="New task (n)">+ New task</button>
     </div>
@@ -661,6 +675,8 @@
   .habit i.due { background: var(--todo); }
   .time { font: var(--fs-sm) var(--mono); color: var(--date); }
   .effort { font: var(--fs-xs) var(--mono); color: var(--dim); border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; white-space: nowrap; }
+  .row.blocked .title, .kcard.blocked .title { color: var(--dim); }
+  .blk-chip { font-size: var(--fs-xs); color: var(--dim); border: 1px dashed var(--border); border-radius: 999px; padding: 0 6px; white-space: nowrap; }
   .effort.over { color: var(--warn, #d97706); border-color: currentColor; }
   h2 .planned { margin-left: auto; font-size: var(--fs-sm); }
   h2 .planned.over { color: var(--warn, #d97706); }

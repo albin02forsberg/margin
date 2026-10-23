@@ -715,10 +715,10 @@ fn todos(s: State<App>) -> Vec<org::Item> {
 /// Tasks matching QUERY (see org::query).
 #[tauri::command(async)]
 fn search_todos(s: State<App>, query: String) -> R<Vec<org::Item>> {
-    let (kw, f) = (s.kw(), spent_lookup(&s));
-    let g = f.clone();
-    let (keep, done) = org::query(&query, today(), &kw, move |h| g(&h.category, &h.title))?;
-    Ok(with_spent(&*f, org::todos(&s.files(), &kw, done, keep, today())))
+    let (kw, f, files) = (s.kw(), spent_lookup(&s), s.files());
+    let (g, bl) = (f.clone(), org::blocked(&files, &kw));
+    let (keep, done) = org::query(&query, today(), &kw, move |h| g(&h.category, &h.title), move |o, h| bl.contains(&(o.path.clone(), h.line)))?;
+    Ok(with_spent(&*f, org::todos(&files, &kw, done, keep, today())))
 }
 
 /// Open tasks tagged (own or inherited) `@NAME` or naming `@NAME` in the title, and other lines mentioning it.

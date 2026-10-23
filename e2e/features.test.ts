@@ -739,6 +739,7 @@ describe("Journal, archive and move", () => {
         writeFileSync(join(notes, "marks.org"), "* Intro\nx\n* Target\nfirst\nsecond\n");
         writeFileSync(join(notes, "stuck.org"), "* TODO Moving\n** NEXT Go\n* TODO Launch site\n** TODO Pick a host\n** TODO Write copy\n");
         writeFileSync(join(notes, "drill.org"), drill);
+        writeFileSync(join(notes, "ordered.org"), "* Move flat\n:PROPERTIES:\n:ORDERED: t\n:END:\n** TODO Book van\n** TODO Pack boxes\n");
         writeFileSync(join(notes, "clone.org"), "* DONE Check-in\nCLOSED: [2026-10-01 Thu 10:00] SCHEDULED: <2026-10-01 Thu>\n* After\n");
       },
     });
@@ -930,6 +931,22 @@ describe("Journal, archive and move", () => {
     await answer("Stuck projects", "Launch");
     await find(".status .file", "stuck.org");
     await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("TODO Launch site")), { timeoutMsg: "didn't land on the project heading" });
+  });
+
+  it("an :ORDERED: project shows only its next task in Tasks; B shows the blocked one, x on the first reveals it (#718)", async () => {
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "2"]);
+    await (await find(".agenda .row .title", "Book van")).click();
+    assert.ok(!(await texts(".agenda .row .title")).includes("Pack boxes"), "blocked task shown");
+    await browser.keys("B");
+    await find(".agenda .row.blocked .blk-chip", "blocked");
+    await find(".agenda .row.blocked .title", "Pack boxes");
+    await browser.keys("B");
+    await browser.waitUntil(async () => !(await texts(".agenda .row .title")).includes("Pack boxes"), { timeoutMsg: "B didn't hide it again" });
+    await (await find(".agenda .row .title", "Book van")).click();
+    await browser.keys("x");
+    await fileMatches(f("ordered.org"), (s) => s.includes("** DONE Book van"), "first task not done");
+    await browser.waitUntil(async () => (await texts(".agenda .row:not(.blocked) .title")).includes("Pack boxes"), { timeoutMsg: "next task didn't appear" });
   });
 
   it("Space v n narrows to the heading at the cursor and widens again", async () => {
