@@ -165,11 +165,29 @@ impl Tc {
     }
 
     fn rewrite_line(&self, idx: usize, ev: &Event) -> Result<(), String> {
+        self.rewrite_lines(&[(idx, ev.clone())])
+    }
+
+    /// Replace the log lines at the given indexes in one atomic write.
+    fn rewrite_lines(&self, evs: &[(usize, Event)]) -> Result<(), String> {
         let text = self.try_read_log()?;
         let mut lines: Vec<String> = text.lines().map(String::from).collect();
-        let l = lines.get_mut(idx).ok_or("line not found")?;
-        *l = serde_json::to_string(ev).unwrap();
+        for (idx, ev) in evs {
+            *lines.get_mut(*idx).ok_or("line not found")? = serde_json::to_string(ev).unwrap();
+        }
         crate::config::write_atomic(&self.log_path(), lines.join("\n") + "\n").map_err(|e| e.to_string())
+    }
+
+    /// Sessions clocked on task OLD per project (see `rename_task`), on CATEGORY when it is a project
+    /// (as `spent_on` scopes it), renamed to NEW when APPLY. Hold `locked`.
+    pub fn rename_task(&self, category: &str, old: &str, new: &str, apply: bool) -> Result<BTreeMap<String, usize>, String> {
+        let c = norm(category);
+        let scope = self.projects().keys().any(|p| norm(p) == c).then_some(c);
+        let (lines, by) = rename_task(&self.events(), scope.as_deref(), old, new);
+        if apply && !lines.is_empty() {
+            self.rewrite_lines(&lines)?;
+        }
+        Ok(by)
     }
 
     /// Rewrite the log via `normalize_log` (after a pull); true if it changed. Hold `locked`.
@@ -717,6 +735,53 @@ pub fn spent_on(spent: &Spent, projects: &Projects, category: &str, title: &str)
     let c = norm(category);
     let m = if projects.keys().any(|p| norm(p) == c) { by.get(&c).copied().unwrap_or(0) } else { by.values().sum() };
     (m > 0).then_some(m)
+}
+
+/// Lines of EVENTS to rewrite to rename task OLD to NEW where `spent_by_task` would see it: the clock-in
+/// task and the clock-out note, on project SCOPE (normalised) only when given. Also the sessions touched,
+/// by project. Nothing when NEW is empty or the same title.
+pub fn rename_task(events: &[(usize, Event)], scope: Option<&str>, old: &str, new: &str) -> (Vec<(usize, Event)>, BTreeMap<String, usize>) {
+    let (o, n) = (norm(old), new.trim());
+    let (mut lines, mut by) = (Vec::new(), BTreeMap::new());
+    if o.is_empty() || n.is_empty() || norm(n) == o {
+        return (lines, by);
+    }
+    let inscope = |p: &str| scope.is_none_or(|s| norm(p) == s);
+    // the open session: its project and whether it was renamed; a break keeps it open for the resuming In
+    let (mut cur, mut resume): (Option<(String, bool)>, bool) = (None, false);
+    let mut close = |cur: &mut Option<(String, bool)>| {
+        if let Some((p, true)) = cur.take() {
+            *by.entry(p).or_default() += 1;
+        }
+    };
+    for (i, ev) in events {
+        match ev {
+            Event::In { t, project, task } => {
+                if !resume {
+                    close(&mut cur);
+                }
+                let hit = inscope(project) && norm(task) == o;
+                if hit {
+                    lines.push((*i, Event::In { t: *t, project: project.clone(), task: n.into() }));
+                }
+                cur.get_or_insert((project.clone(), false)).1 |= hit;
+                resume = false;
+            }
+            Event::Break { .. } => resume = true,
+            Event::Out { t, note } => {
+                if let Some((p, hit)) = &mut cur {
+                    if inscope(p) && norm(note) == o {
+                        lines.push((*i, Event::Out { t: *t, note: n.into() }));
+                        *hit = true;
+                    }
+                }
+                close(&mut cur);
+                resume = false;
+            }
+        }
+    }
+    close(&mut cur);
+    (lines, by)
 }
 
 // ---------------------------------------------------------------- holidays & flex
@@ -1850,5 +1915,43 @@ mod tests {
         assert_eq!(spent_on(&s, &projects, "inbox", "write report "), Some(150)); // not a project: every project
         assert_eq!(spent_on(&s, &projects, "acme", "Mail"), None);
         assert_eq!(spent_on(&s, &projects, "inbox", "Plan"), None);
+    }
+
+    #[test]
+    fn rename_task_keeps_the_clocked_time_on_the_new_title() {
+        let dir = std::env::temp_dir().join(format!("tc-rename-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("d.org"), cal: w(8.0) };
+        let i = |t: &str, p: &str, task: &str| Event::In { t: dt(t), project: p.into(), task: task.into() };
+        let o = |t: &str, note: &str| Event::Out { t: dt(t), note: note.into() };
+        for ev in [
+            i("2026-10-01 09:00", "Acme", "Write report"),
+            Event::Break { t: dt("2026-10-01 09:30") },
+            i("2026-10-01 10:00", "Acme", "Write report"), // resumed: one session, two In lines
+            o("2026-10-01 10:40", "write report"),         // clock-out pre-filled with the task
+            i("2026-10-01 11:00", "Acme", ""),
+            o("2026-10-01 11:30", " WRITE report "), // only the note names it
+            i("2026-10-01 12:00", "Acme", "Mail"),
+            o("2026-10-01 12:10", ""),
+            i("2026-10-01 13:00", "Other", "Write report"),
+            o("2026-10-01 13:30", ""),
+            i("2026-10-01 14:00", "Acme", "write report"), // still running
+        ] {
+            tc.append(&ev).unwrap();
+        }
+        tc.save_projects(&Projects::from([("ACME".to_string(), Project::new("A"))])).unwrap();
+        let before = fs::read_to_string(tc.log_path()).unwrap();
+        let acme = BTreeMap::from([("Acme".to_string(), 3)]);
+        assert_eq!(tc.rename_task("acme", "Write report", "Write the report", false), Ok(acme.clone())); // dry run
+        assert_eq!(fs::read_to_string(tc.log_path()).unwrap(), before);
+        assert_eq!(tc.rename_task("inbox", "Write report", "Write the report", false), Ok(BTreeMap::from([("Acme".to_string(), 3), ("Other".to_string(), 1)])));
+        assert_eq!(tc.rename_task("acme", "Write report", " write REPORT", false), Ok(BTreeMap::new())); // same title
+        assert_eq!(tc.rename_task("acme", "Write report", "Write the report", true), Ok(acme));
+        let s = spent_by_task(&tc.events(), dt("2026-10-01 14:05"));
+        assert_eq!(s["write the report"], HashMap::from([("acme".into(), 30 + 40 + 30 + 5)]));
+        assert_eq!(s["write report"], HashMap::from([("other".into(), 30)])); // out of scope
+        assert_eq!(s["mail"], HashMap::from([("acme".into(), 10)]));
+        assert_eq!(tc.events().len(), 11);
+        let _ = fs::remove_dir_all(&dir);
     }
 }

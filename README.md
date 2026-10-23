@@ -271,6 +271,8 @@ Click the checkbox to complete a task.
 `e` (or `Space x e` in a note) renames the task and updates the one-line links to it, `[[*Old]]` in its note and
 `[[file:note.org::*Old]]` in other notes (descriptions and path style kept), in one undo step (`u`, or `Space n u` in a note).
 Links stay as they are when the old title isn't unique in its note, or the new one is empty, contains `[`/`]` or is another heading's title.
+When time was clocked on the old title, it also offers to rename those time-log sessions (their clock-in task and clock-out note, in the task's project when its category is one),
+so the clocked time and `spent:` keep counting; the log is backed up after, undo doesn't revert it, and the work diary keeps the old text.
 `z` (or `Space x z` in a note) adds a note to the task, as org's agenda `z` does:
 `- Note taken on [2026-10-20 Tue 14:30] \\` plus your text, below the planning line and drawers, newest first.
 `E` (or `Space x E` in a note) sets an effort estimate, org's `:EFFORT:` property
