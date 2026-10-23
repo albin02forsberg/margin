@@ -665,6 +665,60 @@ pub fn task_suggestions(sessions: &[Session], project: Option<&str>, today: Naiv
     today_s
 }
 
+/// Clocked minutes per task, then per project (both trimmed and lowercased; see spent_by_task).
+pub type Spent = HashMap<String, HashMap<String, u32>>;
+
+fn norm(s: &str) -> String {
+    s.trim().to_lowercase()
+}
+
+/// All time logged in EVENTS by task: a session's task is its clock-out note, else the task it was
+/// clocked in on. Breaks don't count; the open clock counts up to NOW. Untitled sessions are left out.
+pub fn spent_by_task(events: &[(usize, Event)], now: NaiveDateTime) -> Spent {
+    let mut secs: HashMap<(String, String), i64> = HashMap::new();
+    let (mut cur, mut start, mut acc): (Option<(String, String)>, Option<NaiveDateTime>, i64) = (None, None, 0);
+    for (_, ev) in events {
+        match ev {
+            Event::In { t, project, task } => {
+                // An In after a break resumes the session; one without an Out before it ends the last one.
+                if let (Some(s), Some(k)) = (start, cur.take()) {
+                    *secs.entry(k).or_default() += acc + (*t - s).num_seconds();
+                    acc = 0;
+                }
+                cur = Some((norm(project), norm(task)));
+                start = Some(*t);
+            }
+            Event::Break { t } => acc += start.take().map_or(0, |s| (*t - s).num_seconds()),
+            Event::Out { t, note } => {
+                acc += start.take().map_or(0, |s| (*t - s).num_seconds());
+                if let Some((p, task)) = cur.take() {
+                    *secs.entry((p, if note.trim().is_empty() { task } else { norm(note) })).or_default() += acc;
+                }
+                acc = 0;
+            }
+        }
+    }
+    if let Some(k) = cur {
+        *secs.entry(k).or_default() += acc + start.map_or(0, |s| (now - s).num_seconds());
+    }
+    let mut out = Spent::new();
+    for ((p, task), s) in secs {
+        if !task.is_empty() && s > 0 {
+            *out.entry(task).or_default().entry(p).or_default() += ((s + 30) / 60) as u32;
+        }
+    }
+    out
+}
+
+/// Minutes clocked on a heading TITLE in CATEGORY: on that project when it is one in PROJECTS,
+/// else on the task in any project. None when nothing was clocked.
+pub fn spent_on(spent: &Spent, projects: &Projects, category: &str, title: &str) -> Option<u32> {
+    let by = spent.get(&norm(title))?;
+    let c = norm(category);
+    let m = if projects.keys().any(|p| norm(p) == c) { by.get(&c).copied().unwrap_or(0) } else { by.values().sum() };
+    (m > 0).then_some(m)
+}
+
 // ---------------------------------------------------------------- holidays & flex
 
 pub fn easter(year: i32) -> NaiveDate {
@@ -1705,5 +1759,37 @@ mod tests {
         assert_eq!(fs::read_to_string(tc.leave_path()).unwrap(), format!("{v}\n{s}\n"));
         assert_eq!(tc.leave().len(), 2);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn spent_by_task_sums_sessions_per_task_and_project() {
+        let i = |t: &str, p: &str, task: &str| Event::In { t: dt(t), project: p.into(), task: task.into() };
+        let o = |t: &str, note: &str| Event::Out { t: dt(t), note: note.into() };
+        let ev: Vec<(usize, Event)> = [
+            i("2026-10-01 09:00", "Acme", "Write report"),
+            Event::Break { t: dt("2026-10-01 09:30") },
+            i("2026-10-01 10:00", "Acme", "Write report"), // resumed: the break doesn't count
+            o("2026-10-01 10:40", ""),                     // blank note: the clock-in task
+            i("2026-10-01 23:30", "Acme", ""),
+            o("2026-10-02 00:30", " write REPORT "), // across midnight, note wins, normalised
+            i("2026-10-02 08:00", "Other", "Write report"),
+            i("2026-10-02 08:15", "Other", "Mail"), // switched without an Out
+            o("2026-10-02 08:20", ""),
+            i("2026-10-02 09:00", "", ""), // untitled: left out
+            o("2026-10-02 09:30", ""),
+            i("2026-10-02 10:00", "Acme", "Write report"), // still running
+        ]
+        .into_iter()
+        .enumerate()
+        .collect();
+        let s = spent_by_task(&ev, dt("2026-10-02 10:05"));
+        assert_eq!(s["write report"], HashMap::from([("acme".into(), 30 + 40 + 60 + 5), ("other".into(), 15)]));
+        assert_eq!(s["mail"], HashMap::from([("other".into(), 5)]));
+        assert_eq!(s.len(), 2);
+        let projects = Projects::from([("ACME".to_string(), Project::new("A"))]);
+        assert_eq!(spent_on(&s, &projects, "acme", "Write report"), Some(135)); // a project: only its own time
+        assert_eq!(spent_on(&s, &projects, "inbox", "write report "), Some(150)); // not a project: every project
+        assert_eq!(spent_on(&s, &projects, "acme", "Mail"), None);
+        assert_eq!(spent_on(&s, &projects, "inbox", "Plan"), None);
     }
 }

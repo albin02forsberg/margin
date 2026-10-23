@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fmtEffort, overbooked, planned, plannedLabel } from "./effort.ts";
+import { fmtEffort, fmtSpent, overbooked, planned, plannedLabel } from "./effort.ts";
+
+test("fmtSpent: against the estimate, over, unestimated, nothing clocked", () => {
+  assert.deepEqual(fmtSpent(70, 120), { text: "1:10 / 2:00", over: false });
+  assert.deepEqual(fmtSpent(125, 120), { text: "2:05 / 2:00", over: true });
+  assert.deepEqual(fmtSpent(120, 120), { text: "2:00 / 2:00", over: false });
+  assert.deepEqual(fmtSpent(5, null), { text: "0:05", over: false });
+  assert.equal(fmtSpent(0, 30), null);
+  assert.equal(fmtSpent(undefined, 30), null);
+});
 
 test("fmtEffort: minutes, whole hours, hours and minutes", () => {
   assert.deepEqual([15, 60, 90, 240, 125].map(fmtEffort), ["15m", "1h", "1h 30m", "4h", "2h 5m"]);

@@ -254,6 +254,11 @@ Tasks show it as a badge (`1h 30m`), and each day in Today shows the total of it
 tasks (`~5h 30m planned`, each task counted once) against the day's expected hours from the
 Time calendar, less leave (`~5h 30m / 7h 30m planned`, highlighted when overbooked or planned on a day off). Removing it drops the property drawer
 only when nothing else was in it.
+Time clocked on a task shows in that badge against its estimate (`1:10 / 2:00`, in the warning colour once it runs over;
+just `1:10` without an estimate), on Today, Tasks and the Done log. It counts time-log sessions named like the heading
+(case and surrounding spaces ignored; the clock-out note, else the task clocked in on, including the running clock,
+breaks left out), on the task's category when that is a Time project and on any project otherwise.
+Tracking time from a task (`I`, `Space x i`) offers its title first as what you're working on, so the time adds up there.
 Subtrees archived in place with an `:ARCHIVE:` tag (Emacs's `C-c C-x a`) are left out of Today, Tasks, reminders and the calendar feed, as in org's agenda; they stay in the note and in search.
 A time range (`<2026-10-16 Fri 10:00-11:00>`) shows as `10:00-11:00`; a date
 range (`<2026-10-19 Mon>--<2026-10-21 Wed>`) shows on each of its days with a
@@ -332,6 +337,7 @@ same keys. Terms are space-separated and must all match; `-` negates one:
 | `due:today`, `due:<=+7d`, `scheduled:<=fri` | Date compared with `<` `<=` `>` `>=` (none: on that day); any date input works |
 | `due:none`, `scheduled:any` | Has no / has a date |
 | `effort:<=30`, `effort:>1h`, `effort:none` | The `:EFFORT:` estimate (minutes, `0:30`, `1h`) compared with `<` `<=` `>` `>=`; `none` / `any` for unestimated / estimated (unestimated tasks never match a comparison) |
+| `spent:>=1:00`, `spent:none`, `over:yes` | Time clocked on the task, compared the same way (`none` / `any`: never / ever clocked); `over:yes` / `over:no` whether an estimated task ran over its estimate |
 | `closed:>=-7d`, `closed:today` | Done on that date (its `CLOSED:` stamp); searches done tasks too, so `closed:>=-7d` is a "Done this week" view |
 | other words, `"a phrase"` | Title contains |
 
