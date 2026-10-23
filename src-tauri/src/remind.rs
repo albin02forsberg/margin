@@ -103,18 +103,24 @@ fn tick(app: &AppHandle) {
 fn focus(app: &AppHandle, s: &App, focus: i64, rest: i64, now: NaiveDateTime) {
     static LAST: std::sync::Mutex<Option<NaiveDateTime>> = std::sync::Mutex::new(None);
     let Some((since, project, _)) = s.tc().current().filter(|_| focus > 0) else { return };
-    let file = s.cfg().data().join("focus-sent.txt");
     let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
-    if last.is_none() {
-        *last = std::fs::read_to_string(&file).ok().and_then(|t| t.trim().parse().ok());
-    }
-    if crate::timeclock::focus_due(since, now, focus, *last) {
-        *last = Some(since);
-        let _ = std::fs::write(&file, format!("{since:?}")); // ISO 8601, what parse() reads
-        let what = if project.is_empty() { String::new() } else { format!(" on {project}") };
-        let body = format!("{}{what}. Take {rest} min? Pause is in the top-bar clock.", crate::timeclock::format_hm((now - since).num_seconds() as f64 / 3600.0));
+    if let Some(body) = focus_nudge(&mut last, &s.cfg().data().join("focus-sent.txt"), since, &project, now, focus, rest) {
         let _ = app.notification().builder().title("Time for a break").body(body).show();
     }
+}
+
+/// The break message when the block started at SINCE is due, recording it in LAST and FILE.
+fn focus_nudge(last: &mut Option<NaiveDateTime>, file: &std::path::Path, since: NaiveDateTime, project: &str, now: NaiveDateTime, focus: i64, rest: i64) -> Option<String> {
+    if last.is_none() {
+        *last = std::fs::read_to_string(file).ok().and_then(|t| t.trim().parse().ok());
+    }
+    if !crate::timeclock::focus_due(since, now, focus, *last) {
+        return None;
+    }
+    *last = Some(since);
+    let _ = std::fs::write(file, format!("{since:?}")); // ISO 8601, what parse() reads
+    let what = if project.is_empty() { String::new() } else { format!(" on {project}") };
+    Some(format!("{}{what}. Take {rest} min? Pause is in the top-bar clock.", crate::timeclock::format_hm((now - since).num_seconds() as f64 / 3600.0)))
 }
 
 /// Whether the once-a-day event NAME should fire now (COND holds and it was not sent today); records it in SENT.
@@ -146,6 +152,22 @@ mod tests {
     use super::*;
     use std::path::Path;
     use std::sync::Arc;
+
+    #[test]
+    fn focus_nudge_once_per_block_and_survives_restart() {
+        let file = std::env::temp_dir().join(format!("margin-focus-{}", crate::notes::gen_id()));
+        let at = |h, m| "2026-10-02".parse::<chrono::NaiveDate>().unwrap().and_hms_opt(h, m, 0).unwrap();
+        let mut last = None;
+        assert_eq!(focus_nudge(&mut last, &file, at(9, 0), "Acme", at(9, 30), 50, 5), None);
+        assert!(focus_nudge(&mut last, &file, at(9, 0), "Acme", at(9, 50), 50, 5).unwrap().contains(" on Acme. Take 5 min?"));
+        assert_eq!(focus_nudge(&mut last, &file, at(9, 0), "Acme", at(10, 20), 50, 5), None);
+        // A restart forgets memory but reads the file; a new block nudges again, with no project.
+        let mut last = None;
+        assert_eq!(focus_nudge(&mut last, &file, at(9, 0), "Acme", at(10, 20), 50, 5), None);
+        let body = focus_nudge(&mut last, &file, at(11, 0), "", at(12, 0), 50, 5).unwrap();
+        assert!(!body.contains(" on ") && body.contains("Take 5 min?"));
+        let _ = std::fs::remove_file(&file);
+    }
 
     #[test]
     fn once_a_day_fires_once() {
