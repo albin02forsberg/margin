@@ -570,6 +570,12 @@ also changes the flex of past days. Keys:
 `i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV (import template: `Project` = export code, `Duration` in decimal hours, `1,5`; zero-hour rows are left out; a missing folder is created; a bare file name goes into the export folder; otherwise the path must be an absolute `.csv` path outside the app's data and config folders),
 `Space t s` / `Space t m` week / month report (month = the calendar month of the picked date, empty = this month), `E` export a report as HTML/PDF, `O` stopped earlier, `S` edit a session, `L` log time off.
 Space t … has every timeclock command (same letters as the old Emacs menu).
+`Space t u` updates the clock reports in the open note: each `#+BEGIN: clocktable :block thismonth` … `#+END:`
+block gets an org table of worked hours per project and task (the session description) with a total row.
+`:block` is `today`, `thisweek` (Mon-Sun), `thismonth` or a month like `2026-10`; `:project Acme` (or `"Big Co"`)
+limits it to one project. Only the text between the two lines changes, as one edit (`u` undoes it). Blocks with other
+options (Emacs's `:scope`, `:maxlevel`, …) are left alone. Emacs fills a plain `:block thismonth` block from the
+file's `CLOCK:` lines instead of Margin's time log, so the two can show different numbers.
 `Space t a` ("I started earlier") and `Space t O` ("I stopped earlier", for when you forgot to stop) take minutes ago (`25`) or a time (`14:05`). A start can't move before the previous session's end.
 
 `Space t n` (or `n` in the Time view) logs a finished session after the fact: pick a day (Today, Yesterday, the last days by name, or type `fri`, `-2d`, `2026-10-12`; a weekday name means its most recent past occurrence), a start and end (`09:00`), a project and a note. It must not overlap logged time, reach into the future or cross midnight.
