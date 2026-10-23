@@ -565,6 +565,43 @@ pub fn overdue_scheduled(files: &[Arc<OrgFile>], kw: &Kw, today: NaiveDate) -> V
     out
 }
 
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Stuck {
+    pub path: PathBuf,
+    pub line: usize,
+    pub title: String,
+    /// Open tasks below it.
+    pub open: usize,
+}
+
+/// Stuck projects, as org's `org-stuck-projects`: open tasks with open subtasks of which none is
+/// scheduled, has a deadline or carries a NEXT keyword. Only the innermost of nested stuck projects
+/// is listed; plain headings, done tasks and `:ARCHIVE:` subtrees never count.
+pub fn stuck(files: &[Arc<OrgFile>], kw: &Kw, next: &[String]) -> Vec<Stuck> {
+    let open = |h: &Headline| !h.archived() && h.keyword.as_deref().is_some_and(|k| !kw.is_done(k));
+    let mut out = vec![];
+    for f in files {
+        let hs = &f.headlines;
+        // Whether each heading is a stuck project, filled bottom-up.
+        let mut st = vec![false; hs.len()];
+        for i in (0..hs.len()).rev() {
+            if !open(&hs[i]) {
+                continue;
+            }
+            let end = hs[i + 1..].iter().position(|h| h.level <= hs[i].level).map_or(hs.len(), |p| i + 1 + p);
+            let sub = (i + 1..end).filter(|&j| open(&hs[j]));
+            let n = sub.clone().count();
+            let acts = sub.clone().any(|j| hs[j].scheduled.is_some() || hs[j].deadline.is_some() || next.iter().any(|k| hs[j].keyword.as_deref() == Some(k)));
+            st[i] = n > 0 && !acts;
+            if st[i] && !sub.clone().any(|j| st[j]) {
+                out.push(Stuck { path: f.path.clone(), line: hs[i].line, title: hs[i].title.clone(), open: n });
+            }
+        }
+    }
+    out.sort_by(|a, b| (&a.path, a.line).cmp(&(&b.path, b.line)));
+    out
+}
+
 /// Tasks for which KEEP holds (open ones only, unless DONE), by priority then date.
 pub fn todos(files: &[Arc<OrgFile>], kw: &Kw, done: bool, keep: impl Fn(&OrgFile, &Headline) -> bool, today: NaiveDate) -> Vec<Item> {
     let mut out = vec![];
@@ -1687,6 +1724,25 @@ mod tests {
     const DOC: &str = ":PROPERTIES:\n:ID: file-1\n:END:\n#+title: My Note\n#+category: Work\n\
 * TODO [#A] Write report :work:urgent:\nSCHEDULED: <2026-10-01 Thu> DEADLINE: <2026-10-05 Mon 10:00>\n:PROPERTIES:\n:ID: h-1\n:END:\nSee [[id:other][Other]] and [[file:b.org]].\n\
 ** NEXT Sub\n:PROPERTIES:\n:CATEGORY: Sub\n:END:\n*** DONE Deep\n* Meeting\n<2026-10-03 Sat 14:00>\n* TODO Water plants\nSCHEDULED: <2026-09-28 Mon +1w>\n";
+
+    #[test]
+    fn stuck_projects() {
+        let doc = "* TODO Stuck\n** TODO a\n** DONE b\n\
+* TODO Scheduled\n** TODO a\nSCHEDULED: <2026-10-05 Mon>\n\
+* TODO Due\n** TODO a\nDEADLINE: <2026-10-05 Mon>\n\
+* TODO Next\n** TODO a\n*** NEXT b\n\
+* TODO Finished\n** DONE a\n\
+* DONE Closed\n** TODO a\n\
+* Inbox\n** TODO a\n\
+* TODO Outer\n** TODO Inner\n*** TODO a\n** TODO b\n\
+* TODO Moving\n** TODO Inner2\n*** TODO a\n** TODO b\nSCHEDULED: <2026-10-05 Mon>\n\
+* TODO Old :ARCHIVE:\n** TODO a\n\
+* TODO Leaf\n";
+        let f = Arc::new(parse(Path::new("/n/x.org"), doc, &kw()));
+        let got: Vec<_> = stuck(&[f], &kw(), &["NEXT".into()]).into_iter().map(|s| (s.title, s.open)).collect();
+        let want: Vec<(String, usize)> = [("Stuck", 1), ("Inner", 1), ("Inner2", 1)].iter().map(|(t, n)| (t.to_string(), *n)).collect();
+        assert_eq!(got, want);
+    }
 
     #[test]
     fn duplicate_body_drops_ids_and_title() {

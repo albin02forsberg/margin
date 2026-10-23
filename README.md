@@ -260,6 +260,9 @@ just `1:10` without an estimate), on Today, Tasks and the Done log. It counts ti
 (case and surrounding spaces ignored; the clock-out note, else the task clocked in on, including the running clock,
 breaks left out), on the task's category when that is a Time project and on any project otherwise.
 Tracking time from a task (`I`, `Space x i`) offers its title first as what you're working on, so the time adds up there. The same works from an open note: the heading at the cursor is offered (nothing above the first heading).
+`Space x S` lists stuck projects, as org's `org-stuck-projects`: open tasks with open subtasks of which none is scheduled,
+has a deadline or carries a next-action keyword (**Next-action keywords**, `stuck_next_keywords`, default `NEXT` and `DOING`).
+Plain headings such as `* Inbox` never count, and of nested stuck projects only the innermost is listed; Enter jumps to it.
 Subtrees archived in place with an `:ARCHIVE:` tag (Emacs's `C-c C-x a`) are left out of Today, Tasks, reminders and the calendar feed, as in org's agenda; they stay in the note and in search.
 A time range (`<2026-10-16 Fri 10:00-11:00>`) shows as `10:00-11:00`; a date
 range (`<2026-10-19 Mon>--<2026-10-21 Wed>`) shows on each of its days with a
@@ -421,6 +424,7 @@ Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`, `no` p
 | click `[ ]` | Toggle a checkbox |
 | Space x … | Task commands for the heading at the cursor |
 | Space x C | Clone the task at the cursor N times with shifted dates (org's `org-clone-subtree-with-time-shift`): asks how many copies and the step (`+1d`, `+1w`, `+1m`, `+1y`), and puts the copies right after it, copy k with every active `<…>` timestamp moved k steps (months count from the original date, so Jan 31 gives Feb 28/29, then Mar 31). Copies come back as TODO without `CLOSED:`, `:ID:`, `:LOGBOOK:` or `CLOCK:` lines; `u` undoes |
+| Space x S | Stuck projects: open tasks with open subtasks but nothing scheduled, due or NEXT below them; Enter jumps to one |
 | Space x a | Archive every done task of the note to `<note>.org_archive` (top-most done subtrees, in order; repeaters and `:ARCHIVE:` subtrees stay); `u` / Space n u undoes both files |
 | Space n b | Notes linking here, plus unlinked mentions of this note's title (**Link** turns one into an `[[id:]]` link; Space n u undoes) |
 | Space n g | Graph of notes within two links of this one; click a note to open it |

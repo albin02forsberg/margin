@@ -1255,6 +1255,14 @@
     if (r) await openFile(r as string);
   }
 
+  /** Open tasks with open subtasks but no next action (#671). */
+  async function stuckProjects() {
+    const o = await call<{ path: string; line: number; title: string; open: number }[]>("org_stuck");
+    if (!o.length) return flash("No stuck projects");
+    const r = await pick({ prompt: "Stuck projects: no next action", items: o.map((s) => ({ label: s.title, detail: `${rel(s.path)} · ${s.open} open`, value: s as unknown })) });
+    if (r) { const s = r as (typeof o)[number]; await openFile(s.path, s.line); }
+  }
+
   /** Notes by last change, newest first (#619). */
   async function recentlyChanged() {
     const o = await call<[string, string, number][]>("notes_recent");
@@ -2191,6 +2199,7 @@
     { label: "Task: clone with date shift…", leader: "x C", run: () => atCursor("clone") },
     { label: "Task: archive", leader: "x A", run: () => atCursor("archive") },
     { label: "Note: archive all done tasks", leader: "x a", run: () => act(archiveDone) },
+    { label: "Tasks: stuck projects (open subtasks, no next action)…", leader: "x S", run: () => act(stuckProjects) },
     { label: "Task: track time on it", leader: "x i", run: () => atCursor("clockIn") },
     { label: "New heading / list item / table row below", keys: ["Alt+Enter"], ctx: "editor", leader: "x h", run: tableOr("rowBelow", () => ed.newItem(view)) },
     { label: "New task heading below", keys: ["Alt+Shift+Enter"], ctx: "editor", leader: "x n", run: () => ed.newHeading(view, kw().todo[0]) },
