@@ -1716,7 +1716,10 @@
   /** Clock in, suggesting project SUGGESTED and, from a task, its heading TITLE first (so its clocked time adds up on it). */
   async function clockIn(suggested?: string, title?: string) {
     if (suggested == null && tab?.kind === "file") {
-      suggested = (await call("org_context", { path: tab.path, text: view.state.doc.toString(), line: curLine0() })).category;
+      const c = await call<{ category: string; title: string }>("org_context", { path: tab.path, text: view.state.doc.toString(), line: curLine0() });
+      suggested = c.category;
+      // above the first heading org_context returns the note's #+TITLE, which isn't a task
+      if (!title && /^\*+ /m.test(view.state.doc.sliceString(0, view.state.doc.lineAt(view.state.selection.main.head).to))) title = c.title;
     }
     const p = await pickProject("Track time on project", suggested);
     if (!p) return;
