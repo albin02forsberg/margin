@@ -1153,7 +1153,7 @@ fn notes_backlinks(s: State<App>, path: PathBuf) -> Vec<notes::Hit> {
 }
 
 /// Notes that may link to a heading of note PATH by `[[file:…::*Title]]` (read-only).
-#[tauri::command]
+#[tauri::command(async)]
 fn retitle_candidates(s: State<App>, path: PathBuf) -> Vec<PathBuf> {
     notes::retitle_candidates(&s.files(), &path)
 }
@@ -1330,7 +1330,7 @@ fn notes_heading_id(s: State<App>, text: String, line: usize) -> (String, String
 }
 
 /// `:BLOCKER:` entries of the heading at LINE of TEXT (PATH's buffer, which stands in for the indexed copy), with their tasks looked up.
-#[tauri::command]
+#[tauri::command(async)]
 fn org_blockers(s: State<App>, path: PathBuf, text: String, line: usize) -> Vec<org::Dep> {
     let mut files = s.files();
     files.retain(|f| f.path != path);
@@ -1339,7 +1339,7 @@ fn org_blockers(s: State<App>, path: PathBuf, text: String, line: usize) -> Vec<
 }
 
 /// The open task blocking the heading at LINE of TEXT (PATH's unsaved buffer), if any.
-#[tauri::command]
+#[tauri::command(async)]
 fn org_blocked_at(s: State<App>, path: PathBuf, text: String, line: usize) -> Option<org::Blocker> {
     let kw = s.kw();
     let mut files = s.files();
