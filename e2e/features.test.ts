@@ -745,6 +745,7 @@ describe("Journal, archive and move", () => {
         writeFileSync(join(notes, "ordered.org"), "* Move flat\n:PROPERTIES:\n:ORDERED: t\n:END:\n** TODO Book van\n** TODO Pack boxes\n");
         writeFileSync(join(notes, "blockers.org"), blockers);
         writeFileSync(join(notes, "preamble.org"), "#+title: Pre\nintro\n* TODO Task\n");
+        writeFileSync(join(notes, "gated.org"), "* Plan\n:PROPERTIES:\n:ORDERED: t\n:END:\n** TODO First\n** TODO Second\n");
         writeFileSync(join(notes, "clone.org"), "* DONE Check-in\nCLOSED: [2026-10-01 Thu 10:00] SCHEDULED: <2026-10-01 Thu>\n* After\n");
         writeFileSync(join(notes, "shutdown.org"), `* TODO Wrap report\nSCHEDULED: <${orgDay(new Date())}>\n* TODO Call vendor\nSCHEDULED: <${orgDay(new Date())} +1w>\n`);
       },
@@ -1062,6 +1063,24 @@ describe("Journal, archive and move", () => {
     await leader("xO");
     await find(".status .msg", "cursor on a task heading");
     await fileMatches(f("preamble.org"), (s) => s === "#+title: Pre\nintro\n* TODO Task\n", "the note changed");
+  });
+
+  it("Space x x on a blocked task in the editor asks first; Cancel leaves it, \"Mark done anyway\" finishes it (#754)", async () => {
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "gated");
+    await find(".status .file", "gated.org");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, Key.Shift, "o"]);
+    await answer("Go to heading", "Second");
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("TODO Second")), { timeoutMsg: "cursor not on Second" });
+    await leader("xx");
+    await answer("Waits on", "Cancel");
+    await noPicker();
+    await fileMatches(f("gated.org"), (s) => s.includes("** TODO Second"), "cancel still marked it done");
+    await leader("xx");
+    await answer("Waits on", "Mark done anyway");
+    await fileMatches(f("gated.org"), (s) => s.includes("** DONE Second"), "anyway didn't mark it done");
   });
 
   it("Space v n narrows to the heading at the cursor and widens again", async () => {
