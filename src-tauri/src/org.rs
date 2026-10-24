@@ -1161,8 +1161,11 @@ fn get_prop(lines: &[String], line: usize, key: &str) -> Option<String> {
 
 /// Append `[[id:ID][TITLE]]` to the `:BLOCKER:` of the heading at LINE (org-depend);
 /// unchanged when ID is already listed, an error when it is the heading's own `:ID:`.
+const NO_HEADING: &str = "Put the cursor on a task heading first.";
+
 pub fn add_blocker(text: &str, line: usize, id: &str, title: &str) -> Result<String, String> {
     let lines = to_lines(text);
+    if headline_at(&lines, line).is_none() { return Err(NO_HEADING.into()) }
     if get_prop(&lines, line, "ID").as_deref() == Some(id) { return Err("A task can't block itself.".into()) }
     let old = get_prop(&lines, line, "BLOCKER").unwrap_or_default();
     if BLOCKER.captures_iter(&old).any(|b| blocker_id(&b) == id) { return Ok(text.to_string()) }
@@ -1203,9 +1206,10 @@ pub fn heading_blockers(text: &str, line: usize, files: &[Arc<OrgFile>]) -> Vec<
 }
 
 /// Turn `:ORDERED:` (children done in order) on (`t`) or off for the heading at LINE.
-pub fn toggle_ordered(text: &str, line: usize) -> String {
+pub fn toggle_ordered(text: &str, line: usize) -> Result<String, String> {
+    if headline_at(&to_lines(text), line).is_none() { return Err(NO_HEADING.into()) }
     let on = get_prop(&to_lines(text), line, "ORDERED").is_some_and(|v| !matches!(v.to_lowercase().as_str(), "" | "nil"));
-    set_prop(text, line, "ORDERED", (!on).then_some("t"))
+    Ok(set_prop(text, line, "ORDERED", (!on).then_some("t")))
 }
 
 /// Set `:KEY: VALUE` in the file-level property drawer (the one before the first heading,
@@ -2383,6 +2387,7 @@ mod tests {
         assert!(two.contains(":BLOCKER: [[id:a][Dep [A)]] [[id:b][Dep B]]\n"));
         assert_eq!(add_blocker(&two, 0, "a", "again").unwrap(), two);
         assert!(add_blocker(&two, 6, "a", "Dep A").is_err());
+        assert!(add_blocker("intro\n* H\n", 0, "a", "A").is_err());
         let f = parse(Path::new("/n/a.org"), &two, &kw());
         assert_eq!(f.headlines[0].blockers, ["a", "b"]);
         let bl = blocked(&[Arc::new(f)], &kw());
@@ -2418,10 +2423,11 @@ mod tests {
 
     #[test]
     fn toggle_ordered_sets_and_removes() {
-        let on = toggle_ordered("* Project\n** TODO a\n", 0);
+        let on = toggle_ordered("* Project\n** TODO a\n", 0).unwrap();
         assert_eq!(on, "* Project\n:PROPERTIES:\n:ORDERED: t\n:END:\n** TODO a\n");
-        assert_eq!(toggle_ordered(&on, 2), "* Project\n** TODO a\n");
-        assert_eq!(toggle_ordered("* P\n:PROPERTIES:\n:ORDERED: nil\n:END:\n", 0), "* P\n:PROPERTIES:\n:ORDERED: t\n:END:\n");
+        assert_eq!(toggle_ordered(&on, 2).unwrap(), "* Project\n** TODO a\n");
+        assert!(toggle_ordered("preamble\n* H\n", 0).is_err());
+        assert_eq!(toggle_ordered("* P\n:PROPERTIES:\n:ORDERED: nil\n:END:\n", 0).unwrap(), "* P\n:PROPERTIES:\n:ORDERED: t\n:END:\n");
     }
 
     #[test]

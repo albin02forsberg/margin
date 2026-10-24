@@ -327,7 +327,7 @@ scheduled or due today or earlier stay, dimmed, so no deadline goes missing. `B`
 with a `blocked` chip; `blocked:yes` / `blocked:no` searches for them. Unknown IDs, done tasks and blocker cycles block nothing. Hovering the chip names the task it waits on; `W` opens that task.
 `Space x B` in a note picks an open task that the heading at the cursor waits for and adds it to its `:BLOCKER:`
 (the picked task gets an `:ID:` if it has none; one `Space n u` undoes both; one already listed changes nothing and says so),
-`Space x b` picks one of its blockers and removes it, and `Space x O` turns `:ORDERED:` on or off.
+`Space x b` picks one of its blockers and removes it, and `Space x O` turns `:ORDERED:` on or off. Both do nothing (and say so) when the cursor is above the first heading.
 Subtrees archived in place with an `:ARCHIVE:` tag (Emacs's `C-c C-x a`) are left out of Today, Tasks, reminders and the calendar feed, as in org's agenda; they stay in the note and in search.
 A time range (`<2026-10-16 Fri 10:00-11:00>`) shows as `10:00-11:00`; a date
 range (`<2026-10-19 Mon>--<2026-10-21 Wed>`) shows on each of its days with a
