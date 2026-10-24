@@ -681,7 +681,7 @@ describe("Tags", () => {
     await type("1:30");
     await browser.keys([Key.Ctrl, Key.Enter]);
     await find(".agenda .row .effort", "1h 30m");
-    await find(".agenda header .titles span", "~1h 30m / 8h planned");
+    await find(".agenda header .titles span", "~1h 30m"); // "/ 8h planned" only on a workday
     await fileMatches(join(d.notes, "effort.org"), (s) => s.endsWith(":PROPERTIES:\n:ID: e1\n:EFFORT: 1:30\n:END:\n"), "effort not added to the drawer");
   });
 
@@ -792,6 +792,23 @@ describe("Journal, archive and move", () => {
     await answer("Open journal for", "2021-03-04");
     await find(".status .file", "2021-03-04.org");
     await fileMatches(file, (s) => s.includes("#+title: 2021-03-04\n"), "journal for the chosen date not created");
+  });
+
+  it("Space n j logs a metric, Space n M shows its trend and Enter opens that journal day (#721)", async () => {
+    const day = isoDay(new Date()), file = f(join("daily", `${day}.org`));
+    await leader("nj");
+    await answer("Log metric", "mood");
+    await answer("mood today", "4");
+    await fileMatches(file, (s) => /^:PROPERTIES:\n:ID: +\S+\n:MOOD: 4\n:END:\n/.test(s), "metric not logged");
+    await leader("nJ");
+    await answer("Open journal for", "2020-01-01");
+    await find(".status .file", "2020-01-01.org");
+    await leader("nM");
+    await find(".metrics .stat .latest", "4");
+    await find(".metrics tr.sel td", day);
+    await browser.keys(Key.Enter);
+    await find(".status .file", `${day}.org`);
+    assert.equal((await texts(".metrics")).length, 0, "view still open");
   });
 
   it("A archives a task to <file>_archive and u restores both files", async () => {

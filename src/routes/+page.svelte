@@ -32,6 +32,7 @@
   import TableDialog from "$lib/TableDialog.svelte";
   import FormulaDialog from "$lib/FormulaDialog.svelte";
   import Drill from "$lib/Drill.svelte";
+  import Metrics from "$lib/Metrics.svelte";
   import { due as drillDue, grade as drillGrade, propValue as drillProps, type Card } from "$lib/drill";
   import Projects from "$lib/Projects.svelte";
   import Settings from "$lib/Settings.svelte";
@@ -79,6 +80,7 @@
   let tableDialog = $state<TableDialog>();
   let formulaDialog = $state<FormulaDialog>();
   let drill = $state<Drill>();
+  let metrics = $state<Metrics>();
   let mode = $state("normal");
   let words = $state("");
   /** Title of the heading the editor is narrowed to (Space v n), or "". */
@@ -1601,6 +1603,9 @@
     flash(`Logged ${name.trim()}: ${value.trim()}`);
   }
 
+  /** Trend of the logged daily metrics next to hours clocked (#721); Enter opens a journal day. */
+  const metricTrend = () => metrics!.open((days) => call("metric_trend", { days }), (d) => act(() => journal(d)));
+
   /** Move the previous entry's open checkboxes and TODO subtrees into today's journal (one undo step). */
   async function journalCarryOver() {
     const t = new Date(), today = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
@@ -2281,6 +2286,7 @@
     { label: "Journal: carry over open items from the previous entry", leader: "n k", run: () => act(journalCarryOver) },
     { label: "Add a line to today's journal", leader: "n e", run: journalEntry },
     { label: "Log a daily metric (mood, energy, sleep)", leader: "n j", run: journalMetric },
+    { label: "Journal: metrics trend (sparklines, hours clocked)", leader: "n M", run: metricTrend },
     { label: "Journal: draft summary of today (local model)", leader: "n s", run: draftSummary },
     { label: "Insert link to a note…", keys: ["Ctrl+L"], leader: "n i", ctx: "editor", run: insertLink },
     { label: "Show notes linking here", leader: "n b", run: () => { showBacklinks = !showBacklinks; return refreshBacklinks(); } },
@@ -2489,7 +2495,7 @@
   const closeDrawer = () => { showGraph = showBacklinks = showChat = false; };
 
   function onKey(e: KeyboardEvent) {
-    if (picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen() || tableDialog?.isOpen() || formulaDialog?.isOpen() || drill?.isOpen()) return;
+    if (picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen() || tableDialog?.isOpen() || formulaDialog?.isOpen() || drill?.isOpen() || metrics?.isOpen()) return;
     const inEditor = isText(tab) && view.contentDOM.contains(e.target as Node);
     if (e.key === "Escape" && !inEditor && drawerOpen()) { closeDrawer(); e.preventDefault(); return; }
     const idle = inEditor && ed.vimIdle(view);
@@ -2897,6 +2903,7 @@
 <TableDialog bind:this={tableDialog} />
 <FormulaDialog bind:this={formulaDialog} />
 <Drill bind:this={drill} />
+<Metrics bind:this={metrics} />
 
 <style>
   :global(html, body) { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: var(--fs-base) var(--sans); overflow: hidden; }

@@ -1357,6 +1357,34 @@ fn expected_hours_for(s: State<App>, dates: Vec<String>) -> Vec<f64> {
     expected_after_leave(&ds, &tc.cal, &leave, |d| if d == t { today_h } else { sessions.iter().filter(|x| x.date == d).map(|x| x.hours).sum() })
 }
 
+/// Journal metrics (config `metrics`, from the daily files' top drawers) over the last DAYS days,
+/// today included, with each day's hours clocked and expected (#721). Days with neither a journal
+/// file nor clocked time are left out.
+#[tauri::command(async)]
+fn metric_trend(s: State<App>, days: u32) -> org::MetricTrend {
+    let (c, tc, to) = (s.cfg(), s.tc(), today());
+    let from = to - Duration::days(i64::from(days.clamp(1, 3660)) - 1);
+    let in_range = |d: &NaiveDate| (from..=to).contains(d);
+    let mut props: std::collections::BTreeMap<NaiveDate, Vec<(String, String)>> = Default::default();
+    for f in s.files().iter().filter(|f| is_daily_path(&c.notes(), &c.daily_dir, &f.path)) {
+        let day = f.path.file_stem().and_then(|n| n.to_str()?.get(..10)?.parse::<NaiveDate>().ok());
+        if let Some(d) = day.filter(in_range) {
+            props.entry(d).or_default().extend(org::file_props(&f.text));
+        }
+    }
+    let mut hours: std::collections::HashMap<NaiveDate, f64> = Default::default();
+    for x in tc.sessions().into_iter().filter(|x| in_range(&x.date)) {
+        *hours.entry(x.date).or_default() += x.hours;
+        props.entry(x.date).or_default();
+    }
+    let dates: Vec<NaiveDate> = props.keys().copied().collect();
+    let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
+    let worked = |d: NaiveDate| hours.get(&d).copied().unwrap_or(0.0);
+    let expected = expected_after_leave(&dates, &tc.cal, &leave, worked);
+    let ds: Vec<org::MetricDay> = props.into_iter().zip(expected).map(|((date, props), expected)| org::MetricDay { date, props, hours: worked(date), expected }).collect();
+    org::metric_trend(&ds, &c.metrics)
+}
+
 /// What `dashboard` is built from, gathered by `tc_dashboard`.
 struct DashIn {
     today: NaiveDate,
@@ -2159,7 +2187,7 @@ pub fn run() {
             watcher::gnome_extension, watcher::screen_recording,
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
-            org_targets, org_tags, drill_cards, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
+            org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, org_stuck, notes_recent, notes_tags, notes_tagged, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tc_csv, tc_switch_profile, tc_import, backup_now,
