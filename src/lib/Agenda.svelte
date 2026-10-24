@@ -14,6 +14,8 @@
     spent?: number | null;
     /** Waits on an earlier sibling under `:ORDERED:` or an open `:BLOCKER:` task (#718). */
     blocked?: boolean;
+    /** The first open task it waits on. */
+    blocked_by?: { title: string; path: string; line: number } | null;
   };
   export type AgendaApi = {
     /** Run a task operation on IT (see ACTIONS; `keyword` sets ARG); resolves when the files are written. */
@@ -62,7 +64,7 @@
   ];
   const MORE: [string, string][] = [
     ["j / k", "Move selection"], ["*", "Mark / unmark (x s d # m < > + - A apply to all marked; Esc clears)"], ["< / >", "Reschedule a day earlier / later"], ["+ / -", "Raise / lower priority"],
-    ["Y", "Copy the list as text"], ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["B", "Show blocked tasks (else only ones due by today, dimmed)"], ["w", "Today: day plan on an hour grid (overlaps, free time)"], ["T", "Today: move all overdue tasks to a day"], ["H / L", "Board: move to the column left / right"], ["h / l", "Previous / next period"],
+    ["Y", "Copy the list as text"], ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["W", "Open the task a blocked task waits on"], ["B", "Show blocked tasks (else only ones due by today, dimmed)"], ["w", "Today: day plan on an hour grid (overlaps, free time)"], ["T", "Today: move all overdue tasks to a day"], ["H / L", "Board: move to the column left / right"], ["h / l", "Previous / next period"],
     [".", "Jump to today"], ["D", "Go to a date"], ["/", "Filter"], ["r", "Refresh"], ["?", "Toggle this help"],
   ];
 </script>
@@ -309,6 +311,8 @@
     });
   }
 
+  const waitsOn = (it: AgendaItem) => it.blocked_by ? `Waits on: ${it.blocked_by.title} (W opens it)` : "Waits on another task (:ORDERED: / :BLOCKER:)";
+
   /** Copy the shown (filtered) list as Markdown checkboxes; the week view groups by day. */
   async function copyList() {
     if (!shown.length) return api.flash("Nothing to copy");
@@ -344,6 +348,7 @@
       case "n": api.newTask(dayInput()); break;
       case "u": api.act(async () => { await api.undo(); await refresh(); }); break;
       case "c": if (mode === "agenda") setLog(!logOn); break;
+      case "W": if (selected?.blocked_by) { const { path, line } = selected.blocked_by; op("open", { ...selected, path, line }, undefined, false); } break;
       case "B": setBlocked(!blockedOn); break;
       case "w": if (mode === "agenda") setGrid(!(gridOn && span === 1)); break;
       case "T": if (mode === "agenda") api.act(async () => { await api.moveOverdue(); await refresh(); }); break;
@@ -398,7 +403,7 @@
     <div class="kmeta">
       {#each it.tags as t}<span class="tag">{t}</span>{/each}{#each it.inherited ?? [] as t}<span class="tag inh" title="Inherited">{t}</span>{/each}
       {@render effort(it)}
-      {#if it.blocked}<span class="blk-chip" title="Waits on another task (:ORDERED: / :BLOCKER:)">blocked</span>{/if}
+      {#if it.blocked}<span class="blk-chip" title={waitsOn(it)}>blocked</span>{/if}
       {#if dateChip(it.date)}<span class="meta">{dateChip(it.date)}</span>{/if}
       <span class="spacer"></span>
       <span class="cat">{it.category}</span>
@@ -415,7 +420,7 @@
     <span class="title">{it.title}</span>
     {#each it.tags as t}<span class="tag">{t}</span>{/each}{#each it.inherited ?? [] as t}<span class="tag inh" title="Inherited">{t}</span>{/each}
     <span class="spacer"></span>
-    {#if it.blocked}<span class="blk-chip" title="Waits on another task (:ORDERED: / :BLOCKER:)">blocked</span>{/if}
+    {#if it.blocked}<span class="blk-chip" title={waitsOn(it)}>blocked</span>{/if}
     {@render effort(it)}
     {#if it.habit}
       <span class="habit" title="Last {it.habit.bar.length} days: green done, amber due (not yet overdue), red overdue, grey not due">
