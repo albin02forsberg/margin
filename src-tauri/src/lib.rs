@@ -744,7 +744,7 @@ fn org_heading(s: State<App>, text: String, line: usize) -> Option<org::Parts> {
 /// Headline edits. OP: cycle (VALUE ±1) | keyword (VALUE or none) | priority (letter or none)
 /// | priority-cycle (±1) | tags ("a:b") | title (new text) | shift ("SCHEDULED 1")
 /// | effort ("0:30", "2h"; empty clears) | prop (a "KEY VALUE" per line; no VALUE removes KEY) | move ("SCHEDULED tomorrow": absolute date, keeps time and repeater)
-/// | blocker ("ID TITLE": append to `:BLOCKER:`) | ordered (toggle `:ORDERED:`).
+/// | blocker ("ID TITLE": append to `:BLOCKER:`) | unblocker (ID: drop from `:BLOCKER:`) | ordered (toggle `:ORDERED:`).
 #[tauri::command]
 fn org_edit(s: State<App>, text: String, line: usize, op: String, value: Option<String>) -> R<String> {
     org_edit_op(&text, line, &op, value, &s.kw(), timeclock::now(), s.cfg().log_done)
@@ -778,6 +778,7 @@ fn org_edit_op(text: &str, line: usize, op: &str, value: Option<String>, kw: &or
             let (id, title) = v.split_once(' ').unwrap_or((&v, ""));
             org::add_blocker(text, line, id, title.trim())?
         }
+        "unblocker" => org::remove_blocker(text, line, v.trim()),
         "ordered" => org::toggle_ordered(text, line),
         "tags" => org::set_tags(text, line, kw, v.split(':').map(|t| t.trim().to_string()).collect()),
         "shift" => {
@@ -1289,6 +1290,15 @@ fn notes_ensure_id(text: String) -> (String, String) {
 #[tauri::command]
 fn notes_heading_id(s: State<App>, text: String, line: usize) -> (String, String, String) {
     org::ensure_heading_id(&text, line, &s.kw())
+}
+
+/// `:BLOCKER:` entries of the heading at LINE of TEXT (PATH's buffer, which stands in for the indexed copy), with their tasks looked up.
+#[tauri::command]
+fn org_blockers(s: State<App>, path: PathBuf, text: String, line: usize) -> Vec<org::Dep> {
+    let mut files = s.files();
+    files.retain(|f| f.path != path);
+    files.insert(0, Arc::new(org::parse(&path, &text, &s.kw())));
+    org::heading_blockers(&text, line, &files)
 }
 
 #[tauri::command(async)]
@@ -2194,7 +2204,7 @@ pub fn run() {
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
-            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, org_stuck, notes_recent, notes_tags, notes_tagged, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id,
+            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, org_stuck, notes_recent, notes_tags, notes_tagged, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply
@@ -2368,6 +2378,8 @@ mod tests {
         assert_eq!(edit("* Task\n", "note", Some("hi")).unwrap(), "* Task\n- Note taken on [2026-01-08 Thu 09:00] \\\\\n  hi\n");
         assert!(edit("* Task\n", "note", Some(" ")).is_err());
         assert_eq!(edit("* Task\n", "blocker", Some("x1 Two words")).unwrap(), "* Task\n:PROPERTIES:\n:BLOCKER: [[id:x1][Two words]]\n:END:\n");
+        assert_eq!(edit("* Task\n:PROPERTIES:\n:BLOCKER: [[id:x1][Two words]] x2\n:END:\n", "unblocker", Some("x1")).unwrap(), "* Task\n:PROPERTIES:\n:BLOCKER: x2\n:END:\n");
+        assert_eq!(edit("* Task\n:PROPERTIES:\n:BLOCKER: x2\n:END:\n", "unblocker", Some("x2")).unwrap(), "* Task\n");
         assert_eq!(edit("* Task\n", "ordered", None).unwrap(), "* Task\n:PROPERTIES:\n:ORDERED: t\n:END:\n");
         let sched = "* Task\nSCHEDULED: <2026-01-08 Thu>\n";
         assert_eq!(edit(sched, "shift", Some("SCHEDULED 3")).unwrap(), "* Task\nSCHEDULED: <2026-01-11 Sun>\n");

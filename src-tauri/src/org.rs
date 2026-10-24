@@ -24,8 +24,12 @@ pub(crate) static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[(id|
 static TAGS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+(:[^\s]+:)\s*$").unwrap());
 static STATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^\s*- State "([^"]+)"\s+from .*?\[(\d{4}-\d{2}-\d{2})"#).unwrap());
 static CLOSED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"CLOSED:\s*\[(\d{4}-\d{2}-\d{2})(?:\s+[^\s\]\d]+)?(?:\s+(\d{1,2}:\d{2}))?[^\]]*\]\s*").unwrap());
-/// An id in a `:BLOCKER:` value: `[[id:x][desc]]` or a bare `x`.
-static BLOCKER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[id:([^\]]+)\](?:\[[^\]]*\])?\]|(\S+)").unwrap());
+/// An entry in a `:BLOCKER:` value: `[[id:x][desc]]` (id 1, desc 2) or a bare `x` (3).
+static BLOCKER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[id:([^\]]+)\](?:\[([^\]]*)\])?\]|(\S+)").unwrap());
+/// The id of a BLOCKER match.
+fn blocker_id<'a>(b: &regex::Captures<'a>) -> &'a str {
+    b.get(1).or(b.get(3)).unwrap().as_str()
+}
 static PROP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*:([^:\s]+):\s*(.*?)\s*$").unwrap());
 static EFFORT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(?:(\d{1,5}):(\d{2})|(?:(\d{1,5})\s*h)?\s*(?:(\d+)\s*m(?:in)?)?)$").unwrap());
 
@@ -285,7 +289,7 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
                 } else if c[1].eq_ignore_ascii_case("ORDERED") {
                     h.ordered = !matches!(c[2].to_lowercase().as_str(), "" | "nil");
                 } else if c[1].eq_ignore_ascii_case("BLOCKER") {
-                    h.blockers = BLOCKER.captures_iter(&c[2]).map(|b| b.get(1).or(b.get(2)).unwrap().as_str().to_string()).collect();
+                    h.blockers = BLOCKER.captures_iter(&c[2]).map(|b| blocker_id(&b).to_string()).collect();
                 }
             }
             continue;
@@ -1062,9 +1066,41 @@ pub fn add_blocker(text: &str, line: usize, id: &str, title: &str) -> Result<Str
     let lines = to_lines(text);
     if get_prop(&lines, line, "ID").as_deref() == Some(id) { return Err("A task can't block itself.".into()) }
     let old = get_prop(&lines, line, "BLOCKER").unwrap_or_default();
-    if BLOCKER.captures_iter(&old).any(|b| b.get(1).or(b.get(2)).unwrap().as_str() == id) { return Ok(text.to_string()) }
+    if BLOCKER.captures_iter(&old).any(|b| blocker_id(&b) == id) { return Ok(text.to_string()) }
     let link = format!("[[id:{id}][{}]]", title.replace(']', ")"));
     Ok(set_prop(text, line, "BLOCKER", Some(format!("{old} {link}").trim_start())))
+}
+
+/// Drop ID from the `:BLOCKER:` of the heading at LINE, keeping the other entries as written;
+/// the property goes when none remain. Unchanged when ID isn't listed.
+pub fn remove_blocker(text: &str, line: usize, id: &str) -> String {
+    let old = get_prop(&to_lines(text), line, "BLOCKER").unwrap_or_default();
+    let (keep, drop): (Vec<_>, Vec<_>) = BLOCKER.captures_iter(&old).partition(|b| blocker_id(b) != id);
+    if drop.is_empty() { return text.to_string() }
+    let v = keep.iter().map(|b| b.get(0).unwrap().as_str()).collect::<Vec<_>>().join(" ");
+    set_prop(text, line, "BLOCKER", Some(v.as_str()).filter(|v| !v.is_empty()))
+}
+
+/// A `:BLOCKER:` entry of a heading, resolved through the `:ID:` index (see heading_blockers).
+#[derive(Debug, Serialize, PartialEq)]
+pub struct Dep {
+    pub id: String,
+    /// The task's title, else the link's description, else the id.
+    pub title: String,
+    /// Where the task is; None when no heading has the id.
+    pub at: Option<(PathBuf, usize)>,
+}
+
+/// The `:BLOCKER:` entries of the heading at LINE of TEXT (duplicates once), looked up in FILES.
+pub fn heading_blockers(text: &str, line: usize, files: &[Arc<OrgFile>]) -> Vec<Dep> {
+    let old = get_prop(&to_lines(text), line, "BLOCKER").unwrap_or_default();
+    let mut seen = HashSet::new();
+    BLOCKER.captures_iter(&old).filter(|b| seen.insert(blocker_id(b).to_string())).map(|b| {
+        let id = blocker_id(&b);
+        let hit = files.iter().find_map(|f| f.headlines.iter().find(|h| h.id.as_deref() == Some(id)).map(|h| (f, h)));
+        let desc = b.get(2).map(|d| d.as_str()).filter(|d| !d.is_empty()).unwrap_or(id);
+        Dep { id: id.to_string(), title: hit.map_or(desc, |(_, h)| h.title.as_str()).to_string(), at: hit.map(|(f, h)| (f.path.clone(), h.line)) }
+    }).collect()
 }
 
 /// Turn `:ORDERED:` (children done in order) on (`t`) or off for the heading at LINE.
@@ -2203,6 +2239,29 @@ mod tests {
         assert!(blocked(&[Arc::new(parse(Path::new("/n/a.org"), &done, &kw()))], &kw()).contains_key(&(PathBuf::from("/n/a.org"), 0)));
         let both = done.replace("* TODO Dep B", "* DONE Dep B");
         assert!(blocked(&[Arc::new(parse(Path::new("/n/a.org"), &both, &kw()))], &kw()).is_empty());
+    }
+
+    #[test]
+    fn remove_blocker_keeps_the_rest() {
+        let a = "* TODO Ship\nSCHEDULED: <2026-10-24 Sat>\n:PROPERTIES:\n:ID: me\n:BLOCKER: [[id:a][Dep [A)]] bare [[id:b]]\n:END:\nbody\n";
+        assert_eq!(remove_blocker(a, 6, "a"), a.replace("[[id:a][Dep [A)]] ", ""));
+        assert_eq!(remove_blocker(a, 0, "bare"), a.replace(" bare", ""));
+        assert_eq!(remove_blocker(a, 0, "nope"), a);
+        let none = ["a", "bare", "b"].iter().fold(a.to_string(), |t, id| remove_blocker(&t, 0, id));
+        assert_eq!(none, "* TODO Ship\nSCHEDULED: <2026-10-24 Sat>\n:PROPERTIES:\n:ID: me\n:END:\nbody\n");
+        // The only property: the drawer goes too.
+        assert_eq!(remove_blocker("* T\n:PROPERTIES:\n:BLOCKER: x x\n:END:\n", 0, "x"), "* T\n");
+    }
+
+    #[test]
+    fn heading_blockers_resolve_titles() {
+        let a = "* TODO Ship\n:PROPERTIES:\n:BLOCKER: [[id:a][old name]] [[id:gone][Gone task]] bare [[id:a]] [[id:b]]\n:END:\n* TODO Dep A\n:PROPERTIES:\n:ID: a\n:END:\n";
+        let files = [Arc::new(parse(Path::new("/n/a.org"), a, &kw()))];
+        let d = heading_blockers(a, 1, &files);
+        let t: Vec<_> = d.iter().map(|d| (d.id.as_str(), d.title.as_str(), d.at.is_some())).collect();
+        assert_eq!(t, [("a", "Dep A", true), ("gone", "Gone task", false), ("bare", "bare", false), ("b", "b", false)]);
+        assert_eq!(d[0].at, Some((PathBuf::from("/n/a.org"), 4)));
+        assert!(heading_blockers(a, 4, &files).is_empty());
     }
 
     #[test]
