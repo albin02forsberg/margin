@@ -8,3 +8,9 @@ export const asUrl = (text: string) => {
   const t = text.trim();
   return /^(https?:\/\/|mailto:)[^\s\[\]]+$/i.test(t) ? t : null;
 };
+
+/** Like asUrl, but only http(s): the links a page title can be fetched for. */
+export const asWebUrl = (text: string) => {
+  const u = asUrl(text);
+  return u && /^https?:/i.test(u) ? u : null;
+};

@@ -12,7 +12,7 @@
   import { EditorView } from "@codemirror/view";
   import type { EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
-  import { linkFor, asUrl } from "$lib/weblink";
+  import { linkFor, asUrl, asWebUrl } from "$lib/weblink";
   import { bareTitle, bracketRetitle, findTarget, linkHeadings, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
@@ -972,6 +972,17 @@
     if (desc == null) return;
     if (sel) ed.replaceRange(view, sel.from, sel.to, linkFor(url, desc));
     else ed.insertText(view, linkFor(url, desc));
+    view.focus();
+  }
+
+  /** Space i U: the clipboard URL (else one asked for) as [[url][page title]]; a bare [[url]] when the title can't be fetched. */
+  async function insertTitledLink() {
+    if (!inFile()) return flash("Open a note first.");
+    const clip = await navigator.clipboard.readText().catch(() => "");
+    const url = asWebUrl(clip) ?? asWebUrl((await ask("Link address (http/https URL)", clip.trim().split(/\s/)[0])) ?? "");
+    if (!url) return view.focus();
+    const title = await call<string>("fetch_title", { url }).catch((e) => (flash(`No page title: ${e}`), ""));
+    ed.insertText(view, linkFor(url, title));
     view.focus();
   }
 
@@ -2556,6 +2567,7 @@
     }) },
     { label: "Insert web link…", leader: "i w", run: insertWebLink },
     { label: "Insert link to a note…", leader: "i l", run: insertLink },
+    { label: "Insert link to the clipboard URL with its page title", leader: "i U", run: insertTitledLink },
     { label: "Insert date…", leader: "i d", run: insertDate },
     { label: "Insert footnote (Enter on [fn:N] jumps there and back)", leader: "i f", run: () => inFile() && ed.insertFootnote(view) },
     { label: "Insert timestamp now (inactive)", leader: "i D", run: () => inFile() && ed.insertText(view, inactiveStamp(new Date())) },
