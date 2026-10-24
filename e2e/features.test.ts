@@ -681,7 +681,7 @@ describe("Tags", () => {
     await type("1:30");
     await browser.keys([Key.Ctrl, Key.Enter]);
     await find(".agenda .row .effort", "1h 30m");
-    await find(".agenda header .titles span", "~1h 30m / 8h planned");
+    await find(".agenda header .titles span", "~1h 30m"); // "/ 8h planned" only on a workday
     await fileMatches(join(d.notes, "effort.org"), (s) => s.endsWith(":PROPERTIES:\n:ID: e1\n:EFFORT: 1:30\n:END:\n"), "effort not added to the drawer");
   });
 
