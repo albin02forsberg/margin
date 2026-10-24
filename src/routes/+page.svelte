@@ -1643,6 +1643,25 @@
     if (h) await openFile(h.path, h.line);
   }
 
+  /** Space s o: lines of this note matching a search (words, "phrase", -word, /regex/), with heading paths; Enter jumps (#769). */
+  async function occur() {
+    if (!inFile()) return flash("Open a note first");
+    const text = view.state.doc.toString();
+    const l = await pick({
+      prompt: "Occur in this note",
+      hint: '"phrase" · -exclude · /regex/',
+      source: async (q) => {
+        if (!q.trim()) return [];
+        try {
+          return (await call<{ line: number; text: string; path: string[] }[]>("notes_occur", { text, query: q })).map((h) => ({ label: h.text, detail: `${h.path.map(bareTitle).join(" › ")}${h.path.length ? " · " : ""}line ${h.line + 1}`, value: h.line as unknown }));
+        } catch (e) {
+          return [{ label: String(e), dim: true, value: null as unknown }];
+        }
+      },
+    });
+    if (typeof l === "number") await openFile(tab.path!, l);
+  }
+
   async function refreshBacklinks() {
     const path = tab?.kind === "file" ? tab.path : null;
     [backlinks, mentions, graph] = await Promise.all([
@@ -2390,6 +2409,7 @@
   const cmds: Cmd[] = [
     { label: "Command palette", keys: ["Ctrl+K"], leader: "SPC", run: () => palette() },
     { label: "Open note…", keys: ["Ctrl+P"], leader: ".", run: quickOpen },
+    { label: "Search in this note (occur)…", leader: "s o", run: occur },
     { label: "Search in all notes", keys: ["Ctrl+Shift+F"], leader: "/", run: search },
     { label: "New task", keys: ["Ctrl+N"], leader: "a", run: () => newTask() },
     { label: "Capture with template…", leader: "c", run: captureTemplate },
@@ -2595,7 +2615,7 @@
     { label: "Export: time report (HTML/PDF)…", leader: "e t", run: exportReport },
   ];
 
-  const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", i: "Insert", T: "Table", m: "Bookmarks", t: "Time tracking", e: "Export", v: "Go to & view", b: "Tabs" };
+  const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", i: "Insert", T: "Table", m: "Bookmarks", s: "Search", t: "Time tracking", e: "Export", v: "Go to & view", b: "Tabs" };
   const leader: MenuNode[] = (() => {
     const root: MenuNode[] = Object.entries(GROUPS).map(([key, label]) => ({ key, label, children: [] }));
     for (const c of cmds) {
