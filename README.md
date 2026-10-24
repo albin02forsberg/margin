@@ -315,7 +315,7 @@ has a deadline or carries a next-action keyword (**Next-action keywords**, `stuc
 Plain headings such as `* Inbox` never count, and of nested stuck projects only the innermost is listed; Enter jumps to it.
 `Space x G` lists goals: headings with their own `:GOAL:` tag, each with the tasks below it done (`3/4 done (75%)`; a `CANCELLED`
 task drops out, nested goals count for both) and the days left to its target, `:TARGET: 2026-12-31` in its drawer or else its
-`DEADLINE:` (overdue or unreadable targets show in red) and the time clocked on it and its tasks (`3h 20m clocked`). Soonest target first; `:ARCHIVE:` goals are hidden; Enter jumps to it.
+`DEADLINE:` (overdue or unreadable targets show in red) and the time clocked on it and its tasks (`3h 20m clocked`). Soonest target first; Give a goal an `:ID:` and tasks elsewhere that link to it (`[[id:…]]` in their title or text) count too. `:ARCHIVE:` goals are hidden; Enter jumps to it.
 Task dependencies, as org's `:ORDERED:` and org-depend's `:BLOCKER:`: under a heading with `:ORDERED: t` in its drawer a
 subtask is blocked while an earlier sibling task is still open (nested orderings and the blocked task's own subtasks too),
 and a task with `:BLOCKER: [[id:…]]` (one or more `id:` links or bare IDs, in any file) is blocked while any of those tasks is open.

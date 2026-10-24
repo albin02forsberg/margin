@@ -662,13 +662,31 @@ pub struct Goal {
 /// The target is `:TARGET:`, else the heading's deadline. Soonest target first, then those without.
 /// SPENT gives the clocked minutes of a (category, title).
 pub fn goals(files: &[Arc<OrgFile>], kw: &Kw, today: NaiveDate, spent: &dyn Fn(&str, &str) -> Option<u32>) -> Vec<Goal> {
+    // The keyword of a heading that counts as a goal task (not archived, not CANCELLED).
+    fn task<'a>(h: &'a Headline, kw: &Kw) -> Option<&'a str> {
+        h.keyword.as_deref().filter(|k| !h.archived() && (!matches!(*k, "CANCELLED" | "CANCELED") || !kw.is_done(k)))
+    }
+    // `[[id:x]]` links by id -> (file, heading index) of the heading they sit under (a task's title or body).
+    let mut linked: HashMap<&str, HashSet<(usize, usize)>> = HashMap::new();
+    for (fi, f) in files.iter().enumerate() {
+        for l in f.links.iter().filter(|l| !l.file) {
+            if let Some(hi) = f.headlines.partition_point(|h| h.line <= l.line).checked_sub(1) {
+                linked.entry(&l.target).or_default().insert((fi, hi));
+            }
+        }
+    }
     let mut out = vec![];
-    for f in files {
+    for (fi, f) in files.iter().enumerate() {
         let hs = &f.headlines;
         for (i, g) in hs.iter().enumerate().filter(|(_, h)| h.tags.iter().any(|t| t == "GOAL") && !h.archived()) {
             let end = hs[i + 1..].iter().position(|h| h.level <= g.level).map_or(hs.len(), |p| i + 1 + p);
-            let ks = hs[i + 1..end].iter().filter(|h| !h.archived()).filter_map(|h| h.keyword.as_deref());
-            let ks: Vec<&str> = ks.filter(|k| !matches!(*k, "CANCELLED" | "CANCELED") || !kw.is_done(k)).collect();
+            let mut ks: Vec<&str> = hs[i + 1..end].iter().filter_map(|h| task(h, kw)).collect();
+            // Tasks elsewhere that link to the goal's :ID:.
+            for &(lf, hi) in g.id.as_deref().and_then(|id| linked.get(id)).into_iter().flatten() {
+                if lf != fi || !(i..end).contains(&hi) {
+                    ks.extend(task(&files[lf].headlines[hi], kw));
+                }
+            }
             let (total, done) = (ks.len(), ks.iter().filter(|k| kw.is_done(k)).count());
             let spent = [g].into_iter().chain(hs[i + 1..end].iter().filter(|h| h.keyword.is_some() && !h.archived())).filter_map(|h| spent(&h.category, &h.title)).sum();
             let parsed = g.target.as_ref().map(|t| t.parse::<NaiveDate>().ok());
@@ -2118,6 +2136,17 @@ mod tests {
         let want = [("Late", 0, 1, Some(0), Some(-23), false, 0), ("Launch", 3, 4, Some(75), Some(8), false, 60), ("Sub", 1, 1, Some(100), None, false, 30),
                     ("Empty", 0, 0, None, None, false, 0), ("Bad", 1, 1, Some(100), None, true, 0)];
         assert_eq!(g, want.map(|(t, d, n, p, l, b, s)| (t.to_string(), d, n, p, l, b, s)));
+    }
+
+    #[test]
+    fn goals_linked_tasks() {
+        let a = "* Launch :GOAL:\n:PROPERTIES:\n:ID: g1\n:END:\n** DONE in [[id:g1][me]]\n* Other :GOAL:\n:PROPERTIES:\n:ID: g2\n:END:\n** TODO own\n";
+        let b = "* DONE linked in title [[id:g1]]\n* TODO body link\nsee [[id:g1]] and again [[id:g1]]\n* TODO to other\nsee [[id:g2]]\n\
+                 * CANCELLED dropped [[id:g1]]\n* TODO parent\n** plain child [[id:g1]]\n* TODO archived :ARCHIVE:\n[[id:g1]]\n* Note [[id:g1]]\n";
+        let kw = Kw { done: vec!["DONE".into(), "CANCELLED".into()], ..kw() };
+        let fs = [Arc::new(parse(Path::new("/n/a.org"), a, &kw)), Arc::new(parse(Path::new("/n/b.org"), b, &kw))];
+        let g: Vec<_> = goals(&fs, &kw, d("2026-10-24"), &|_, _| None).into_iter().map(|g| (g.title, g.done, g.total)).collect();
+        assert_eq!(g, [("Launch".to_string(), 2, 3), ("Other".to_string(), 0, 2)]);
     }
 
     #[test]
