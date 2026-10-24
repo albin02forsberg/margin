@@ -6,6 +6,11 @@ export const BEGIN = "# review-begin", END = "# review-end";
 
 type Task = { title: string; category: string; date: string; closed?: string | null; effort?: number | null; spent?: number | null };
 type Hours = { project: string; worked: number };
+/** An `org_goals` row (#739). */
+export type Goal = { title: string; done: number; total: number; percent: number | null; days_left: number | null; bad_target: boolean };
+
+/** When a goal's target falls: "8d left", "3d overdue", "no target" or "bad target". */
+export const goalWhen = (g: Pick<Goal, "bad_target" | "days_left">) => g.bad_target ? "bad target" : g.days_left == null ? "no target" : g.days_left < 0 ? `${-g.days_left}d overdue` : `${g.days_left}d left`;
 
 /** ISO week of DAY (yyyy-mm-dd) as "2026-W43". */
 export function isoWeek(day: string) {
@@ -19,8 +24,8 @@ const list = (xs: string[], none: string) => (xs.length ? xs.map((x) => `- ${x}`
 const task = (t: Task) => `${t.title}${t.category ? ` (${t.category})` : ""}`;
 
 /** The generated part, between the BEGIN/END markers: DONE (doneLog rows, by close time; with their estimates vs clocked time), the week's HOURS
- *  per project (tc_dashboard `projects`), OVERDUE and NEXT (scheduled next week) tasks and the INBOX count. */
-export function reviewBody(done: Task[], hours: Hours[], overdue: Task[], next: Task[], inbox: number) {
+ *  per project (tc_dashboard `projects`), GOALS (section omitted without any), OVERDUE and NEXT (scheduled next week) tasks and the INBOX count. */
+export function reviewBody(done: Task[], hours: Hours[], overdue: Task[], next: Task[], inbox: number, goals: Goal[] = []) {
   const worked = hours.filter((h) => h.worked > 0), total = worked.reduce((a, h) => a + h.worked, 0);
   return [
     BEGIN,
@@ -30,6 +35,7 @@ export function reviewBody(done: Task[], hours: Hours[], overdue: Task[], next: 
     ...[estimateLine(done)].filter((l) => l !== null),
     `** Hours per project (${hm(total)})`,
     ...list(worked.map((h) => `${h.project}: ${hm(h.worked)}`), "no time tracked"),
+    ...(goals.length ? [`** Goals (${goals.length})`, ...goals.map((g) => `- ${g.title}: ${g.total ? `${g.done}/${g.total} done (${g.percent}%)` : "no tasks"}, ${goalWhen(g)}`)] : []),
     `** Overdue (${overdue.length})`,
     ...list(overdue.map((t) => `${task(t)}, since ${t.date}`), "nothing overdue"),
     `** Scheduled next week (${next.length})`,

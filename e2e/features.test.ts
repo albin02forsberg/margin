@@ -784,7 +784,7 @@ describe("Journal, archive and move", () => {
     const file = f(join("daily", `${isoDay(new Date())}.org`));
     await leader("tR");
     await find(".status .msg", "Weekly review written");
-    await fileMatches(file, (s) => /\n\* Weekly review \d{4}-W\d\d\n# review-begin\nInbox: \d+ entr/.test(s) && s.includes("# review-end\n** Went well\n** To change"), "review not written");
+    await fileMatches(file, (s) => /\n\* Weekly review \d{4}-W\d\d\n# review-begin\nInbox: \d+ entr/.test(s) && /\n\*\* Goals \(\d+\)\n- Ship v2: 1\/2 done \(50%\)/.test(s) && s.includes("# review-end\n** Went well\n** To change"), "review not written");
     await leader("tR");
     await find(".status .msg", "Weekly review written");
     await fileMatches(file, (s) => s.split("# review-begin").length === 2 && s.split("* Weekly review").length === 2, "re-run added a second block");

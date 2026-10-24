@@ -46,3 +46,11 @@ test("putReview keeps CRLF line endings", () => {
   const out = putReview("a\r\n# review-begin\r\nold\r\n# review-end\r\nb", "# review-begin\nnew\n# review-end")!;
   assert.equal(out, "a\r\n# review-begin\r\nnew\r\n# review-end\r\nb");
 });
+
+test("reviewBody lists goals between Hours and Overdue, and omits the section without any", () => {
+  const g = (title: string, done: number, total: number, days_left: number | null, bad_target = false) => ({ title, done, total, percent: total ? Math.round((100 * done) / total) : null, days_left, bad_target });
+  const body = reviewBody([], [], [], [], 0, [g("Launch", 2, 3, 8), g("Old", 0, 0, -3), g("Idea", 1, 1, null), g("Typo", 0, 1, null, true)]).split("\n");
+  const i = body.indexOf("** Goals (4)");
+  assert.deepEqual(body.slice(i - 1, i + 6), ["- no time tracked", "** Goals (4)", "- Launch: 2/3 done (67%), 8d left", "- Old: no tasks, 3d overdue", "- Idea: 1/1 done (100%), no target", "- Typo: 0/1 done (0%), bad target", "** Overdue (0)"]);
+  assert.ok(!reviewBody([], [], [], [], 0).includes("Goals"));
+});
