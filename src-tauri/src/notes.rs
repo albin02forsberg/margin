@@ -391,6 +391,23 @@ fn search_miss(f: &OrgFile, search: &str) -> Option<String> {
     }
 }
 
+/// 0-based line ranges of verbatim blocks (`#+begin_src|example|export` .. `#+end_`; unterminated runs to EOF).
+fn verbatim_lines(text: &str) -> Vec<std::ops::Range<usize>> {
+    let (mut out, mut start) = (vec![], None);
+    for (i, l) in text.lines().enumerate() {
+        let l = l.trim_start().to_ascii_lowercase();
+        match start {
+            None if ["#+begin_src", "#+begin_example", "#+begin_export"].iter().any(|b| l.starts_with(b)) => start = Some(i),
+            Some(s) if l.starts_with("#+end_") => (out.push(s..i + 1), start = None).0,
+            _ => {}
+        }
+    }
+    if let Some(s) = start {
+        out.push(s..usize::MAX);
+    }
+    out
+}
+
 /// Links in FILES (sources SKIP leaves out aren't scanned) that lead nowhere: `[[id:]]` to an unknown ID,
 /// `[[file:]]` to a missing file or to a `::*Heading` / `::#custom-id` it lacks, and same-file
 /// `[[*Heading]]` / `[[#custom-id]]`. Web and other links are left alone.
@@ -402,7 +419,9 @@ pub fn broken_links(files: &[Arc<OrgFile>], skip: impl Fn(&Path) -> bool) -> Vec
         let mut push = |line: usize, text: &str, target: String, reason: String| {
             out.push(Broken { path: f.path.clone(), title: f.title.clone(), line, text: text.to_string(), target, reason })
         };
-        for l in &f.links {
+        let blocks = verbatim_lines(&f.text);
+        let in_block = |i: usize| blocks.iter().any(|r| r.contains(&i));
+        for l in f.links.iter().filter(|l| !in_block(l.line)) {
             if !l.file {
                 let id = l.target.split("::").next().unwrap_or_default();
                 if !ids.contains(id) {
@@ -420,7 +439,7 @@ pub fn broken_links(files: &[Arc<OrgFile>], skip: impl Fn(&Path) -> bool) -> Vec
                 push(l.line, &l.text, format!("file:{}", l.target), r);
             }
         }
-        for (i, line) in f.text.lines().enumerate() {
+        for (i, line) in f.text.lines().enumerate().filter(|(i, _)| !in_block(*i)) {
             for c in SAME_FILE_LINK.captures_iter(line) {
                 if let Some(r) = search_miss(f, &c[1]) {
                     push(i, line.trim(), c[1].to_string(), r);
@@ -1050,7 +1069,7 @@ mod tests {
         let kw = Kw { todo: vec!["TODO".into()], done: vec!["DONE".into()] };
         let real = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
         let src = format!(
-            "[[id:a]] [[id:h]] [[id:nope]]\n[[file:gone.org]] [[file:a.org][A]] [[file:{real}]]\n[[file:sub/../a.org::*fix  IT]] [[file:a.org::*Missing]]\n[[file:a.org::#cid]] [[file:a.org::#other]] [[file:a.org::12]]\n[[*Here]] [[*There]] [[#mine]] [[https://x.org][web]]\n* Here [1/2]\n:PROPERTIES:\n:CUSTOM_ID: mine\n:END:\n"
+            "[[id:a]] [[id:h]] [[id:nope]]\n[[file:gone.org]] [[file:a.org][A]] [[file:{real}]]\n[[file:sub/../a.org::*fix  IT]] [[file:a.org::*Missing]]\n[[file:a.org::#cid]] [[file:a.org::#other]] [[file:a.org::12]]\n[[*Here]] [[*There]] [[#mine]] [[https://x.org][web]]\n* Here [1/2]\n:PROPERTIES:\n:CUSTOM_ID: mine\n:END:\n#+BEGIN_EXAMPLE\n[[*Nope]] [[file:gone.org]]\n#+end_example\n[[file:later.org]]\n"
         );
         let fs: Vec<_> = [
             ("/n/a.org", ":PROPERTIES:\n:ID: a\n:END:\n* TODO Fix it [1/3] :work:\n:PROPERTIES:\n:CUSTOM_ID: cid\n:END:\n* Sub\n:PROPERTIES:\n:ID: h\n:END:\n"),
@@ -1070,6 +1089,7 @@ mod tests {
                 (2, "file:a.org::*Missing", "no heading \"Missing\""),
                 (3, "file:a.org::#other", "no CUSTOM_ID \"other\""),
                 (4, "*There", "no heading \"There\""),
+                (12, "file:later.org", "file not found"),
             ]
         );
         assert!(b.iter().all(|b| b.path == Path::new("/n/s.org")));
