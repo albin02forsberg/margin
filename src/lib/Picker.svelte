@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type Item = { label: string; value: unknown; detail?: string; dim?: boolean };
+  export type Item = { label: string; value: unknown; detail?: string; dim?: boolean; warn?: boolean };
   export type PickOpts = {
     prompt: string;
     items?: (string | Item)[];
@@ -131,7 +131,7 @@
     {#if hasList}
       <ul bind:this={list} role="listbox">
         {#each filtered as it, i}
-          <li role="option" aria-selected={i === sel} class:sel={i === sel} class:dim={it.dim} onmousedown={(e) => { e.preventDefault(); done(it.value); }}>
+          <li role="option" aria-selected={i === sel} class:sel={i === sel} class:dim={it.dim} class:warn={it.warn} onmousedown={(e) => { e.preventDefault(); done(it.value); }}>
             <span>{it.label}</span>{#if it.detail}<small>{it.detail}</small>{/if}
           </li>
         {/each}
@@ -169,5 +169,6 @@
   li small { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; max-width: 50%; }
   li.empty { color: var(--dim); cursor: default; }
   li.dim > span { color: var(--dim); }
+  li.warn > small { color: var(--todo); }
   footer { padding: 6px 14px; font-size: var(--fs-xs); color: var(--dim); border-top: 1px solid var(--border); }
 </style>

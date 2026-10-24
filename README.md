@@ -311,6 +311,9 @@ Tracking time from a task (`I`, `Space x i`) offers its title first as what you'
 `Space x S` lists stuck projects, as org's `org-stuck-projects`: open tasks with open subtasks of which none is scheduled,
 has a deadline or carries a next-action keyword (**Next-action keywords**, `stuck_next_keywords`, default `NEXT` and `DOING`).
 Plain headings such as `* Inbox` never count, and of nested stuck projects only the innermost is listed; Enter jumps to it.
+`Space x G` lists goals: headings with their own `:GOAL:` tag, each with the tasks below it done (`3/4 done (75%)`; a `CANCELLED`
+task drops out, nested goals count for both) and the days left to its target, `:TARGET: 2026-12-31` in its drawer or else its
+`DEADLINE:` (overdue or unreadable targets show in red). Soonest target first; `:ARCHIVE:` goals are hidden; Enter jumps to it.
 Task dependencies, as org's `:ORDERED:` and org-depend's `:BLOCKER:`: under a heading with `:ORDERED: t` in its drawer a
 subtask is blocked while an earlier sibling task is still open (nested orderings and the blocked task's own subtasks too),
 and a task with `:BLOCKER: [[id:…]]` (one or more `id:` links or bare IDs, in any file) is blocked while any of those tasks is open.
@@ -485,6 +488,7 @@ Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`, `no` p
 | Space x B | Blocked by…: pick an open task the heading at the cursor waits for; appends an `[[id:…][title]]` link to its `:BLOCKER:` (adding an `:ID:` to the picked task when needed); `u` / Space n u undoes both. A task already listed changes nothing ("Already blocked by …") |
 | Space x b | Remove blocker…: pick one of the `:BLOCKER:` entries of the heading at the cursor and drop it (the property goes when none are left; the task it named keeps its `:ID:`); Space n u undoes |
 | Space x O | Toggle `:ORDERED: t` on the heading at the cursor (its subtasks then get done in order) |
+| Space x G | Goals: `:GOAL:` headings with tasks done below them and days to their `:TARGET:` (or deadline); Enter jumps to one |
 | Space x S | Stuck projects: open tasks with open subtasks but nothing scheduled, due or NEXT below them; Enter jumps to one |
 | Space x a | Archive every done task of the note to `<note>.org_archive` (top-most done subtrees, in order; repeaters and `:ARCHIVE:` subtrees stay); `u` / Space n u undoes both files |
 | Space n b | Notes linking here, plus unlinked mentions of this note's title (**Link** turns one into an `[[id:]]` link; Space n u undoes) |

@@ -739,6 +739,7 @@ describe("Journal, archive and move", () => {
         writeFileSync(join(notes, "narrow.org"), "* One\nalpha\n* Two\nbeta\n");
         writeFileSync(join(notes, "marks.org"), "* Intro\nx\n* Target\nfirst\nsecond\n");
         writeFileSync(join(notes, "stuck.org"), "* TODO Moving\n** NEXT Go\n* TODO Launch site\n** TODO Pick a host\n** TODO Write copy\n");
+        writeFileSync(join(notes, "goals.org"), "* Intro\n* Ship v2 :GOAL:\n:PROPERTIES:\n:TARGET: 2099-01-01\n:END:\n** DONE Spec it\n** TODO Build it\n");
         writeFileSync(join(notes, "drill.org"), drill);
         writeFileSync(join(notes, "ordered.org"), "* Move flat\n:PROPERTIES:\n:ORDERED: t\n:END:\n** TODO Book van\n** TODO Pack boxes\n");
         writeFileSync(join(notes, "blockers.org"), blockers);
@@ -950,6 +951,15 @@ describe("Journal, archive and move", () => {
     await answer("Stuck projects", "Launch");
     await find(".status .file", "stuck.org");
     await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("TODO Launch site")), { timeoutMsg: "didn't land on the project heading" });
+  });
+
+  it("Space x G lists goals with their progress and Enter jumps to the heading (#739)", async () => {
+    await leader("xG");
+    await find(".picker label span", "Goals");
+    await find(".picker", "1/2 done (50%)");
+    await answer("Goals", "Ship v2");
+    await find(".status .file", "goals.org");
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("Ship v2")), { timeoutMsg: "didn't land on the goal heading" });
   });
 
   it("an :ORDERED: project shows only its next task in Tasks; B shows the blocked one, x on the first reveals it (#718)", async () => {
