@@ -268,6 +268,7 @@ profile clocks out first, and warns where old files stay (nothing is moved).
 | Super+Shift+N | Quick capture from anywhere, even with the window hidden (`capture_shortcut` in settings) |
 | Ctrl+P | Open a note — or type a title to create one |
 | Ctrl+Shift+N | New note |
+| Space s o | Occur: list the lines of this note matching a search (same syntax, or `/regex/`) with their heading path; Enter jumps to one |
 | Ctrl+Shift+F | Search all notes as you type (lines with every word, in any order; `"quote"` a phrase, `-word` or `-"phrase"` to exclude, `in:folder` or `in:parent/child` to search one folder) |
 | Ctrl+L | Insert a link to another note or to any heading (a heading without an `:ID:` links as `[[file:note.org::*Heading]]`, or `[[*Heading]]` in the same note; a one-line selection becomes the link text; pasting a URL over a selection links it too) |
 | `Space m m` / `Space '` / `Space m d` | Bookmark the cursor under a name / jump to a bookmark / delete one. A bookmark remembers the heading above the cursor, so it still lands right after edits above it; when the heading is gone it falls back to the saved line and shows dimmed as stale (it is kept, also when the note is gone). Kept on this machine only, and follow a renamed or moved note or a renamed heading (undoing the rename puts the bookmark back) |

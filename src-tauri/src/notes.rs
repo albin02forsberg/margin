@@ -709,10 +709,77 @@ pub fn search(files: &[Arc<OrgFile>], root: &Path, query: &str, limit: usize) ->
     out
 }
 
+/// A matching line of one note (`Space s o`): 0-based line, its text and the heading path above it.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Occur {
+    pub line: usize,
+    pub text: String,
+    pub path: Vec<String>,
+}
+
+const OCCUR_LIMIT: usize = 500;
+
+/// Lines of `f` matching `query` as in `search` (`in:` ignored; no positive term lists nothing), or a
+/// case-insensitive regex when written `/re/`. Each hit carries its heading path. Errs on a bad regex.
+pub fn occur(f: &OrgFile, query: &str) -> Result<Vec<Occur>, String> {
+    let q = query.trim();
+    let re = match q.len() > 2 && q.starts_with('/') && q.ends_with('/') {
+        true => Some(Regex::new(&format!("(?i){}", &q[1..q.len() - 1])).map_err(|e| e.to_string())?),
+        false => None,
+    };
+    let pq = parse_query(q);
+    if re.is_none() && pq.include.is_empty() {
+        return Ok(vec![]);
+    }
+    let mut out = vec![];
+    for (i, l) in f.text.lines().enumerate() {
+        let l = l.trim_end_matches('\r');
+        let hit = match &re {
+            Some(re) => re.is_match(l),
+            None => {
+                let low = l.to_lowercase();
+                pq.include.iter().all(|t| low.contains(t.as_str())) && !pq.exclude.iter().any(|t| low.contains(t.as_str()))
+            }
+        };
+        if hit {
+            let mut path: Vec<String> = vec![];
+            let mut lvl = usize::MAX;
+            for h in f.headlines.iter().filter(|h| h.line <= i).rev() {
+                if h.level < lvl {
+                    lvl = h.level;
+                    path.insert(0, h.title.clone());
+                }
+            }
+            out.push(Occur { line: i, text: l.trim().to_string(), path });
+            if out.len() >= OCCUR_LIMIT {
+                break;
+            }
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::org::{parse, Kw};
+
+    #[test]
+    fn occur_matches_with_heading_paths() {
+        let kw = Kw { todo: vec![], done: vec![] };
+        let f = parse(Path::new("/n/a.org"), "intro foo\r\n* A\n** B\nfoo bar\nfoo -x\n* C\nFOO baz\n", &kw);
+        let o = occur(&f, "foo").unwrap();
+        assert_eq!(o.iter().map(|h| h.line).collect::<Vec<_>>(), [0, 3, 4, 6]);
+        assert_eq!(o[0].path, Vec::<String>::new());
+        assert_eq!(o[1].path, ["A", "B"]);
+        assert_eq!(o[3].path, ["C"]);
+        assert_eq!(o[0].text, "intro foo");
+        assert_eq!(occur(&f, "foo -bar in:x").unwrap().len(), 3);
+        assert_eq!(occur(&f, "\"foo bar\"").unwrap().len(), 1);
+        assert_eq!(occur(&f, "/^f.o\\s/").unwrap().len(), 3);
+        assert!(occur(&f, "/(/").is_err());
+        assert!(occur(&f, "").unwrap().is_empty());
+    }
 
     #[test]
     fn search_matches_every_term() {
