@@ -20,6 +20,10 @@ export function moveTo(keyword: string | null, dir: number, todo: string[], done
   return seq[i + dir] ?? null;
 }
 
+/** How many of ITEMS (blocked flag, keyword) an op moving them to TARGETS (see bulkTargets) would finish while still blocked (#729). */
+export const blockedDone = (items: { blocked?: boolean; keyword: string | null }[], targets: (string | null)[], done: string[]) =>
+  items.filter((x, i) => x.blocked && targets[i] && done.includes(targets[i]!) && !done.includes(x.keyword ?? "")).length;
+
 /** The keyword each task gets from a bulk OP over KEYWORDS (null = leave it alone). `done`: open tasks get the first
  *  DONE keyword and done ones stay, unless all are done, then all reopen to the first TODO (#654). `column`: ARG (-1/1)
  *  columns over, skipping tasks at the edge. `keyword`: ARG for every task. */

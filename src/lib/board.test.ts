@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bulkTargets, columns, moveTo } from "./board.ts";
+import { blockedDone, bulkTargets, columns, moveTo } from "./board.ts";
 
 const todo = ["TODO", "NEXT", "WAIT"], done = ["DONE", "CANCELLED"];
 const it = (title: string, keyword: string | null) => ({ title, keyword });
@@ -28,4 +28,12 @@ test("bulk targets: done closes only the open ones, reopens when all are done; c
   assert.deepEqual(bulkTargets("column", ["TODO", "DOING", "DONE"], "-1", todo, done), [null, "TODO", "DOING"]);
   assert.deepEqual(bulkTargets("keyword", ["TODO"], "DOING", todo, done), ["DOING"]);
   assert.deepEqual(bulkTargets("later", ["TODO"], undefined, todo, done), [null]);
+});
+
+test("blockedDone counts blocked tasks an op would finish", () => {
+  const it = (blocked: boolean, keyword: string) => ({ blocked, keyword });
+  const xs = [it(true, "TODO"), it(true, "DONE"), it(false, "TODO")];
+  assert.equal(blockedDone(xs, bulkTargets("done", ["TODO", "DONE", "TODO"], undefined, todo, done), done), 1);
+  assert.equal(blockedDone([it(true, "DONE")], bulkTargets("done", ["DONE"], undefined, todo, done), done), 0); // reopening
+  assert.equal(blockedDone([it(true, "TODO")], bulkTargets("column", ["TODO"], "1", todo, done), done), 0); // into DOING
 });

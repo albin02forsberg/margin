@@ -2249,6 +2249,7 @@
     act,
     moveOverdue,
     flash,
+    confirm: async (msg) => (await pick({ prompt: msg, items: [{ label: "Mark done anyway", value: "yes" }, { label: "Cancel", value: "no" }] })) === "yes",
     pickDate: async () => {
       const input = await datePick("Go to date");
       if (input == null || input === "rm") return null;
