@@ -126,6 +126,16 @@ pub fn locked<T>(f: impl FnOnce() -> T) -> T {
     f()
 }
 
+type Stamp = (std::time::SystemTime, u64);
+type Cached = HashMap<PathBuf, (Stamp, Vec<(usize, Event)>)>;
+/// Parsed events per log path, keyed on the file's (mtime, len). `Tc` is rebuilt per command, so
+/// it lives here. In-app writes also `forget`, for a rewrite that keeps both.
+static EVENTS: std::sync::Mutex<Option<Cached>> = std::sync::Mutex::new(None);
+
+fn events_cache<T>(f: impl FnOnce(&mut Cached) -> T) -> T {
+    f(EVENTS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new))
+}
+
 // ---------------------------------------------------------------- storage
 
 pub struct Tc {
@@ -154,14 +164,31 @@ impl Tc {
     }
 
     /// Events with their line index. Malformed lines are skipped (`doctor` reports them).
+    /// Cached (see `EVENTS`): stat before reading, so a write racing the read only causes a miss.
     pub fn events(&self) -> Vec<(usize, Event)> {
-        parse_events(&self.read_log())
+        let path = self.log_path();
+        let Some(stamp) = fs::metadata(&path).ok().and_then(|m| Some((m.modified().ok()?, m.len()))) else {
+            return parse_events(&self.read_log());
+        };
+        if let Some(ev) = events_cache(|c| c.get(&path).filter(|(s, _)| *s == stamp).map(|(_, ev)| ev.clone())) {
+            return ev;
+        }
+        let ev = parse_events(&self.read_log());
+        events_cache(|c| c.insert(path, (stamp, ev.clone())));
+        ev
+    }
+
+    /// Drop the cached events after writing the log.
+    fn forget(&self) {
+        events_cache(|c| c.remove(&self.log_path()));
     }
 
     fn append(&self, ev: &Event) -> Result<(), String> {
         fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
         let mut f = fs::OpenOptions::new().create(true).append(true).open(self.log_path()).map_err(|e| e.to_string())?;
-        writeln!(f, "{}", serde_json::to_string(ev).unwrap()).map_err(|e| e.to_string())
+        let r = writeln!(f, "{}", serde_json::to_string(ev).unwrap()).map_err(|e| e.to_string());
+        self.forget();
+        r
     }
 
     fn rewrite_line(&self, idx: usize, ev: &Event) -> Result<(), String> {
@@ -175,7 +202,9 @@ impl Tc {
         for (idx, ev) in evs {
             *lines.get_mut(*idx).ok_or("line not found")? = serde_json::to_string(ev).unwrap();
         }
-        crate::config::write_atomic(&self.log_path(), lines.join("\n") + "\n").map_err(|e| e.to_string())
+        let r = crate::config::write_atomic(&self.log_path(), lines.join("\n") + "\n").map_err(|e| e.to_string());
+        self.forget();
+        r
     }
 
     /// Sessions clocked on task OLD per project (see `rename_task`), on CATEGORY when it is a project
@@ -192,7 +221,9 @@ impl Tc {
 
     /// Rewrite the log via `normalize_log` (after a pull); true if it changed. Hold `locked`.
     pub fn normalize_log(&self) -> Result<bool, String> {
-        rewrite_with(&self.log_path(), normalize_log)
+        let r = rewrite_with(&self.log_path(), normalize_log);
+        self.forget();
+        r
     }
 
     /// Drop duplicate time off lines via `dedupe_lines` (after a pull); true if it changed.
@@ -362,7 +393,9 @@ impl Tc {
         let pair = [Event::In { t: start, project: project.into(), task: String::new() }, Event::Out { t: end, note: note.into() }];
         lines.splice(pos..pos, pair.iter().map(|e| serde_json::to_string(e).unwrap()));
         fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
-        crate::config::write_atomic(&self.log_path(), lines.join("\n") + "\n").map_err(|e| e.to_string())?;
+        let r = crate::config::write_atomic(&self.log_path(), lines.join("\n") + "\n").map_err(|e| e.to_string());
+        self.forget();
+        r?;
         append_diary(&self.diary, project, note, hours(end - start), end).map_err(|e| e.to_string())
     }
 
@@ -1907,6 +1940,35 @@ mod tests {
         let s = |h| vec![Session { date: d("2026-10-01"), project: "A".into(), desc: "x".into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None }];
         let rows = |h| csv(&s(h), &Projects::new(), (&[], &LeaveCodes::new()), &w(8.0), d("2026-10-01"), d("2026-10-01")).0.lines().count();
         assert_eq!((rows(0.0), rows(0.2), rows(0.3)), (1, 1, 2)); // default rounding is 0.5 h
+    }
+
+    #[test]
+    fn events_cached_until_log_changes() {
+        let dir = std::env::temp_dir().join(format!("tc-cache-{}", std::process::id()));
+        let tc = Tc { dir: dir.clone(), diary: dir.join("d.org"), cal: w(8.0) };
+        let _ = fs::remove_dir_all(&dir);
+        assert!(tc.events().is_empty()); // no log: nothing cached
+        fs::create_dir_all(&dir).unwrap();
+        let line = |p: &str| format!("{{\"ev\":\"in\",\"t\":\"2026-10-01T08:00:00\",\"project\":\"{p}\"}}\n");
+        fs::write(tc.log_path(), line("A")).unwrap();
+        let proj = |tc: &Tc| tc.events().iter().map(|(_, e)| match e { Event::In { project, .. } => project.clone(), _ => "-".into() }).collect::<Vec<_>>();
+        assert_eq!(proj(&tc), ["A"]);
+        // Same length and mtime: a hit, the edit isn't seen.
+        let mtime = fs::metadata(tc.log_path()).unwrap().modified().unwrap();
+        fs::write(tc.log_path(), line("B")).unwrap();
+        fs::File::options().write(true).open(tc.log_path()).unwrap().set_modified(mtime).unwrap();
+        assert_eq!(proj(&tc), ["A"]);
+        // A changed mtime is a miss.
+        fs::File::options().write(true).open(tc.log_path()).unwrap().set_modified(mtime + std::time::Duration::from_secs(1)).unwrap();
+        assert_eq!(proj(&tc), ["B"]);
+        // In-app writes forget it even when (mtime, len) stays put.
+        let mtime = fs::metadata(tc.log_path()).unwrap().modified().unwrap();
+        tc.rewrite_line(0, &Event::In { t: dt("2026-10-01 08:00"), project: "C".into(), task: String::new() }).unwrap();
+        fs::File::options().write(true).open(tc.log_path()).unwrap().set_modified(mtime).unwrap();
+        assert_eq!(proj(&tc), ["C"]);
+        tc.append(&Event::Out { t: dt("2026-10-01 09:00"), note: String::new() }).unwrap();
+        assert_eq!(proj(&tc), ["C", "-"]);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
