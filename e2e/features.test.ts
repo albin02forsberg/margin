@@ -974,7 +974,7 @@ describe("Journal, archive and move", () => {
     await browser.waitUntil(async () => (await texts(".agenda .row:not(.blocked) .title")).includes("Pack boxes"), { timeoutMsg: "next task didn't appear" });
   });
 
-  it("Space x B adds a :BLOCKER: link (target gets an :ID:), Space x O toggles :ORDERED:, Space n u undoes each (#727)", async () => {
+  it("Space x B adds a :BLOCKER: link (target gets an :ID:), Space x O toggles :ORDERED:, Space n u undoes each (#727); twice says so, Space x b removes it (#736)", async () => {
     await browser.keys(Key.Escape);
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "blockers");
@@ -987,6 +987,22 @@ describe("Journal, archive and move", () => {
     await answer("Blocked by", "Write spec");
     await fileMatches(f("blockers.org"), (s) => /^\* TODO Write spec\n:PROPERTIES:\n:ID: (\S+)\n:END:\n\* TODO Ship it\n:PROPERTIES:\n:BLOCKER: \[\[id:\1\]\[Write spec\]\]\n:END:\n\* Phases\n/.test(s), "blocker or target id not written");
     await find(".status .msg", "Blocked by Write spec");
+    // Again: nothing changes and it says so (#736)
+    const once = readFileSync(f("blockers.org"), "utf8");
+    await browser.keys([Key.Ctrl, Key.Shift, "o"]);
+    await answer("Go to heading", "Ship it");
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("TODO Ship it")), { timeoutMsg: "cursor not back on the heading" });
+    await leader("xB");
+    await answer("Blocked by", "Write spec");
+    await find(".status .msg", "Already blocked by Write spec");
+    await fileMatches(f("blockers.org"), (s) => s === once, "adding it twice changed the file");
+    // Space x b drops it again; the target keeps its :ID:, Space n u restores the link
+    await leader("xb");
+    await answer("Unblock from", "Write spec");
+    await fileMatches(f("blockers.org"), (s) => !s.includes(":BLOCKER:") && s.includes("* TODO Ship it\n* Phases\n") && /:ID: \S+/.test(s), "blocker not removed");
+    await find(".status .msg", "No longer blocked by Write spec");
+    await leader("nu");
+    await fileMatches(f("blockers.org"), (s) => s === once, "undo didn't restore the blocker");
     await browser.keys([Key.Ctrl, Key.Shift, "o"]);
     await answer("Go to heading", "Phases");
     await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("* Phases")), { timeoutMsg: "cursor not on Phases" });
