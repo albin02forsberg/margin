@@ -12,6 +12,8 @@
     body?: string;
     initial?: string;
     allowCustom?: boolean;
+    /** Single keys that pick a value while the query is empty (one-keypress prompts). */
+    keys?: Record<string, unknown>;
   };
 
   /** Orderless fuzzy match: every space-separated word must match as a subsequence. */
@@ -101,6 +103,7 @@
   function key(e: KeyboardEvent) {
     const c = e.ctrlKey || e.metaKey;
     if (e.key === "Escape") done(null);
+    else if (o.keys && !query && !c && !e.altKey && Object.hasOwn(o.keys, e.key)) done(o.keys[e.key]);
     else if (e.key === "Enter") {
       const custom = o.allowCustom ?? !hasList;
       if (!hasList || ((c || e.shiftKey) && custom)) done(query);

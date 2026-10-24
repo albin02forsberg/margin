@@ -349,6 +349,12 @@ then only shows what you finished from the board in this session.
 open task scheduled before today (the "Scheduled 3d ago" ones) to one day you pick, keeping
 each task's time and repeater; deadlines, habits and done tasks are left alone. One `u` undoes the whole move.
 
+`Space t q` (**Today: evening shutdown**) walks today's open scheduled, due and overdue tasks one
+at a time, one key each: `x` done, `t` tomorrow, `w` next week (Monday), `s` pick a date, `n` or
+space leave it, `Esc` stops (what you already did stays). Moves keep time and repeater; each step is
+its own undo (`Space n u`). At the end it shows `Done 2, moved 1 · 6h 30m clocked of 8h 00m` and
+can add that line to today's journal.
+
 `*` in Today or Tasks marks the selected task (and moves down), like org agenda's marks;
 the header shows how many are marked and `Esc` clears them. While tasks are marked, `x`
 (done), `>`/`<` (reschedule), `+`/`-` (priority), `A` (archive), the board's `H`/`L`, and

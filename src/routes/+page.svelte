@@ -42,7 +42,8 @@
   import { chatContext } from "$lib/chatctx";
   import { bugReportUrl, isError, osName } from "$lib/bugreport";
   import { notesText, notesTitle, notesToShow, type Notes } from "$lib/whatsnew";
-  import { dayTime, focusLeft, inactiveStamp, naive, parseWhen } from "$lib/clock";
+  import { dayTime, focusLeft, inactiveStamp, naive, parseWhen, worked, type WeekDay } from "$lib/clock";
+  import { shutdownKeys, shutdownTasks, summarise, type ShutdownAction } from "$lib/shutdown";
   import { parseSession, type Entry } from "$lib/session";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
   import { wordCount, wordsLabel } from "$lib/words";
@@ -982,6 +983,41 @@
     if (input == null) return;
     await recorded(async () => { for (const [path, line] of due) await edit({ path, line }, "move", `SCHEDULED ${input}`); });
     flash(`Moved ${n} — u (or Space n u) undoes.`);
+  }
+
+  /** Evening shutdown (#757): today's open scheduled/due tasks one keypress each (done, tomorrow, next week, a date, leave),
+   *  each step one undo group; Esc stops (applied steps stay). Ends with a summary that can go into today's journal. */
+  async function shutdown() {
+    const t = new Date(), today = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+    const tasks = shutdownTasks(await call<AgendaItem[]>("agenda", { start: today, days: 1 }), kw().todo);
+    if (!tasks.length) return flash("Nothing left for today.");
+    const label = { done: "Done", tomorrow: "Tomorrow", week: "Next week (Monday)", date: "Pick a date…", skip: "Leave it" };
+    const keyOf = Object.fromEntries(Object.entries(shutdownKeys).map(([k, a]) => [a, k]));
+    const items = (Object.keys(label) as ShutdownAction[]).map((a) => ({ label: `${keyOf[a]}  ${label[a]}`, value: a }));
+    let done = 0, moved = 0, stopped = false;
+    for (const [i, it] of tasks.entries()) {
+      const a: ShutdownAction | null = await pick({ prompt: `Shutdown ${i + 1}/${tasks.length}: ${it.title}`, items, keys: shutdownKeys, hint: `${it.plan === "DEADLINE" ? "due" : "scheduled"} · ${rel(it.path)}` });
+      if (!a) { stopped = true; break; }
+      if (a === "skip") continue;
+      const input = a === "tomorrow" ? "tomorrow" : a === "week" ? "mon" : a === "date" ? await datePick(`Move “${it.title}” to`, false, it.plan, false) : null;
+      if (a !== "done" && input == null) continue;
+      const loc = { path: it.path, line: it.line }, before = (await textOf(it.path)).split("\n").length;
+      try {
+        if ((await heading(loc))?.title !== it.title) { flash(`⚠ “${it.title}” changed meanwhile; skipped.`); continue; }
+        await recorded(() => (a === "done" ? edit(loc, "keyword", kw().done[0]) : edit(loc, "move", `${it.plan} ${input}`)));
+        if (a === "done") done++; else moved++;
+      } catch (e) { flash(`⚠ ${e}; skipped.`); continue; }
+      // A done repeater can add log lines: keep the later tasks of this file on their headings.
+      const delta = (await textOf(it.path)).split("\n").length - before;
+      if (delta) for (const o of tasks.slice(i + 1)) if (o.path === it.path && o.line > it.line) o.line += delta;
+    }
+    const tc = await call<{ week: WeekDay[] }>("tc_dashboard").catch(() => ({ week: [] as WeekDay[] }));
+    const sum = summarise(done, moved, worked(tc.week, today));
+    if (stopped) return flash(`Shutdown stopped: ${sum}`);
+    if (!(await pick({ prompt: sum, items: [{ label: "Add to today's journal", value: true }, { label: "Close", value: false }] }))) return;
+    const path: string = await call("capture_path", { file: journalFile(), journal: true });
+    await recorded(() => toFile(path, (text) => call("capture_insert", { text, heading: null, entry: `* ${pad(t.getHours())}:${pad(t.getMinutes())} Shutdown: ${sum}` })));
+    flash("Shutdown summary added to today's journal.");
   }
 
   async function editTags(loc: Loc) {
@@ -2529,6 +2565,7 @@
     { label: "Time: log a past session…", leader: "t n", run: t("logSession") },
     { label: "Time: update dynamic blocks (#+BEGIN: clocktable / tasks) in this note", leader: "t u", run: () => act(updateClockTables) },
     { label: "Weekly review into today's journal (re-run replaces the marked block)", leader: "t R", run: () => act(weeklyReview) },
+    { label: "Today: evening shutdown (walk today's open tasks: done, tomorrow, next week…)", leader: "t q", run: () => act(shutdown) },
     { label: "Time: estimates vs actuals (how far off are my :EFFORT: guesses?)…", leader: "t A", run: () => act(estimateReport) },
     { label: "Time: day timeline (sessions, tasks closed, notes edited)…", leader: "t T", run: () => act(dayTimeline) },
     { label: "Time: when do I work? (weekday x hour heatmap)", leader: "t H", run: t("rhythm") },
