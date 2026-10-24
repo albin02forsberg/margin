@@ -704,7 +704,7 @@ fn org_stuck(s: State<App>) -> Vec<org::Stuck> {
 /// `:GOAL:` headings with the progress of their subtasks (see org::goals).
 #[tauri::command(async)]
 fn org_goals(s: State<App>) -> Vec<org::Goal> {
-    org::goals(&s.files(), &s.kw(), today())
+    org::goals(&s.files(), &s.kw(), today(), &*spent_lookup(&s))
 }
 
 /// (path, line) of open tasks scheduled before today (see org::overdue_scheduled).
