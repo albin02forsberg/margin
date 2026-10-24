@@ -22,6 +22,7 @@
   import { buildTimeline, timelineMarkdown, type Entry as TimelineEntry } from "$lib/timeline";
   import { clockBlocks } from "$lib/clocktable";
   import { pickStale } from "$lib/stale";
+  import { lineDiff } from "$lib/linediff";
   import { ago, changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath, weekJournals } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
@@ -1446,6 +1447,23 @@
     if (r) await openFile(r as string);
   }
 
+  /** Space n V: the open note's git commits; pick one to see its diff against the buffer, then restore it (an undoable edit) or copy it (#768). */
+  async function noteHistory() {
+    if (!inFile()) return flash("Open a note first.");
+    const t = tab, now = Date.now() / 1000;
+    let revs: [string, number, string, number, number, string][];
+    try { revs = await call("note_history", { path: t.path }); } catch (e) { return flash(`${e}`); }
+    if (!revs.length) return flash("No commits touch this note yet.");
+    const r = await pick({ prompt: "Note history", items: revs.map(([sha, time, subject, add, del, old]) => ({ label: subject || sha.slice(0, 8), detail: `${ago(time, now)} · +${add} −${del} · ${sha.slice(0, 8)}`, value: [sha, old] as unknown })) });
+    if (!r || t !== tab) return;
+    const [sha, old] = r as [string, string];
+    const text: string = await call("note_version", { path: t.path, sha, old });
+    const how = await pick({ prompt: `Version ${sha.slice(0, 8)}`, hint: "− now  + that version", body: lineDiff(view.state.doc.toString(), text) || "(same as now)", keys: { r: "restore", c: "copy" },
+      items: [{ label: "Restore it into the editor (u undoes)", value: "restore" }, { label: "Copy its text", value: "copy" }] });
+    if (how === "copy") return navigator.clipboard.writeText(text).then(() => flash(`Copied version ${sha.slice(0, 8)}`), () => flash("Couldn't copy to the clipboard."));
+    if (how === "restore" && t === tab) { ed.applyText(view, text); flash(`Restored version ${sha.slice(0, 8)} (u undoes)`); }
+  }
+
   /** Review the due `:drill:` flashcards (#703); each grade writes the card's schedule to its drawer (undo: Space n u). */
   async function reviewDrill() {
     const t = new Date(), today = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
@@ -2455,6 +2473,7 @@
     { label: "Notes: recently changed…", leader: "n C", run: recentlyChanged },
     { label: "Notes: open a random note, older ones likelier", leader: "n *", run: () => staleNotes(true) },
     { label: "Notes: stale notes (untouched for a year)…", leader: "n Z", run: () => staleNotes(false) },
+    { label: "Note: history (git commits; diff, restore, copy)…", leader: "n V", run: () => act(noteHistory) },
     { label: "Notes: browse by tag…", leader: "n T", run: browseTags },
     { label: "People: a person's open tasks and mentions (@name)…", leader: "n @", run: personView },
     { label: "Flashcards: review due :drill: headings", leader: "n d", run: reviewDrill },
