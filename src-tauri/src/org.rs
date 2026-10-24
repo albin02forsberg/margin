@@ -681,6 +681,13 @@ pub struct Goal {
     pub spent: u32,
 }
 
+/// A `:TARGET:` / `:START:` value: `YYYY-MM-DD`, optionally inside `<>` or `[]` with a weekday/time after.
+fn prop_date(t: &str) -> Option<NaiveDate> {
+    let t = t.trim();
+    let t = t.strip_prefix(['<', '[']).map_or(t, |r| r.strip_suffix(['>', ']']).unwrap_or(r));
+    t.parse().ok().or_else(|| t.get(..10).filter(|_| t.as_bytes().get(10).is_some_and(|b| b.is_ascii_whitespace())).and_then(|d| d.parse().ok()))
+}
+
 /// Headings with their own `:GOAL:` tag (not archived) and the progress of the tasks in their subtree
 /// (nested goals count for both). A done keyword named CANCELLED (or CANCELED) drops out of the total.
 /// The target is `:TARGET:`, else the heading's deadline. Soonest target first, then those without.
@@ -713,7 +720,7 @@ pub fn goals(files: &[Arc<OrgFile>], kw: &Kw, today: NaiveDate, spent: &dyn Fn(&
             }
             let (total, done) = (ks.len(), ks.iter().filter(|k| kw.is_done(k)).count());
             let spent = [g].into_iter().chain(hs[i + 1..end].iter().filter(|h| h.keyword.is_some() && !h.archived())).filter_map(|h| spent(&h.category, &h.title)).sum();
-            let parsed = g.target.as_ref().map(|t| t.parse::<NaiveDate>().ok());
+            let parsed = g.target.as_deref().map(prop_date);
             let target = parsed.unwrap_or_else(|| g.deadline.as_ref().map(|d| d.date));
             out.push(Goal {
                 path: f.path.clone(),
@@ -725,7 +732,7 @@ pub fn goals(files: &[Arc<OrgFile>], kw: &Kw, today: NaiveDate, spent: &dyn Fn(&
                 target,
                 days_left: target.map(|t| (t - today).num_days()),
                 bad_target: parsed == Some(None),
-                status: goal_status(g.start.as_ref().and_then(|t| t.parse().ok()), target, today, done, total),
+                status: goal_status(g.start.as_deref().and_then(prop_date), target, today, done, total),
                 spent,
             });
         }
@@ -2161,6 +2168,17 @@ mod tests {
         let want = [("Late", 0, 1, Some(0), Some(-23), false, 0), ("Launch", 3, 4, Some(75), Some(8), false, 60), ("Sub", 1, 1, Some(100), None, false, 30),
                     ("Empty", 0, 0, None, None, false, 0), ("Bad", 1, 1, Some(100), None, true, 0)];
         assert_eq!(g, want.map(|(t, d, n, p, l, b, s)| (t.to_string(), d, n, p, l, b, s)));
+    }
+
+    #[test]
+    fn goals_date_forms() {
+        let doc = "* A :GOAL:\n:PROPERTIES:\n:TARGET: <2026-11-01 Sun>\n:START: [2026-10-01 Thu 09:00]\n:END:\n** TODO t\n\
+                   * B :GOAL:\n:PROPERTIES:\n:TARGET: [2026-11-01]\n:END:\n* C :GOAL:\n:PROPERTIES:\n:TARGET: 2026-11-01x\n:END:\n* D :GOAL:\n:PROPERTIES:\n:TARGET: <someday>\n:END:\n";
+        let kw = kw();
+        let f = Arc::new(parse(Path::new("/n/g.org"), doc, &kw));
+        let g: Vec<_> = goals(&[f], &kw, d("2026-10-24"), &|_, _| None).into_iter().map(|g| (g.title, g.days_left, g.bad_target, g.status.is_some())).collect();
+        let t = |s: &str, l, b, st| (s.to_string(), l, b, st);
+        assert_eq!(g, [t("A", Some(8), false, true), t("B", Some(8), false, false), t("C", None, true, false), t("D", None, true, false)]);
     }
 
     #[test]

@@ -314,7 +314,7 @@ Tracking time from a task (`I`, `Space x i`) offers its title first as what you'
 has a deadline or carries a next-action keyword (**Next-action keywords**, `stuck_next_keywords`, default `NEXT` and `DOING`).
 Plain headings such as `* Inbox` never count, and of nested stuck projects only the innermost is listed; Enter jumps to it.
 `Space x G` lists goals: headings with their own `:GOAL:` tag, each with the tasks below it done (`3/4 done (75%)`; a `CANCELLED`
-task drops out, nested goals count for both) and the days left to its target, `:TARGET: 2026-12-31` in its drawer or else its
+task drops out, nested goals count for both) and the days left to its target, `:TARGET: 2026-12-31` (or an org timestamp like `<2026-12-31 Thu>`) in its drawer or else its
 `DEADLINE:` (overdue or unreadable targets show in red) and the time clocked on it and its tasks (`3h 20m clocked`). Give a goal an
 `:ID:` and tasks elsewhere that link to it (`[[id:…]]` in their title or text) count too. Add `:START: 2026-10-01` and the goal reads
 `on track`, or `at risk` (red) when the tasks done trail the share of time elapsed up to the target by more than 10 points (no chip
