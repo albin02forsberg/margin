@@ -17,6 +17,8 @@ const now = new Date();
 export const pad = (n: number) => String(n).padStart(2, "0");
 export const isoDay = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 export const orgDay = (d: Date) => `${isoDay(d)} ${d.toLocaleDateString("en-US", { weekday: "short" })}`;
+/** The first Mon-Fri day on or after today (weekends carry no expected hours). */
+export const nextWeekday = () => { const d = new Date(); while ([0, 6].includes(d.getDay())) d.setDate(d.getDate() + 1); return d; };
 export const today = `<${orgDay(now)}>`;
 
 export type Dirs = { root: string; notes: string; data: string; cfgDir: string; exportDir: string };
