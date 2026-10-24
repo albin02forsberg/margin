@@ -2198,9 +2198,9 @@ mod tests {
         let f = parse(Path::new("/n/a.org"), &two, &kw());
         assert_eq!(f.headlines[0].blockers, ["a", "b"]);
         let bl = blocked(&[Arc::new(f)], &kw());
-        assert!(bl.contains(&(PathBuf::from("/n/a.org"), 0)));
+        assert!(bl.contains_key(&(PathBuf::from("/n/a.org"), 0)));
         let done = two.replace("* TODO Dep A", "* DONE Dep A");
-        assert!(blocked(&[Arc::new(parse(Path::new("/n/a.org"), &done, &kw()))], &kw()).contains(&(PathBuf::from("/n/a.org"), 0)));
+        assert!(blocked(&[Arc::new(parse(Path::new("/n/a.org"), &done, &kw()))], &kw()).contains_key(&(PathBuf::from("/n/a.org"), 0)));
         let both = done.replace("* TODO Dep B", "* DONE Dep B");
         assert!(blocked(&[Arc::new(parse(Path::new("/n/a.org"), &both, &kw()))], &kw()).is_empty());
     }
