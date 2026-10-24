@@ -1,8 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { block, expandSnippet, snippetAt } from "./snippet.ts";
+import { block, expandSnippet, snippetAt, snippetPrompts, type Expansion } from "./snippet.ts";
 
 const now = new Date(2026, 9, 12, 9, 5); // Mon
+
+test("%^{Name} prompts: answered in the same pass, repeated names share an answer", () => {
+  assert.deepEqual(snippetPrompts("a %^{Who} %^{What} %^{Who} %%^{x} %^{}"), ["Who", "What"]);
+  assert.equal(expandSnippet("Hi %^{Who}, %^{Who}!%?", "", now, { Who: "Bo" }).text, "Hi Bo, Bo!");
+  assert.equal(expandSnippet("%^{a}|%?", "", now, { a: "50%u off %?" }).text, "50%u off %?|");
+  assert.equal(expandSnippet("x%?%^{a}", "", now, { a: "yz" }).cursor, 1);
+  assert.equal(expandSnippet("%%^{x} %^{}", "", now, {}).text, "%^{x} %^{}");
+  assert.deepEqual(snippetAt("  <hi", [{ key: "hi", text: "%^{N}" }]), { ask: ["N"], text: "%^{N}", indent: "  " });
+});
 
 test("built-in blocks: cursor after `src ` or on the middle line, indent kept", () => {
   assert.deepEqual(snippetAt("<s", []), { text: "#+begin_src \n\n#+end_src", cursor: 12 });
@@ -19,7 +28,7 @@ test("no match falls through (null): unknown keys, headings, text around the key
 test("user snippets win over built-ins and expand placeholders, indent and cursor", () => {
   const user = [{ key: "s", text: "mine" }, { key: "mtg", text: "* Meeting %u\n- %?\n\nat %T, 100%%" }];
   assert.deepEqual(snippetAt("<s", user, now), { text: "mine", cursor: 4 });
-  const e = snippetAt("  <mtg", user, now)!;
+  const e = snippetAt("  <mtg", user, now) as Expansion;
   assert.equal(e.text, "  * Meeting [2026-10-12 Mon]\n  - \n\n  at <2026-10-12 Mon 09:05>, 100%");
   assert.equal(e.text.slice(0, e.cursor), "  * Meeting [2026-10-12 Mon]\n  - ");
 });

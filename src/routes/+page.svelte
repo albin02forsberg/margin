@@ -2396,7 +2396,7 @@
       if (!inFile()) return flash("Open a note first.");
       if (!cfg?.snippets?.length) return flash("No snippets yet: add them in Settings → Snippets.");
       const s = await pick({ prompt: "Insert snippet", items: cfg.snippets.map((s: ed.Snippet) => ({ label: `<${s.key}`, detail: s.text.split("\n")[0], value: s })) });
-      if (s) ed.insertSnippet(view, s);
+      if (s) await ed.insertSnippet(view, s);
       view.focus();
     }) },
     { label: "Insert web link…", leader: "i w", run: insertWebLink },
@@ -2683,6 +2683,7 @@
       ed.hooks.follow = (target) => act(() => followLink(target ?? ed.linkAtCursor(view)));
       ed.hooks.tab = (d) => act(() => cycleTab(d));
       ed.hooks.snippets = () => cfg?.snippets ?? [];
+      ed.hooks.ask = (name) => ask(name);
       await openView("agenda");
       requestAnimationFrame(() => (motion = true)); // nothing animates on first load
       await restoreSession();

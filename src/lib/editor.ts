@@ -17,7 +17,7 @@ import { applySet, type NumOpts } from "./setopt";
 import { EMPH, toggleEmphasis } from "./emphasis";
 import { FN, addFootnote, footnoteTarget } from "./footnote";
 import { headingAt, level, narrowField, subtreeEnd } from "./narrow";
-import { block, expandSnippet, snippetAt, type Snippet } from "./snippet";
+import { block, expandSnippet, snippetAt, snippetPrompts, type Snippet } from "./snippet";
 export type { Snippet } from "./snippet";
 
 /** Set by the app; vim ex commands, mappings and clicks call through these. */
@@ -28,7 +28,16 @@ export const hooks = {
   tab: (_d: number) => {},
   /** The user's `[[snippets]]` (config.toml), expanded by `<key` + Tab. */
   snippets: (): Snippet[] => [],
+  /** Ask for a snippet's `%^{Name}` (null = cancelled). */
+  ask: async (_name: string): Promise<string | null> => null,
 };
+
+/** Ask every prompt of snippet TEXT in turn; null when one is cancelled. */
+async function askAll(text: string): Promise<Record<string, string> | null> {
+  const answers: Record<string, string> = {};
+  for (const n of snippetPrompts(text)) { const a = await hooks.ask(n); if (a == null) return null; answers[n] = a; }
+  return answers;
+}
 
 Vim.defineEx("write", "w", () => hooks.save());
 Vim.defineEx("quit", "q", () => hooks.close());
@@ -518,16 +527,28 @@ function expandTemplate(v: EditorView): boolean {
   const ln = curLine(v);
   const x = v.state.selection.main.head === ln.to && snippetAt(ln.text, hooks.snippets());
   if (!x) return false;
+  if ("ask" in x) { // prompts: answer first, then expand if the line still reads `<key`
+    const { from, to, text } = ln, { text: src, indent } = x;
+    void askAll(src).then((a) => {
+      if (!a || v.state.doc.sliceString(from, to) !== text) return v.focus();
+      const y = expandSnippet(src, indent, new Date(), a);
+      v.dispatch({ changes: { from, to, insert: y.text }, selection: { anchor: from + y.cursor } });
+      v.focus(); insertMode(v);
+    });
+    return true;
+  }
   v.dispatch({ changes: { from: ln.from, to: ln.to, insert: x.text }, selection: { anchor: ln.from + x.cursor } });
   insertMode(v);
   return true;
 }
 
 /** Insert user snippet S at the cursor, later lines indented like the cursor line (palette "Insert snippet…"). */
-export function insertSnippet(v: EditorView, s: Snippet) {
+export async function insertSnippet(v: EditorView, s: Snippet) {
+  const answers = await askAll(s.text);
+  if (!answers) return;
   const { from, to } = v.state.selection.main;
   const indent = /^\s*/.exec(curLine(v).text)![0];
-  const x = expandSnippet(s.text, indent, new Date()); // its first line's indent is already there
+  const x = expandSnippet(s.text, indent, new Date(), answers); // its first line's indent is already there
   v.dispatch({ changes: { from, to, insert: x.text.slice(indent.length) }, selection: { anchor: from + x.cursor - indent.length } });
   insertMode(v);
 }
