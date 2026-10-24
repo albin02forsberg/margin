@@ -16,7 +16,7 @@
   import { bareTitle, bracketRetitle, findTarget, linkHeadings, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
-  import { isoWeek, putReview, reviewBody, reviewEntry } from "$lib/review";
+  import { type Goal, goalWhen, isoWeek, putReview, reviewBody, reviewEntry } from "$lib/review";
   import { estimates, pct } from "$lib/estimates";
   import { fmtEffort } from "$lib/effort";
   import { buildTimeline, timelineMarkdown, type Entry as TimelineEntry } from "$lib/timeline";
@@ -1357,8 +1357,7 @@
     type G = { path: string; line: number; title: string; done: number; total: number; percent: number | null; days_left: number | null; bad_target: boolean };
     const o = await call<G[]>("org_goals");
     if (!o.length) return flash("No goals: tag a heading :GOAL:");
-    const when = (g: G) => g.bad_target ? "bad target" : g.days_left == null ? "no target" : g.days_left < 0 ? `${-g.days_left}d overdue` : `${g.days_left}d left`;
-    const items = o.map((g) => ({ label: g.title, detail: `${g.total ? `${g.done}/${g.total} done (${g.percent}%)` : "no tasks"} · ${when(g)} · ${rel(g.path)}`, warn: g.bad_target || (g.days_left ?? 0) < 0, value: g as unknown }));
+    const items = o.map((g) => ({ label: g.title, detail: `${g.total ? `${g.done}/${g.total} done (${g.percent}%)` : "no tasks"} · ${goalWhen(g)} · ${rel(g.path)}`, warn: g.bad_target || (g.days_left ?? 0) < 0, value: g as unknown }));
     const r = await pick({ prompt: "Goals", items });
     if (r) { const g = r as G; await openFile(g.path, g.line); }
   }
@@ -1688,13 +1687,14 @@
     const t = new Date(), day = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const off = (n: number) => day(new Date(t.getFullYear(), t.getMonth(), t.getDate() - ((t.getDay() + 6) % 7) + n));
     const q = (query: string) => call<AgendaItem[]>("search_todos", { query });
-    const [closed, sched, due, next, inbox, dash] = await Promise.all([
+    const [closed, sched, due, next, inbox, dash, goals] = await Promise.all([
       q(`closed:>=${off(0)} closed:<=${off(6)}`), q(`scheduled:<${day(t)}`), q(`due:<${day(t)}`), q(`scheduled:>=${off(7)} scheduled:<=${off(13)}`),
       call<number>("inbox_count"), call<{ projects: { project: string; worked: number }[] }>("tc_dashboard"),
+      call<Goal[]>("org_goals"),
     ]);
     const done = doneLog(closed.filter((i) => i.keyword && kw().done.includes(i.keyword))), seen = new Set<string>();
     const overdue = [...sched, ...due].filter((i) => !i.habit && !seen.has(`${i.path}\n${i.line}`) && !!seen.add(`${i.path}\n${i.line}`));
-    const body = reviewBody(done, dash.projects, overdue, next.filter((i) => !i.habit), inbox);
+    const body = reviewBody(done, dash.projects, overdue, next.filter((i) => !i.habit), inbox, goals);
     let path = "";
     for (const f of weekJournals(await call<string[]>("list_files"), cfg.config.daily_dir, off(0), day(t))) if (putReview(await textOf(f), body) !== null) { path = f; break; }
     if (!path) path = await call("capture_path", { file: journalFile(), journal: true });

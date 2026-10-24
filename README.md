@@ -20,7 +20,7 @@ the editor has vim keys.
   in today's entry; `Space n u` puts them back. `Space t R` writes a
   `* Weekly review <2026-W43>` into today's entry: Inbox count, tasks closed
   this week (with `Estimates: 120% of plan` when they had an `:EFFORT:` and
-  clocked time), hours per project, overdue tasks and what's scheduled next week,
+  clocked time), hours per project, `:GOAL:` progress (when you have goals), overdue tasks and what's scheduled next week,
   then empty `** Went well` / `** To change` headings. Running it again
   replaces only the generated lines between `# review-begin` and
   `# review-end` (edits there are overwritten; the rest is kept), also on a
