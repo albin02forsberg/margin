@@ -1336,6 +1336,14 @@
     if (r) await openFile(r as string);
   }
 
+  /** Links that lead nowhere (#737); Enter opens the source at the link. */
+  async function findBrokenLinks() {
+    const o = await call<{ path: string; line: number; title: string; target: string; reason: string }[]>("notes_broken_links");
+    if (!o.length) return flash("No broken links");
+    const r = await pick({ prompt: "Broken links", items: o.map((b) => ({ label: `[[${b.target}]] · ${b.reason}`, detail: `${rel(b.path)}:${b.line + 1}`, value: b as unknown })) });
+    if (r) { const b = r as (typeof o)[number]; await openFile(b.path, b.line); }
+  }
+
   /** Open tasks with open subtasks but no next action (#671). */
   async function stuckProjects() {
     const o = await call<{ path: string; line: number; title: string; open: number }[]>("org_stuck");
@@ -2348,6 +2356,7 @@
     { label: "Show notes linking here", leader: "n b", run: () => { showBacklinks = !showBacklinks; return refreshBacklinks(); } },
     { label: "Jump to a note linking here…", leader: "n l", run: pickBacklink },
     { label: "Notes: find notes with no links…", leader: "n O", run: findOrphans },
+    { label: "Notes: find broken links…", leader: "n L", run: findBrokenLinks },
     { label: "Notes: recently changed…", leader: "n C", run: recentlyChanged },
     { label: "Notes: browse by tag…", leader: "n T", run: browseTags },
     { label: "People: a person's open tasks and mentions (@name)…", leader: "n @", run: personView },
