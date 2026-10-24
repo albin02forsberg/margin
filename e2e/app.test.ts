@@ -3,7 +3,7 @@ import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { answer, browser, close, fileMatches, find, isoDay, Key, launch, noPicker, palette, savedView, texts, today, type, type Dirs } from "./setup.ts";
+import { answer, browser, close, fileMatches, find, isoDay, Key, launch, nextWeekday, noPicker, palette, savedView, texts, today, type, type Dirs } from "./setup.ts";
 
 let notes: string, data: string, cfgDir: string;
 
@@ -176,8 +176,7 @@ describe("Margin", () => {
 
   it("logs and removes time off in the Time view", async () => {
     const file = join(data, "work", "leave.jsonl");
-    const day = new Date(); // weekends carry no expected hours, so time off needs a weekday
-    while ([0, 6].includes(day.getDay())) day.setDate(day.getDate() + 1);
+    const day = nextWeekday(); // weekends carry no expected hours, so time off needs a weekday
     const flow = async (hours: string) => {
       await (await find(".timeoff button", "Log time off")).click();
       await answer("Kind of time off", "vacation");
