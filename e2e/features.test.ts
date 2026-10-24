@@ -746,6 +746,7 @@ describe("Journal, archive and move", () => {
         writeFileSync(join(notes, "blockers.org"), blockers);
         writeFileSync(join(notes, "preamble.org"), "#+title: Pre\nintro\n* TODO Task\n");
         writeFileSync(join(notes, "clone.org"), "* DONE Check-in\nCLOSED: [2026-10-01 Thu 10:00] SCHEDULED: <2026-10-01 Thu>\n* After\n");
+        writeFileSync(join(notes, "shutdown.org"), `* TODO Wrap report\nSCHEDULED: <${orgDay(new Date())}>\n* TODO Call vendor\nSCHEDULED: <${orgDay(new Date())} +1w>\n`);
       },
     });
   });
@@ -789,6 +790,19 @@ describe("Journal, archive and move", () => {
     await leader("tR");
     await find(".status .msg", "Weekly review written");
     await fileMatches(file, (s) => s.split("# review-begin").length === 2 && s.split("* Weekly review").length === 2, "re-run added a second block");
+  });
+
+  it("Space t q walks today's open tasks one key each (x done, t tomorrow) and adds the summary to the journal (#757)", async () => {
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+    await leader("tq");
+    await find(".picker label span", "Shutdown 1/2: Wrap report");
+    await browser.keys("x");
+    await find(".picker label span", "Shutdown 2/2: Call vendor");
+    await browser.keys("t");
+    await find(".picker label span", "Done 1, moved 1");
+    await browser.keys(Key.Enter);
+    await fileMatches(f("shutdown.org"), (s) => /^\* DONE Wrap report\n/.test(s) && s.includes(`* TODO Call vendor\nSCHEDULED: <${orgDay(tomorrow)} +1w>\n`), "tasks not done / moved to tomorrow");
+    await fileMatches(f(join("daily", `${isoDay(new Date())}.org`)), (s) => /\n\* \d\d:\d\d Shutdown: Done 1, moved 1 · /.test(s), "summary not in today's journal");
   });
 
   it("Space n J opens the journal for a chosen past date, creating it with a title", async () => {
