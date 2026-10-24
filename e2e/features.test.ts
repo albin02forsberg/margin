@@ -744,6 +744,7 @@ describe("Journal, archive and move", () => {
         writeFileSync(join(notes, "drill.org"), drill);
         writeFileSync(join(notes, "ordered.org"), "* Move flat\n:PROPERTIES:\n:ORDERED: t\n:END:\n** TODO Book van\n** TODO Pack boxes\n");
         writeFileSync(join(notes, "blockers.org"), blockers);
+        writeFileSync(join(notes, "preamble.org"), "#+title: Pre\nintro\n* TODO Task\n");
         writeFileSync(join(notes, "clone.org"), "* DONE Check-in\nCLOSED: [2026-10-01 Thu 10:00] SCHEDULED: <2026-10-01 Thu>\n* After\n");
       },
     });
@@ -1032,6 +1033,21 @@ describe("Journal, archive and move", () => {
     await fileMatches(f("blockers.org"), (s) => s.includes("* Phases\n** TODO One\n") && s.includes(":BLOCKER:"), "undo didn't drop only :ORDERED:");
     await leader("nu");
     await fileMatches(f("blockers.org"), (s) => s === blockers, "one undo didn't remove both the blocker and the id");
+  });
+
+  it("Space x B / x O with the cursor above the first heading say so and write nothing (#755)", async () => {
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "preamble");
+    await find(".status .file", "preamble.org");
+    await browser.keys(Key.Escape);
+    await browser.keys(["g", "g"]);
+    await leader("xB");
+    await find(".status .msg", "cursor on a task heading");
+    await noPicker();
+    await leader("xO");
+    await find(".status .msg", "cursor on a task heading");
+    await fileMatches(f("preamble.org"), (s) => s === "#+title: Pre\nintro\n* TODO Task\n", "the note changed");
   });
 
   it("Space v n narrows to the heading at the cursor and widens again", async () => {

@@ -790,7 +790,7 @@ fn org_edit_op(text: &str, line: usize, op: &str, value: Option<String>, kw: &or
             org::add_blocker(text, line, id, title.trim())?
         }
         "unblocker" => org::remove_blocker(text, line, v.trim()),
-        "ordered" => org::toggle_ordered(text, line),
+        "ordered" => org::toggle_ordered(text, line)?,
         "tags" => org::set_tags(text, line, kw, v.split(':').map(|t| t.trim().to_string()).collect()),
         "shift" => {
             let (kind, days) = v.split_once(' ').ok_or("shift needs \"KIND DAYS\"")?;
