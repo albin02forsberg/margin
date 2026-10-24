@@ -748,7 +748,7 @@ pub fn goals(files: &[Arc<OrgFile>], kw: &Kw, today: NaiveDate, spent: &dyn Fn(&
 /// ordering: the waiting ancestor's earlier sibling).
 pub fn blocked(files: &[Arc<OrgFile>], kw: &Kw) -> HashMap<(PathBuf, usize), Blocker> {
     let open = |h: &Headline| h.keyword.as_deref().is_some_and(|k| !kw.is_done(k));
-    let ids: HashMap<&str, &Headline> = files.iter().flat_map(|f| &f.headlines).filter_map(|h| Some((h.id.as_deref()?, h))).collect();
+    let ids: HashMap<&str, (&OrgFile, &Headline)> = files.iter().flat_map(|f| f.headlines.iter().map(move |h| (&**f, h))).filter_map(|(f, h)| Some((h.id.as_deref()?, (f, h)))).collect();
     // Whether open task FROM reaches id TO through `:BLOCKER:` links.
     let reaches = |from: &str, to: &str| {
         let (mut seen, mut stack) = (HashSet::new(), vec![from]);
@@ -757,7 +757,7 @@ pub fn blocked(files: &[Arc<OrgFile>], kw: &Kw) -> HashMap<(PathBuf, usize), Blo
                 return true;
             }
             if seen.insert(x) {
-                stack.extend(ids.get(x).filter(|h| open(h)).into_iter().flat_map(|h| h.blockers.iter().map(String::as_str)));
+                stack.extend(ids.get(x).filter(|(_, h)| open(h)).into_iter().flat_map(|(_, h)| h.blockers.iter().map(String::as_str)));
             }
         }
         false
@@ -778,10 +778,7 @@ pub fn blocked(files: &[Arc<OrgFile>], kw: &Kw) -> HashMap<(PathBuf, usize), Blo
                 waits[i] = (p + 1..i).find(|&j| parent[j] == Some(p) && open(&hs[j]) && !hs[j].archived());
             }
             let up = waits[i].or_else(|| path.iter().rev().find_map(|&p| waits[p])).map(|j| blocker(&hs[j]));
-            let by_id = || h.blockers.iter().find_map(|b| ids.get(b.as_str()).filter(|x| open(x) && h.id.as_deref().is_none_or(|me| !reaches(b, me))).map(|x| {
-                let o = files.iter().find(|f| f.headlines.iter().any(|y| std::ptr::eq(y, *x))).unwrap_or(f);
-                Blocker { title: x.title.clone(), path: o.path.clone(), line: x.line }
-            }));
+            let by_id = || h.blockers.iter().find_map(|b| ids.get(b.as_str()).filter(|(_, x)| open(x) && h.id.as_deref().is_none_or(|me| !reaches(b, me))).map(|(o, x)| Blocker { title: x.title.clone(), path: o.path.clone(), line: x.line }));
             if open(h) && !h.archived() {
                 if let Some(b) = up.or_else(by_id) {
                     out.insert((f.path.clone(), h.line), b);
@@ -795,7 +792,11 @@ pub fn blocked(files: &[Arc<OrgFile>], kw: &Kw) -> HashMap<(PathBuf, usize), Blo
 
 /// Tasks for which KEEP holds (open ones only, unless DONE), by priority then date.
 pub fn todos(files: &[Arc<OrgFile>], kw: &Kw, done: bool, keep: impl Fn(&OrgFile, &Headline) -> bool, today: NaiveDate) -> Vec<Item> {
-    let bl = blocked(files, kw);
+    todos_with(files, &blocked(files, kw), kw, done, keep, today)
+}
+
+/// todos with BL, the precomputed `blocked` map (callers that already have it skip a second pass).
+pub fn todos_with(files: &[Arc<OrgFile>], bl: &HashMap<(PathBuf, usize), Blocker>, kw: &Kw, done: bool, keep: impl Fn(&OrgFile, &Headline) -> bool, today: NaiveDate) -> Vec<Item> {
     let mut out = vec![];
     for f in files {
         for h in f.headlines.iter().filter(|h| !h.archived()) {
