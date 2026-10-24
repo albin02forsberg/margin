@@ -18,6 +18,7 @@ mod retrieve;
 mod timeclock;
 mod tray;
 mod watcher;
+mod weblink;
 
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime};
 use config::Config;
@@ -2339,7 +2340,7 @@ pub fn run() {
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, notes_tags, notes_tagged, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, tc_csv, tc_switch_profile, tc_import, backup_now,
-            export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply
+            export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
