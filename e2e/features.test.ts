@@ -1123,7 +1123,7 @@ describe("Note pickers, pins and archive", () => {
         writeFileSync(join(notes, "stale.org"), "#+title: Stale\n\nold\n");
         writeFileSync(join(notes, "fresh.org"), "#+title: Fresh\n\nnew\n");
         const t = Date.now() / 1000; // explicit mtimes an hour apart: files written in a row can share a second
-        utimesSync(join(notes, "stale.org"), t - 7200, t - 7200);
+        utimesSync(join(notes, "stale.org"), t - 2 * 365 * 86400, t - 2 * 365 * 86400);
         utimesSync(join(notes, "fresh.org"), t - 3600, t - 3600);
         writeFileSync(join(notes, "tagged.org"), "#+title: Tagged\n#+FILETAGS: :work:\n\nwork stuff\n");
         writeFileSync(join(notes, "people.org"), "#+title: People\n\n* TODO Call Ola :@ola:\n* Sync\nAsk @Ola about the budget\n");
@@ -1144,6 +1144,15 @@ describe("Note pickers, pins and archive", () => {
     const items = await texts(".picker li span");
     assert.ok(items.indexOf("Fresh") >= 0 && items.indexOf("Fresh") < items.indexOf("Stale"), `Fresh not above Stale: ${items.join(" | ")}`);
     await answer("Recently changed notes", "Stale");
+    await find(".status .file", "stale.org");
+  });
+
+  it("Space n Z lists notes untouched for a year and opens the picked one", async () => {
+    await open("Pinme", "pinme.org");
+    await leader("nZ");
+    await find(".picker label span", "Stale notes");
+    assert.deepEqual((await texts(".picker li span")).filter((x) => x == "Fresh" || x == "Stale"), ["Stale"]);
+    await answer("Stale notes", "Stale");
     await find(".status .file", "stale.org");
   });
 
