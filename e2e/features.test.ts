@@ -1861,6 +1861,7 @@ describe("Note history (git)", () => {
       writeFileSync(join(notes, "hist.org"), v2); git("commit", "-qam", "second version");
       writeFileSync(join(notes, "fresh.org"), "#+title: Fresh\n\nnot committed\n");
     } });
+    await find(".agenda h1", "Today"); // the app is ready for keys
   });
   after(close, { timeout: 30_000 });
   const leader = async (keys: string) => {
@@ -1874,7 +1875,6 @@ describe("Note history (git)", () => {
     await type(keys);
   };
   const open = async (title: string, file: string) => {
-    await find(".agenda h1", "Today"); // the app is ready for keys
     await noPicker();
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", title);
