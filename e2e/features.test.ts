@@ -1874,6 +1874,7 @@ describe("Note history (git)", () => {
     await type(keys);
   };
   const open = async (title: string, file: string) => {
+    await find(".agenda h1", "Today"); // the app is ready for keys
     await noPicker();
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", title);
