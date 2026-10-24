@@ -958,6 +958,12 @@ describe("Journal, archive and move", () => {
     await browser.keys("B");
     await find(".agenda .row.blocked .blk-chip", "blocked");
     await find(".agenda .row.blocked .title", "Pack boxes");
+    // x on the blocked row asks first (#729): Cancel changes nothing
+    await (await find(".agenda .row.blocked .title", "Pack boxes")).click();
+    await browser.keys("x");
+    await answer("waits on another task", "Cancel");
+    await noPicker();
+    await fileMatches(f("ordered.org"), (s) => s.includes("** TODO Pack boxes"), "cancel still marked it done");
     await browser.keys("B");
     await browser.waitUntil(async () => !(await texts(".agenda .row .title")).includes("Pack boxes"), { timeoutMsg: "B didn't hide it again" });
     await (await find(".agenda .row .title", "Book van")).click();

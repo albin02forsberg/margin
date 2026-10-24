@@ -30,6 +30,8 @@
     /** Ask for a date ("Go to date"); ISO day, or null on cancel / unparsable input. */
     pickDate: () => Promise<string | null>;
     flash: (msg: string) => void;
+    /** Ask MSG with "Mark done anyway" / Cancel; true on confirm. */
+    confirm: (msg: string) => Promise<boolean>;
   };
 
   export const iso = (d: Date) =>
@@ -75,7 +77,7 @@
   import type { TimeApi } from "./Time.svelte";
   import WeekBars from "./WeekBars.svelte";
   import { hm, worked } from "./clock";
-  import { bulkTargets, columns, moveTo } from "./board";
+  import { blockedDone, bulkTargets, columns, moveTo } from "./board";
   import { chips } from "./chips";
   import { doneLog, withLog } from "./donelog";
   import { fmtEffort, fmtSpent, overbooked, planned, plannedLabel } from "./effort";
@@ -293,10 +295,12 @@
     const many = bulk && marks.size && BULK.has(name) ? marked(marks, all) : null;
     if (many && !many.length) return api.flash("No marked task");
     const xs = many ?? [it], ts = bulkTargets(name, xs.map((x) => x.keyword), arg, todo, done);
-    xs.forEach((x, i) => { if (boardOn && ts[i] && done.includes(ts[i]!)) doneHere.add(keyOf(x)); });
     api.act(async () => {
       busy = true;
       try {
+        const nb = blockedDone(xs, ts, done);
+        if (nb && !(await api.confirm(xs.length === 1 ? `"${xs[0].title}" waits on another task: mark done anyway?` : `${nb} of the ${xs.length} tasks wait on another task: mark done anyway?`))) return;
+        xs.forEach((x, i) => { if (boardOn && ts[i] && done.includes(ts[i]!)) doneHere.add(keyOf(x)); });
         if (many) { if (await api.runMany(name, many, arg)) { marks = new Map(); api.flash(`${many.length} task${many.length === 1 ? "" : "s"} changed · u undoes`); } }
         else await api.run(name, it, arg);
       } finally {
