@@ -659,6 +659,12 @@ block gets an org table of worked hours per project and task (the session descri
 limits it to one project. Only the text between the two lines changes, as one edit (`u` undoes it). Blocks with other
 options (Emacs's `:scope`, `:maxlevel`, …) are left alone. Emacs fills a plain `:block thismonth` block from the
 file's `CLOCK:` lines instead of Margin's time log, so the two can show different numbers.
+The same command fills task lists: `#+BEGIN: tasks :query "tag:work due:<7d"` … `#+END:` gets one line per matching
+open task, like `- TODO [#A] [[file:projects/acme.org::*Ship it][Ship it]] (DEADLINE 2026-10-30, effort 1:30)`, with the
+link relative to the note. `:query` uses the saved views' grammar (`[[views]]`, quote `\"` inside it); `:limit 5` caps the
+list (default 20) and `:sort priority|date|title` orders it (default priority, like the views). The lines are plain list
+items: tick the task itself, not the line, and run `Space t u` again to refresh. No match writes `(no matches)`; a bad
+query or option leaves the block alone and says why.
 `Space t a` ("I started earlier") and `Space t O` ("I stopped earlier", for when you forgot to stop) take minutes ago (`25`) or a time (`14:05`). A start can't move before the previous session's end.
 
 `Space t n` (or `n` in the Time view) logs a finished session after the fact: pick a day (Today, Yesterday, the last days by name, or type `fri`, `-2d`, `2026-10-12`; a weekday name means its most recent past occurrence), a start and end (`09:00`), a project and a note. It must not overlap logged time, reach into the future or cross midnight.

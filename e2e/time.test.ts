@@ -17,7 +17,7 @@ const near = (iso: string, t: Date) => Math.abs(Date.parse(iso) - t.getTime()) <
 before(async () => {
   d = await launch({ files: ({ data, notes }) => {
     writeFileSync(join(data, "work", "projects.toml"), `[Acme]\nexport_code = "ACME"\n\n[Beta]\nexport_code = "BETA"\n`);
-    writeFileSync(join(notes, "clockrep.org"), "#+TITLE: Clockrep\n#+BEGIN: clocktable :block 2020-01\n| stale |\n#+END:\n#+BEGIN: clocktable :scope file\nemacs only\n#+END:\nafter\n");
+    writeFileSync(join(notes, "clockrep.org"), "#+TITLE: Clockrep\n#+BEGIN: clocktable :block 2020-01\n| stale |\n#+END:\n#+BEGIN: clocktable :scope file\nemacs only\n#+END:\nafter\n#+BEGIN: tasks :query \"tag:rep\"\n- stale task\n#+END:\n* TODO Ship report :rep:\n");
   } });
   log = join(d.data, "work", "timelog.jsonl");
   await find(".agenda h1", "Today"); // loaded
@@ -182,7 +182,7 @@ describe("Time tracking", () => {
     }
   });
 
-  it("Space t u fills a clocktable block from the log and leaves an Emacs-only block alone", async () => {
+  it("Space t u fills clocktable and tasks blocks and leaves an Emacs-only block alone", async () => {
     const orig = read(log);
     try {
       writeFileSync(log, `{"ev":"in","t":"2020-01-06T09:00:00","project":"Acme"}\n{"ev":"out","t":"2020-01-06T10:30:00","note":"clock entry"}\n`);
@@ -191,12 +191,13 @@ describe("Time tracking", () => {
       await answer("Open a note", "Clockrep");
       await find(".status .file", "clockrep.org");
       await noPicker();
-      await palette("Time: update clock reports");
+      await palette("Time: update dynamic blocks");
       await find(".cm-content", "clock entry");
       await find(".cm-content", "*1.50*");
       await find(".status .msg", "unsupported option :scope");
       const text = await browser.execute(() => document.querySelector(".cm-content")?.textContent ?? "");
       assert.ok(!text.includes("stale") && text.includes("emacs only") && text.includes("after"), text);
+      await fileMatches(join(d.notes, "clockrep.org"), (s) => s.includes("- TODO [[file:clockrep.org::*Ship report][Ship report]]\n#+END:") && !s.includes("stale"), "tasks block not filled");
     } finally {
       writeFileSync(log, orig);
     }
