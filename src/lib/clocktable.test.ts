@@ -16,10 +16,17 @@ test("clockBlocks finds each block's options and body span", () => {
   assert.equal(fill(out, (a) => `| ${a} |\n`), out); // idempotent
 });
 
+test("clockBlocks names tasks blocks next to clocktables", () => {
+  const text = '#+BEGIN: tasks :query "tag:work due:<7d" :limit 5\n- old\n#+END:\n#+begin: CLOCKTABLE :block today\n#+end:\n';
+  const bs = clockBlocks(text);
+  assert.deepEqual(bs.map((b) => [b.name, b.args]), [["tasks", ':query "tag:work due:<7d" :limit 5'], ["clocktable", ":block today"]]);
+  assert.equal(text.slice(bs[0].from, bs[0].to), "- old\n");
+});
+
 test("clockBlocks skips unterminated blocks and other dynamic blocks", () => {
   assert.deepEqual(clockBlocks("#+BEGIN: clocktable :block today\nno end\n"), []);
   assert.deepEqual(clockBlocks("#+BEGIN: clocktable :block today"), []);
-  assert.deepEqual(clockBlocks("#+BEGIN: columnview\n#+END:\n#+BEGIN: clocktablex\n#+END:\n"), []);
+  assert.deepEqual(clockBlocks("#+BEGIN: columnview\n#+END:\n#+BEGIN: clocktablex\n#+END:\n#+BEGIN: tasksx\n#+END:\n"), []);
   const text = "#+BEGIN: clocktable :block today\nlost\n#+BEGIN: clocktable :block thisweek\n#+END:\n";
   assert.deepEqual(clockBlocks(text).map((b) => b.args), [":block thisweek"]);
 });

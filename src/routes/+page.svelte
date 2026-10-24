@@ -1743,18 +1743,18 @@
     if (it) await openFile((it as AgendaItem).path, (it as AgendaItem).line);
   }
 
-  /** Regenerate every `#+BEGIN: clocktable` block of the open note (#693) in one edit (one undo step, saved like
-   *  typing); a block with options Margin doesn't know is left alone and named in the message. */
+  /** Regenerate every `#+BEGIN: clocktable` (#693) and `#+BEGIN: tasks` (#756) block of the open note in one edit
+   *  (one undo step, saved like typing); a block with options Margin doesn't know is left alone and named in the message. */
   async function updateClockTables() {
     if (!inFile()) return flash("Open a note first.");
-    const v = view, doc = v.state.doc.toString(), blocks = clockBlocks(doc);
-    if (!blocks.length) return flash("No #+BEGIN: clocktable … #+END: block in this note.");
-    const res = await Promise.allSettled(blocks.map((b) => call<string>("tc_clocktable", { args: b.args })));
+    const v = view, doc = v.state.doc.toString(), blocks = clockBlocks(doc), path = tab.path!;
+    if (!blocks.length) return flash("No #+BEGIN: clocktable or tasks … #+END: block in this note.");
+    const res = await Promise.allSettled(blocks.map((b) => b.name === "tasks" ? call<string>("tasks_block", { path, args: b.args }) : call<string>("tc_clocktable", { args: b.args })));
     if (v.state.doc.toString() !== doc) return flash("⚠ The note changed meanwhile; run it again.");
     const changes = blocks.flatMap((b, i) => { const r = res[i]; return r.status === "fulfilled" && doc.slice(b.from, b.to) !== r.value ? [{ from: b.from, to: b.to, insert: r.value }] : []; });
     if (changes.length) v.dispatch({ changes });
     const bad = res.flatMap((r) => (r.status === "rejected" ? [String(r.reason)] : []));
-    flash(bad.length ? `⚠ ${bad.join("; ")}` : `Updated ${blocks.length} clock report${blocks.length === 1 ? "" : "s"}.`);
+    flash(bad.length ? `⚠ ${bad.join("; ")}` : `Updated ${blocks.length} block${blocks.length === 1 ? "" : "s"}.`);
   }
 
   /** Show PROMPT exactly; on YES, the local model's draft for it (null on NO or an error, which flashes). */
@@ -2512,7 +2512,7 @@
     { label: "Time: backup log", leader: "t L", run: t("backupLog") },
     { label: "Time: log time off…", leader: "t l", run: t("timeOff") },
     { label: "Time: log a past session…", leader: "t n", run: t("logSession") },
-    { label: "Time: update clock reports (#+BEGIN: clocktable) in this note", leader: "t u", run: () => act(updateClockTables) },
+    { label: "Time: update dynamic blocks (#+BEGIN: clocktable / tasks) in this note", leader: "t u", run: () => act(updateClockTables) },
     { label: "Weekly review into today's journal (re-run replaces the marked block)", leader: "t R", run: () => act(weeklyReview) },
     { label: "Time: estimates vs actuals (how far off are my :EFFORT: guesses?)…", leader: "t A", run: () => act(estimateReport) },
     { label: "Time: day timeline (sessions, tasks closed, notes edited)…", leader: "t T", run: () => act(dayTimeline) },

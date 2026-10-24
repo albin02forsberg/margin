@@ -721,10 +721,15 @@ fn todos(s: State<App>) -> Vec<org::Item> {
 /// Tasks matching QUERY (see org::query).
 #[tauri::command(async)]
 fn search_todos(s: State<App>, query: String) -> R<Vec<org::Item>> {
-    let (kw, f, files) = (s.kw(), spent_lookup(&s), s.files());
-    let (g, bl) = (f.clone(), org::blocked(&files, &kw));
-    let (keep, done) = org::query(&query, today(), &kw, move |h| g(&h.category, &h.title), move |o, h| bl.contains_key(&(o.path.clone(), h.line)))?;
-    Ok(with_spent(&*f, org::todos(&files, &kw, done, keep, today())))
+    query_todos(&s, &s.files(), &query)
+}
+
+/// search_todos over FILES: the saved views' query path, shared with tasks blocks.
+fn query_todos(s: &App, files: &[Arc<org::OrgFile>], query: &str) -> R<Vec<org::Item>> {
+    let (kw, f) = (s.kw(), spent_lookup(s));
+    let (g, bl) = (f.clone(), org::blocked(files, &kw));
+    let (keep, done) = org::query(query, today(), &kw, move |h| g(&h.category, &h.title), move |o, h| bl.contains_key(&(o.path.clone(), h.line)))?;
+    Ok(with_spent(&*f, org::todos(files, &kw, done, keep, today())))
 }
 
 /// Open tasks tagged (own or inherited) `@NAME` or naming `@NAME` in the title, and other lines mentioning it.
@@ -1941,20 +1946,10 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
 /// Options of a `#+BEGIN: clocktable` header after the name: `:block today|thisweek|thismonth|YYYY-MM` (required)
 /// and `:project NAME` ("quoted" for spaces). Any other option is an error, so Emacs-only blocks stay untouched.
 fn clocktable_opts(args: &str, today: NaiveDate) -> R<(Option<String>, NaiveDate, NaiveDate)> {
-    let mut words = vec![];
-    let mut rest = args.trim();
-    while !rest.is_empty() {
-        let (w, r) = match rest.strip_prefix('"') {
-            Some(q) => q.split_once('"').ok_or("clocktable: unclosed quote")?,
-            None => rest.split_once(char::is_whitespace).unwrap_or((rest, "")),
-        };
-        words.push(w);
-        rest = r.trim_start();
-    }
     let (mut project, mut range) = (None, None);
-    for pair in words.chunks(2) {
-        let val = *pair.get(1).ok_or_else(|| format!("clocktable: {} needs a value", pair[0]))?;
-        match pair[0] {
+    for (key, val) in block_opts("clocktable", args)? {
+        let val = val.as_str();
+        match key.as_str() {
             ":project" => project = Some(val.to_string()),
             ":block" => {
                 range = Some(match val {
@@ -1969,6 +1964,86 @@ fn clocktable_opts(args: &str, today: NaiveDate) -> R<(Option<String>, NaiveDate
     }
     let (from, to) = range.ok_or("clocktable: needs :block today|thisweek|thismonth|YYYY-MM")?;
     Ok((project, from, to))
+}
+
+/// `:key value` pairs of the dynamic block NAME's header ARGS; a value may be "quoted", with `\"` for a quote.
+fn block_opts(name: &str, args: &str) -> R<Vec<(String, String)>> {
+    let mut words = vec![];
+    let mut it = args.trim().chars().peekable();
+    while let Some(c) = it.next() {
+        if c.is_whitespace() {
+            continue;
+        }
+        let mut w = String::new();
+        if c == '"' {
+            loop {
+                match it.next().ok_or(format!("{name}: unclosed quote"))? {
+                    '\\' if it.next_if_eq(&'"').is_some() => w.push('"'),
+                    '"' => break,
+                    c => w.push(c),
+                }
+            }
+        } else {
+            w.push(c);
+            while let Some(c) = it.next_if(|c| !c.is_whitespace()) {
+                w.push(c);
+            }
+        }
+        words.push(w);
+    }
+    words.chunks(2).map(|p| Ok((p[0].clone(), p.get(1).ok_or_else(|| format!("{name}: {} needs a value", p[0]))?.clone()))).collect()
+}
+
+/// Options of a `#+BEGIN: tasks` header (#756): `:query "…"` (required, the saved views' grammar), `:limit N`
+/// (default 20) and `:sort priority|date|title` (default priority, the views' order). Anything else is an error.
+fn tasks_opts(args: &str) -> R<(String, usize, String)> {
+    let (mut query, mut limit, mut sort) = (None, 20, "priority".to_string());
+    for (key, val) in block_opts("tasks", args)? {
+        match key.as_str() {
+            ":query" => query = Some(val),
+            ":limit" => limit = val.parse().map_err(|_| format!("tasks: :limit takes a number, not {val}"))?,
+            ":sort" if ["priority", "date", "title"].contains(&val.as_str()) => sort = val,
+            ":sort" => return Err(format!("tasks: :sort takes priority, date or title, not {val}")),
+            o => return Err(format!("tasks: unsupported option {o}")),
+        }
+    }
+    Ok((query.filter(|q| !q.trim().is_empty()).ok_or("tasks: needs :query \"…\"")?, limit, sort))
+}
+
+/// Body of a tasks block in the note in folder DIR: the first LIMIT of ITEMS (by priority, as org::todos returns
+/// them, or SORT date|title), one plain list item each with a `file:…::*Title` link relative to DIR and the task's
+/// SCHEDULED / DEADLINE (from FILES) and effort. No checkboxes: ticking one wouldn't close the task.
+fn tasks_body(mut items: Vec<org::Item>, files: &[Arc<org::OrgFile>], dir: &Path, limit: usize, sort: &str) -> String {
+    match sort {
+        "date" => items.sort_by_key(|i| i.date),
+        "title" => items.sort_by_key(|i| i.title.to_lowercase()),
+        _ => {}
+    }
+    let mut out = String::new();
+    for i in items.iter().take(limit) {
+        let h = files.iter().find(|f| f.path == i.path).and_then(|f| f.headlines.iter().find(|h| h.line == i.line));
+        let mut info = vec![];
+        if let Some(h) = h {
+            info.extend(h.scheduled.as_ref().map(|t| format!("SCHEDULED {}", t.date)));
+            info.extend(h.deadline.as_ref().map(|t| format!("DEADLINE {}", t.date)));
+        }
+        info.extend(i.effort.map(|m| format!("effort {}:{:02}", m / 60, m % 60)));
+        let title = notes::heading_bare(&i.title);
+        let link = if title.is_empty() || title.contains(['[', ']']) { title } else { format!("[[file:{}::*{title}][{title}]]", notes::rel_path(dir, &i.path)) };
+        let pre: String = [i.keyword.clone(), i.priority.as_ref().map(|p| format!("[#{p}]"))].into_iter().flatten().map(|w| w + " ").collect();
+        out += &format!("- {pre}{link}{}\n", if info.is_empty() { String::new() } else { format!(" ({})", info.join(", ")) });
+    }
+    if out.is_empty() { "(no matches)\n".into() } else { out }
+}
+
+/// Body of the tasks block with header options ARGS in note PATH (#756).
+#[tauri::command(async)]
+fn tasks_block(s: State<App>, path: PathBuf, args: String) -> R<String> {
+    s.check(&path)?;
+    let (query, limit, sort) = tasks_opts(&args)?;
+    let files = s.files();
+    let items = query_todos(&s, &files, &query)?;
+    Ok(tasks_body(items, &files, path.parent().unwrap_or(&path), limit, &sort))
 }
 
 /// Body of a clocktable block with header options ARGS (#693).
@@ -2233,7 +2308,7 @@ pub fn run() {
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_tags, notes_tagged, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_rhythm, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_rhythm, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply
         ])
         .build(tauri::generate_context!())
@@ -2302,6 +2377,39 @@ mod tests {
         for bad in [":scope file :block thismonth", ":block lastweek", ":block 2026-13", ":project Acme", ":block", ":project \"Acme :block today", ""] {
             assert!(clocktable_opts(bad, t).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn tasks_block_options() {
+        let o = |q: &str, l, s: &str| Ok((q.to_string(), l, s.to_string()));
+        assert_eq!(tasks_opts(":query \"tag:work due:<7d\""), o("tag:work due:<7d", 20, "priority"));
+        assert_eq!(tasks_opts(" :limit 5  :query \"tag:\\\"my tag\\\"\" :sort date"), o("tag:\"my tag\"", 5, "date"));
+        assert_eq!(tasks_opts(":sort title :query todo:NEXT"), o("todo:NEXT", 20, "title"));
+        for bad in [":limit 5", ":query \"\"", ":query x :limit many", ":query x :sort size", ":query x :scope file", ":query \"x", ":query", ""] {
+            assert!(tasks_opts(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn tasks_block_body() {
+        let k = kw();
+        let file = |p: &str, t: &str| Arc::new(org::parse(Path::new(p), t, &k));
+        let files = vec![
+            file("/n/projects/acme.org", "* TODO [#A] Ship it [1/2] :work:\nDEADLINE: <2026-10-30 Fri>\n:PROPERTIES:\n:EFFORT: 1:30\n:END:\n* TODO Odd [x] title\n"),
+            file("/n/inbox.org", "* TODO Call Bo :work:\nSCHEDULED: <2026-10-25 Sun>\n* DONE Old :work:\n"),
+        ];
+        let items = |q: &str| {
+            let (keep, done) = org::query(q, NaiveDate::from_ymd_opt(2026, 10, 24).unwrap(), &k, |_| None, |_, _| false).unwrap();
+            org::todos(&files, &k, done, keep, NaiveDate::from_ymd_opt(2026, 10, 24).unwrap())
+        };
+        let dir = Path::new("/n/daily");
+        assert_eq!(
+            tasks_body(items("tag:work"), &files, dir, 20, "priority"),
+            "- TODO [#A] [[file:../projects/acme.org::*Ship it][Ship it]] (DEADLINE 2026-10-30, effort 1:30)\n- TODO [[file:../inbox.org::*Call Bo][Call Bo]] (SCHEDULED 2026-10-25)\n"
+        );
+        assert_eq!(tasks_body(items("tag:work"), &files, dir, 1, "date"), "- TODO [[file:../inbox.org::*Call Bo][Call Bo]] (SCHEDULED 2026-10-25)\n");
+        assert_eq!(tasks_body(items("odd"), &files, Path::new("/n/projects"), 20, "title"), "- TODO Odd [x] title\n"); // brackets: no link
+        assert_eq!(tasks_body(items("tag:nope"), &files, dir, 20, "priority"), "(no matches)\n");
     }
 
     #[test]

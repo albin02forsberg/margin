@@ -121,7 +121,7 @@ fn points_to(from: &OrgFile, l: &Link, to: &OrgFile) -> bool {
 }
 
 /// Path from folder DIR to TO (both normalised), with "/" separators, as org `file:` links expect.
-fn rel_path(dir: &Path, to: &Path) -> String {
+pub fn rel_path(dir: &Path, to: &Path) -> String {
     let (a, b): (Vec<_>, Vec<_>) = (dir.components().collect(), to.components().collect());
     let i = a.iter().zip(&b).take_while(|(x, y)| x == y).count();
     let up = std::iter::repeat_n("..".to_string(), a.len() - i);
@@ -182,7 +182,12 @@ static STATS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[[0-9]*(?:/[0-9]*
 /// A heading title as `::*Title` links compare it: statistics cookies dropped, whitespace collapsed,
 /// lowercase. Mirrors `norm` in src/lib/links.ts (the side that follows links).
 pub fn heading_norm(s: &str) -> String {
-    STATS.replace_all(s, " ").split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+    heading_bare(s).to_lowercase()
+}
+
+/// A heading title without statistics cookies, whitespace collapsed (`bareTitle` in src/lib/links.ts).
+pub fn heading_bare(s: &str) -> String {
+    STATS.replace_all(s, " ").split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// TEXT, the note at NOTE, with its one-line links to heading OLD (normalised, see `heading_norm`) of note
