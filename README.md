@@ -576,7 +576,8 @@ text = """
 ```
 
 `%t` / `%T` insert today's date / date and time (`<2026-10-12 Mon 09:05>`), `%u` /
-`%U` the inactive `[…]` ones, `%?` places the cursor (else it ends up after the
+`%U` the inactive `[…]` ones, `%^{Name}` asks for a value when the snippet expands
+(Esc cancels; the same name is asked once), `%?` places the cursor (else it ends up after the
 text), `%%` is a literal `%`. Lines after the first get the indent of the line you
 typed the key on. Your keys win over the built-in blocks (`<s`, `<q`, …). When no
 key matches, Tab folds the heading as usual.

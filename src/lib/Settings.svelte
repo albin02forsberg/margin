@@ -279,7 +279,7 @@
   <form class="card wide" hidden={!shows(cat, q, "Snippets", SNIPS)} onsubmit={(e) => { e.preventDefault(); saveRows("snippets"); }}>
     <fieldset disabled={!!error} class="list">
       <legend>Snippets</legend>
-      <small>In a note, type {"<key"} alone on a line and press Tab (or pick one with "Insert snippet…" in the command palette). Yours win over the built-in blocks ({"<s <q <e <v <c <C <l <h <a <el"}). Text: %t/%T today's date/time, %u/%U inactive ones, %? the cursor; later lines get the line's indent. Saving rewrites the [[snippets]] tables of config.toml; comments inside them are not kept.</small>
+      <small>In a note, type {"<key"} alone on a line and press Tab (or pick one with "Insert snippet…" in the command palette). Yours win over the built-in blocks ({"<s <q <e <v <c <C <l <h <a <el"}). Text: %t/%T today's date/time, %u/%U inactive ones, {"%^{Prompt}"} asks, %? the cursor; later lines get the line's indent. Saving rewrites the [[snippets]] tables of config.toml; comments inside them are not kept.</small>
       {#each rows.snippets as s, i}
         <div class="tpl">
           <div class="row key">

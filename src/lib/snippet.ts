@@ -19,23 +19,33 @@ export function block(spec: string, indent = ""): Expansion {
   return { text, cursor: spec === "src" ? begin.length : begin.length + 1 + indent.length };
 }
 
+/** A snippet whose `%^{Name}` prompts (ASK, unique, in order) still need answers before it expands. */
+export type Pending = { ask: string[]; text: string; indent: string };
+
+/** The unique `%^{Name}` prompt names in snippet TEXT, in order (`%%^{x}` is literal, empty names don't count). */
+export function snippetPrompts(text: string): string[] {
+  const names = [...text.matchAll(/%(\^\{([^}]*)\}|[tTuU%?])/g)].flatMap((m) => (m[2] ? [m[2]] : []));
+  return [...new Set(names)];
+}
+
 /** Snippet TEXT expanded at NOW: %t %T active date/timestamp, %u %U inactive ones, %% a literal %,
- *  %? the cursor (else the end); lines after the first get INDENT (empty ones stay empty). */
-export function expandSnippet(text: string, indent: string, now: Date): Expansion {
+ *  %^{Name} the ANSWERS entry (same name = same answer), %? the cursor (else the end); lines after
+ *  the first get INDENT (empty ones stay empty). */
+export function expandSnippet(text: string, indent: string, now: Date, answers: Record<string, string> = {}): Expansion {
   const U = inactiveStamp(now), u = U.slice(0, -7) + "]";
   const act = (s: string) => `<${s.slice(1, -1)}>`;
   const map: Record<string, string> = { t: act(u), T: act(U), u, U, "%": "%", "?": "\u0001" };
-  const out = text.replace(/%([tTuU%?])/g, (_, c) => map[c])
+  const out = text.replace(/%(\^\{([^}]*)\}|[tTuU%?])/g, (m, c, name) => name ? (answers[name] ?? "").replaceAll("\u0001", "") : c[0] === "^" ? m : map[c])
     .split("\n").map((l, i) => (i && l ? indent + l : l)).join("\n");
   const at = out.indexOf("\u0001");
   return at < 0 ? { text: indent + out, cursor: indent.length + out.length } : { text: indent + out.replaceAll("\u0001", ""), cursor: indent.length + at };
 }
 
 /** What `<key` alone on LINE expands to (USER snippets win over BLOCKS), or null so Tab does its usual thing. */
-export function snippetAt(line: string, user: Snippet[], now = new Date()): Expansion | null {
+export function snippetAt(line: string, user: Snippet[], now = new Date()): Expansion | Pending | null {
   const m = /^(\s*)<([\w-]+)$/.exec(line);
   if (!m) return null;
   const s = user.find((s) => s.key === m[2]);
-  if (s) return expandSnippet(s.text, m[1], now);
+  if (s) { const ask = snippetPrompts(s.text); return ask.length ? { ask, text: s.text, indent: m[1] } : expandSnippet(s.text, m[1], now); }
   return Object.hasOwn(BLOCKS, m[2]) ? block(BLOCKS[m[2]], m[1]) : null;
 }
