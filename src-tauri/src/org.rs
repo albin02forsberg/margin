@@ -1048,6 +1048,31 @@ pub fn set_prop(text: &str, line: usize, key: &str, val: Option<&str>) -> String
     if upsert_prop(&mut lines, i, key, val) { join(lines, text) } else { text.to_string() }
 }
 
+/// Value of KEY (case-insensitive) in the closed drawer of the heading at or above LINE.
+fn get_prop(lines: &[String], line: usize, key: &str) -> Option<String> {
+    let hl = headline_at(lines, line)?;
+    let i = if lines.get(hl + 1).is_some_and(|l| is_planning(l)) { hl + 2 } else { hl + 1 };
+    if !lines.get(i)?.trim().eq_ignore_ascii_case(":PROPERTIES:") { return None }
+    lines[i + 1..drawer_end(lines, i)?].iter().find_map(|l| PROP.captures(l).filter(|c| c[1].eq_ignore_ascii_case(key)).map(|c| c[2].to_string()))
+}
+
+/// Append `[[id:ID][TITLE]]` to the `:BLOCKER:` of the heading at LINE (org-depend);
+/// unchanged when ID is already listed, an error when it is the heading's own `:ID:`.
+pub fn add_blocker(text: &str, line: usize, id: &str, title: &str) -> Result<String, String> {
+    let lines = to_lines(text);
+    if get_prop(&lines, line, "ID").as_deref() == Some(id) { return Err("A task can't block itself.".into()) }
+    let old = get_prop(&lines, line, "BLOCKER").unwrap_or_default();
+    if BLOCKER.captures_iter(&old).any(|b| b.get(1).or(b.get(2)).unwrap().as_str() == id) { return Ok(text.to_string()) }
+    let link = format!("[[id:{id}][{}]]", title.replace(']', ")"));
+    Ok(set_prop(text, line, "BLOCKER", Some(format!("{old} {link}").trim_start())))
+}
+
+/// Turn `:ORDERED:` (children done in order) on (`t`) or off for the heading at LINE.
+pub fn toggle_ordered(text: &str, line: usize) -> String {
+    let on = get_prop(&to_lines(text), line, "ORDERED").is_some_and(|v| !matches!(v.to_lowercase().as_str(), "" | "nil"));
+    set_prop(text, line, "ORDERED", (!on).then_some("t"))
+}
+
 /// Set `:KEY: VALUE` in the file-level property drawer (the one before the first heading,
 /// creating it above everything else), replacing an existing KEY. KEY is upper-cased with
 /// spaces as `_`; anything but letters, digits, `_` and `-` is an error.
@@ -2159,6 +2184,33 @@ mod tests {
         assert_eq!(c, "* Q :drill:\n:PROPERTIES:\n:EFFORT: 0:30\n:END:\nanswer\n");
         assert_eq!(parse(Path::new("/x.org"), &c, &kw()).headlines[0].effort, Some(30));
         assert_eq!(set_prop("no heading\n", 0, "K", Some("v")), "no heading\n");
+    }
+
+    #[test]
+    fn add_blocker_appends_dedupes_and_refuses_self() {
+        let a = "* TODO Ship\nSCHEDULED: <2026-10-24 Sat>\nbody\n* TODO Dep A\n:PROPERTIES:\n:ID: a\n:END:\n* TODO Dep B\n:PROPERTIES:\n:ID: b\n:END:\n";
+        let one = add_blocker(a, 2, "a", "Dep [A]").unwrap();
+        assert!(one.starts_with("* TODO Ship\nSCHEDULED: <2026-10-24 Sat>\n:PROPERTIES:\n:BLOCKER: [[id:a][Dep [A)]]\n:END:\nbody\n"));
+        let two = add_blocker(&one, 0, "b", "Dep B").unwrap();
+        assert!(two.contains(":BLOCKER: [[id:a][Dep [A)]] [[id:b][Dep B]]\n"));
+        assert_eq!(add_blocker(&two, 0, "a", "again").unwrap(), two);
+        assert!(add_blocker(&two, 6, "a", "Dep A").is_err());
+        let f = parse(Path::new("/n/a.org"), &two, &kw());
+        assert_eq!(f.headlines[0].blockers, ["a", "b"]);
+        let bl = blocked(&[Arc::new(f)], &kw());
+        assert!(bl.contains_key(&(PathBuf::from("/n/a.org"), 0)));
+        let done = two.replace("* TODO Dep A", "* DONE Dep A");
+        assert!(blocked(&[Arc::new(parse(Path::new("/n/a.org"), &done, &kw()))], &kw()).contains_key(&(PathBuf::from("/n/a.org"), 0)));
+        let both = done.replace("* TODO Dep B", "* DONE Dep B");
+        assert!(blocked(&[Arc::new(parse(Path::new("/n/a.org"), &both, &kw()))], &kw()).is_empty());
+    }
+
+    #[test]
+    fn toggle_ordered_sets_and_removes() {
+        let on = toggle_ordered("* Project\n** TODO a\n", 0);
+        assert_eq!(on, "* Project\n:PROPERTIES:\n:ORDERED: t\n:END:\n** TODO a\n");
+        assert_eq!(toggle_ordered(&on, 2), "* Project\n** TODO a\n");
+        assert_eq!(toggle_ordered("* P\n:PROPERTIES:\n:ORDERED: nil\n:END:\n", 0), "* P\n:PROPERTIES:\n:ORDERED: t\n:END:\n");
     }
 
     #[test]
