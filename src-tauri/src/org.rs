@@ -113,6 +113,8 @@ pub struct Headline {
     pub ordered: bool,
     /// IDs in `:BLOCKER:` (org-depend): blocked while any of them is an open task.
     pub blockers: Vec<String>,
+    /// Raw `:TARGET:` (a goal's `YYYY-MM-DD` target date, see goals).
+    pub target: Option<String>,
 }
 
 impl Headline {
@@ -290,6 +292,8 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
                     h.ordered = !matches!(c[2].to_lowercase().as_str(), "" | "nil");
                 } else if c[1].eq_ignore_ascii_case("BLOCKER") {
                     h.blockers = BLOCKER.captures_iter(&c[2]).map(|b| blocker_id(&b).to_string()).collect();
+                } else if c[1].eq_ignore_ascii_case("TARGET") {
+                    h.target = Some(c[2].trim().to_string());
                 }
             }
             continue;
@@ -632,6 +636,53 @@ pub fn stuck(files: &[Arc<OrgFile>], kw: &Kw, next: &[String]) -> Vec<Stuck> {
         }
     }
     out.sort_by(|a, b| (&a.path, a.line).cmp(&(&b.path, b.line)));
+    out
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Goal {
+    pub path: PathBuf,
+    pub line: usize,
+    pub title: String,
+    pub done: usize,
+    pub total: usize,
+    /// Rounded done/total, None without tasks.
+    pub percent: Option<u32>,
+    pub target: Option<NaiveDate>,
+    /// Days from today to the target (negative: overdue).
+    pub days_left: Option<i64>,
+    /// `:TARGET:` is set but isn't a `YYYY-MM-DD` date.
+    pub bad_target: bool,
+}
+
+/// Headings with their own `:GOAL:` tag (not archived) and the progress of the tasks in their subtree
+/// (nested goals count for both). A done keyword named CANCELLED (or CANCELED) drops out of the total.
+/// The target is `:TARGET:`, else the heading's deadline. Soonest target first, then those without.
+pub fn goals(files: &[Arc<OrgFile>], kw: &Kw, today: NaiveDate) -> Vec<Goal> {
+    let mut out = vec![];
+    for f in files {
+        let hs = &f.headlines;
+        for (i, g) in hs.iter().enumerate().filter(|(_, h)| h.tags.iter().any(|t| t == "GOAL") && !h.archived()) {
+            let end = hs[i + 1..].iter().position(|h| h.level <= g.level).map_or(hs.len(), |p| i + 1 + p);
+            let ks = hs[i + 1..end].iter().filter(|h| !h.archived()).filter_map(|h| h.keyword.as_deref());
+            let ks: Vec<&str> = ks.filter(|k| !matches!(*k, "CANCELLED" | "CANCELED") || !kw.is_done(k)).collect();
+            let (total, done) = (ks.len(), ks.iter().filter(|k| kw.is_done(k)).count());
+            let parsed = g.target.as_ref().map(|t| t.parse::<NaiveDate>().ok());
+            let target = parsed.unwrap_or_else(|| g.deadline.as_ref().map(|d| d.date));
+            out.push(Goal {
+                path: f.path.clone(),
+                line: g.line,
+                title: g.title.clone(),
+                done,
+                total,
+                percent: (total > 0).then(|| (done as f64 * 100.0 / total as f64).round() as u32),
+                target,
+                days_left: target.map(|t| (t - today).num_days()),
+                bad_target: parsed == Some(None),
+            });
+        }
+    }
+    out.sort_by(|a, b| (a.target.is_none(), a.target, &a.path, a.line).cmp(&(b.target.is_none(), b.target, &b.path, b.line)));
     out
 }
 
@@ -2049,6 +2100,20 @@ mod tests {
     const DOC: &str = ":PROPERTIES:\n:ID: file-1\n:END:\n#+title: My Note\n#+category: Work\n\
 * TODO [#A] Write report :work:urgent:\nSCHEDULED: <2026-10-01 Thu> DEADLINE: <2026-10-05 Mon 10:00>\n:PROPERTIES:\n:ID: h-1\n:END:\nSee [[id:other][Other]] and [[file:b.org]].\n\
 ** NEXT Sub\n:PROPERTIES:\n:CATEGORY: Sub\n:END:\n*** DONE Deep\n* Meeting\n<2026-10-03 Sat 14:00>\n* TODO Water plants\nSCHEDULED: <2026-09-28 Mon +1w>\n";
+
+    #[test]
+    fn goals_progress() {
+        let doc = "* Launch :GOAL:\n:PROPERTIES:\n:TARGET: 2026-11-01\n:END:\n** DONE a\n** DONE b\n** TODO c\n\
+                   ** Sub :GOAL:\n*** DONE d\n*** CANCELLED e\n*** plain\n* Late :GOAL:\nDEADLINE: <2026-10-01 Thu>\n** TODO x\n\
+                   * Empty :GOAL:\n* Bad :GOAL:\n:PROPERTIES:\n:TARGET: someday\n:END:\n** DONE y\n\
+                   * Old :GOAL:ARCHIVE:\n** TODO z\n* Other\n** TODO w\n";
+        let kw = Kw { done: vec!["DONE".into(), "CANCELLED".into()], ..kw() };
+        let f = Arc::new(parse(Path::new("/n/g.org"), doc, &kw));
+        let g: Vec<_> = goals(&[f], &kw, d("2026-10-24")).into_iter().map(|g| (g.title, g.done, g.total, g.percent, g.days_left, g.bad_target)).collect();
+        let want = [("Late", 0, 1, Some(0), Some(-23), false), ("Launch", 3, 4, Some(75), Some(8), false), ("Sub", 1, 1, Some(100), None, false),
+                    ("Empty", 0, 0, None, None, false), ("Bad", 1, 1, Some(100), None, true)];
+        assert_eq!(g, want.map(|(t, d, n, p, l, b)| (t.to_string(), d, n, p, l, b)));
+    }
 
     #[test]
     fn stuck_projects() {

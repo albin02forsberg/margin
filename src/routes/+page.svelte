@@ -1342,6 +1342,17 @@
     if (r) { const s = r as (typeof o)[number]; await openFile(s.path, s.line); }
   }
 
+  /** `:GOAL:` headings with their subtask progress and days to target (#739). */
+  async function goalsView() {
+    type G = { path: string; line: number; title: string; done: number; total: number; percent: number | null; days_left: number | null; bad_target: boolean };
+    const o = await call<G[]>("org_goals");
+    if (!o.length) return flash("No goals: tag a heading :GOAL:");
+    const when = (g: G) => g.bad_target ? "bad target" : g.days_left == null ? "no target" : g.days_left < 0 ? `${-g.days_left}d overdue` : `${g.days_left}d left`;
+    const items = o.map((g) => ({ label: g.title, detail: `${g.total ? `${g.done}/${g.total} done (${g.percent}%)` : "no tasks"} · ${when(g)} · ${rel(g.path)}`, warn: g.bad_target || (g.days_left ?? 0) < 0, value: g as unknown }));
+    const r = await pick({ prompt: "Goals", items });
+    if (r) { const g = r as G; await openFile(g.path, g.line); }
+  }
+
   /** Notes by last change, newest first (#619). */
   async function recentlyChanged() {
     const o = await call<[string, string, number][]>("notes_recent");
@@ -2400,6 +2411,7 @@
     { label: "Task: toggle :ORDERED: (children in order)", leader: "x O", run: () => { const loc = editorLoc(); if (!loc) return flash("Open a note and put the cursor on a heading first."); act(() => recorded(() => edit(loc, "ordered"))); } },
     { label: "Note: archive all done tasks", leader: "x a", run: () => act(archiveDone) },
     { label: "Tasks: stuck projects (open subtasks, no next action)…", leader: "x S", run: () => act(stuckProjects) },
+    { label: "Tasks: goals (:GOAL: headings, progress, days left)…", leader: "x G", run: () => act(goalsView) },
     { label: "Task: track time on it", leader: "x i", run: () => atCursor("clockIn") },
     { label: "New heading / list item / table row below", keys: ["Alt+Enter"], ctx: "editor", leader: "x h", run: tableOr("rowBelow", () => ed.newItem(view)) },
     { label: "New task heading below", keys: ["Alt+Shift+Enter"], ctx: "editor", leader: "x n", run: () => ed.newHeading(view, kw().todo[0]) },
