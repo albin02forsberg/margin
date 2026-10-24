@@ -494,15 +494,69 @@ impl Event {
 
 /// Worked intervals: `in` until `break`/`out`, an open one until NOW.
 pub fn spans(events: &[(usize, Event)], now: NaiveDateTime) -> Vec<(NaiveDateTime, NaiveDateTime)> {
+    project_spans(events, now).into_iter().map(|(s, e, _)| (s, e)).collect()
+}
+
+/// `spans` with the project of the `in` that started each (a resume repeats it).
+pub fn project_spans(events: &[(usize, Event)], now: NaiveDateTime) -> Vec<(NaiveDateTime, NaiveDateTime, &str)> {
     let (mut start, mut out) = (None, vec![]);
     for (_, ev) in events {
         match ev {
-            Event::In { t, .. } => start = Some(*t),
-            Event::Break { t } | Event::Out { t, .. } => out.extend(start.take().map(|s| (s, *t))),
+            Event::In { t, project, .. } => start = Some((*t, project.as_str())),
+            Event::Break { t } | Event::Out { t, .. } => out.extend(start.take().map(|(s, p)| (s, *t, p))),
         }
     }
-    out.extend(start.map(|s| (s, now)));
+    out.extend(start.map(|(s, p)| (s, now, p)));
     out
+}
+
+/// Clocked time by weekday (Mon = 0) and hour of day over FROM..=TO (`rhythm`).
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Rhythm {
+    /// Average minutes per weekday-hour: the total over the times that weekday occurs in the range.
+    pub minutes: [[f64; 24]; 7],
+    /// The busiest cell (day, hour), None without clocked time.
+    pub peak: Option<(usize, usize)>,
+    /// Share of the clocked time from 17:00 on (0..1).
+    pub evening: f64,
+    pub hours: f64,
+    /// Each span's part in each cell, for listing what's behind a cell.
+    pub pieces: Vec<RhythmPiece>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct RhythmPiece {
+    pub day: usize,
+    pub hour: usize,
+    pub start: NaiveDateTime,
+    pub end: NaiveDateTime,
+    pub project: String,
+    pub minutes: f64,
+}
+
+/// SPANS (`project_spans`) on PROJECT (all when None) folded into a `Rhythm` over FROM..=TO, split at
+/// every hour boundary so midnight needs nothing special. Times are local wall clock without a zone,
+/// so a DST day just counts the hours its clock shows.
+pub fn rhythm(spans: &[(NaiveDateTime, NaiveDateTime, &str)], from: NaiveDate, to: NaiveDate, project: Option<&str>) -> Rhythm {
+    let (lo, hi) = (from.and_time(NaiveTime::MIN), (to + Duration::days(1)).and_time(NaiveTime::MIN));
+    let (mut total, mut pieces) = ([[0.0; 24]; 7], vec![]);
+    for &(s, e, p) in spans.iter().filter(|x| project.is_none_or(|p| p == x.2)) {
+        let (mut t, end) = (s.max(lo), e.min(hi));
+        while t < end {
+            let next = (t.date().and_hms_opt(t.hour(), 0, 0).unwrap() + Duration::hours(1)).min(end);
+            let (day, hour, minutes) = (t.weekday().num_days_from_monday() as usize, t.hour() as usize, (next - t).num_seconds() as f64 / 60.0);
+            total[day][hour] += minutes;
+            pieces.push(RhythmPiece { day, hour, start: s, end: e, project: p.into(), minutes });
+            t = next;
+        }
+    }
+    let mut n = [0u32; 7];
+    from.iter_days().take_while(|d| *d <= to).for_each(|d| n[d.weekday().num_days_from_monday() as usize] += 1);
+    let minutes: [[f64; 24]; 7] = std::array::from_fn(|d| total[d].map(|m| if n[d] > 0 { m / n[d] as f64 } else { 0.0 }));
+    let all: f64 = total.iter().flatten().sum();
+    let late: f64 = total.iter().map(|r| r[17..].iter().sum::<f64>()).sum();
+    let peak = (0..7).flat_map(|d| (0..24).map(move |h| (d, h))).filter(|&(d, h)| minutes[d][h] > 0.0).max_by(|a, b| minutes[a.0][a.1].total_cmp(&minutes[b.0][b.1]).then(b.cmp(a)));
+    Rhythm { minutes, peak, evening: if all > 0.0 { late / all } else { 0.0 }, hours: all / 60.0, pieces }
 }
 
 pub fn parse_events(text: &str) -> Vec<(usize, Event)> {
@@ -1953,5 +2007,43 @@ mod tests {
         assert_eq!(s["mail"], HashMap::from([("acme".into(), 10)]));
         assert_eq!(tc.events().len(), 11);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rhythm_splits_at_hours_midnight_and_breaks() {
+        let i = |t: &str, p: &str| Event::In { t: dt(t), project: p.into(), task: String::new() };
+        let (o, b) = (|t: &str| Event::Out { t: dt(t), note: String::new() }, |t: &str| Event::Break { t: dt(t) });
+        // 2026-10-19 is a Monday. 09:10-09:40 inside one hour; 10:30-12:00 with a break 11:15-11:45;
+        // Tue 23:30 to Wed 00:30 over midnight; an open clock on Fri 14:00 until now 14:20 on project B.
+        let ev: Vec<(usize, Event)> = [i("2026-10-19 09:10", "A"), o("2026-10-19 09:40"), i("2026-10-19 10:30", "A"), b("2026-10-19 11:15"), i("2026-10-19 11:45", "A"), o("2026-10-19 12:00"), i("2026-10-20 23:30", "A"), o("2026-10-21 00:30"), i("2026-10-23 14:00", "B")].into_iter().enumerate().collect();
+        let sp = project_spans(&ev, dt("2026-10-23 14:20"));
+        assert_eq!(sp[1], (dt("2026-10-19 10:30"), dt("2026-10-19 11:15"), "A"));
+        let r = rhythm(&sp, d("2026-10-19"), d("2026-10-25"), None);
+        assert_eq!((r.minutes[0][9], r.minutes[0][10], r.minutes[0][11], r.minutes[0][12]), (30.0, 30.0, 30.0, 0.0)); // 15 before the break + 15 after
+        assert_eq!((r.minutes[1][23], r.minutes[2][0], r.minutes[4][14]), (30.0, 30.0, 20.0));
+        assert_eq!((r.hours, r.peak, r.pieces.len()), (170.0 / 60.0, Some((0, 9)), 7)); // ties: the earliest cell
+        assert!((r.evening - 30.0 / 170.0).abs() < 1e-9);
+        let late = r.pieces.iter().find(|x| (x.day, x.hour) == (2, 0)).unwrap();
+        assert_eq!((late.start, late.end, late.minutes), (dt("2026-10-20 23:30"), dt("2026-10-21 00:30"), 30.0));
+        // Project filter; a range starting Wednesday clips the midnight span to its second half.
+        let b_only = rhythm(&sp, d("2026-10-19"), d("2026-10-25"), Some("B"));
+        assert_eq!((b_only.hours, b_only.peak, b_only.pieces[0].project.as_str()), (20.0 / 60.0, Some((4, 14)), "B"));
+        let wed = rhythm(&sp, d("2026-10-21"), d("2026-10-25"), Some("A"));
+        assert_eq!((wed.minutes[1][23], wed.minutes[2][0], wed.hours), (0.0, 30.0, 0.5));
+        // Empty: no peak, no division by zero; a range with no Mondays averages Monday to 0.
+        let none = rhythm(&[], d("2026-10-19"), d("2026-10-25"), None);
+        assert_eq!((none.peak, none.evening, none.hours), (None, 0.0, 0.0));
+    }
+
+    #[test]
+    fn rhythm_averages_by_weekday_occurrences() {
+        // Four Mondays 08:00-09:00 plus one Monday 10:00-10:40, over four weeks: 60 and 10 min average.
+        let mut sp: Vec<(NaiveDateTime, NaiveDateTime, &str)> = (0..4).map(|w| (dt("2026-10-05 08:00") + Duration::weeks(w), dt("2026-10-05 09:00") + Duration::weeks(w), "A")).collect();
+        sp.push((dt("2026-10-12 10:00"), dt("2026-10-12 10:40"), "A"));
+        let r = rhythm(&sp, d("2026-10-05"), d("2026-11-01"), None);
+        assert_eq!((r.minutes[0][8], r.minutes[0][10], r.peak), (60.0, 10.0, Some((0, 8))));
+        // Sweden's DST end (2026-10-25, a Sunday): wall clock 01:30-03:30 counts its two clock hours once.
+        let dst = rhythm(&[(dt("2026-10-25 01:30"), dt("2026-10-25 03:30"), "A")], d("2026-10-19"), d("2026-10-25"), None);
+        assert_eq!((dst.minutes[6][1], dst.minutes[6][2], dst.minutes[6][3], dst.hours), (30.0, 60.0, 30.0, 2.0));
     }
 }

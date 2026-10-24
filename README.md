@@ -41,6 +41,12 @@ the editor has vim keys.
   per project and in total, the 5 largest overruns (Enter opens one) and a
   planning factor (clocked / estimated) to apply to new estimates. Tasks with
   an estimate but no clocked time are left out of the ratio.
+  `Space t H` (or *When do I work?* in the Time view) is a weekday x hour
+  heatmap of clocked time over the last 4 or 12 weeks or this month (`r`
+  switches), optionally for one project: each cell is the average minutes
+  clocked in that hour on that weekday (breaks left out, sessions over midnight
+  split), with the peak hour, the share after 17:00 and the total. `h/j/k/l`
+  move between cells, and the sessions behind the selected cell are listed below.
 - **Window title** shows the active tab (`• note — Margin` when unsaved), so
   the taskbar and window switcher tell Margin windows apart.
 - **Stays in sync** with Emacs, git or any sync tool editing the same files,

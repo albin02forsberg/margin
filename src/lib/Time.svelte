@@ -4,7 +4,7 @@
   export type TimeApi = {
     act: (f: () => unknown) => void;
     /** Named actions: start, stop, pause, resume, switch, adjust, editSession, export, exportReport, projects, timeOff,
-     *  open ({path, line?}), profile, holidays, daily, weekly, doctor, backup, backupLog, rawLog, import, acceptSuggestion, editSuggestion, logSession, estimates. */
+     *  open ({path, line?}), profile, holidays, daily, weekly, doctor, backup, backupLog, rawLog, import, acceptSuggestion, editSuggestion, logSession, estimates, rhythm. */
     run: (name: string, arg?: unknown) => Promise<void>;
   };
   import { hm } from "./clock";
@@ -158,6 +158,7 @@
             <button onclick={() => run("export")}><kbd>e</kbd>Export CSV…</button>
             <button onclick={() => run("exportReport")}><kbd>E</kbd>Export report (HTML/PDF)…</button>
             <button onclick={() => run("estimates")}>Estimates vs actuals…</button>
+            <button onclick={() => run("rhythm")}>When do I work?</button>
           </div>
         </section>
         <section class="card tools">
