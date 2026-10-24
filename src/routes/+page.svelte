@@ -21,6 +21,7 @@
   import { fmtEffort } from "$lib/effort";
   import { buildTimeline, timelineMarkdown, type Entry as TimelineEntry } from "$lib/timeline";
   import { clockBlocks } from "$lib/clocktable";
+  import { pickStale } from "$lib/stale";
   import { ago, changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath, weekJournals } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
@@ -1371,6 +1372,16 @@
     if (r) await openFile(r as string);
   }
 
+  /** Space n *: opens a random note, older ones likelier; Space n Z lists notes untouched for a year (#758). */
+  async function staleNotes(random: boolean) {
+    const o = await call<[string, string, number][]>("notes_stale", { minAgeDays: random ? 0 : 365 });
+    const now = Date.now() / 1000;
+    if (random) { const p = pickStale(o.filter((n) => n[0] != tab?.path), now, Math.random()); return p ? openFile(p) : flash("No stale notes."); }
+    if (!o.length) return flash("No stale notes.");
+    const r = await pick({ prompt: "Stale notes", items: o.map(([p, title, t]) => ({ label: title || niceName(p), detail: `${rel(p)} · ${ago(t, now)}`, value: p as unknown })) });
+    if (r) await openFile(r as string);
+  }
+
   /** Review the due `:drill:` flashcards (#703); each grade writes the card's schedule to its drawer (undo: Space n u). */
   async function reviewDrill() {
     const t = new Date(), today = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
@@ -2358,6 +2369,8 @@
     { label: "Notes: find notes with no links…", leader: "n O", run: findOrphans },
     { label: "Notes: find broken links…", leader: "n L", run: findBrokenLinks },
     { label: "Notes: recently changed…", leader: "n C", run: recentlyChanged },
+    { label: "Notes: open a random note, older ones likelier", leader: "n *", run: () => staleNotes(true) },
+    { label: "Notes: stale notes (untouched for a year)…", leader: "n Z", run: () => staleNotes(false) },
     { label: "Notes: browse by tag…", leader: "n T", run: browseTags },
     { label: "People: a person's open tasks and mentions (@name)…", leader: "n @", run: personView },
     { label: "Flashcards: review due :drill: headings", leader: "n d", run: reviewDrill },

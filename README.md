@@ -83,7 +83,9 @@ unknown ID, `[[file:]]` links to a missing file or to a `::*Heading` / `::#custo
 and same-file `[[*Heading]]` / `[[#custom-id]]` links; `Enter` opens the note at the link. `Space n T` browses notes by tag:
 pick a tag from `#+FILETAGS:` or a non-task heading's own tags (with counts, any case), then
 the note or heading to open. `Space n C` lists recently changed notes (journal included), newest
-first, with how long ago each changed.
+first, with how long ago each changed. `Space n Z` lists notes untouched for a year (oldest first);
+`Space n *` opens a random note, older ones likelier (journal, inbox, trash and archives are skipped;
+sync tools that touch files make notes look fresh).
 
 **People** — tag a heading or task `:@anna:` or write `@anna` in a note. `Space n @` picks a
 person (from the `@` tags, or type any name) and lists their open tasks (tagged, inheriting the
