@@ -727,9 +727,10 @@ fn search_todos(s: State<App>, query: String) -> R<Vec<org::Item>> {
 /// search_todos over FILES: the saved views' query path, shared with tasks blocks.
 fn query_todos(s: &App, files: &[Arc<org::OrgFile>], query: &str) -> R<Vec<org::Item>> {
     let (kw, f) = (s.kw(), spent_lookup(s));
-    let (g, bl) = (f.clone(), org::blocked(files, &kw));
-    let (keep, done) = org::query(query, today(), &kw, move |h| g(&h.category, &h.title), move |o, h| bl.contains_key(&(o.path.clone(), h.line)))?;
-    Ok(with_spent(&*f, org::todos(files, &kw, done, keep, today())))
+    let (g, bl) = (f.clone(), std::rc::Rc::new(org::blocked(files, &kw)));
+    let b2 = bl.clone();
+    let (keep, done) = org::query(query, today(), &kw, move |h| g(&h.category, &h.title), move |o, h| b2.contains_key(&(o.path.clone(), h.line)))?;
+    Ok(with_spent(&*f, org::todos_with(files, &bl, &kw, done, keep, today())))
 }
 
 /// Open tasks tagged (own or inherited) `@NAME` or naming `@NAME` in the title, and other lines mentioning it.
