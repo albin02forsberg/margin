@@ -720,6 +720,7 @@ describe("Journal, archive and move", () => {
   const extract = "* TODO Big idea :x:\nwhy\n** Part\n";
   const retitle = "* TODO Old name\nsee [[*Old name][here]] and [[*Other]]\n", retitleRef = "[[file:retitle.org::*old name]] [[*Old name]]\n";
   const drill = "* Capital of France? :drill:\nParis\n* Later :drill:\n:PROPERTIES:\n:DRILL_DUE: 2999-01-01\n:END:\nnot due\n";
+  const blockers = "* TODO Write spec\n* TODO Ship it\n* Phases\n** TODO One\n** TODO Two\n";
   const f = (n: string) => join(d.notes, n);
   /** Leader key sequence KEYS from the editor's normal mode. */
   const leader = async (keys: string) => { await browser.keys(Key.Escape); await browser.keys(" "); await type(keys); };
@@ -740,6 +741,7 @@ describe("Journal, archive and move", () => {
         writeFileSync(join(notes, "stuck.org"), "* TODO Moving\n** NEXT Go\n* TODO Launch site\n** TODO Pick a host\n** TODO Write copy\n");
         writeFileSync(join(notes, "drill.org"), drill);
         writeFileSync(join(notes, "ordered.org"), "* Move flat\n:PROPERTIES:\n:ORDERED: t\n:END:\n** TODO Book van\n** TODO Pack boxes\n");
+        writeFileSync(join(notes, "blockers.org"), blockers);
         writeFileSync(join(notes, "clone.org"), "* DONE Check-in\nCLOSED: [2026-10-01 Thu 10:00] SCHEDULED: <2026-10-01 Thu>\n* After\n");
       },
     });
@@ -970,6 +972,30 @@ describe("Journal, archive and move", () => {
     await browser.keys("x");
     await fileMatches(f("ordered.org"), (s) => s.includes("** DONE Book van"), "first task not done");
     await browser.waitUntil(async () => (await texts(".agenda .row:not(.blocked) .title")).includes("Pack boxes"), { timeoutMsg: "next task didn't appear" });
+  });
+
+  it("Space x B adds a :BLOCKER: link (target gets an :ID:), Space x O toggles :ORDERED:, Space n u undoes each (#727)", async () => {
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "blockers");
+    await find(".status .file", "blockers.org");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, Key.Shift, "o"]);
+    await answer("Go to heading", "Ship it");
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("TODO Ship it")), { timeoutMsg: "cursor not on the heading" });
+    await leader("xB");
+    await answer("Blocked by", "Write spec");
+    await fileMatches(f("blockers.org"), (s) => /^\* TODO Write spec\n:PROPERTIES:\n:ID: (\S+)\n:END:\n\* TODO Ship it\n:PROPERTIES:\n:BLOCKER: \[\[id:\1\]\[Write spec\]\]\n:END:\n\* Phases\n/.test(s), "blocker or target id not written");
+    await find(".status .msg", "Blocked by Write spec");
+    await browser.keys([Key.Ctrl, Key.Shift, "o"]);
+    await answer("Go to heading", "Phases");
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("* Phases")), { timeoutMsg: "cursor not on Phases" });
+    await leader("xO");
+    await fileMatches(f("blockers.org"), (s) => s.includes("* Phases\n:PROPERTIES:\n:ORDERED: t\n:END:\n** TODO One\n"), ":ORDERED: not set");
+    await leader("nu");
+    await fileMatches(f("blockers.org"), (s) => s.includes("* Phases\n** TODO One\n") && s.includes(":BLOCKER:"), "undo didn't drop only :ORDERED:");
+    await leader("nu");
+    await fileMatches(f("blockers.org"), (s) => s === blockers, "one undo didn't remove both the blocker and the id");
   });
 
   it("Space v n narrows to the heading at the cursor and widens again", async () => {

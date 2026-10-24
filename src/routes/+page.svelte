@@ -834,6 +834,30 @@
     } catch { flash("Couldn't copy to the clipboard."); }
   }
 
+  /** `:BLOCKER:` (org-depend) on the heading at the cursor: pick the open task it waits for. The target's
+   *  `:ID:` and the blocker link are one undo step. */
+  async function addBlocker() {
+    const loc = editorLoc();
+    if (!loc) return flash("Open a note and put the cursor on a task first.");
+    const own = ed.headings(view.state).filter((h) => h.line <= loc.line).pop()?.line;
+    const tasks = (await call<AgendaItem[]>("todos")).filter((t) => !(t.path === loc.path && t.line === own));
+    if (!tasks.length) return flash("No other open tasks.");
+    const t = await pick({ prompt: "Blocked by…", items: tasks.map((t) => ({ label: t.title, detail: `${t.keyword ?? ""} · ${rel(t.path)}`, value: t })) });
+    if (!t) return;
+    let line = loc.line, title = "";
+    await recorded(async () => {
+      let id = "";
+      await toFile(t.path, async (text) => {
+        const [n, i, ti] = await call<[string, string, string]>("notes_heading_id", { text, line: t.line });
+        // The new :ID: drawer pushes the cursor's heading down when it sits below the target in the same file.
+        if (t.path === loc.path && t.line < loc.line) line += n.split("\n").length - text.split("\n").length;
+        id = i; title = ti; return n;
+      });
+      await edit({ path: loc.path, line }, "blocker", `${id} ${title}`);
+    });
+    flash(`Blocked by ${title}`);
+  }
+
   /** Move the heading at the cursor (body and children) into a new note next to this one, leaving a link (org-roam-extract-subtree); `Space n u` puts it back. */
   async function extractNote() {
     const loc = editorLoc();
@@ -2354,6 +2378,8 @@
     { label: "Task: copy to…", leader: "x M", run: () => atCursor("copy") },
     { label: "Task: clone with date shift…", leader: "x C", run: () => atCursor("clone") },
     { label: "Task: archive", leader: "x A", run: () => atCursor("archive") },
+    { label: "Task: blocked by… (:BLOCKER:)", leader: "x B", run: () => act(addBlocker) },
+    { label: "Task: toggle :ORDERED: (children in order)", leader: "x O", run: () => { const loc = editorLoc(); if (!loc) return flash("Open a note and put the cursor on a heading first."); act(() => recorded(() => edit(loc, "ordered"))); } },
     { label: "Note: archive all done tasks", leader: "x a", run: () => act(archiveDone) },
     { label: "Tasks: stuck projects (open subtasks, no next action)…", leader: "x S", run: () => act(stuckProjects) },
     { label: "Task: track time on it", leader: "x i", run: () => atCursor("clockIn") },

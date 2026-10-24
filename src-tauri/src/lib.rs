@@ -743,7 +743,8 @@ fn org_heading(s: State<App>, text: String, line: usize) -> Option<org::Parts> {
 
 /// Headline edits. OP: cycle (VALUE ±1) | keyword (VALUE or none) | priority (letter or none)
 /// | priority-cycle (±1) | tags ("a:b") | title (new text) | shift ("SCHEDULED 1")
-/// | effort ("0:30", "2h"; empty clears) | prop (a "KEY VALUE" per line; no VALUE removes KEY) | move ("SCHEDULED tomorrow": absolute date, keeps time and repeater).
+/// | effort ("0:30", "2h"; empty clears) | prop (a "KEY VALUE" per line; no VALUE removes KEY) | move ("SCHEDULED tomorrow": absolute date, keeps time and repeater)
+/// | blocker ("ID TITLE": append to `:BLOCKER:`) | ordered (toggle `:ORDERED:`).
 #[tauri::command]
 fn org_edit(s: State<App>, text: String, line: usize, op: String, value: Option<String>) -> R<String> {
     org_edit_op(&text, line, &op, value, &s.kw(), timeclock::now(), s.cfg().log_done)
@@ -773,6 +774,11 @@ fn org_edit_op(text: &str, line: usize, op: &str, value: Option<String>, kw: &or
             if k.contains(':') { return Err(format!("bad property name {k}")) }
             Ok(org::set_prop(&t, line, k, Some(val).filter(|v| !v.is_empty())))
         })?,
+        "blocker" => {
+            let (id, title) = v.split_once(' ').unwrap_or((&v, ""));
+            org::add_blocker(text, line, id, title.trim())?
+        }
+        "ordered" => org::toggle_ordered(text, line),
         "tags" => org::set_tags(text, line, kw, v.split(':').map(|t| t.trim().to_string()).collect()),
         "shift" => {
             let (kind, days) = v.split_once(' ').ok_or("shift needs \"KIND DAYS\"")?;
@@ -2361,6 +2367,8 @@ mod tests {
         assert!(edit("* Task\n", "title", Some(" ")).is_err());
         assert_eq!(edit("* Task\n", "note", Some("hi")).unwrap(), "* Task\n- Note taken on [2026-01-08 Thu 09:00] \\\\\n  hi\n");
         assert!(edit("* Task\n", "note", Some(" ")).is_err());
+        assert_eq!(edit("* Task\n", "blocker", Some("x1 Two words")).unwrap(), "* Task\n:PROPERTIES:\n:BLOCKER: [[id:x1][Two words]]\n:END:\n");
+        assert_eq!(edit("* Task\n", "ordered", None).unwrap(), "* Task\n:PROPERTIES:\n:ORDERED: t\n:END:\n");
         let sched = "* Task\nSCHEDULED: <2026-01-08 Thu>\n";
         assert_eq!(edit(sched, "shift", Some("SCHEDULED 3")).unwrap(), "* Task\nSCHEDULED: <2026-01-11 Sun>\n");
         assert_eq!(edit(sched, "shift", Some("SCHEDULED -1")).unwrap(), "* Task\nSCHEDULED: <2026-01-07 Wed>\n");
