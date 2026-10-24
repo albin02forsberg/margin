@@ -115,6 +115,8 @@ pub struct Headline {
     pub blockers: Vec<String>,
     /// Raw `:TARGET:` (a goal's `YYYY-MM-DD` target date, see goals).
     pub target: Option<String>,
+    /// Raw `:START:` (a goal's `YYYY-MM-DD` start date, see goal_status).
+    pub start: Option<String>,
 }
 
 impl Headline {
@@ -294,6 +296,8 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
                     h.blockers = BLOCKER.captures_iter(&c[2]).map(|b| blocker_id(&b).to_string()).collect();
                 } else if c[1].eq_ignore_ascii_case("TARGET") {
                     h.target = Some(c[2].trim().to_string());
+                } else if c[1].eq_ignore_ascii_case("START") {
+                    h.start = Some(c[2].trim().to_string());
                 }
             }
             continue;
@@ -639,6 +643,24 @@ pub fn stuck(files: &[Arc<OrgFile>], kw: &Kw, next: &[String]) -> Vec<Stuck> {
     out
 }
 
+#[derive(Serialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum GoalStatus {
+    OnTrack,
+    AtRisk,
+}
+
+/// Whether DONE of TOTAL tasks keeps up with the share of START..TARGET elapsed by TODAY: at risk when more than
+/// 10 points behind. None without a valid start before the target, or without tasks.
+pub fn goal_status(start: Option<NaiveDate>, target: Option<NaiveDate>, today: NaiveDate, done: usize, total: usize) -> Option<GoalStatus> {
+    let (start, target) = (start?, target?);
+    if start >= target || total == 0 {
+        return None;
+    }
+    let elapsed = ((today - start).num_days() as f64 / (target - start).num_days() as f64).clamp(0.0, 1.0);
+    Some(if done as f64 / total as f64 + 0.1 < elapsed { GoalStatus::AtRisk } else { GoalStatus::OnTrack })
+}
+
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Goal {
     pub path: PathBuf,
@@ -653,6 +675,8 @@ pub struct Goal {
     pub days_left: Option<i64>,
     /// `:TARGET:` is set but isn't a `YYYY-MM-DD` date.
     pub bad_target: bool,
+    /// Progress against the time elapsed between `:START:` and the target.
+    pub status: Option<GoalStatus>,
     /// Minutes clocked on the goal heading and its subtree tasks.
     pub spent: u32,
 }
@@ -701,6 +725,7 @@ pub fn goals(files: &[Arc<OrgFile>], kw: &Kw, today: NaiveDate, spent: &dyn Fn(&
                 target,
                 days_left: target.map(|t| (t - today).num_days()),
                 bad_target: parsed == Some(None),
+                status: goal_status(g.start.as_ref().and_then(|t| t.parse().ok()), target, today, done, total),
                 spent,
             });
         }
@@ -2147,6 +2172,34 @@ mod tests {
         let fs = [Arc::new(parse(Path::new("/n/a.org"), a, &kw)), Arc::new(parse(Path::new("/n/b.org"), b, &kw))];
         let g: Vec<_> = goals(&fs, &kw, d("2026-10-24"), &|_, _| None).into_iter().map(|g| (g.title, g.done, g.total)).collect();
         assert_eq!(g, [("Launch".to_string(), 2, 3), ("Other".to_string(), 0, 2)]);
+    }
+
+    #[test]
+    fn goal_status_table() {
+        use GoalStatus::*;
+        let (s, t) = (Some(d("2026-10-01")), Some(d("2026-10-31")));
+        // (start, target, today, done, total)
+        let rows = [
+            (s, t, "2026-10-16", 1, 2, Some(OnTrack)),  // half way, half done
+            (s, t, "2026-10-16", 0, 2, Some(AtRisk)),
+            (s, t, "2026-10-16", 4, 10, Some(OnTrack)), // 10 points behind is still fine
+            (s, t, "2026-10-25", 1, 2, Some(AtRisk)),
+            (s, t, "2026-09-01", 0, 2, Some(OnTrack)),  // not started yet
+            (s, t, "2026-11-30", 1, 2, Some(AtRisk)),   // past the target
+            (s, t, "2026-11-30", 2, 2, Some(OnTrack)),
+            (s, t, "2026-10-16", 0, 0, None),
+            (None, t, "2026-10-16", 0, 2, None),
+            (s, None, "2026-10-16", 0, 2, None),
+            (t, s, "2026-10-16", 0, 2, None),           // start after target
+            (s, s, "2026-10-16", 0, 2, None),
+        ];
+        for (st, tg, today, done, total, want) in rows {
+            assert_eq!(goal_status(st, tg, d(today), done, total), want, "{st:?} {tg:?} {today} {done}/{total}");
+        }
+        let doc = "* A :GOAL:\n:PROPERTIES:\n:START: 2026-10-01\n:TARGET: 2026-10-31\n:END:\n** TODO x\n* B :GOAL:\n:PROPERTIES:\n:START: nope\n:TARGET: 2026-10-31\n:END:\n** TODO x\n";
+        let f = Arc::new(parse(Path::new("/n/s.org"), doc, &kw()));
+        let g: Vec<_> = goals(&[f], &kw(), d("2026-10-25"), &|_, _| None).into_iter().map(|g| (g.title, g.status)).collect();
+        assert_eq!(g, [("A".to_string(), Some(AtRisk)), ("B".to_string(), None)]);
     }
 
     #[test]
