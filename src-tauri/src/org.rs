@@ -1212,6 +1212,12 @@ pub fn heading_blockers(text: &str, line: usize, files: &[Arc<OrgFile>]) -> Vec<
     }).collect()
 }
 
+/// The open task blocking the heading at or above LINE of TEXT (PATH's buffer, already in FILES), if any.
+pub fn blocked_at(text: &str, line: usize, files: &[Arc<OrgFile>], kw: &Kw, path: &Path) -> Option<Blocker> {
+    let head = headline_at(&to_lines(text), line)?;
+    blocked(files, kw).remove(&(path.to_path_buf(), head))
+}
+
 /// Turn `:ORDERED:` (children done in order) on (`t`) or off for the heading at LINE.
 pub fn toggle_ordered(text: &str, line: usize) -> Result<String, String> {
     if headline_at(&to_lines(text), line).is_none() { return Err(NO_HEADING.into()) }
@@ -2437,6 +2443,15 @@ mod tests {
         assert_eq!(t, [("a", "Dep A", true), ("gone", "Gone task", false), ("bare", "bare", false), ("b", "b", false)]);
         assert_eq!(d[0].at, Some((PathBuf::from("/n/a.org"), 4)));
         assert!(heading_blockers(a, 4, &files).is_empty());
+    }
+
+    #[test]
+    fn blocked_at_resolves_heading() {
+        let t = "* Project\n:PROPERTIES:\n:ORDERED: t\n:END:\n** TODO a\nbody\n** TODO b\nmore\n";
+        let p = Path::new("/n/a.org");
+        let files = [Arc::new(parse(p, t, &kw()))];
+        assert_eq!(blocked_at(t, 7, &files, &kw(), p).map(|b| b.title), Some("a".into()));
+        assert!(blocked_at(t, 5, &files, &kw(), p).is_none());
     }
 
     #[test]

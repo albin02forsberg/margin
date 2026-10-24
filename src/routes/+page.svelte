@@ -723,19 +723,34 @@
     }) as Promise<string | null>;
   }
 
+  /** Editor path only (IT undefined; the agenda and bulk ops ask first): false when finishing the task at LOC (to TARGET) is
+   *  cancelled because another open task blocks it (#754). */
+  async function okToFinish(loc: Loc, it: AgendaItem | undefined, target: string | null | undefined) {
+    const k = kw();
+    if (it || !target || !k.done.includes(target)) return true;
+    const h = await heading(loc);
+    if (!h || (h.keyword && k.done.includes(h.keyword))) return true;
+    const b = await call<{ title: string } | null>("org_blocked_at", { path: loc.path, text: await textOf(loc.path), line: loc.line });
+    return !b || agendaApi.confirm(`Waits on "${b.title}": mark done anyway?`);
+  }
+
   const taskOps: Record<string, (loc: Loc, it?: AgendaItem, arg?: number | string) => Promise<unknown>> = {
-    async done(loc) {
+    async done(loc, it) {
       const h = await heading(loc);
       if (!h) return flash("Not on a task.");
-      const k = kw();
-      await edit(loc, "keyword", h.keyword && k.done.includes(h.keyword) ? k.todo[0] : k.done[0]);
+      const k = kw(), to = h.keyword && k.done.includes(h.keyword) ? k.todo[0] : k.done[0];
+      if (await okToFinish(loc, it, to)) await edit(loc, "keyword", to);
     },
-    async state(loc) {
+    async state(loc, it) {
       const k = kw();
       const v = await pick({ prompt: "Set status", items: [...k.todo, ...k.done, { label: "No status (plain heading)", value: "" }] });
-      if (v != null) await edit(loc, "keyword", v);
+      if (v != null && (await okToFinish(loc, it, v))) await edit(loc, "keyword", v);
     },
-    cycle: (loc, _it, dir = 1) => edit(loc, "cycle", String(dir)),
+    async cycle(loc, it, dir = 1) {
+      const k = kw(), seq = [null, ...k.todo, ...k.done], h = it ? null : await heading(loc);
+      if (h && !(await okToFinish(loc, it, seq[(seq.indexOf(h.keyword ?? null) + Number(dir) + seq.length) % seq.length]))) return;
+      await edit(loc, "cycle", String(dir));
+    },
     keyword: (loc, _it, k = "") => edit(loc, "keyword", String(k)),
     schedule: (loc) => planDate(loc, "SCHEDULED"),
     deadline: (loc) => planDate(loc, "DEADLINE"),
