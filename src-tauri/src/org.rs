@@ -653,12 +653,15 @@ pub struct Goal {
     pub days_left: Option<i64>,
     /// `:TARGET:` is set but isn't a `YYYY-MM-DD` date.
     pub bad_target: bool,
+    /// Minutes clocked on the goal heading and its subtree tasks.
+    pub spent: u32,
 }
 
 /// Headings with their own `:GOAL:` tag (not archived) and the progress of the tasks in their subtree
 /// (nested goals count for both). A done keyword named CANCELLED (or CANCELED) drops out of the total.
 /// The target is `:TARGET:`, else the heading's deadline. Soonest target first, then those without.
-pub fn goals(files: &[Arc<OrgFile>], kw: &Kw, today: NaiveDate) -> Vec<Goal> {
+/// SPENT gives the clocked minutes of a (category, title).
+pub fn goals(files: &[Arc<OrgFile>], kw: &Kw, today: NaiveDate, spent: &dyn Fn(&str, &str) -> Option<u32>) -> Vec<Goal> {
     let mut out = vec![];
     for f in files {
         let hs = &f.headlines;
@@ -667,6 +670,7 @@ pub fn goals(files: &[Arc<OrgFile>], kw: &Kw, today: NaiveDate) -> Vec<Goal> {
             let ks = hs[i + 1..end].iter().filter(|h| !h.archived()).filter_map(|h| h.keyword.as_deref());
             let ks: Vec<&str> = ks.filter(|k| !matches!(*k, "CANCELLED" | "CANCELED") || !kw.is_done(k)).collect();
             let (total, done) = (ks.len(), ks.iter().filter(|k| kw.is_done(k)).count());
+            let spent = [g].into_iter().chain(hs[i + 1..end].iter().filter(|h| h.keyword.is_some() && !h.archived())).filter_map(|h| spent(&h.category, &h.title)).sum();
             let parsed = g.target.as_ref().map(|t| t.parse::<NaiveDate>().ok());
             let target = parsed.unwrap_or_else(|| g.deadline.as_ref().map(|d| d.date));
             out.push(Goal {
@@ -679,6 +683,7 @@ pub fn goals(files: &[Arc<OrgFile>], kw: &Kw, today: NaiveDate) -> Vec<Goal> {
                 target,
                 days_left: target.map(|t| (t - today).num_days()),
                 bad_target: parsed == Some(None),
+                spent,
             });
         }
     }
@@ -2109,10 +2114,10 @@ mod tests {
                    * Old :GOAL:ARCHIVE:\n** TODO z\n* Other\n** TODO w\n";
         let kw = Kw { done: vec!["DONE".into(), "CANCELLED".into()], ..kw() };
         let f = Arc::new(parse(Path::new("/n/g.org"), doc, &kw));
-        let g: Vec<_> = goals(&[f], &kw, d("2026-10-24")).into_iter().map(|g| (g.title, g.done, g.total, g.percent, g.days_left, g.bad_target)).collect();
-        let want = [("Late", 0, 1, Some(0), Some(-23), false), ("Launch", 3, 4, Some(75), Some(8), false), ("Sub", 1, 1, Some(100), None, false),
-                    ("Empty", 0, 0, None, None, false), ("Bad", 1, 1, Some(100), None, true)];
-        assert_eq!(g, want.map(|(t, d, n, p, l, b)| (t.to_string(), d, n, p, l, b)));
+        let g: Vec<_> = goals(&[f], &kw, d("2026-10-24"), &|_, t| (t == "a" || t == "d").then_some(30)).into_iter().map(|g| (g.title, g.done, g.total, g.percent, g.days_left, g.bad_target, g.spent)).collect();
+        let want = [("Late", 0, 1, Some(0), Some(-23), false, 0), ("Launch", 3, 4, Some(75), Some(8), false, 60), ("Sub", 1, 1, Some(100), None, false, 30),
+                    ("Empty", 0, 0, None, None, false, 0), ("Bad", 1, 1, Some(100), None, true, 0)];
+        assert_eq!(g, want.map(|(t, d, n, p, l, b, s)| (t.to_string(), d, n, p, l, b, s)));
     }
 
     #[test]

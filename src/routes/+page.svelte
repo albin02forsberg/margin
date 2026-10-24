@@ -1354,10 +1354,10 @@
 
   /** `:GOAL:` headings with their subtask progress and days to target (#739). */
   async function goalsView() {
-    type G = { path: string; line: number; title: string; done: number; total: number; percent: number | null; days_left: number | null; bad_target: boolean };
+    type G = { path: string; line: number; title: string; done: number; total: number; percent: number | null; days_left: number | null; bad_target: boolean; spent: number };
     const o = await call<G[]>("org_goals");
     if (!o.length) return flash("No goals: tag a heading :GOAL:");
-    const items = o.map((g) => ({ label: g.title, detail: `${g.total ? `${g.done}/${g.total} done (${g.percent}%)` : "no tasks"} · ${goalWhen(g)} · ${rel(g.path)}`, warn: g.bad_target || (g.days_left ?? 0) < 0, value: g as unknown }));
+    const items = o.map((g) => ({ label: g.title, detail: `${g.total ? `${g.done}/${g.total} done (${g.percent}%)` : "no tasks"} · ${goalWhen(g)}${g.spent ? ` · ${hm(g.spent / 60)} clocked` : ""} · ${rel(g.path)}`, warn: g.bad_target || (g.days_left ?? 0) < 0, value: g as unknown }));
     const r = await pick({ prompt: "Goals", items });
     if (r) { const g = r as G; await openFile(g.path, g.line); }
   }
