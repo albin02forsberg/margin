@@ -717,7 +717,7 @@ fn todos(s: State<App>) -> Vec<org::Item> {
 fn search_todos(s: State<App>, query: String) -> R<Vec<org::Item>> {
     let (kw, f, files) = (s.kw(), spent_lookup(&s), s.files());
     let (g, bl) = (f.clone(), org::blocked(&files, &kw));
-    let (keep, done) = org::query(&query, today(), &kw, move |h| g(&h.category, &h.title), move |o, h| bl.contains(&(o.path.clone(), h.line)))?;
+    let (keep, done) = org::query(&query, today(), &kw, move |h| g(&h.category, &h.title), move |o, h| bl.contains_key(&(o.path.clone(), h.line)))?;
     Ok(with_spent(&*f, org::todos(&files, &kw, done, keep, today())))
 }
 

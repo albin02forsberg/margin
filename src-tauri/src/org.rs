@@ -377,9 +377,19 @@ pub struct Item {
     pub spent: Option<u32>,
     /// Can't be done yet: an earlier sibling under `:ORDERED:` or a `:BLOCKER:` task is open (see blocked).
     pub blocked: bool,
+    /// The first open task it waits on, when blocked.
+    pub blocked_by: Option<Blocker>,
     /// A deadline's own warning period in days (`-3d` cookie), for reminders.
     #[serde(skip)]
     pub warn: Option<i64>,
+}
+
+/// The open task another one waits on (see blocked).
+#[derive(Debug, Clone, Serialize)]
+pub struct Blocker {
+    pub title: String,
+    pub path: PathBuf,
+    pub line: usize,
 }
 
 /// Days of a deadline's `-3d`/`-1w` warning cookie.
@@ -406,6 +416,7 @@ fn item(f: &OrgFile, h: &Headline, date: NaiveDate, kind: &'static str, label: S
         effort: h.effort,
         spent: None,
         blocked: false,
+        blocked_by: None,
         warn: None,
     }
 }
@@ -559,7 +570,8 @@ pub fn agenda(files: &[Arc<OrgFile>], kw: &Kw, start: NaiveDate, days: i64, toda
         }
     }
     for i in &mut out {
-        i.blocked = bl.contains(&(i.path.clone(), i.line));
+        i.blocked_by = bl.get(&(i.path.clone(), i.line)).cloned();
+        i.blocked = i.blocked_by.is_some();
     }
     let rank = |k: &str| ["overdue", "deadline", "scheduled", "warning", "timestamp"].iter().position(|x| *x == k);
     out.sort_by(|a, b| {
@@ -622,8 +634,9 @@ pub fn stuck(files: &[Arc<OrgFile>], kw: &Kw, next: &[String]) -> Vec<Stuck> {
 /// (path, line) of open tasks that can't be done yet, as org-depend: one of its ancestors (or itself)
 /// sits under an `:ORDERED:` parent after a still-open sibling task, or a `:BLOCKER:` id names an open
 /// task (unknown ids and non-tasks don't block; neither does a blocker that is itself waiting on this
-/// task, so a cycle hides nothing).
-pub fn blocked(files: &[Arc<OrgFile>], kw: &Kw) -> HashSet<(PathBuf, usize)> {
+/// task, so a cycle hides nothing). Maps each to the first open task it waits on (for inherited
+/// ordering: the waiting ancestor's earlier sibling).
+pub fn blocked(files: &[Arc<OrgFile>], kw: &Kw) -> HashMap<(PathBuf, usize), Blocker> {
     let open = |h: &Headline| h.keyword.as_deref().is_some_and(|k| !kw.is_done(k));
     let ids: HashMap<&str, &Headline> = files.iter().flat_map(|f| &f.headlines).filter_map(|h| Some((h.id.as_deref()?, h))).collect();
     // Whether open task FROM reaches id TO through `:BLOCKER:` links.
@@ -639,24 +652,30 @@ pub fn blocked(files: &[Arc<OrgFile>], kw: &Kw) -> HashSet<(PathBuf, usize)> {
         }
         false
     };
-    let mut out = HashSet::new();
+    let mut out = HashMap::new();
     for f in files {
         let hs = &f.headlines;
+        let blocker = |h: &Headline| Blocker { title: h.title.clone(), path: f.path.clone(), line: h.line };
         // Ancestors of the current heading; each heading's parent, and whether it waits on an earlier ordered sibling.
         let mut path: Vec<usize> = vec![];
-        let (mut parent, mut waits) = (vec![None; hs.len()], vec![false; hs.len()]);
+        let (mut parent, mut waits) = (vec![None; hs.len()], vec![None; hs.len()]);
         for (i, h) in hs.iter().enumerate() {
             while path.last().is_some_and(|&p| hs[p].level >= h.level) {
                 path.pop();
             }
             parent[i] = path.last().copied();
             if let Some(p) = parent[i].filter(|&p| hs[p].ordered) {
-                waits[i] = (p + 1..i).any(|j| parent[j] == Some(p) && open(&hs[j]) && !hs[j].archived());
+                waits[i] = (p + 1..i).find(|&j| parent[j] == Some(p) && open(&hs[j]) && !hs[j].archived());
             }
-            let up = waits[i] || path.iter().any(|&p| waits[p]);
-            let by_id = h.blockers.iter().any(|b| ids.get(b.as_str()).is_some_and(|x| open(x) && h.id.as_deref().is_none_or(|me| !reaches(b, me))));
-            if open(h) && !h.archived() && (up || by_id) {
-                out.insert((f.path.clone(), h.line));
+            let up = waits[i].or_else(|| path.iter().rev().find_map(|&p| waits[p])).map(|j| blocker(&hs[j]));
+            let by_id = || h.blockers.iter().find_map(|b| ids.get(b.as_str()).filter(|x| open(x) && h.id.as_deref().is_none_or(|me| !reaches(b, me))).map(|x| {
+                let o = files.iter().find(|f| f.headlines.iter().any(|y| std::ptr::eq(y, *x))).unwrap_or(f);
+                Blocker { title: x.title.clone(), path: o.path.clone(), line: x.line }
+            }));
+            if open(h) && !h.archived() {
+                if let Some(b) = up.or_else(by_id) {
+                    out.insert((f.path.clone(), h.line), b);
+                }
             }
             path.push(i);
         }
@@ -672,7 +691,7 @@ pub fn todos(files: &[Arc<OrgFile>], kw: &Kw, done: bool, keep: impl Fn(&OrgFile
         for h in f.headlines.iter().filter(|h| !h.archived()) {
             if let Some(k) = h.keyword.as_deref().filter(|k| (done || !kw.is_done(k)) && keep(f, h)) {
                 let date = h.scheduled.as_ref().or(h.deadline.as_ref()).map_or(NaiveDate::MAX, |t| t.date);
-                out.push(Item { habit: habit(h, today), blocked: bl.contains(&(f.path.clone(), h.line)), ..item(f, h, date, "todo", k.to_string(), None) });
+                out.push(Item { habit: habit(h, today), blocked_by: bl.get(&(f.path.clone(), h.line)).cloned(), blocked: bl.contains_key(&(f.path.clone(), h.line)), ..item(f, h, date, "todo", k.to_string(), None) });
             }
         }
     }
@@ -2003,10 +2022,11 @@ mod tests {
         let files = [Arc::new(parse(Path::new("/n/a.org"), &a, &kw())), Arc::new(parse(Path::new("/n/b.org"), &b, &kw()))];
         let h = &files[0].headlines;
         assert_eq!((h[0].ordered, h[1].ordered, &h[13].blockers), (true, false, &vec!["dep".to_string(), "missing-id".into()]));
+        let h_at = |files: &[Arc<OrgFile>], t: &str| files.iter().flat_map(|f| f.headlines.iter().map(move |h| (f, h))).find(|(_, h)| h.title == t).map(|(f, h)| (f.path.clone(), h.line)).unwrap();
         let t = d("2026-10-02");
         let titles = |q: &str| {
             let bl = blocked(&files, &kw());
-            let (f, _) = query(q, t, &kw(), |_| None, move |o, h| bl.contains(&(o.path.clone(), h.line))).unwrap();
+            let (f, _) = query(q, t, &kw(), |_| None, move |o, h| bl.contains_key(&(o.path.clone(), h.line))).unwrap();
             let mut v: Vec<_> = todos(&files, &kw(), false, f, t).into_iter().map(|i| (i.title, i.blocked)).collect();
             v.sort();
             v
@@ -2017,6 +2037,16 @@ mod tests {
         // A DONE or unknown blocker, and a cycle, block nothing.
         assert_eq!(names(titles("blocked:no")), "Book van, Cyc A, Cyc B, Dep, Free, Phase 1, Step a");
         assert!(titles("").iter().all(|(t, b)| *b == names(titles("blocked:yes")).split(", ").any(|x| x == t)), "Item.blocked disagrees");
+        // The task each waits on: first open earlier sibling, inherited from the waiting ancestor, or the id target (any file).
+        let by = |t: &str| {
+            let (p, l) = h_at(&files, t);
+            blocked(&files, &kw()).remove(&(p, l)).map(|b| (b.title, b.path.to_string_lossy().into_owned()))
+        };
+        assert_eq!(by("Hand over keys"), Some(("Book van".into(), "/n/a.org".into())));
+        assert_eq!(by("Wrap plates"), Some(("Book van".into(), "/n/a.org".into()))); // via Pack
+        assert_eq!(by("Step b"), Some(("Step a".into(), "/n/a.org".into())));
+        assert_eq!(by("Step c"), Some(("Phase 1".into(), "/n/a.org".into()))); // Phase 2 waits on Phase 1
+        assert_eq!(by("Waiting"), Some(("Dep".into(), "/n/b.org".into())));
         assert!(query("blocked:maybe", t, &kw(), |_| None, |_, _| false).is_err());
     }
 
