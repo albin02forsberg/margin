@@ -364,6 +364,74 @@ pub fn orphans(files: &[Arc<OrgFile>], skip: impl Fn(&Path) -> bool) -> Vec<Arc<
     files.iter().zip(adj).filter(|(f, a)| a.is_empty() && !skip(&f.path)).map(|(f, _)| f.clone()).collect()
 }
 
+#[derive(Serialize, Clone, Debug)]
+pub struct Broken {
+    pub path: PathBuf,
+    pub title: String,
+    pub line: usize,
+    pub text: String,
+    pub target: String,
+    pub reason: String,
+}
+
+static SAME_FILE_LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[([*#][^\]\n]*)\](?:\[[^\]]*\])?\]").unwrap());
+static CUSTOM_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?mi)^\s*:CUSTOM_ID:\s*(\S+)\s*$").unwrap());
+
+/// Why SEARCH (`*Heading` or `#custom-id`; other searches aren't checked) finds nothing in F, if it doesn't.
+/// Matches like `findTarget` in src/lib/links.ts.
+fn search_miss(f: &OrgFile, search: &str) -> Option<String> {
+    if let Some(h) = search.strip_prefix('*') {
+        let want = heading_norm(h);
+        (!f.headlines.iter().any(|x| heading_norm(&x.title) == want)).then(|| format!("no heading \"{}\"", h.trim()))
+    } else if let Some(id) = search.strip_prefix('#') {
+        let id = id.trim();
+        (!CUSTOM_ID.captures_iter(&f.text).any(|c| &c[1] == id)).then(|| format!("no CUSTOM_ID \"{id}\""))
+    } else {
+        None
+    }
+}
+
+/// Links in FILES (sources SKIP leaves out aren't scanned) that lead nowhere: `[[id:]]` to an unknown ID,
+/// `[[file:]]` to a missing file or to a `::*Heading` / `::#custom-id` it lacks, and same-file
+/// `[[*Heading]]` / `[[#custom-id]]`. Web and other links are left alone.
+pub fn broken_links(files: &[Arc<OrgFile>], skip: impl Fn(&Path) -> bool) -> Vec<Broken> {
+    let ids: std::collections::HashSet<String> = nodes(files).into_iter().map(|n| n.id).collect();
+    let by_path: HashMap<&Path, &OrgFile> = files.iter().map(|f| (f.path.as_path(), &**f)).collect();
+    let mut out = vec![];
+    for f in files.iter().filter(|f| !skip(&f.path)) {
+        let mut push = |line: usize, text: &str, target: String, reason: String| {
+            out.push(Broken { path: f.path.clone(), title: f.title.clone(), line, text: text.to_string(), target, reason })
+        };
+        for l in &f.links {
+            if !l.file {
+                let id = l.target.split("::").next().unwrap_or_default();
+                if !ids.contains(id) {
+                    push(l.line, &l.text, format!("id:{}", l.target), "no note or heading has this ID".into());
+                }
+                continue;
+            }
+            let p = resolve(&f.path, &l.target);
+            let reason = match by_path.get(p.as_path()) {
+                Some(to) => l.target.split_once("::").and_then(|(_, s)| search_miss(to, s)),
+                None if p.exists() => None,
+                None => Some("file not found".into()),
+            };
+            if let Some(r) = reason {
+                push(l.line, &l.text, format!("file:{}", l.target), r);
+            }
+        }
+        for (i, line) in f.text.lines().enumerate() {
+            for c in SAME_FILE_LINK.captures_iter(line) {
+                if let Some(r) = search_miss(f, &c[1]) {
+                    push(i, line.trim(), c[1].to_string(), r);
+                }
+            }
+        }
+    }
+    out.sort_by_key(|b| (b.path.clone(), b.line));
+    out
+}
+
 /// (file, line, title, tags) of one tagged place.
 type TagSite<'a> = (&'a OrgFile, usize, &'a str, Vec<&'a str>);
 
@@ -975,5 +1043,38 @@ mod tests {
     fn retitle_candidates_are_file_heading_links() {
         let fs = files(&[("/n/c.org", "* Old\n[[*Old]]\n"), ("/n/a.org", "[[file:c.org::*Old]]\n"), ("/n/b.org", "[[file:c.org]] [[file:x.org::*Old]]\n"), ("/n/s/d.org", "[[file:../c.org::*Q][q]]\n")]);
         assert_eq!(retitle_candidates(&fs, Path::new("/n/c.org")), [PathBuf::from("/n/a.org"), PathBuf::from("/n/s/d.org")]);
+    }
+
+    #[test]
+    fn broken_links_find_missing_targets() {
+        let kw = Kw { todo: vec!["TODO".into()], done: vec!["DONE".into()] };
+        let real = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+        let src = format!(
+            "[[id:a]] [[id:h]] [[id:nope]]\n[[file:gone.org]] [[file:a.org][A]] [[file:{real}]]\n[[file:sub/../a.org::*fix  IT]] [[file:a.org::*Missing]]\n[[file:a.org::#cid]] [[file:a.org::#other]] [[file:a.org::12]]\n[[*Here]] [[*There]] [[#mine]] [[https://x.org][web]]\n* Here [1/2]\n:PROPERTIES:\n:CUSTOM_ID: mine\n:END:\n"
+        );
+        let fs: Vec<_> = [
+            ("/n/a.org", ":PROPERTIES:\n:ID: a\n:END:\n* TODO Fix it [1/3] :work:\n:PROPERTIES:\n:CUSTOM_ID: cid\n:END:\n* Sub\n:PROPERTIES:\n:ID: h\n:END:\n"),
+            ("/n/s.org", src.as_str()),
+            ("/n/.trash/t.org", "[[id:nope]]\n"),
+        ]
+        .iter()
+        .map(|(p, t)| Arc::new(parse(Path::new(p), t, &kw)))
+        .collect();
+        let b = broken_links(&fs, |p| p.starts_with("/n/.trash"));
+        let got: Vec<_> = b.iter().map(|b| (b.line, b.target.as_str(), b.reason.as_str())).collect();
+        assert_eq!(
+            got,
+            [
+                (0, "id:nope", "no note or heading has this ID"),
+                (1, "file:gone.org", "file not found"),
+                (2, "file:a.org::*Missing", "no heading \"Missing\""),
+                (3, "file:a.org::#other", "no CUSTOM_ID \"other\""),
+                (4, "*There", "no heading \"There\""),
+            ]
+        );
+        assert!(b.iter().all(|b| b.path == Path::new("/n/s.org")));
+        // A link to a trashed note is still broken.
+        let fs = files(&[("/n/x.org", "[[file:.trash/t.org]]\n")]);
+        assert_eq!(broken_links(&fs, |_| false).len(), 1);
     }
 }

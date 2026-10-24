@@ -738,6 +738,7 @@ describe("Journal, archive and move", () => {
         writeFileSync(join(notes, "linker.org"), retitleRef);
         writeFileSync(join(notes, "narrow.org"), "* One\nalpha\n* Two\nbeta\n");
         writeFileSync(join(notes, "marks.org"), "* Intro\nx\n* Target\nfirst\nsecond\n");
+        writeFileSync(join(notes, "deadlinks.org"), "#+title: Dead links\nintro\nsee [[file:nowhere-737.org][gone]]\n");
         writeFileSync(join(notes, "stuck.org"), "* TODO Moving\n** NEXT Go\n* TODO Launch site\n** TODO Pick a host\n** TODO Write copy\n");
         writeFileSync(join(notes, "goals.org"), "* Intro\n* Ship v2 :GOAL:\n:PROPERTIES:\n:TARGET: 2099-01-01\n:END:\n** DONE Spec it\n** TODO Build it\n");
         writeFileSync(join(notes, "drill.org"), drill);
@@ -960,6 +961,15 @@ describe("Journal, archive and move", () => {
     await answer("Goals", "Ship v2");
     await find(".status .file", "goals.org");
     await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("Ship v2")), { timeoutMsg: "didn't land on the goal heading" });
+  });
+
+  it("Space n L lists broken links and Enter opens the note at the link (#737)", async () => {
+    await leader("nL");
+    await find(".picker label span", "Broken links");
+    await find(".picker", "file not found");
+    await answer("Broken links", "nowhere-737");
+    await find(".status .file", "deadlinks.org");
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("nowhere-737")), { timeoutMsg: "didn't land on the broken link" });
   });
 
   it("an :ORDERED: project shows only its next task in Tasks; B shows the blocked one, x on the first reveals it (#718)", async () => {
