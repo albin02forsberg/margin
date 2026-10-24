@@ -218,4 +218,23 @@ describe("Time tracking", () => {
       writeFileSync(log, orig);
     }
   });
+
+  it("Space t H shows the weekday x hour heatmap: peak, summary and the sessions behind a cell (#738)", async () => {
+    const orig = read(log), ago = (n: number) => { const t = new Date(); t.setDate(t.getDate() - n); return isoDay(t); };
+    const day = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][(new Date().getDay() + 6) % 7]; // 7 and 14 days ago: today's weekday
+    try {
+      writeFileSync(log, ([[7, "11:00"], [14, "10:30"]] as const).map(([n, end]) => `{"ev":"in","t":"${ago(n)}T10:00:00","project":"Acme"}\n{"ev":"out","t":"${ago(n)}T${end}:00","note":"x"}\n`).join(""));
+      await noPicker();
+      await palette("Time: when do I work");
+      await find(".rhythm .summary", `Peak: ${day} 10–11, 23 min avg · 0% after 17:00 · 1.5 h in total`); // 90 min over the 4 such days
+      await find(".rhythm h3", `${day} 10–11`);
+      await find(".rhythm .pieces li", `${ago(14)} 10:00–10:30 · Acme · 30 min in this hour`);
+      await browser.keys("l"); // 11–12: nothing behind it
+      await find(".rhythm .pieces li", "Nothing clocked");
+      await browser.keys(Key.Escape);
+      await browser.waitUntil(async () => !(await texts(".rhythm")).length, { timeoutMsg: "heatmap still open" });
+    } finally {
+      writeFileSync(log, orig);
+    }
+  });
 });

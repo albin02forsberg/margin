@@ -33,6 +33,7 @@
   import FormulaDialog from "$lib/FormulaDialog.svelte";
   import Drill from "$lib/Drill.svelte";
   import Metrics from "$lib/Metrics.svelte";
+  import Rhythm from "$lib/Rhythm.svelte";
   import { due as drillDue, grade as drillGrade, propValue as drillProps, type Card } from "$lib/drill";
   import Projects from "$lib/Projects.svelte";
   import Settings from "$lib/Settings.svelte";
@@ -81,6 +82,7 @@
   let formulaDialog = $state<FormulaDialog>();
   let drill = $state<Drill>();
   let metrics = $state<Metrics>();
+  let rhythm = $state<Rhythm>();
   let mode = $state("normal");
   let words = $state("");
   /** Title of the heading the editor is narrowed to (Space v n), or "". */
@@ -2263,6 +2265,7 @@
     backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), open: (loc) => openFile(loc.path, loc.line), import: importEmacs, acceptSuggestion, editSuggestion,
     flex: async () => flash(await call("tc_report", { kind: "flex" })), leave: async () => flash(await call("tc_leave_time")), diary: () => openFile(cfg.diary_path),
     timeOff, logSession, estimates: () => estimateReport(),
+    rhythm: async () => rhythm!.open((range, project) => call("tc_rhythm", { range, project }), Object.keys(await call<Record<string, unknown>>("tc_projects"))),
   };
   const timeApi: TimeApi = { act, run: async (name, arg) => { await timeActions[name](arg); } };
   const agendaApi: AgendaApi = {
@@ -2474,6 +2477,7 @@
     { label: "Weekly review into today's journal (re-run replaces the marked block)", leader: "t R", run: () => act(weeklyReview) },
     { label: "Time: estimates vs actuals (how far off are my :EFFORT: guesses?)…", leader: "t A", run: () => act(estimateReport) },
     { label: "Time: day timeline (sessions, tasks closed, notes edited)…", leader: "t T", run: () => act(dayTimeline) },
+    { label: "Time: when do I work? (weekday x hour heatmap)", leader: "t H", run: t("rhythm") },
     { label: "Time: import from Emacs…", leader: "t M", run: t("import") },
 
     { label: "Export: note as HTML", leader: "e h", run: () => exportNote("html") },
@@ -2522,7 +2526,7 @@
   const closeDrawer = () => { showGraph = showBacklinks = showChat = false; };
 
   function onKey(e: KeyboardEvent) {
-    if (picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen() || tableDialog?.isOpen() || formulaDialog?.isOpen() || drill?.isOpen() || metrics?.isOpen()) return;
+    if (picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen() || tableDialog?.isOpen() || formulaDialog?.isOpen() || drill?.isOpen() || metrics?.isOpen() || rhythm?.isOpen()) return;
     const inEditor = isText(tab) && view.contentDOM.contains(e.target as Node);
     if (e.key === "Escape" && !inEditor && drawerOpen()) { closeDrawer(); e.preventDefault(); return; }
     const idle = inEditor && ed.vimIdle(view);
@@ -2932,6 +2936,7 @@
 <FormulaDialog bind:this={formulaDialog} />
 <Drill bind:this={drill} />
 <Metrics bind:this={metrics} />
+<Rhythm bind:this={rhythm} />
 
 <style>
   :global(html, body) { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: var(--fs-base) var(--sans); overflow: hidden; }
