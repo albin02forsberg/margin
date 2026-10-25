@@ -718,7 +718,11 @@ with its export code, billable-hour rounding, round-up, an optional hour budget 
 week or a month, and whether it's offered when you start tracking; change any of them
 and press Save (or Enter) on that row. A project with a budget shows "12.5 / 20 h this
 month" and a bar on its cards (here and in the Time view), which turns the warning
-colour once it's over.
+colour once it's over. An optional hourly rate and currency (`rate = 95.5`,
+`currency = "EUR"` in `projects.toml`) shows what this month's billable hours earned
+on the project's card, and the week and month reports (`Space t s` / `Space t m`, also
+the HTML/PDF export) get Rate and Earned columns plus an "Earned" total per currency
+(different currencies are never added up). Projects without a rate look as before.
 Below it, Time off sets each kind's export code (kept in `leave.toml`, apart from
 the projects, so time off is never offered when you start tracking; no code means
 the kind's name is exported).

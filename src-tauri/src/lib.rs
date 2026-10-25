@@ -1539,10 +1539,13 @@ fn dashboard(inp: DashIn) -> Value {
         by.entry(x.project.clone()).or_default();
     });
     let month = |p: &str| merged.iter().filter(|x| x.project == p && in_month(x.date)).map(|x| x.hours).sum::<f64>();
+    // Billable hours this month at the project's rate (#801), null without one.
+    let earned = |p: &str| projects.get(p).and_then(|x| x.rate()).map(|r| timeclock::earned(rounded.iter().filter(|x| x.project == p && in_month(x.date)).map(|x| x.hours).sum(), r));
     let mut per_project: Vec<Value> = by
         .into_iter()
         .map(|(p, (w, b))| json!({ "project": if p.is_empty() { "Other".to_string() } else { p.clone() }, "code": timeclock::export_code(&p, projects), "worked": w, "billable": b, "month": month(&p),
-            "budget_hours": projects.get(&p).and_then(|x| x.budget_hours), "budget_period": projects.get(&p).map_or("month", |x| x.budget_period.as_str()) }))
+            "budget_hours": projects.get(&p).and_then(|x| x.budget_hours), "budget_period": projects.get(&p).map_or("month", |x| x.budget_period.as_str()),
+            "rate": projects.get(&p).and_then(|x| x.rate()), "currency": projects.get(&p).map_or("", |x| x.currency.trim()), "earned": earned(&p) }))
         .collect();
     per_project.sort_by(|a, b| b["worked"].as_f64().unwrap_or(0.0).total_cmp(&a["worked"].as_f64().unwrap_or(0.0)));
     let (flex_total, flex_week, _) = timeclock::flex(sessions, projects, &leave_only, cal, Some((monday, t)));
@@ -1593,6 +1596,9 @@ fn tc_projects(s: State<App>) -> R<timeclock::Projects> {
 
 #[tauri::command]
 fn tc_save_project(s: State<App>, name: String, project: Project) -> R<()> {
+    if project.rate.is_some_and(|r| !(r.is_finite() && r >= 0.0)) {
+        return Err("The hourly rate must be a positive number".into());
+    }
     let tc = s.tc();
     let mut p = tc.load_projects()?;
     p.insert(name, project);
@@ -2824,12 +2830,15 @@ mod tests {
         fx.sessions.push(timeclock::Session { date: "2026-01-02".parse().unwrap(), hours: 2.0, ..s.clone() }); // this month, last week
         fx.sessions.push(timeclock::Session { date: "2026-01-02".parse().unwrap(), project: "Gamma".into(), hours: 1.5, ..s.clone() }); // only last week
         fx.sessions.push(timeclock::Session { date: "2025-12-30".parse().unwrap(), project: "Delta".into(), hours: 1.0, ..s }); // only last month
+        fx.projects.insert("Acme".into(), Project { rate: Some(100.0), currency: "EUR".into(), rounding: None, ..Project::new("A-1") });
         let v = dashboard(fx);
         let acme = &v["projects"][0];
         assert_eq!(acme["project"], json!("Acme"));
+        assert_eq!((acme["rate"].as_f64(), &acme["currency"], acme["earned"].as_f64()), (Some(100.0), &json!("EUR"), Some(720.0))); // this month's billable
         assert!((acme["worked"].as_f64().unwrap() - 5.2).abs() < 1e-9 && (acme["month"].as_f64().unwrap() - 7.2).abs() < 1e-9, "{acme}"); // not December's 9.0
         let gamma = v["projects"].as_array().unwrap().iter().find(|p| p["project"] == "Gamma").expect("Gamma listed for its month");
         assert_eq!((gamma["worked"].as_f64(), gamma["month"].as_f64()), (Some(0.0), Some(1.5)));
+        assert!(gamma["earned"].is_null() && gamma["rate"].is_null(), "{gamma}");
         assert!(!v["projects"].as_array().unwrap().iter().any(|p| p["project"] == "Delta"), "last month's project listed");
     }
 
@@ -2850,7 +2859,7 @@ mod tests {
         // The frontend contract (Time.svelte).
         assert_eq!(keys(&v), ["backup_error", "flex_total", "flex_week", "leave", "leave_time", "on_break", "profile", "profiles", "project", "projects", "since", "task", "today", "today_hours", "week"]);
         assert_eq!(keys(&v["week"][0]), ["date", "expected", "hours", "leave", "leave_hours"]);
-        assert_eq!(keys(&v["projects"][0]), ["billable", "budget_hours", "budget_period", "code", "month", "project", "worked"]);
+        assert_eq!(keys(&v["projects"][0]), ["billable", "budget_hours", "budget_period", "code", "currency", "earned", "month", "project", "rate", "worked"]);
         let day = |i: usize, k: &str| v["week"][i][k].clone();
         let dates: Vec<_> = (0..7).map(|i| day(i, "date")).collect();
         assert_eq!(dates, (5..=11).map(|n| json!(format!("2026-01-{n:02}"))).collect::<Vec<_>>());

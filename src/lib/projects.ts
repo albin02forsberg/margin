@@ -1,9 +1,13 @@
 /** A project as `tc_projects` / `tc_save_project` see it (projects.toml). */
 export type Project = {
   export_code: string; rounding: number | null; round_up: boolean; active: boolean; budget_hours?: number | null; budget_period?: string;
+  rate?: number | null; currency?: string;
 };
-/** One row of the project settings page; ROUNDING and BUDGET are "" for none (a number input may hand BUDGET back as a number). */
-export type Row = { name: string; code: string; rounding: string; up: boolean; active: boolean; budget: string | number | null; period: string; dirty: boolean };
+/** One row of the project settings page; ROUNDING, BUDGET and RATE are "" for none (a number input may hand them back as numbers). */
+export type Row = {
+  name: string; code: string; rounding: string; up: boolean; active: boolean; budget: string | number | null; period: string;
+  rate: string | number | null; currency: string; dirty: boolean;
+};
 
 export const ROUNDINGS: [string, string][] = [["0.25", "Quarter hour"], ["0.5", "Half hour"], ["1", "Whole hour"], ["", "Don't round"]];
 
@@ -11,15 +15,25 @@ const period = (s: string | undefined) => (s === "week" ? "week" : "month");
 
 export const toRow = (name: string, p: Project): Row => ({
   name, code: p.export_code, rounding: p.rounding == null ? "" : String(p.rounding), up: p.round_up, active: p.active,
-  budget: p.budget_hours == null ? "" : String(p.budget_hours), period: period(p.budget_period), dirty: false,
+  budget: p.budget_hours == null ? "" : String(p.budget_hours), period: period(p.budget_period),
+  rate: p.rate == null ? "" : String(p.rate), currency: p.currency ?? "", dirty: false,
 });
 
-/** Round-up only means something with rounding, so it's saved off without. A blank, zero or non-numeric budget is none. */
-export const toProject = (r: Row): Project => {
-  const b = String(r.budget ?? "").trim();
-  return { export_code: r.code.trim(), rounding: r.rounding ? +r.rounding : null, round_up: !!r.rounding && r.up, active: r.active,
-    budget_hours: b && +b > 0 ? +b : null, budget_period: period(r.period) };
+/** A positive number from an input, else null (blank, zero, negative or junk). */
+const positive = (v: string | number | null) => {
+  const s = String(v ?? "").trim();
+  return s && +s > 0 ? +s : null;
 };
+
+/** Round-up only means something with rounding, so it's saved off without. A blank, zero or non-numeric budget or rate is none. */
+export const toProject = (r: Row): Project => ({
+  export_code: r.code.trim(), rounding: r.rounding ? +r.rounding : null, round_up: !!r.rounding && r.up, active: r.active,
+  budget_hours: positive(r.budget), budget_period: period(r.period), rate: positive(r.rate), currency: (r.currency ?? "").trim(),
+});
+
+/** AMOUNT to 2 decimals in the locale's format, with the currency code when there is one: "1,234.50 EUR". */
+export const money = (amount: number, currency = "", locale?: string) =>
+  `${amount.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${currency ? ` ${currency}` : ""}`;
 
 export type Usage = { used: number; total: number; pct: number; over: boolean; period: "week" | "month" };
 /** Hours used of P's budget: this week's (WORKED) for a weekly one, else this month's; null without a budget. */
@@ -34,8 +48,9 @@ export function budgetUsage(p: Pick<Project, "budget_hours" | "budget_period"> |
 export const merge = (old: Row[], projects: Record<string, Project>): Row[] =>
   Object.entries(projects).map(([n, p]) => old.find((r) => r.name === n && r.dirty) ?? toRow(n, p));
 
-/** A `tc_dashboard` projects row: hours this week (worked, billable) and this calendar month. */
-export type Tracked = { project: string; code: string; worked: number; billable: number; month: number };
+/** A `tc_dashboard` projects row: hours this week (worked, billable) and this calendar month, and with a rate what this
+ *  month's billable hours earned. */
+export type Tracked = { project: string; code: string; worked: number; billable: number; month: number; earned?: number | null; currency?: string };
 /** An open task as `todos` returns it (the fields the cards use). */
 export type Task = { path: string; line: number; title: string; category: string; keyword: string | null };
 export type Card = Tracked & { share: number; tasks: Task[] };
