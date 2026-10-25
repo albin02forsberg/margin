@@ -163,7 +163,7 @@ fn parse_ts(c: &regex::Captures) -> Option<Ts> {
     })
 }
 
-fn heading_level(line: &str) -> Option<usize> {
+pub(crate) fn heading_level(line: &str) -> Option<usize> {
     let n = line.bytes().take_while(|&b| b == b'*').count();
     (n > 0 && line[n..].starts_with(' ')).then_some(n)
 }
@@ -1363,7 +1363,7 @@ pub fn shift_date(text: &str, line: usize, kind: &str, days: i64) -> String {
 // ---------------------------------------------------------------- subtrees: refile, archive, capture
 
 /// [start, end) line range of the subtree whose headline is at HL.
-fn subtree_range(lines: &[String], hl: usize) -> (usize, usize) {
+pub(crate) fn subtree_range(lines: &[String], hl: usize) -> (usize, usize) {
     let lvl = heading_level(&lines[hl]).unwrap_or(0);
     let end = (hl + 1..lines.len()).find(|&i| heading_level(&lines[i]).is_some_and(|l| l <= lvl)).unwrap_or(lines.len());
     (hl, end)

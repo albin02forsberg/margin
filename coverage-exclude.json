@@ -2,5 +2,6 @@
   "src-tauri/src/main.rs": "Binary entry point: only calls margin_lib::run().",
   "src-tauri/src/tray.rs": "System tray menu: needs a running Tauri app and a desktop tray; no pure logic.",
   "src-tauri/src/wayland_idle.rs": "Wayland ext-idle-notify client: needs a live compositor connection; no pure logic.",
-  "src/lib/editor.ts": "CodeMirror/DOM setup for the editor view: covered by e2e, not importable by node --test."
+  "src/lib/editor.ts": "CodeMirror/DOM setup for the editor view: covered by e2e, not importable by node --test.",
+  "src/lib/transclude.ts": "CodeMirror widget/fetcher for #+TRANSCLUDE:: DOM and Tauri invoke, covered by e2e; the directive parsing is unit-tested but lives in the same module."
 }

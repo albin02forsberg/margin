@@ -137,6 +137,8 @@ describe("Features", () => {
         writeFileSync(join(notes, "refs.org"), "#+title: Refs\n\nSee [[file:draft.org::*Top][the draft]] and [[file:drafts.org]].\n");
         writeFileSync(join(notes, "doomed.org"), ":PROPERTIES:\n:ID: doomed-id\n:END:\n#+title: Doomed\n\nDoomed text.\n");
         writeFileSync(join(notes, "fan.org"), "#+title: Fan\n\nSee [[id:doomed-id][the doomed note]].\n");
+        writeFileSync(join(notes, "embed.org"), "#+title: Embed\n\n#+TRANSCLUDE: [[file:source.org::*Agenda]]\nAfter.\n");
+        writeFileSync(join(notes, "source.org"), "#+title: Source\n\n* Agenda\n- reuse me\n");
       },
     });
   });
@@ -337,6 +339,18 @@ describe("Features", () => {
     await browser.keys(" ");
     await type("eC");
     await find(".status .msg", "Copied as rich text");
+  });
+
+  it("shows a #+TRANSCLUDE: target under the line, refreshes it on change and jumps to it on click", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "embed");
+    await find(".status .file", "embed.org");
+    await find(".cm-transclude", "reuse me");
+    writeFileSync(join(d.notes, "source.org"), "#+title: Source\n\n* Agenda\n- changed on disk\n");
+    await find(".cm-transclude", "changed on disk");
+    assert.equal(read(join(d.notes, "embed.org")), "#+title: Embed\n\n#+TRANSCLUDE: [[file:source.org::*Agenda]]\nAfter.\n");
+    await (await find(".cm-transclude", "changed on disk")).click();
+    await find(".status .file", "source.org");
   });
 
   it("exports a note and the notes it links to as linked HTML pages", async () => {

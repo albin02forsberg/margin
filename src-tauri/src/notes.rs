@@ -761,6 +761,112 @@ pub fn occur(f: &OrgFile, query: &str) -> Result<Vec<Occur>, String> {
     Ok(out)
 }
 
+/// `#+TRANSCLUDE: [[target]]` (org-transclusion's keyword), capturing the target.
+static TRANSCLUDE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^\s*#\+transclude:\s*\[\[([^\]\n]+)\](?:\[[^\]]*\])?\]").unwrap());
+/// Nesting depth and line count a transclusion shows at most.
+const TRANSCLUDE_DEPTH: usize = 3;
+const TRANSCLUDE_MAX: usize = 200;
+
+/// What a `#+TRANSCLUDE:` line shows: TEXT from the note at PATH, whose heading is on 0-based LINE (0 for a whole file).
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Transclusion {
+    pub path: PathBuf,
+    pub line: usize,
+    pub text: String,
+}
+
+/// The note and heading line (None: the whole note) that LINK (`id:…`, `file:x.org[::*Heading]`, `*Heading`), written in FROM, points at.
+/// ALLOW vets a `file:` path before it is looked up.
+fn transclude_target<'a>(files: &'a [Arc<OrgFile>], from: &Path, link: &str, allow: &dyn Fn(&Path) -> Result<(), String>) -> Result<(&'a OrgFile, Option<usize>), String> {
+    if let Some(id) = link.strip_prefix("id:") {
+        let id = id.split("::").next().unwrap_or_default().trim();
+        for f in files {
+            if f.id.as_deref() == Some(id) {
+                return Ok((f, None));
+            }
+            if let Some(h) = f.headlines.iter().find(|h| h.id.as_deref() == Some(id)) {
+                return Ok((f, Some(h.line)));
+            }
+        }
+        return Err(format!("no note or heading has ID {id}"));
+    }
+    let (file, search) = match link.strip_prefix("file:") {
+        Some(t) => t.split_once("::").unwrap_or((t, "")),
+        None if link.starts_with('*') => ("", link),
+        None => return Err(format!("can't transclude {link}")),
+    };
+    let p = if file.is_empty() { from.to_path_buf() } else { resolve(from, file) };
+    allow(&p)?;
+    let f = files.iter().find(|f| f.path == p).ok_or_else(|| format!("{} not found", p.display()))?;
+    if search.is_empty() {
+        return Ok((f, None));
+    }
+    let h = search.strip_prefix('*').ok_or("only ::*Heading searches can be transcluded")?;
+    let want = heading_norm(h);
+    let hl = f.headlines.iter().find(|x| heading_norm(&x.title) == want).ok_or_else(|| format!("no heading \"{}\"", h.trim()))?;
+    Ok((f, Some(hl.line)))
+}
+
+/// The body of F's heading at HL (planning line and property drawer left out), or of the whole note after its header.
+fn transclude_body(f: &OrgFile, hl: Option<usize>) -> Vec<String> {
+    let lines: Vec<String> = f.text.lines().map(String::from).collect();
+    let (mut i, end) = match hl {
+        Some(h) if h < lines.len() => (h + 1, crate::org::subtree_range(&lines, h).1),
+        Some(_) => (0, 0),
+        None => (0, lines.len()),
+    };
+    let header = |l: &str| l.trim().is_empty() || (l.starts_with("#+") && !TRANSCLUDE.is_match(l));
+    while i < end && (crate::org::is_planning(&lines[i]) || (hl.is_none() && header(&lines[i]))) {
+        i += 1;
+    }
+    if i < end && lines[i].trim().eq_ignore_ascii_case(":PROPERTIES:") {
+        if let Some(e) = (i..end).find(|&j| lines[j].trim().eq_ignore_ascii_case(":END:")) {
+            i = e + 1;
+        }
+        while hl.is_none() && i < end && header(&lines[i]) {
+            i += 1;
+        }
+    }
+    let mut out = lines[i..end].to_vec();
+    while out.last().is_some_and(|l| l.trim().is_empty()) {
+        out.pop();
+    }
+    out
+}
+
+/// Expand LINK, nested `#+TRANSCLUDE:` lines included; STACK holds the targets being expanded (cycle guard).
+fn transclude_in(files: &[Arc<OrgFile>], from: &Path, link: &str, allow: &dyn Fn(&Path) -> Result<(), String>, stack: &mut Vec<(PathBuf, Option<usize>)>) -> Result<Transclusion, String> {
+    let (f, hl) = transclude_target(files, from, link, allow)?;
+    let key = (f.path.clone(), hl);
+    if stack.contains(&key) {
+        return Err("transclusion cycle".into());
+    }
+    stack.push(key);
+    let mut out = vec![];
+    for l in transclude_body(f, hl) {
+        match TRANSCLUDE.captures(&l) {
+            Some(c) if stack.len() >= TRANSCLUDE_DEPTH => out.push(format!("[transclusion too deep: {}]", &c[1])),
+            Some(c) => match transclude_in(files, &f.path, &c[1], allow, stack) {
+                Ok(t) => out.extend(t.text.lines().map(String::from)),
+                Err(e) => out.push(format!("[{e}: {}]", &c[1])),
+            },
+            None => out.push(l),
+        }
+    }
+    stack.pop();
+    Ok(Transclusion { path: f.path.clone(), line: hl.unwrap_or(0), text: out.join("\n") })
+}
+
+/// What `#+TRANSCLUDE: [[LINK]]` in note FROM shows (#784): the target's body, nested transclusions expanded up to
+/// TRANSCLUDE_DEPTH (cycles become a marker line), cut at TRANSCLUDE_MAX lines. Err says why there is nothing to show.
+pub fn transclude(files: &[Arc<OrgFile>], from: &Path, link: &str, allow: &dyn Fn(&Path) -> Result<(), String>) -> Result<Transclusion, String> {
+    let mut t = transclude_in(files, from, link.trim(), allow, &mut vec![])?;
+    if t.text.lines().count() > TRANSCLUDE_MAX {
+        t.text = t.text.lines().take(TRANSCLUDE_MAX).chain(["…"]).collect::<Vec<_>>().join("\n");
+    }
+    Ok(t)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1173,5 +1279,45 @@ mod tests {
         // A link to a trashed note is still broken.
         let fs = files(&[("/n/x.org", "[[file:.trash/t.org]]\n")]);
         assert_eq!(broken_links(&fs, |_| false).len(), 1);
+    }
+
+    #[test]
+    fn transclude_resolves_heading_id_file_and_guards() {
+        let fs = files(&[
+            ("/n/src.org", "#+title: Src\n* Agenda [1/2]\nSCHEDULED: <2026-01-01 Thu>\n:PROPERTIES:\n:ID: ag\n:END:\n- item\n** Child\nchild text\n* Other\nother\n"),
+            ("/n/roam.org", ":PROPERTIES:\n:ID: r\n:END:\n#+title: Roam\n\nbody\n* H\nh\n"),
+            ("/n/a.org", "* A\n#+TRANSCLUDE: [[file:b.org::*B]]\n* Self\n#+transclude: [[*Self]]\n"),
+            ("/n/b.org", "* B\nb text\n#+TRANSCLUDE: [[file:a.org::*A]]\n"),
+            ("/n/d1.org", "* X\none\n#+TRANSCLUDE: [[file:d2.org]]\n"),
+            ("/n/d2.org", "two\n#+TRANSCLUDE: [[file:d3.org]]\n"),
+            ("/n/d3.org", "three\n#+TRANSCLUDE: [[file:d4.org]]\n"),
+            ("/n/d4.org", "four\n"),
+        ]);
+        let allow = |p: &Path| if p.starts_with("/n") { Ok(()) } else { Err(format!("{} is outside", p.display())) };
+        let t = |from: &str, link: &str| transclude(&fs, Path::new(from), link, &allow);
+        // By heading (cookies and case ignored): body with children, no planning line or drawer.
+        let r = t("/n/x.org", "file:src.org::*agenda").unwrap();
+        assert_eq!((r.path.to_str().unwrap(), r.line, r.text.as_str()), ("/n/src.org", 1, "- item\n** Child\nchild text"));
+        assert_eq!(t("/n/x.org", "id:ag").unwrap(), r);
+        // A file id / whole file: what follows the header.
+        let r = t("/n/x.org", "id:r").unwrap();
+        assert_eq!((r.line, r.text.as_str()), (0, "body\n* H\nh"));
+        assert_eq!(t("/n/sub/x.org", "file:../roam.org").unwrap().text, "body\n* H\nh");
+        // Missing targets and paths outside the notes dir.
+        assert_eq!(t("/n/x.org", "file:src.org::*Gone").unwrap_err(), "no heading \"Gone\"");
+        assert_eq!(t("/n/x.org", "id:nope").unwrap_err(), "no note or heading has ID nope");
+        assert_eq!(t("/n/x.org", "file:gone.org").unwrap_err(), "/n/gone.org not found");
+        assert!(t("/n/x.org", "file:~/../../etc/passwd").unwrap_err().contains("outside"));
+        assert_eq!(t("/n/x.org", "file:/etc/passwd").unwrap_err(), "/etc/passwd is outside");
+        // Nested: a -> b -> a is a cycle; a heading transcluding itself too.
+        assert_eq!(t("/n/x.org", "file:a.org::*A").unwrap().text, "b text\n[transclusion cycle: file:a.org::*A]");
+        assert_eq!(t("/n/a.org", "*Self").unwrap().text, "[transclusion cycle: *Self]");
+        // Depth limit 3.
+        assert_eq!(t("/n/x.org", "file:d1.org::*X").unwrap().text, "one\ntwo\nthree\n[transclusion too deep: file:d4.org]");
+        // Long targets are cut.
+        let long = format!("* L\n{}", "x\n".repeat(250));
+        let fs = files(&[("/n/l.org", long.as_str())]);
+        let r = transclude(&fs, Path::new("/n/l.org"), "*L", &allow).unwrap();
+        assert_eq!((r.text.lines().count(), r.text.lines().last()), (201, Some("…")));
     }
 }
