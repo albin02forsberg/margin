@@ -2,6 +2,66 @@
 
 Grouped by `.github/scripts/changelog.sh`, the same generator that writes the GitHub release notes. The releaser agent adds a section here in each release PR.
 
+## v0.6.0 - 2026-10-25
+
+### Features
+- optional hourly rate per project, earned amount in reports and on the project card (#801) (#806)
+- habits overview (Space x H) with current/best streak and on-time rate over 30/90 days (#802) (#805)
+- command palette lists recently run commands first (#800) (#804)
+- transclusion honours :lines / :only-contents and accepts ::#custom-id and ::N targets (#797) (#799)
+- exports expand #+TRANSCLUDE: lines (#796) (#798)
+- Ctrl+Enter / Space i r runs a #+begin_src sh block into #+RESULTS: (opt-in) (#786) (#794)
+- ledger month view with totals per currency, category and payee (Space v l) (#789) (#795)
+- #+TRANSCLUDE: shows another note's heading read-only under the line (#784) (#793)
+- ledger entry format, parser and quick-add (Space f l) (#788) (#792)
+- %^{clip-link} template prompt and default Reading list template (#780) (#782)
+- Space n V browses a note's git history: diff, restore (undoable), copy (#768) (#778)
+- Space i U inserts the clipboard URL with its page title (#770) (#779)
+- Space s o lists matching lines of the current note with heading paths (#769) (#776)
+- marking a blocked task done from the editor asks first (#754) (#762)
+- evening shutdown (Space t q) walks today's open tasks one key each (#757) (#767)
+- Space n * opens a random note (older likelier), Space n Z lists stale notes (#758) (#766)
+- #+BEGIN: tasks :query dynamic block filled by Space t u (#756) (#765)
+- Goals view shows an on-track / at-risk chip from :START: (#749) (#753)
+- tasks linking a goal via [[id:]] count toward its progress (#748) (#752)
+- Goals view shows time clocked toward each goal (#747) (#751)
+- weekly review lists :GOAL: progress (#746) (#750)
+- Space n L lists broken links across notes (#737) (#743)
+- Space x G lists :GOAL: headings with subtask progress and days to target (#739) (#742)
+- Space t H weekday x hour heatmap of clocked time (#738) (#744)
+- Space x b removes a :BLOCKER: entry, Space x B says when it's already listed (#736) (#741)
+- Space x B adds a :BLOCKER: from a task picker, Space x O toggles :ORDERED: (#727) (#734)
+- confirm before marking a blocked task done (#729) (#733)
+- blocked tasks name the task they wait on (W opens it) (#728) (#732)
+- %^{Name} prompts in snippets (#730) (#731)
+- journal metrics trend with sparklines and hours clocked (Space n M) (#721) (#725)
+- user snippets and more org-tempo blocks (<key + Tab) (#720) (#723)
+- estimates vs actuals report over done tasks (Space t A) and a weekly-review line (#719) (#722)
+- :ORDERED: and :BLOCKER: task dependencies hide blocked tasks in Today/Tasks (#718) (#724)
+- flashcard review of :drill: headings with spaced repetition (Space n d) (#703) (#710)
+- log a daily metric (mood, energy, sleep) into the journal day's property drawer (Space n j) (#706) (#709)
+- people view of a person's open tasks and @mentions (Space n @) (#704) (#708)
+- day plan on an hour grid in Today (w): timed tasks as blocks, overlaps, free gaps (#705) (#707)
+- clock report blocks (#+BEGIN: clocktable) regenerated from the time log (Space t u) (#693) (#702)
+
+### Fixes
+- Space s o runs off the UI thread, O(n) heading paths, drop stale picker results (#781) (#783)
+- cache parsed time-log events on (mtime, len) so agenda/todos/review don't re-parse it each call (#773) (#777)
+- retitle_candidates, org_blockers, org_blocked_at run off the main thread (#771) (#774)
+- x B / x O refuse when the cursor is above the first heading (#755) (#764)
+- goal :TARGET:/:START: accept org timestamp forms (#760) (#763)
+- broken-links scan ignores verbatim blocks (#761)
+- renaming a task offers to rename its clocked sessions so the time stays on it (#685) (#715)
+
+### Other
+- org::blocked runs once per task query, by_id no longer scans all headings (#772) (#775)
+- nextWeekday e2e helper (#735) (#740)
+- skip files without a hit before the per-line person mention scan (#714) (#717)
+- skip files without :drill: headings in drill_cards (#713) (#716)
+- share one upsert_prop between set_prop and set_file_prop (#711) (#712)
+
+…and 86 more.
+
 ## v0.5.0 - 2026-10-20
 
 ### Features
