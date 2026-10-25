@@ -46,6 +46,12 @@ pub struct Project {
     pub budget_hours: Option<f64>,
     #[serde(default = "month", skip_serializing_if = "is_month")]
     pub budget_period: String,
+    /// Hourly rate for the billable hours (#801); None, 0 or negative for none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate: Option<f64>,
+    /// The rate's currency code ("EUR"); empty to show amounts without one.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub currency: String,
 }
 fn yes() -> bool {
     true
@@ -59,8 +65,22 @@ fn is_month(s: &str) -> bool {
 
 impl Project {
     pub fn new(export_code: &str) -> Self {
-        Project { export_code: export_code.into(), rounding: Some(0.5), round_up: false, active: true, budget_hours: None, budget_period: month() }
+        Project { export_code: export_code.into(), rounding: Some(0.5), round_up: false, active: true, budget_hours: None, budget_period: month(), rate: None, currency: String::new() }
     }
+    /// The rate when it means something: positive and finite.
+    pub fn rate(&self) -> Option<f64> {
+        self.rate.filter(|r| r.is_finite() && *r > 0.0)
+    }
+}
+
+/// BILLABLE hours at RATE, to the cent.
+pub fn earned(billable: f64, rate: f64) -> f64 {
+    (billable * rate * 100.0).round() / 100.0
+}
+
+/// "1234.50 EUR", or just the number without a currency.
+fn money(amount: f64, currency: &str) -> String {
+    if currency.is_empty() { format!("{amount:.2}") } else { format!("{amount:.2} {currency}") }
 }
 
 pub type Projects = BTreeMap<String, Project>;
@@ -1103,14 +1123,33 @@ pub fn weekly_report(sessions: &[Session], projects: &Projects, leave: (&[Leave]
     let total_raw: f64 = raw_by.values().sum();
     let total_rnd: f64 = rnd_by.values().sum();
     let count: usize = by_day.values().map(Vec::len).sum();
-    let mut o = format!("#+TITLE: Time Report ({profile})\n#+SUBTITLE: {start} to {end}\n\n* Summary\n");
-    o += &format!("  - Hours worked: {total_raw:.2} h\n  - Billable: {total_rnd:.2} h\n  - Sessions: {count}\n\n* Project Breakdown\n");
-    let mut rows = vec![["Project", "Code", "Worked", "Billable", "Share"].map(String::from).to_vec()];
     let mut projs: Vec<(&str, f64)> = rnd_by.into_iter().collect();
     projs.sort_by(|a, b| b.1.total_cmp(&a.1));
+    // Rate and Earned columns only when a listed project has a rate; totals per currency, never summed across them.
+    let rate = |p: &str| projects.get(p).and_then(|x| x.rate().map(|r| (r, x.currency.trim())));
+    let rated = projs.iter().any(|(p, _)| rate(p).is_some());
+    let mut earned_by: BTreeMap<&str, f64> = BTreeMap::new();
+    for (p, rnd) in &projs {
+        if let Some((r, c)) = rate(p) {
+            *earned_by.entry(c).or_default() += earned(*rnd, r);
+        }
+    }
+    let mut o = format!("#+TITLE: Time Report ({profile})\n#+SUBTITLE: {start} to {end}\n\n* Summary\n");
+    o += &format!("  - Hours worked: {total_raw:.2} h\n  - Billable: {total_rnd:.2} h\n");
+    earned_by.iter().for_each(|(c, a)| o += &format!("  - Earned: {}\n", money(*a, c)));
+    o += &format!("  - Sessions: {count}\n\n* Project Breakdown\n");
+    let mut head = vec!["Project", "Code", "Worked", "Billable", "Share"];
+    if rated {
+        head.extend(["Rate", "Earned"]);
+    }
+    let mut rows = vec![head.into_iter().map(String::from).collect::<Vec<_>>()];
     for (p, rnd) in projs {
         let share = if total_rnd > 0.0 { (rnd / total_rnd * 100.0) as i64 } else { 0 };
-        rows.push(vec![or_other(p).into(), export_code(p, projects), format!("{:.2} h", raw_by.get(p).unwrap_or(&0.0)), format!("{rnd:.2} h"), format!("{share}%")]);
+        let mut row = vec![or_other(p).into(), export_code(p, projects), format!("{:.2} h", raw_by.get(p).unwrap_or(&0.0)), format!("{rnd:.2} h"), format!("{share}%")];
+        if rated {
+            row.extend(rate(p).map_or([String::new(), String::new()], |(r, c)| [format!("{}/h", money(r, c)), money(earned(rnd, r), c)]));
+        }
+        rows.push(row);
     }
     o += &org_table(&rows);
     let off: Vec<String> = start
@@ -1611,6 +1650,29 @@ mod tests {
         assert_eq!(toml::to_string(&p).unwrap(), "[Acme]\nexport_code = \"A\"\nround_up = false\nactive = true\n"); // no budget keys
         let b = Projects::from([("B".into(), Project { budget_hours: Some(4.0), budget_period: "week".into(), ..Project::new("B") })]);
         assert_eq!(toml::from_str::<Projects>(&toml::to_string(&b).unwrap()).unwrap(), b);
+        assert_eq!((p["Acme"].rate, p["Acme"].currency.as_str()), (None, "")); // and no rate keys written (above)
+        let r = Projects::from([("R".into(), Project { rate: Some(95.5), currency: "EUR".into(), ..Project::new("R") })]);
+        let text = toml::to_string(&r).unwrap();
+        assert!(text.contains("rate = 95.5\ncurrency = \"EUR\"\n"), "{text}");
+        assert_eq!(toml::from_str::<Projects>(&text).unwrap(), r);
+    }
+
+    #[test]
+    fn earned_per_project_and_currency() {
+        assert_eq!(earned(7.5, 95.5), 716.25);
+        assert_eq!(earned(1.0 / 3.0, 100.0), 33.33);
+        let rate = |rate| Project { rate, ..Project::new("") }.rate();
+        assert_eq!([rate(None), rate(Some(0.0)), rate(Some(-5.0)), rate(Some(f64::NAN)), rate(Some(80.0))], [None, None, None, None, Some(80.0)]);
+        let s = |p: &str, h| Session { date: d("2026-10-06"), project: p.into(), desc: "x".into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None };
+        let rated = |rate, currency: &str| Project { rate: Some(rate), currency: currency.into(), rounding: None, ..Project::new("") };
+        let p = Projects::from([("A".into(), rated(100.0, "EUR")), ("B".into(), rated(50.0, "EUR")), ("C".into(), rated(1000.0, "SEK")), ("D".into(), Project { rounding: None, ..Project::new("") })]);
+        let ss = [s("A", 2.0), s("B", 1.5), s("C", 3.0), s("D", 1.0)];
+        let r = weekly_report(&ss, &p, (&[], &LeaveCodes::new()), &w(8.0), d("2026-10-05"), d("2026-10-11"), "Work");
+        assert!(r.contains("  - Billable: 7.50 h\n  - Earned: 275.00 EUR\n  - Earned: 3000.00 SEK\n  - Sessions: 4\n"), "{r}");
+        assert!(r.contains("| Rate ") && r.contains("| 100.00 EUR/h  | 200.00 EUR  |"), "{r}");
+        // Without any rate the table is as before.
+        let r = weekly_report(&ss[3..], &p, (&[], &LeaveCodes::new()), &w(8.0), d("2026-10-05"), d("2026-10-11"), "Work");
+        assert!(r.contains("| Share |\n") && !r.contains("Earned") && !r.contains("Rate"), "{r}");
     }
 
     #[test]

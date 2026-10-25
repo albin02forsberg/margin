@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { cards, merge, ROUNDINGS, toProject, type Card, type Project, type Row, type Task, type Tracked } from "$lib/projects";
+  import { cards, merge, money, ROUNDINGS, toProject, type Card, type Project, type Row, type Task, type Tracked } from "$lib/projects";
   import { hm } from "$lib/clock";
   import BudgetBar from "$lib/BudgetBar.svelte";
   import type { TimeApi } from "$lib/Time.svelte";
@@ -61,7 +61,7 @@
         <section class="card pcard" class:on>
           <h3>{c.project} <span class="code mono">{c.code}</span></h3>
           <strong class="big">{hm(c.worked)}</strong>
-          <small>this week · {hm(c.month)} this month · {c.billable.toFixed(2)} h billable</small>
+          <small>this week · {hm(c.month)} this month · {c.billable.toFixed(2)} h billable{#if c.earned != null} · {money(c.earned, c.currency)} earned this month{/if}</small>
           <div class="progress" title="Share of this week's tracked time"><i style:width="{c.share * 100}%"></i></div>
           <BudgetBar project={saved[c.project]} worked={c.worked} month={c.month} />
           <div class="foot">
@@ -88,7 +88,7 @@
     <p class="dim">No projects yet: they're added the first time you track time on one.</p>
   {:else}
     <div class="card form"><table>
-      <thead><tr><th>Project</th><th>Export code</th><th>Round billable hours to</th><th>Always round up</th><th>Budget (hours)</th><th>Show in project list</th><th></th></tr></thead>
+      <thead><tr><th>Project</th><th>Export code</th><th>Round billable hours to</th><th>Always round up</th><th>Budget (hours)</th><th>Hourly rate</th><th>Show in project list</th><th></th></tr></thead>
       <tbody>
         {#each rows as r, i (r.name)}
           <tr class:inactive={!r.active}>
@@ -106,13 +106,17 @@
                 <option value="week">a week</option><option value="month">a month</option>
               </select>
             </td>
+            <td class="budget">
+              <input form="p{i}" type="number" min="0" step="any" aria-label="Hourly rate for {r.name}" placeholder="none" bind:value={r.rate} oninput={() => (r.dirty = true)} />
+              <input form="p{i}" class="cur" aria-label="Currency for {r.name}" placeholder="EUR" bind:value={r.currency} oninput={() => (r.dirty = true)} />
+            </td>
             <td><input form="p{i}" type="checkbox" aria-label="Show {r.name} in the project list" bind:checked={r.active} onchange={() => (r.dirty = true)} /></td>
             <td><button form="p{i}" type="submit" disabled={!r.dirty}>Save</button></td>
           </tr>
         {/each}
       </tbody>
     </table></div>
-    <p class="dim">Enter in an export code saves its row. A budget shows how much of it is used on the project's card. Hidden projects keep their time; they just aren't offered when you start tracking.</p>
+    <p class="dim">Enter in an export code saves its row. A budget shows how much of it is used on the project's card; an hourly rate shows what this month's billable hours earned, there and in the time reports. Hidden projects keep their time; they just aren't offered when you start tracking.</p>
   {/if}
   {#if !error}
     <h2>Time off</h2>
@@ -147,6 +151,7 @@
   .budget { white-space: nowrap; }
   input[type="number"] { width: 5.5em; background: var(--canvas); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s1) var(--s2); font: var(--fs-md) var(--mono); }
   input:not([type]) { width: 100%; box-sizing: border-box; font-family: var(--mono); }
+  input.cur { width: 4.5em; }
   button { background: var(--accent); border: 1px solid var(--accent); color: var(--bg); border-radius: var(--radius); padding: var(--s1) var(--s3); font: 600 var(--fs-md) var(--sans); cursor: pointer; }
   button:disabled { background: var(--canvas); border-color: var(--border); color: var(--dim); cursor: default; font-weight: 400; }
   .inactive td:first-child { color: var(--dim); }
