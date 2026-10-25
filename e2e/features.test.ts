@@ -792,6 +792,18 @@ describe("Journal, archive and move", () => {
     await fileMatches(f("ledger.org"), (s) => s.endsWith("\n* 2026-10\n- 2026-10-25 -12.50 EUR lunch @anna #food\n"), "ledger entry not filed");
   });
 
+  it("Space v l shows this month's ledger totals; an entry opens at its line (#789)", async () => {
+    const day = isoDay(new Date()), file = f("ledger.org");
+    writeFileSync(file, `${read(file)}* ${day.slice(0, 7)}\n- ${day} +1000 EUR pay @acme #work\n- ${day} -2.50 EUR bus\n- ${day} -40 SEK fika @anna #food\n`);
+    await leader("vl");
+    await find(".ledger .total h3", "SEK");
+    await find(".ledger .sums", "1000.00 EUR"); // income (the #788 entry may fall in this month too)
+    await find(".ledger .cats td", "uncategorised");
+    await find(".ledger .payees td", "@anna");
+    await (await find(".ledger .entry button", "bus")).click();
+    await find(".status .file", "ledger.org");
+  });
+
   it("Space n k moves the previous entry's open items into today's, Space n u puts them back", async () => {
     const prev = f(join("daily", "2020-01-02.org")), file = f(join("daily", `${isoDay(new Date())}.org`)), before = read(prev);
     await leader("nk");

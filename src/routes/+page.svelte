@@ -38,6 +38,7 @@
   import Rhythm from "$lib/Rhythm.svelte";
   import { due as drillDue, grade as drillGrade, propValue as drillProps, type Card } from "$lib/drill";
   import Projects from "$lib/Projects.svelte";
+  import Ledger from "$lib/Ledger.svelte";
   import Settings from "$lib/Settings.svelte";
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
   import { chatContext } from "$lib/chatctx";
@@ -54,7 +55,7 @@
   import { addBookmark, bookmarkAt, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, retitleBookmarks, type Bookmark } from "$lib/bookmarks";
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
 
-  type View = "agenda" | "todo" | "time" | "projects" | "settings";
+  type View = "agenda" | "todo" | "time" | "projects" | "ledger" | "settings";
   /** SAVED: the text last read from / written to disk, to tell our own writes from outside changes.
    *  REPORT: how to regenerate a report tab when the data changes. */
   type Tab = {
@@ -321,7 +322,7 @@
   async function openView(kind: View) {
     let i = tabs.findIndex((t) => t.key === kind);
     if (i < 0) {
-      tabs.push({ key: kind, title: { agenda: "Today", todo: "Tasks", time: "Time", projects: "Projects", settings: "Settings" }[kind], kind, dirty: false });
+      tabs.push({ key: kind, title: { agenda: "Today", todo: "Tasks", time: "Time", projects: "Projects", ledger: "Ledger", settings: "Settings" }[kind], kind, dirty: false });
       i = tabs.length - 1;
     }
     await show(i);
@@ -1801,6 +1802,13 @@
     flash(`✓ ${line}`);
   }
 
+  /** The ledger's month view; only once the ledger file exists. */
+  async function openLedger() {
+    const [path] = await call<[string | null]>("ledger_month", { month: "" }); // capture_path would create it
+    if (path) await openView("ledger");
+    else flash("No ledger yet: Space f l adds the first entry.");
+  }
+
   /** Log a daily metric (mood, energy, sleep…) into today's journal file's top property drawer (`:MOOD: 4`). */
   async function journalMetric() {
     const name = await pick({ prompt: "Log metric", hint: "pick one, or type a new name (add it to Settings > Daily metrics to keep it)", items: cfg.config.metrics, allowCustom: true }) as string | null;
@@ -2535,6 +2543,7 @@
     { label: "Settings: edit config.toml", leader: "f C", run: editConfig },
     { label: "AI drafts: choose model…", leader: "f a", run: aiChoose },
     { label: "Ledger: add an entry…", leader: "f l", run: ledgerAdd },
+    { label: "Go to Ledger (month totals)", leader: "v l", run: openLedger },
     { label: "Save", keys: ["Ctrl+S"], leader: "f s", run: () => saveTab(tab, true) },
     { label: "Reload from disk (discard unsaved changes)", leader: "f r", run: reloadFromDisk },
     { label: "Save all", leader: "f S", run: saveAll },
@@ -3067,12 +3076,14 @@
         <div class="editor" bind:this={editorEl} style:display={isText(tab) ? "block" : "none"}></div>
         {#if dropCue}<div class="drop-cue">Drop to attach to {tab.title}</div>{/if}
         {#if cfg}
-          {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo" || t.kind === "time" || t.kind === "projects" || t.kind === "settings") as v (v.key)}
+          {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo" || t.kind === "time" || t.kind === "projects" || t.kind === "ledger" || t.kind === "settings") as v (v.key)}
             <div class="view" data-key={v.key} style:display={v === tab ? "block" : "none"}>
               {#if v.kind === "time"}
                 <Time api={timeApi} active={v === tab} {reload} />
               {:else if v.kind === "projects"}
                 <Projects api={timeApi} active={v === tab} {reload} />
+              {:else if v.kind === "ledger"}
+                <Ledger api={timeApi} active={v === tab} {reload} />
               {:else if v.kind === "settings"}
                 <Settings {version} active={v === tab} {reload} config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} missing={cfg.config_missing} save={saveSettings} recreate={recreateConfig} edit={() => act(editConfig)} />
               {:else}
