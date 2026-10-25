@@ -100,6 +100,10 @@ pub struct Config {
     pub spellcheck_languages: Vec<String>,
     /// Update from the daily builds of main (the `nightly` prerelease) instead of stable releases.
     pub nightly_updates: bool,
+    /// The ledger (`Space f l`), relative to notes_dir.
+    pub ledger_file: String,
+    /// Currency of ledger entries that don't name one (a 3-letter code).
+    pub ledger_currency: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -242,6 +246,8 @@ impl Default for Config {
             spellcheck: false,
             spellcheck_languages: vec![],
             nightly_updates: false,
+            ledger_file: "ledger.org".into(),
+            ledger_currency: "EUR".into(),
         }
     }
 }

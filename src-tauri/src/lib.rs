@@ -5,6 +5,7 @@ mod backup;
 mod config;
 mod export;
 mod ics;
+mod ledger;
 mod media;
 #[cfg(desktop)]
 mod idle;
@@ -961,6 +962,13 @@ fn warn_text(w: &str, scheduled: bool) -> Option<String> {
 #[tauri::command]
 fn capture_insert(s: State<App>, text: String, heading: Option<String>, entry: String) -> String {
     org::capture_insert(&text, heading.as_deref(), &entry, &s.kw())
+}
+
+/// TEXT (the ledger file) with quick-add INPUT filed under its month: [new text, the entry line].
+#[tauri::command]
+fn ledger_add(s: State<App>, text: String, input: String) -> R<(String, String)> {
+    let e = ledger::parse_quick(&input, today(), &s.cfg().ledger_currency)?;
+    Ok((ledger::add(&text, &e, &s.kw()), ledger::format_entry(&e)))
 }
 
 /// Config templates, then one per .org file in <notes>/<templates_dir>/.
@@ -2357,7 +2365,7 @@ pub fn run() {
             watcher::gnome_extension, watcher::screen_recording,
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
-            org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
+            org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, notes_tags, notes_tagged, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, tc_csv, tc_switch_profile, tc_import, backup_now,

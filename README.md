@@ -893,6 +893,24 @@ any note whose path in the notes folder contains one of these (any case, e.g.
 `private/`, `/private/` or `diary`; `\` works as `/` too) is never sent, not as a match, a linked note, the open
 note (the chat says so instead of offering it) or for its tasks.
 
+## Ledger
+
+**Ledger: add an entry…** (`Space f l`) asks for one line, `[date] amount [currency] text`,
+e.g. `12.50 lunch @anna #food`: a plain amount is an expense, `+1200 invoice #work` income,
+`12,50` works too (no thousands separators), the date defaults to today and the currency to
+**Settings → Ledger → Default currency** (`ledger_currency`, `EUR`). It is filed at the end of
+its month's `* 2026-10` heading (added when missing) in `ledger.org` (`ledger_file`, in the notes
+folder) as a list line you can also write by hand or in Emacs:
+
+```org
+* 2026-10
+- 2026-10-25 -12.50 EUR lunch @anna #food [[id:…]]
+```
+
+The first `#tag` is the category, the first `@name` the payee, and a `[[link]]` ties the entry to
+a project or task. Dates stay without `<…>` so entries never show in the agenda; lines in any
+other shape are left alone. `Space n u` undoes the last entry.
+
 ## Export
 
 `Space e` exports the open note (including unsaved edits) as HTML (`e h`),
