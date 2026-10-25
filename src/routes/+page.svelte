@@ -1668,6 +1668,25 @@
     view.focus();
   }
 
+  /** Insert `#+TRANSCLUDE: [[…]]` for a picked note or heading on its own line below the cursor (#784). */
+  async function insertTransclusion() {
+    if (!inFile()) return flash("Open a note first.");
+    const from = tab.path!;
+    const [{ nodes, sorted, titles }, targets] = await Promise.all([noteItems(), call<Target[]>("org_targets")]);
+    const withId = new Set(nodes.filter((n) => n.line === 0).map((n) => n.path));
+    const heads = linkHeadings(targets, new Set(nodes.map((n) => `${n.path}:${n.line}`)));
+    const t = await pick({ prompt: "Transclude a heading or note", items: [
+      ...nodes.map((n) => ({ label: n.title, detail: rel(n.path), value: `id:${n.id}` })),
+      ...sorted.filter((p) => !withId.has(p) && p !== from).map((p) => ({ label: titles.get(p) ?? niceName(p), detail: rel(p), value: `file:${relativeTo(from, p)}` })),
+      ...heads.map((h) => ({ label: h.bare, detail: h.label, value: `${h.path === from ? "" : `file:${relativeTo(from, h.path)}::`}*${h.bare}` })),
+    ] });
+    if (!t) return;
+    const ln = view.state.doc.lineAt(view.state.selection.main.head), line = ed.transcludeLine(t);
+    const [at, insert] = ln.text.trim() ? [ln.to, `\n${line}`] : [ln.from, line];
+    view.dispatch({ changes: { from: at, to: ln.text.trim() ? at : ln.to, insert }, selection: { anchor: at + insert.length } });
+    view.focus();
+  }
+
   async function search() {
     const h: Hit | null = await pick({
       prompt: "Search all notes",
@@ -2604,6 +2623,7 @@
     }) },
     { label: "Insert web link…", leader: "i w", run: insertWebLink },
     { label: "Insert link to a note…", leader: "i l", run: insertLink },
+    { label: "Insert transclusion (show a heading from another note here)…", leader: "i T", run: insertTransclusion },
     { label: "Insert link to the clipboard URL with its page title", leader: "i U", run: insertTitledLink },
     { label: "Insert date…", leader: "i d", run: insertDate },
     { label: "Insert footnote (Enter on [fn:N] jumps there and back)", leader: "i f", run: () => inFile() && ed.insertFootnote(view) },
