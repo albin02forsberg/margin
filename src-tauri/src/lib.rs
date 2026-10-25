@@ -1370,7 +1370,7 @@ fn notes_search(s: State<App>, query: String) -> Vec<notes::Hit> {
 }
 
 /// Lines of the buffer TEXT matching QUERY, with heading paths (`Space s o`).
-#[tauri::command]
+#[tauri::command(async)]
 fn notes_occur(s: State<App>, text: String, query: String) -> Result<Vec<notes::Occur>, String> {
     notes::occur(&org::parse(Path::new("occur.org"), &text, &s.kw()), &query)
 }

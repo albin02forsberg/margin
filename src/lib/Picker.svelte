@@ -77,13 +77,17 @@
     return new Promise((r) => (resolve = r));
   }
 
+  let reqId = 0;
   // Live source / preview, debounced.
   $effect(() => {
     const q = query;
     if (!active || (!o.source && !o.preview)) return;
     const t = setTimeout(async () => {
+      const id = ++reqId;
       if (o.source) {
-        items = await o.source(q).catch(() => []);
+        const r = await o.source(q).catch(() => []);
+        if (id !== reqId) return; // a newer query was issued while this one ran
+        items = r;
         sel = 0;
       }
       if (o.preview) previewText = q.trim() ? await o.preview(q).catch(() => "") : "";
