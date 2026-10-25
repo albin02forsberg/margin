@@ -1940,3 +1940,43 @@ describe("Note history (git)", () => {
     await find(".status .msg", "No commits touch this note yet.");
   });
 });
+
+describe("Run code blocks (babel)", () => {
+  let d: Dirs;
+  const file = () => join(d.notes, "run.org");
+  const doc = "#+title: Run\n\n#+begin_src sh\necho hi; pwd\n#+end_src\n\n#+begin_src python\nprint(1)\n#+end_src\n";
+  before(async () => {
+    d = await launch({ config: [`babel_languages = ["sh"]`], files: ({ notes }) => writeFileSync(join(notes, "run.org"), doc) });
+    await find(".agenda h1", "Today");
+  });
+  after(close, { timeout: 30_000 });
+
+  it("Ctrl+Enter asks first, writes #+RESULTS: under the block, re-runs without asking, and u undoes it", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Run");
+    await find(".status .file", "run.org");
+    await noPicker();
+    await browser.keys(Key.Escape);
+    await type("4G");
+    await browser.keys([Key.Ctrl, Key.Enter]);
+    await find(".picker", "echo hi; pwd"); // the exact code is shown
+    await answer("Run this sh block", "Run");
+    const ran = `#+begin_src sh\necho hi; pwd\n#+end_src\n\n#+RESULTS:\n: hi\n: ${d.notes}\n\n#+begin_src python`;
+    await find(".cm-content", ": hi");
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(file(), (s) => s.includes(ran), "results not written under the block");
+    // Same code again: no question, results replaced, not added.
+    await browser.keys([Key.Ctrl, Key.Enter]);
+    await browser.pause(1000);
+    assert.equal((await texts(".picker")).length, 0, "asked again for unchanged code");
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(file(), (s) => s.split("#+RESULTS:").length === 2 && s.includes(ran), "results duplicated");
+    // A language not in babel_languages never runs.
+    await type("12G");
+    await browser.keys([Key.Ctrl, Key.Enter]);
+    await find(".status .msg", "python blocks don't run");
+    await type("uu");
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(file(), (s) => s === doc, "undo didn't remove the results");
+  });
+});
