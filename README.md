@@ -246,7 +246,8 @@ New here? The first start asks for your notes folder, time-tracking folder and
 hands-on tutorial note (`Space ?` reopens it). Changing folders or dropping the current
 profile clocks out first, and warns where old files stay (nothing is moved).
 
-- **Ctrl+K** — command palette: every action, with its shortcut.
+- **Ctrl+K** — command palette: every action, with its shortcut. Commands you ran from it recently
+  are listed first (marked "recent"; this machine only).
 - **Space** (vim normal mode, or in any list view) — the same actions as a menu.
 - **Ctrl+=** / **Ctrl+-** (**Cmd** on macOS), or **Ctrl+mouse wheel** / touchpad pinch — zoom the whole UI
   in / out; reset with **Ctrl/Cmd+0** or `Space v 0`. The zoom level is remembered across restarts.

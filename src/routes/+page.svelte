@@ -55,6 +55,7 @@
   import { peopleFrom, personName, personRows } from "$lib/people";
   import { addBookmark, bookmarkAt, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, retitleBookmarks, type Bookmark } from "$lib/bookmarks";
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
+  import { pushRecent, sortByRecent, parseRecents } from "$lib/recents";
 
   type View = "agenda" | "todo" | "time" | "projects" | "ledger" | "settings";
   /** SAVED: the text last read from / written to disk, to tell our own writes from outside changes.
@@ -2740,11 +2741,12 @@
     k.replace("ArrowRight", "→").replace("ArrowLeft", "←").replace("ArrowUp", "↑").replace("ArrowDown", "↓").replace("Ctrl", isMac ? "⌘" : "Ctrl");
 
   async function palette() {
+    const recents = parseRecents(stored("palette-recent", "[]"));
     const c: Cmd | null = await pick({
       prompt: "Run a command",
-      items: cmds.map((c) => ({ label: c.label, detail: [c.keys?.map(pretty).join(" / "), c.leader && `Space ${c.leader}`].filter(Boolean).join(" · "), value: c })),
+      items: sortByRecent(cmds, recents).map((c) => ({ label: c.label, detail: [recents.includes(c.label) && "recent", c.keys?.map(pretty).join(" / "), c.leader && `Space ${c.leader}`].filter(Boolean).join(" · "), value: c })),
     });
-    if (c) act(c.run);
+    if (c) { store("palette-recent", JSON.stringify(pushRecent(recents, c.label))); act(c.run); }
   }
 
   // ---------------------------------------------------------------- keys
