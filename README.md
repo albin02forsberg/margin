@@ -224,7 +224,7 @@ moved away outside the app keeps its text in the open tab, flagged "deleted on
 disk" and not autosaved (`:w` recreates it), and drops out of the recent notes.
 
 Backups commit the time-data folder (and the notes folder, if it is a git
-repo) after each change. With a remote, the time-data repo also pulls
+repo) after each change; `Space n V` browses and restores a note's earlier versions from those commits. With a remote, the time-data repo also pulls
 (`git fetch` + rebase) before it pushes, every 5 minutes and when the window
 gets focus, so two machines sharing one remote see each other's time. The
 time log, time off and the per-day activity files merge by keeping both machines'
@@ -516,6 +516,7 @@ Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`, `no` p
 | Space n D | Delete this note: after a confirm (it says how many notes link to it) the file moves to `<notes>/.trash/`, keeping its subfolder; nothing is deleted for good and links to it are left as they are |
 | Space n R | Restore a note from `<notes>/.trash/`: pick it (newest first) and it moves back to its original place and opens; refused if a note of that name already exists |
 | Space n f | Show this file in the system file manager (any open file: a note, `config.toml`, the time log) |
+| Space n V | Note history: the last 100 git commits that touched this note (renames followed), with when and +/− lines; pick one to see its diff against the editor, then `r`/`Enter` restores it as a normal edit (`u` undoes, nothing is written behind your back) or `c` copies its text. Needs the notes folder in a git repo |
 | Space n y | Copy this file's full path to the clipboard |
 | Space n w | Copy an `[[id:…][Heading]]` link to the heading at the cursor (adds an `:ID:` to it if missing) |
 | Space n x | Extract the heading at the cursor into a new note in the same folder, like `org-roam-extract-subtree`: its text and children move there (children become top-level headings), titled after the heading without keyword, priority, tags or `[n/m]` cookie; the heading stays with its dates and drawers (an `:ID:` keeps resolving) and gets an `[[id:]]` link to the note. Space n u puts the text back (the new note stays) |

@@ -3,6 +3,7 @@ import { after, before, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { answer, browser, close, fileMatches, find, isoDay, Key, launch, noPicker, orgDay, palette, read, savedView, texts, type, type Dirs } from "./setup.ts";
 
 describe("First run", () => {
@@ -1844,5 +1845,65 @@ describe("Web links and note graph", () => {
     await answer("Link text (optional)", "world");
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(note("paste"), (s) => s.includes("say [[https://margin.test][world]] now\n"), "web link not inserted over the selection");
+  });
+});
+
+describe("Note history (git)", () => {
+  let d: Dirs;
+  const f = (n: string) => join(d.notes, n);
+  const v1 = "#+title: Hist\n\nfirst draft\n", v2 = "#+title: Hist\n\nrewritten\n";
+  before(async () => {
+    d = await launch({ files: ({ notes }) => {
+      const git = (...a: string[]) => assert.equal(spawnSync("git", a, { cwd: notes }).status, 0, `git ${a.join(" ")}`);
+      git("init", "-q");
+      git("config", "user.email", "t@example.com"); git("config", "user.name", "t"); git("config", "commit.gpgsign", "false");
+      writeFileSync(join(notes, "hist.org"), v1); git("add", "-A"); git("commit", "-qm", "first version");
+      writeFileSync(join(notes, "hist.org"), v2); git("commit", "-qam", "second version");
+      writeFileSync(join(notes, "fresh.org"), "#+title: Fresh\n\nnot committed\n");
+    } });
+    await find(".agenda h1", "Today"); // the app is ready for keys
+  });
+  after(close, { timeout: 30_000 });
+  const leader = async (keys: string) => {
+    await browser.keys(Key.Escape);
+    await browser.waitUntil(async () => {
+      if ((await texts(".menu")).length) return true;
+      await browser.keys(" ");
+      await browser.pause(200);
+      return (await texts(".menu")).length > 0;
+    }, { timeoutMsg: "leader menu never opened" });
+    await type(keys);
+  };
+  const open = async (title: string, file: string) => {
+    await noPicker();
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", title);
+    await find(".status .file", file);
+    await noPicker();
+    await browser.waitUntil(() => browser.execute(() => !!document.activeElement?.closest(".cm-content")), { timeoutMsg: "editor not focused" });
+  };
+
+  it("Space n V lists the note's commits, shows the diff and restores a version as an undoable edit (#768)", async () => {
+    await open("Hist", "hist.org");
+    await leader("nV");
+    await find(".picker li span", "second version");
+    assert.deepEqual((await texts(".picker li span")).filter((t) => t.endsWith("version")), ["second version", "first version"]);
+    await answer("Note history", "first version");
+    await find(".picker label span", "Version");
+    await find(".picker .body", "- rewritten");
+    await find(".picker .body", "+ first draft");
+    await browser.keys("r");
+    await find(".status .msg", "Restored version");
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(f("hist.org"), (s) => s === v1, "old version not restored");
+    await type("u");
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(f("hist.org"), (s) => s === v2, "u did not undo the restore");
+  });
+
+  it("Space n V on a note with no commits says so", async () => {
+    await open("Fresh", "fresh.org");
+    await leader("nV");
+    await find(".status .msg", "No commits touch this note yet.");
   });
 });

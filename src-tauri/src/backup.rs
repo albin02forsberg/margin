@@ -65,7 +65,8 @@ fn clean_env(vars: &[(&str, String)], appdir: &str) -> Vec<(String, Option<Strin
     out
 }
 
-fn git(dir: &Path, args: &[&str]) -> (bool, String) {
+/// `git ARGS` in DIR, with the AppImage's env cleaned and no console window on Windows.
+fn git_cmd(dir: &Path, args: &[&str]) -> Command {
     let mut c = Command::new("git");
     c.args(args).current_dir(dir);
     if let Ok(appdir) = std::env::var("APPDIR") {
@@ -85,7 +86,11 @@ fn git(dir: &Path, args: &[&str]) -> (bool, String) {
         use std::os::windows::process::CommandExt;
         c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flash
     }
-    match c.output() {
+    c
+}
+
+fn git(dir: &Path, args: &[&str]) -> (bool, String) {
+    match git_cmd(dir, args).output() {
         Ok(o) => (o.status.success(), format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr)).trim().to_string()),
         Err(e) => (false, format!("git: {e}")),
     }
@@ -315,9 +320,96 @@ pub fn start(dir: impl Fn() -> PathBuf + Send + 'static) {
     });
 }
 
+/// A commit that touched a file: (sha, unix time, subject, lines added, lines deleted, the file's repo-relative path then).
+pub type Rev = (String, i64, String, u64, u64, String);
+
+/// Untrimmed stdout of `git ARGS` in DIR; stderr as the error ("not a git repository" said plainly).
+fn git_out(dir: &Path, args: &[&str]) -> Result<String, String> {
+    let o = git_cmd(dir, args).output().map_err(|e| format!("git: {e}"))?;
+    let err = String::from_utf8_lossy(&o.stderr);
+    if err.contains("not a git repository") {
+        return Err(format!("{} isn't in a git repo", dir.display()));
+    }
+    if !o.status.success() {
+        return Err(format!("git: {}", err.trim()));
+    }
+    Ok(String::from_utf8_lossy(&o.stdout).into_owned())
+}
+
+/// The last 100 commits that touched FILE, newest first, following renames (`git log --follow`).
+pub fn file_log(file: &Path) -> Result<Vec<Rev>, String> {
+    let (dir, name) = (file.parent().ok_or("no folder")?, file.file_name().ok_or("no file name")?.to_string_lossy());
+    match git_out(dir, &["log", "--follow", "-n", "100", "-z", "--format=%x1e%H%x1f%ct%x1f%s", "--numstat", "--", &name]) {
+        Err(e) if e.contains("does not have any commits") => Ok(vec![]),
+        r => r.map(|o| parse_log(&o)),
+    }
+}
+
+/// Parse `git log -z --format=%x1e%H%x1f%ct%x1f%s --numstat` of one file: each record is
+/// `sha␟time␟subject\0\n` then `added\tdeleted\tpath\0`, or `added\tdeleted\t\0old\0new\0` for a rename
+/// (binary files count `-`). Records without a numstat line (merges) are skipped.
+fn parse_log(out: &str) -> Vec<Rev> {
+    out.split('\x1e').filter_map(|rec| {
+        let (head, stat) = rec.split_once('\0')?;
+        let mut h = head.splitn(3, '\x1f');
+        let (sha, time, subject) = (h.next()?, h.next()?.parse().ok()?, h.next().unwrap_or(""));
+        let parts: Vec<&str> = stat.trim_start_matches('\n').split('\0').filter(|p| !p.is_empty()).collect();
+        let mut n = parts.first()?.splitn(3, '\t');
+        let (add, del) = (n.next()?.parse().unwrap_or(0), n.next()?.parse().unwrap_or(0));
+        let path = n.next().filter(|p| !p.is_empty()).or(parts.last().filter(|_| parts.len() > 1).copied())?;
+        Some((sha.to_string(), time, subject.to_string(), add, del, path.to_string()))
+    }).collect()
+}
+
+/// FILE's text at commit SHA, where it was at repo-relative PATH (from `file_log`).
+pub fn file_at(file: &Path, sha: &str, path: &str) -> Result<String, String> {
+    if sha.is_empty() || !sha.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(format!("not a commit: {sha}"));
+    }
+    git_out(file.parent().ok_or("no folder")?, &["show", &format!("{sha}:{path}")])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_file_log_with_rename_and_binary() {
+        let out = "\x1eaaa\x1f300\x1frename\0\n1\t0\t\0sub/my note.org\0sub/new.org\0\x1ebbb\x1f200\x1f\0\n-\t-\tsub/my note.org\0\x1emerge\x1f150\x1fMerge\0\x1eccc\x1f100\x1ffirst\0\n2\t0\tsub/my note.org\0";
+        let r = parse_log(out);
+        let p = |r: &Rev| (r.0.clone(), r.1, r.2.clone(), r.3, r.4, r.5.clone());
+        assert_eq!(r.iter().map(p).collect::<Vec<_>>(), [
+            ("aaa".into(), 300, "rename".into(), 1, 0, "sub/new.org".into()),
+            ("bbb".into(), 200, "".into(), 0, 0, "sub/my note.org".into()),
+            ("ccc".into(), 100, "first".into(), 2, 0, "sub/my note.org".into()),
+        ]);
+        assert!(parse_log("").is_empty());
+    }
+
+    #[test]
+    fn file_history_follows_renames_and_reads_old_versions() {
+        let d = std::env::temp_dir().join(format!("margin-hist-{}", crate::notes::gen_id()));
+        std::fs::create_dir_all(d.join("sub")).unwrap();
+        for args in [&["init", "-q"][..], &["config", "user.email", "t@example.com"], &["config", "user.name", "t"], &["config", "commit.gpgsign", "false"]] {
+            assert!(git(&d, args).0);
+        }
+        let (old, new) = (d.join("sub/my note.org"), d.join("sub/new.org"));
+        assert!(file_log(&old).unwrap().is_empty()); // untracked: no history, no error
+        std::fs::write(&old, "a\nb\n").unwrap();
+        assert!(git(&d, &["add", "-A"]).0 && git(&d, &["commit", "-qm", "first"]).0);
+        assert!(git(&d, &["mv", "sub/my note.org", "sub/new.org"]).0);
+        std::fs::write(&new, "a\nc\n").unwrap();
+        assert!(git(&d, &["add", "-A"]).0 && git(&d, &["commit", "-qm", "moved"]).0);
+        let log = file_log(&new).unwrap();
+        assert_eq!(log.iter().map(|r| r.2.as_str()).collect::<Vec<_>>(), ["moved", "first"]);
+        assert_eq!(file_at(&new, &log[1].0, &log[1].5).unwrap(), "a\nb\n"); // trailing newline kept
+        assert!(file_at(&new, "HEAD~1", "x").is_err());
+        let _ = std::fs::remove_dir_all(&d);
+        let outside = std::env::temp_dir().join(format!("margin-nogit-{}", crate::notes::gen_id()));
+        std::fs::create_dir_all(&outside).unwrap();
+        assert!(file_log(&outside.join("x.org")).unwrap_err().contains("isn't in a git repo"));
+        let _ = std::fs::remove_dir_all(&outside);
+    }
 
     fn v(k: &'static str, s: &str) -> (&'static str, String) {
         (k, s.to_string())
