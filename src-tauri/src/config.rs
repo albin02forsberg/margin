@@ -98,6 +98,8 @@ pub struct Config {
     pub spellcheck: bool,
     /// Spell-check languages (Linux/WebKitGTK only), e.g. `sv_SE`; empty = the system locale.
     pub spellcheck_languages: Vec<String>,
+    /// Code-block languages `Ctrl+Enter` / `Space i r` may run (e.g. `sh`); empty = nothing runs. Kept here, never in a note.
+    pub babel_languages: Vec<String>,
     /// Update from the daily builds of main (the `nightly` prerelease) instead of stable releases.
     pub nightly_updates: bool,
     /// The ledger (`Space f l`), relative to notes_dir.
@@ -245,6 +247,7 @@ impl Default for Config {
             restore_tabs: true,
             spellcheck: false,
             spellcheck_languages: vec![],
+            babel_languages: vec![],
             nightly_updates: false,
             ledger_file: "ledger.org".into(),
             ledger_currency: "EUR".into(),
@@ -526,6 +529,12 @@ mod tests {
         assert!(Config::default().spellcheck_languages.is_empty());
         let c = toml::from_str::<Config>("spellcheck_languages = [\"sv_SE\", \"en_US\"]").unwrap();
         assert_eq!(c.spellcheck_languages, ["sv_SE", "en_US"]);
+    }
+
+    #[test]
+    fn babel_off_by_default() {
+        assert!(Config::default().babel_languages.is_empty());
+        assert_eq!(toml::from_str::<Config>("babel_languages = [\"sh\"]").unwrap().babel_languages, ["sh"]);
     }
 
     #[test]
