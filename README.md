@@ -459,6 +459,18 @@ body = "* %^{Title} :meeting:\n%U\n- %?"
 `%t`/`%T` date / date+time (`<2026-10-02 Fri 14:30>`), `%u`/`%U` the inactive
 `[…]` forms, `%^{Prompt}` asks (repeat a name to reuse the answer), `%i` the
 selected text (extra lines indented like its line), `%?` cursor, `%%` a literal `%`.
+The reserved prompt `%^{clip-link}` isn't asked: it becomes the clipboard URL as
+`[[url][page title]]` (a bare `[[url]]` if the title can't be fetched; if the clipboard
+isn't an http(s) URL it asks for one). New configs include a "Reading list" template
+(`r`); with your own templates add it yourself (config is never rewritten):
+
+```toml
+[[templates]]
+key = "r"
+name = "Reading list"
+heading = "Reading"
+body = "* TODO Read %^{clip-link} :read:\n%U\n%?"
+```
 
 Or keep each template as a file in `notes/templates/` (`templates_dir` in
 settings); they're listed after the settings ones and left out of the agenda,

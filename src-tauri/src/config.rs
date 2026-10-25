@@ -218,6 +218,7 @@ impl Default for Config {
             templates: vec![
                 Template { key: "n".into(), name: "Note".into(), file: String::new(), heading: None, body: "* %^{Title}\n%U\n%i%?".into() },
                 Template { key: "m".into(), name: "Meeting notes".into(), file: "meetings.org".into(), heading: None, body: "* %^{Meeting} :meeting:\n%U\n- %?".into() },
+                Template { key: "r".into(), name: "Reading list".into(), file: String::new(), heading: Some("Reading".into()), body: "* TODO Read %^{clip-link} :read:\n%U\n%?".into() },
             ],
             templates_dir: "templates".into(),
             snippets: vec![],
@@ -636,7 +637,7 @@ mod tests {
         // First run: `views = []` and the default templates' tables are replaced.
         let first = toml::to_string(&Config::default()).unwrap();
         let (s, c) = set_tables(&first, "views", two.clone()).unwrap();
-        assert!(!s.contains("views = []") && c.views.len() == 2 && c.templates.len() == 2, "{s}");
+        assert!(!s.contains("views = []") && c.views.len() == 2 && c.templates.len() == 3, "{s}");
         let (s, c) = set_tables(&s, "templates", vec![]).unwrap();
         assert!(c.templates.is_empty() && c.views.len() == 2 && s.contains("templates = []\n"), "{s}");
         let tpl = views("views = [{ key = 'j', name = 'J', body = \"* %?\\n[[file:a.org]]\\n\", heading = 'Log' }]");
@@ -662,7 +663,7 @@ mod tests {
     #[test]
     fn defaults_round_trip() {
         let c: Config = toml::from_str(&toml::to_string(&Config::default()).unwrap()).unwrap();
-        assert_eq!(c.templates.len(), 2);
+        assert_eq!(c.templates.len(), 3);
         assert!(toml::from_str::<Config>("templates = []").unwrap().templates.is_empty());
         // Configs from before ai_backend keep using Ollama; ai_set's edit round-trips.
         assert_eq!(toml::from_str::<Config>("ai_model = \"m\"").unwrap().ai_backend, crate::ai::Backend::Ollama);
@@ -690,6 +691,13 @@ mod tests {
         }
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), if cfg!(unix) { 2 } else { 1 }, "no temp files left");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn default_reading_template() {
+        let c = Config::default();
+        let t = c.templates.iter().find(|t| t.key == "r").unwrap();
+        assert_eq!(crate::org::template_prompts(&t.body), ["clip-link"]);
     }
 
     #[test]

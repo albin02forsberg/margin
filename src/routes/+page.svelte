@@ -979,12 +979,18 @@
   /** Space i U: the clipboard URL (else one asked for) as [[url][page title]]; a bare [[url]] when the title can't be fetched. */
   async function insertTitledLink() {
     if (!inFile()) return flash("Open a note first.");
+    const link = await clipLink();
+    if (link) ed.insertText(view, link);
+    view.focus();
+  }
+
+  /** The clipboard URL (else one asked for) as [[url][page title]], a bare [[url]] when the title can't be fetched; null if cancelled. */
+  async function clipLink() {
     const clip = await navigator.clipboard.readText().catch(() => "");
     const url = asWebUrl(clip) ?? asWebUrl((await ask("Link address (http/https URL)", clip.trim().split(/\s/)[0])) ?? "");
-    if (!url) return view.focus();
+    if (!url) return null;
     const title = await call<string>("fetch_title", { url }).catch((e) => (flash(`No page title: ${e}`), ""));
-    ed.insertText(view, linkFor(url, title));
-    view.focus();
+    return linkFor(url, title);
   }
 
   /** Alt+H/J/K/L act on the table when the cursor is in one, otherwise on headings. */
@@ -1266,7 +1272,7 @@
     const selection = !hidden && inFile() ? view.state.sliceDoc(s.from, s.to) : "";
     const answers: Record<string, string> = {};
     for (const p of await call<string[]>("template_prompts", { body: t.body })) {
-      const a = await ask(p);
+      const a = p === "clip-link" ? await clipLink() : await ask(p);
       if (a == null) return;
       answers[p] = a;
     }
