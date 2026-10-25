@@ -2,10 +2,12 @@
 //! `- 2026-10-25 -12.50 EUR lunch @anna #food [[id:…]]` (negative = expense, positive = income).
 //! Dates stay unbracketed so entries never reach the agenda. Lines are only ever appended;
 //! anything `parse_entry` doesn't understand is left as it is.
-// The reader (parse_entry, category/payee/link) is for the month view and exports (#789–#791).
+// link() is for the exports (#790, #791).
 #![cfg_attr(not(test), allow(dead_code))]
 use chrono::NaiveDate;
 use regex::Regex;
+use serde::Serialize;
+use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 static ENTRY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+(\S+)\s+([A-Z]{3})(?:\s+(.*?))?\s*$").unwrap());
@@ -105,6 +107,58 @@ pub fn add(text: &str, e: &Entry, kw: &crate::org::Kw) -> String {
     crate::org::capture_insert(text, Some(&e.date.format("%Y-%m").to_string()), &format_entry(e), kw)
 }
 
+/// One currency's totals for a month, in cents: EXPENSE is negative, NET = INCOME + EXPENSE.
+/// CATEGORIES (None = uncategorised) and PAYEES are net sums, largest amount first.
+#[derive(Serialize, Debug, PartialEq, Default)]
+pub struct Total {
+    pub currency: String,
+    pub income: i64,
+    pub expense: i64,
+    pub net: i64,
+    pub categories: Vec<(Option<String>, i64)>,
+    pub payees: Vec<(String, i64)>,
+}
+
+/// A month's entry, at 0-based LINE of the ledger file.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Row {
+    pub line: usize,
+    pub date: NaiveDate,
+    pub cents: i64,
+    pub currency: String,
+    pub text: String,
+    pub category: Option<String>,
+    pub payee: Option<String>,
+}
+
+/// TEXT's entries dated in MONTH (`YYYY-MM`, whatever heading they sit under), oldest first, and their
+/// totals per currency (CURRENCY first, then by code; never converted).
+pub fn summarize(text: &str, month: &str, currency: &str) -> (Vec<Total>, Vec<Row>) {
+    let mut rows: Vec<Row> = text.lines().enumerate().filter_map(|(line, l)| {
+        let e = parse_entry(l).filter(|e| e.date.format("%Y-%m").to_string() == month)?;
+        let (category, payee) = (e.category().map(str::to_string), e.payee().map(str::to_string));
+        Some(Row { line, date: e.date, cents: e.cents, currency: e.currency, text: e.text, category, payee })
+    }).collect();
+    rows.sort_by_key(|r| (r.date, r.line));
+    type Sums = (i64, i64, BTreeMap<Option<String>, i64>, BTreeMap<String, i64>);
+    let mut by: BTreeMap<(bool, &str), Sums> = BTreeMap::new();
+    for r in &rows {
+        let t = by.entry((r.currency != currency.trim().to_uppercase(), &r.currency)).or_default();
+        if r.cents > 0 { t.0 += r.cents } else { t.1 += r.cents }
+        *t.2.entry(r.category.clone()).or_default() += r.cents;
+        if let Some(p) = &r.payee {
+            *t.3.entry(p.clone()).or_default() += r.cents;
+        }
+    }
+    fn ranked<K: Ord>(m: BTreeMap<K, i64>) -> Vec<(K, i64)> {
+        let mut v: Vec<_> = m.into_iter().collect();
+        v.sort_by_key(|(_, c)| std::cmp::Reverse(c.unsigned_abs())); // stable: ties stay by name
+        v
+    }
+    let totals = by.into_iter().map(|((_, cur), (income, expense, c, p))| Total { currency: cur.into(), income, expense, net: income + expense, categories: ranked(c), payees: ranked(p) }).collect();
+    (totals, rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,5 +215,20 @@ mod tests {
         let t = add(&format!("{t}not an entry  #kept\n* 2026-11\n- 2026-11-01 -1.00 EUR x\n"), &e("+5 refund"), &kw());
         assert_eq!(t, "#+title: ledger\n* 2026-10\n- 2026-10-25 -12.50 EUR lunch\nnot an entry  #kept\n- 2026-10-25 +5.00 EUR refund\n* 2026-11\n- 2026-11-01 -1.00 EUR x\n");
         assert!(add(&t, &e("2026-12-01 2 y"), &kw()).ends_with("- 2026-11-01 -1.00 EUR x\n* 2026-12\n- 2026-12-01 -2.00 EUR y\n"));
+    }
+
+    #[test]
+    fn summarize_groups_a_month_by_currency() {
+        let text = "* 2026-10\n- 2026-10-25 -12.50 EUR lunch @anna #food\n- 2026-10-02 +1200 EUR pay @acme #work\nbroken -1 EUR\n- 2026-10-03 -2.50 EUR bus\n- 2026-10-04 -7 EUR dinner @anna #food\n- 2026-10-05 -100 SEK fika #food\n* 2026-11\n- 2026-11-01 -1 EUR later\n- 2026-10-31 +0.5 USD late filing\n";
+        let (t, rows) = summarize(text, "2026-10", "eur");
+        assert_eq!(rows.iter().map(|r| r.line).collect::<Vec<_>>(), [2, 4, 5, 6, 1, 9]);
+        assert_eq!((rows[0].category.as_deref(), rows[0].payee.as_deref(), rows[1].category.as_deref()), (Some("work"), Some("acme"), None));
+        assert_eq!(t.iter().map(|t| t.currency.as_str()).collect::<Vec<_>>(), ["EUR", "SEK", "USD"]);
+        assert_eq!((t[0].income, t[0].expense, t[0].net), (120000, -2200, 117800));
+        assert_eq!(t[0].categories, [(Some("work".into()), 120000), (Some("food".into()), -1950), (None, -250)]);
+        assert_eq!(t[0].payees, [("acme".into(), 120000), ("anna".into(), -1950)]);
+        assert_eq!((t[1].income, t[1].expense, t[1].net, t[2].net), (0, -10000, -10000, 50));
+        assert_eq!(summarize(text, "2026-09", "EUR"), (vec![], vec![]));
+        assert_eq!(summarize("", "2026-10", "EUR"), (vec![], vec![]));
     }
 }

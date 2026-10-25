@@ -912,6 +912,12 @@ The first `#tag` is the category, the first `@name` the payee, and a `[[link]]` 
 a project or task. Dates stay without `<…>` so entries never show in the agenda; lines in any
 other shape are left alone. `Space n u` undoes the last entry.
 
+**Go to Ledger** (`Space v l`, once the ledger file exists) shows a month: income, expenses and net
+per currency (amounts in other currencies are totalled on their own, never converted), the totals
+per `#category` (entries without one as *uncategorised*) and per `@payee`, then the month's entries;
+click one to open the ledger at its line. `h` / `l` or the arrows switch months. An entry counts in
+the month of its own date, whichever heading it sits under.
+
 ## Export
 
 `Space e` exports the open note (including unsaved edits) as HTML (`e h`),
