@@ -157,6 +157,16 @@ describe("Features", () => {
       new RegExp(`- State "DONE"\\s+from "TODO"\\s+\\[${isoDay(new Date())} \\w+ \\d\\d:\\d\\d\\]`).test(s), "habit not logged");
   });
 
+  it("Space x H lists habits with streaks and on-time rate; r switches to 90 days (#802)", async () => {
+    await palette("Habits: overview");
+    await find(".habits .habit .pct", "100%"); // Floss, done today above
+    await (await find(".habits h1", "Habits")).click();
+    await browser.keys("r");
+    await find(".habits .days", "Last 90 days");
+    await (await find(".habits .habit button", "Floss")).click();
+    await find(".status .file", "habits.org");
+  });
+
   it("searches tasks, saves the search as a view and renames it", async () => {
     await palette("Search tasks");
     await answer("Search tasks", "tag:work");

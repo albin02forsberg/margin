@@ -40,6 +40,7 @@
   import { due as drillDue, grade as drillGrade, propValue as drillProps, type Card } from "$lib/drill";
   import Projects from "$lib/Projects.svelte";
   import Ledger from "$lib/Ledger.svelte";
+  import Habits from "$lib/Habits.svelte";
   import Settings from "$lib/Settings.svelte";
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
   import { chatContext } from "$lib/chatctx";
@@ -56,7 +57,7 @@
   import { addBookmark, bookmarkAt, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, retitleBookmarks, type Bookmark } from "$lib/bookmarks";
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
 
-  type View = "agenda" | "todo" | "time" | "projects" | "ledger" | "settings";
+  type View = "agenda" | "todo" | "time" | "projects" | "ledger" | "habits" | "settings";
   /** SAVED: the text last read from / written to disk, to tell our own writes from outside changes.
    *  REPORT: how to regenerate a report tab when the data changes. */
   type Tab = {
@@ -323,7 +324,7 @@
   async function openView(kind: View) {
     let i = tabs.findIndex((t) => t.key === kind);
     if (i < 0) {
-      tabs.push({ key: kind, title: { agenda: "Today", todo: "Tasks", time: "Time", projects: "Projects", ledger: "Ledger", settings: "Settings" }[kind], kind, dirty: false });
+      tabs.push({ key: kind, title: { agenda: "Today", todo: "Tasks", time: "Time", projects: "Projects", ledger: "Ledger", habits: "Habits", settings: "Settings" }[kind], kind, dirty: false });
       i = tabs.length - 1;
     }
     await show(i);
@@ -2615,6 +2616,7 @@
     { label: "Note: archive all done tasks", leader: "x a", run: () => act(archiveDone) },
     { label: "Tasks: stuck projects (open subtasks, no next action)…", leader: "x S", run: () => act(stuckProjects) },
     { label: "Tasks: goals (:GOAL: headings, progress, days left)…", leader: "x G", run: () => act(goalsView) },
+    { label: "Habits: overview (streaks, completion rate)", leader: "x H", run: () => act(() => openView("habits")) },
     { label: "Task: track time on it", leader: "x i", run: () => atCursor("clockIn") },
     { label: "New heading / list item / table row below", keys: ["Alt+Enter"], ctx: "editor", leader: "x h", run: tableOr("rowBelow", () => ed.newItem(view)) },
     { label: "New task heading below", keys: ["Alt+Shift+Enter"], ctx: "editor", leader: "x n", run: () => ed.newHeading(view, kw().todo[0]) },
@@ -3106,7 +3108,7 @@
         <div class="editor" bind:this={editorEl} style:display={isText(tab) ? "block" : "none"}></div>
         {#if dropCue}<div class="drop-cue">Drop to attach to {tab.title}</div>{/if}
         {#if cfg}
-          {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo" || t.kind === "time" || t.kind === "projects" || t.kind === "ledger" || t.kind === "settings") as v (v.key)}
+          {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo" || t.kind === "time" || t.kind === "projects" || t.kind === "ledger" || t.kind === "habits" || t.kind === "settings") as v (v.key)}
             <div class="view" data-key={v.key} style:display={v === tab ? "block" : "none"}>
               {#if v.kind === "time"}
                 <Time api={timeApi} active={v === tab} {reload} />
@@ -3114,6 +3116,8 @@
                 <Projects api={timeApi} active={v === tab} {reload} />
               {:else if v.kind === "ledger"}
                 <Ledger api={timeApi} active={v === tab} {reload} />
+              {:else if v.kind === "habits"}
+                <Habits api={timeApi} active={v === tab} {reload} />
               {:else if v.kind === "settings"}
                 <Settings {version} active={v === tab} {reload} config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} missing={cfg.config_missing} save={saveSettings} recreate={recreateConfig} edit={() => act(editConfig)} />
               {:else}
