@@ -732,8 +732,17 @@ pub fn occur(f: &OrgFile, query: &str) -> Result<Vec<Occur>, String> {
         return Ok(vec![]);
     }
     let mut out = vec![];
+    // Ancestor chain at the current line: headlines are in line order, so walk them forward once.
+    let (mut stack, mut hi): (Vec<(usize, String)>, usize) = (vec![], 0);
     for (i, l) in f.text.lines().enumerate() {
         let l = l.trim_end_matches('\r');
+        while let Some(h) = f.headlines.get(hi).filter(|h| h.line <= i) {
+            while stack.last().is_some_and(|(lv, _)| *lv >= h.level) {
+                stack.pop();
+            }
+            stack.push((h.level, h.title.clone()));
+            hi += 1;
+        }
         let hit = match &re {
             Some(re) => re.is_match(l),
             None => {
@@ -742,14 +751,7 @@ pub fn occur(f: &OrgFile, query: &str) -> Result<Vec<Occur>, String> {
             }
         };
         if hit {
-            let mut path: Vec<String> = vec![];
-            let mut lvl = usize::MAX;
-            for h in f.headlines.iter().filter(|h| h.line <= i).rev() {
-                if h.level < lvl {
-                    lvl = h.level;
-                    path.insert(0, h.title.clone());
-                }
-            }
+            let path = stack.iter().map(|(_, t)| t.clone()).collect();
             out.push(Occur { line: i, text: l.trim().to_string(), path });
             if out.len() >= OCCUR_LIMIT {
                 break;
@@ -774,6 +776,9 @@ mod tests {
         assert_eq!(o[1].path, ["A", "B"]);
         assert_eq!(o[3].path, ["C"]);
         assert_eq!(o[0].text, "intro foo");
+        let g = parse(Path::new("/n/b.org"), "* A\n** B\n*** C\nx\n** D\nx\n* E\nx\n*** F x\n", &kw);
+        let p: Vec<_> = occur(&g, "x").unwrap().into_iter().map(|h| h.path).collect();
+        assert_eq!(p, [vec!["A", "B", "C"], vec!["A", "D"], vec!["E"], vec!["E", "F x"]]);
         assert_eq!(occur(&f, "foo -bar in:x").unwrap().len(), 3);
         assert_eq!(occur(&f, "\"foo bar\"").unwrap().len(), 1);
         assert_eq!(occur(&f, "/^f.o\\s/").unwrap().len(), 3);
