@@ -1323,11 +1323,11 @@ fn note_version(s: State<App>, path: PathBuf, sha: String, old: String) -> R<Str
     backup::file_at(&path, &sha, &old)
 }
 
-/// What `#+TRANSCLUDE: [[LINK]]` in note FROM shows (#784); Err says why it can't (missing, outside the notes).
+/// What `#+TRANSCLUDE: [[LINK]] PROPS` in note FROM shows (#784); Err says why it can't (missing, outside the notes).
 #[tauri::command(async)]
-fn transclude_text(s: State<App>, link: String, from: PathBuf) -> R<notes::Transclusion> {
+fn transclude_text(s: State<App>, link: String, props: Option<String>, from: PathBuf) -> R<notes::Transclusion> {
     s.check(&from)?;
-    notes::transclude(&s.files(), &from, &link, &|p| s.check(p))
+    notes::transclude(&s.files(), &from, &link, props.as_deref().unwrap_or(""), &|p| s.check(p))
 }
 
 /// Tags used in notes (file and non-task heading tags) as (tag, count), most used first.
