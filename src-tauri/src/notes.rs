@@ -867,6 +867,28 @@ pub fn transclude(files: &[Arc<OrgFile>], from: &Path, link: &str, allow: &dyn F
     Ok(t)
 }
 
+/// TEXT (the buffer of note FROM) with each `#+TRANSCLUDE:` line replaced by what it shows, for export (#796); a failed one
+/// becomes `[transclusion: why]`. Lines inside `#+begin_…` blocks and all other lines stay as they are.
+pub fn expand_transclusions(files: &[Arc<OrgFile>], from: &Path, text: &str, allow: &dyn Fn(&Path) -> Result<(), String>) -> String {
+    let mut inside = false;
+    let mut out: Vec<String> = vec![];
+    for l in text.lines() {
+        let t = l.trim().to_lowercase();
+        if t.starts_with("#+begin_") || t.starts_with("#+end_") {
+            inside = t.starts_with("#+begin_");
+        }
+        match TRANSCLUDE.captures(l).filter(|_| !inside) {
+            Some(c) => match transclude(files, from, &c[1], allow) {
+                Ok(t) => out.extend(t.text.lines().map(String::from)),
+                Err(e) => out.push(format!("[transclusion: {e}]")),
+            },
+            None => out.push(l.into()),
+        }
+    }
+    let nl = if text.ends_with('\n') { "\n" } else { "" };
+    out.join("\n") + nl
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1319,5 +1341,16 @@ mod tests {
         let fs = files(&[("/n/l.org", long.as_str())]);
         let r = transclude(&fs, Path::new("/n/l.org"), "*L", &allow).unwrap();
         assert_eq!((r.text.lines().count(), r.text.lines().last()), (201, Some("…")));
+    }
+
+    #[test]
+    fn expand_transclusions_for_export() {
+        let fs = files(&[("/n/b.org", "* B\nb text\n")]);
+        let allow = |_: &Path| Ok(());
+        let x = |t: &str| expand_transclusions(&fs, Path::new("/n/a.org"), t, &allow);
+        assert_eq!(x("intro\n#+TRANSCLUDE: [[file:b.org::*B]]\nend\n"), "intro\nb text\nend\n");
+        assert_eq!(x("#+transclude: [[file:b.org::*Gone]]"), "[transclusion: no heading \"Gone\"]");
+        let src = "#+begin_src org\n#+TRANSCLUDE: [[file:b.org::*B]]\n#+end_src\n#+TRANSCLUDE: [[file:b.org::*B]]";
+        assert_eq!(x(src), "#+begin_src org\n#+TRANSCLUDE: [[file:b.org::*B]]\n#+end_src\nb text");
     }
 }

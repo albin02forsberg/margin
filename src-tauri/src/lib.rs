@@ -2171,10 +2171,15 @@ fn stem(path: &Path) -> String {
     path.file_stem().map_or("note".into(), |x| x.to_string_lossy().to_string())
 }
 
+/// TEXT (the buffer of PATH) with its `#+TRANSCLUDE:` lines expanded (#796).
+fn expand(s: &App, path: &Path, text: &str) -> String {
+    notes::expand_transclusions(&s.files(), path, text, &|p| s.check(p))
+}
+
 /// Export note TEXT (the buffer of PATH) to export_dir. FORMAT: html | md | pdf (HTML that opens the print dialog).
 #[tauri::command]
 fn export_note(s: State<App>, path: PathBuf, text: String, format: String, overwrite: Option<bool>) -> R<PathBuf> {
-    let d = export::parse(&text, &s.kw());
+    let d = export::parse(&expand(&s, &path, &text), &s.kw());
     let stem = stem(&path);
     let base = path.parent().unwrap_or(Path::new(""));
     match format.as_str() {
@@ -2186,13 +2191,13 @@ fn export_note(s: State<App>, path: PathBuf, text: String, format: String, overw
 /// TEXT (the buffer or selection of PATH) as Markdown, for the clipboard; nothing is written.
 #[tauri::command]
 fn export_markdown(s: State<App>, path: PathBuf, text: String) -> String {
-    export::markdown(&export::parse(&text, &s.kw()), &stem(&path), path.parent().unwrap_or(Path::new("")), &export::Ids::new())
+    export::markdown(&export::parse(&expand(&s, &path, &text), &s.kw()), &stem(&path), path.parent().unwrap_or(Path::new("")), &export::Ids::new())
 }
 
 /// TEXT (the buffer or selection of PATH) as an HTML fragment, for the rich-text clipboard; nothing is written.
 #[tauri::command]
 fn export_html_fragment(s: State<App>, path: PathBuf, text: String) -> String {
-    export::html_body(&export::parse(&text, &s.kw()), &stem(&path), path.parent().unwrap_or(Path::new("")), &export::Ids::new())
+    export::html_body(&export::parse(&expand(&s, &path, &text), &s.kw()), &stem(&path), path.parent().unwrap_or(Path::new("")), &export::Ids::new())
 }
 
 /// Export note TEXT (the buffer of PATH) and the notes it reaches by id: links within DEPTH hops
@@ -2206,8 +2211,9 @@ fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, forma
     let files: Vec<&org::OrgFile> = files.iter().map(|f| &**f).collect();
     let ext = if format == "md" { "md" } else { "html" };
     let (pages, ids) = export::bundle(&files, &root, depth, ext);
+    let texts: Vec<String> = pages.iter().map(|(f, _)| expand(&s, &f.path, &f.text)).collect();
     if format == "pdf" {
-        return write_export(&s, &format!("{} (linked).html", stem(&path)), export::combined(&pages, &ids, &kw), overwrite);
+        return write_export(&s, &format!("{} (linked).html", stem(&path)), export::combined(&pages, &texts, &ids, &kw), overwrite);
     }
     let dir = export_path(&s, &stem(&path), overwrite)?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -2219,8 +2225,8 @@ fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, forma
         let _ = std::fs::remove_file(old.join(&n)); // Windows' rename won't replace
         std::fs::rename(dir.join(&n), old.join(&n)).map_err(|e| e.to_string())?;
     }
-    for (f, name) in &pages {
-        let (d, title, base) = (export::parse(&f.text, &kw), stem(&f.path), f.path.parent().unwrap_or(Path::new("")));
+    for ((f, name), text) in pages.iter().zip(&texts) {
+        let (d, title, base) = (export::parse(text, &kw), stem(&f.path), f.path.parent().unwrap_or(Path::new("")));
         let body = if ext == "md" { export::markdown(&d, &title, base, &ids) } else { export::html(&d, &title, base, &ids, false) };
         config::write_atomic(&dir.join(name), body).map_err(|e| e.to_string())?;
     }
