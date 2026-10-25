@@ -446,9 +446,9 @@ fn page(title: &str, body: &str, print: bool) -> String {
 
 /// PAGES (from `bundle`) as one print page: a `<section id="p-N">` per note, each on a new
 /// sheet, with IDS pointing at the sections instead of the page files.
-pub fn combined(pages: &[(&OrgFile, String)], ids: &Ids, kw: &Kw) -> String {
+pub fn combined(pages: &[(&OrgFile, String)], texts: &[String], ids: &Ids, kw: &Kw) -> String {
     let ids: Ids = ids.iter().filter_map(|(id, name)| Some((id.clone(), format!("#p-{}", pages.iter().position(|(_, n)| n == name)?)))).collect();
-    let docs: Vec<(Doc, String)> = pages.iter().map(|(f, _)| (parse(&f.text, kw), f.path.file_stem().map_or("note".into(), |s| s.to_string_lossy().to_string()))).collect();
+    let docs: Vec<(Doc, String)> = pages.iter().zip(texts).map(|((f, _), t)| (parse(t, kw), f.path.file_stem().map_or("note".into(), |s| s.to_string_lossy().to_string()))).collect();
     let body: String = docs.iter().zip(pages).enumerate().map(|(i, ((d, stem), (f, _)))| format!("<section id=\"p-{i}\">\n{}</section>\n", html_body(d, stem, f.path.parent().unwrap_or(Path::new("")), &ids))).collect();
     page(docs[0].0.title.as_deref().unwrap_or(&docs[0].1), &body, true)
 }
@@ -711,7 +711,8 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
         assert!(m.contains("To [B's heading](b.md), lost, [me](a.md)."), "{m}");
         assert!(markdown(&parse(&c.text, &kw()), "b", Path::new("/n/sub"), &ids).contains("Back to [A](a.md)."));
 
-        let p = combined(&pages, &ids, &kw());
+        let texts: Vec<String> = pages.iter().map(|(f, _)| f.text.clone()).collect();
+        let p = combined(&pages, &texts, &ids, &kw());
         assert_eq!(p.matches("<section id=").count(), 3);
         assert_eq!(p.matches("print()").count(), 1);
         for want in ["<title>a</title>", "<section id=\"p-0\">\n<h1>a</h1>", "To <a href=\"#p-1\">B&#39;s heading</a>, lost, <a href=\"#p-0\">me</a>.", "On to <a href=\"#p-2\">", "<section id=\"p-2\">\n<h1>b</h1>"] {
