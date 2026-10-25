@@ -1,4 +1,4 @@
-// `#+TRANSCLUDE: [[link]]` (org-transclusion's keyword, #784): the target heading's body shows read-only and
+// `#+TRANSCLUDE: [[link]] props` (org-transclusion's keyword, #784, #797): the target heading's body shows read-only and
 // dimmed under the line, as a block widget, so line numbers and vim motions are untouched. The file keeps only
 // the directive. The backend (`transclude_text`) resolves the link and expands nested transclusions.
 import { StateEffect, StateField, type EditorState, type Extension, type Range } from "@codemirror/state";
@@ -6,9 +6,12 @@ import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet } fr
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
-const DIRECTIVE = /^\s*#\+transclude:\s*\[\[([^\]\n]+)\](?:\[[^\]]*\])?\]/i;
+// Kept in sync with `TRANSCLUDE` in notes.rs.
+const DIRECTIVE = /^\s*#\+transclude:\s*\[\[([^\]\n]+)\](?:\[[^\]]*\])?\]([^\n]*)/i;
 /** The link target of a `#+TRANSCLUDE:` line, or null. */
 export const transcludeTarget = (line: string) => DIRECTIVE.exec(line)?.[1].trim() || null;
+/** What follows the link (`:lines 2-5`, `:only-contents`, …; the backend applies them), or "". */
+export const transcludeProps = (line: string) => DIRECTIVE.exec(line)?.[2].trim() ?? "";
 /** The directive line for link TARGET. */
 export const directive = (target: string) => `#+TRANSCLUDE: [[${target}]]`;
 
@@ -37,10 +40,10 @@ class Block extends WidgetType {
 }
 
 const targets = (s: EditorState) => {
-  const out: { to: number; link: string }[] = [];
+  const out: { to: number; link: string; props: string }[] = [];
   for (let i = 1; i <= s.doc.lines; i++) {
     const l = s.doc.line(i), link = l.text.includes("#+") ? transcludeTarget(l.text) : null;
-    if (link) out.push({ to: l.to, link });
+    if (link) out.push({ to: l.to, link, props: transcludeProps(l.text) });
   }
   return out;
 };
@@ -48,9 +51,9 @@ const targets = (s: EditorState) => {
 /** Transclusions for the org note at FROM; FOLLOW opens a link target (the app's link following). */
 export function transclusion(from: string | undefined, follow: (t: string) => void): Extension {
   if (!from) return [];
-  const key = (link: string) => `${from}\0${link}`;
+  const key = (link: string, props: string) => `${from}\0${link}\0${props}`;
   const build = (s: EditorState): DecorationSet =>
-    Decoration.set(targets(s).map(({ to, link }): Range<Decoration> => Decoration.widget({ widget: new Block(link, cache.get(key(link)), follow), block: true, side: 1 }).range(to)));
+    Decoration.set(targets(s).map(({ to, link, props }): Range<Decoration> => Decoration.widget({ widget: new Block(link, cache.get(key(link, props)), follow), block: true, side: 1 }).range(to)));
   const field = StateField.define<DecorationSet>({
     create: build,
     update: (d, tr) => (tr.docChanged || tr.effects.some((e) => e.is(loaded)) ? build(tr.state) : d),
@@ -60,11 +63,11 @@ export function transclusion(from: string | undefined, follow: (t: string) => vo
     let alive = true;
     const pending = new Set<string>();
     const run = (all: boolean) => {
-      for (const { link } of targets(v.state)) {
-        const k = key(link);
+      for (const { link, props } of targets(v.state)) {
+        const k = key(link, props);
         if (pending.has(k) || (!all && cache.has(k))) continue;
         pending.add(k);
-        invoke<Res>("transclude_text", { link, from }).catch((e) => ({ error: String(e) })).then((r) => {
+        invoke<Res>("transclude_text", { link, props, from }).catch((e) => ({ error: String(e) })).then((r) => {
           pending.delete(k);
           cache.set(k, r);
           if (alive) v.dispatch({ effects: loaded.of(null) });
