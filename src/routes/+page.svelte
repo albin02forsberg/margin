@@ -1771,6 +1771,17 @@
     flash("Added to today's journal.");
   }
 
+  /** Quick-add a ledger entry (`12.50 lunch @anna #food`) under its month in the ledger file. */
+  async function ledgerAdd() {
+    const input = await ask("Ledger entry", "", `amount (+ = income) [currency] text @payee #category, e.g. 12.50 lunch @anna #food; ${cfg.config.ledger_currency} by default`);
+    if (!input?.trim()) return;
+    await call("ledger_add", { text: "", input }); // a typo is reported before the file is created
+    const path: string = await call("capture_path", { file: cfg.config.ledger_file });
+    let line = "";
+    await recorded(() => toFile(path, async (text) => { const [next, l] = await call<[string, string]>("ledger_add", { text, input }); line = l; return next; }));
+    flash(`✓ ${line}`);
+  }
+
   /** Log a daily metric (mood, energy, sleep…) into today's journal file's top property drawer (`:MOOD: 4`). */
   async function journalMetric() {
     const name = await pick({ prompt: "Log metric", hint: "pick one, or type a new name (add it to Settings > Daily metrics to keep it)", items: cfg.config.metrics, allowCustom: true }) as string | null;
@@ -2504,6 +2515,7 @@
     { label: "Settings", keys: ["Ctrl+,"], leader: "f c", run: () => openView("settings") },
     { label: "Settings: edit config.toml", leader: "f C", run: editConfig },
     { label: "AI drafts: choose model…", leader: "f a", run: aiChoose },
+    { label: "Ledger: add an entry…", leader: "f l", run: ledgerAdd },
     { label: "Save", keys: ["Ctrl+S"], leader: "f s", run: () => saveTab(tab, true) },
     { label: "Reload from disk (discard unsaved changes)", leader: "f r", run: reloadFromDisk },
     { label: "Save all", leader: "f S", run: saveAll },

@@ -771,6 +771,13 @@ describe("Journal, archive and move", () => {
     await find(".status .msg", "No later journal entry");
   });
 
+  it("Space f l adds a ledger entry under its month heading (#788)", async () => {
+    await leader("fl");
+    await answer("Ledger entry", "2026-10-25 12,50 lunch @anna #food");
+    await find(".status .msg", "- 2026-10-25 -12.50 EUR lunch @anna #food");
+    await fileMatches(f("ledger.org"), (s) => s.endsWith("\n* 2026-10\n- 2026-10-25 -12.50 EUR lunch @anna #food\n"), "ledger entry not filed");
+  });
+
   it("Space n k moves the previous entry's open items into today's, Space n u puts them back", async () => {
     const prev = f(join("daily", "2020-01-02.org")), file = f(join("daily", `${isoDay(new Date())}.org`)), before = read(prev);
     await leader("nk");

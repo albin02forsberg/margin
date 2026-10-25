@@ -47,6 +47,10 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "log_done", label: "Record when tasks are done", kind: "bool", hint: "adds CLOSED: [date time] below the heading, as org-log-done does; the board's Done column shows this week's" },
     { key: "calendar_file", label: "Calendar feed (.ics)", hint: "kept up to date with scheduled tasks and deadlines; empty = off" },
   ] },
+  { name: "Ledger", fields: [
+    { key: "ledger_file", label: "Ledger file", hint: `Space f l adds entries here, ${rel}` },
+    { key: "ledger_currency", label: "Default currency", hint: "3-letter code for entries that don't name one, e.g. EUR or SEK" },
+  ] },
   { name: "Integrations", fields: [
     { key: "activity_watcher", label: "Built-in activity watcher", kind: "bool", hint: "records the active app and window title every 5 s into the time-tracking folder's activity/ for suggestions in the Time view; stays on this computer, never uploaded. Used when ActivityWatch is off or not running. Wayland: KDE, Hyprland, Sway and other wlroots compositors, and GNOME with a small Shell extension (installed from here)" },
     { key: "activity_media_signal", label: "Mark calls from mic and camera use", kind: "bool", hint: "notes only whether a microphone or camera is in use (never audio, video or which app) in activity/media/, so a block spent mostly on a call becomes a meeting suggestion; works with ActivityWatch or the built-in watcher. macOS only for now (the mic needs macOS 14+)" },
