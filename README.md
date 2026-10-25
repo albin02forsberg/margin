@@ -402,6 +402,11 @@ SCHEDULED: <2026-10-02 Fri .+1d>
 :END:
 ```
 
+**Habits overview** (`Space x H`) lists every open habit over the last 30 days (`r` switches to 90):
+the consistency bar, completions per week, the current and best streak, and the on-time rate
+(completions on time ÷ due occurrences in the window, a currently overdue one counting as missed).
+Weakest habits come first; click one to open its heading.
+
 ### Saved searches
 
 "Search tasks…" (`Space v f`) lists the open tasks matching a query, with the

@@ -438,11 +438,15 @@ pub const HABIT_DAYS: i64 = 21;
 /// A habit's last HABIT_DAYS days ending today, one char per day: 'x' done,
 /// '-' due but not yet overdue (between min and max of `.+2d/3d`), '!' due
 /// and overdue, '.' not due; STREAK counts completions in a row with none
-/// late (0 when overdue now).
+/// late (0 when overdue now), BEST the longest such run ever. PCT: share
+/// (0–100) of the window's due occurrences done on time, i.e. on-time
+/// completions in it ÷ its completions plus one if overdue now.
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Habit {
     pub bar: String,
     pub streak: u32,
+    pub best: u32,
+    pub pct: u32,
 }
 
 /// History of H if it is a habit. The due date in effect before each logged
@@ -452,6 +456,11 @@ pub struct Habit {
 /// completion (early completions aren't recorded, so they're assumed on time).
 /// Before the first completion it is unknown, except for `+`.
 pub fn habit(h: &Headline, today: NaiveDate) -> Option<Habit> {
+    habit_n(h, today, HABIT_DAYS)
+}
+
+/// habit over the last DAYS days (bar length and PCT window).
+pub fn habit_n(h: &Headline, today: NaiveDate, days: i64) -> Option<Habit> {
     let s = h.scheduled.as_ref().filter(|_| h.habit)?;
     let (k, n, u) = s.repeater.clone()?;
     let mut done = h.done_log.clone();
@@ -469,8 +478,8 @@ pub fn habit(h: &Headline, today: NaiveDate) -> Option<Habit> {
     };
     // Overdue after this; the due date itself without a max.
     let late = |d: NaiveDate| s.max.map_or(d, |(mn, mu)| d + (add_interval(d, mn, mu) - add_interval(d, n, u)));
-    let bar = (0..HABIT_DAYS)
-        .map(|i| today - Duration::days(HABIT_DAYS - 1 - i))
+    let bar = (0..days)
+        .map(|i| today - Duration::days(days - 1 - i))
         .map(|d| {
             let i = done.partition_point(|&c| c < d);
             match due(i) {
@@ -482,8 +491,24 @@ pub fn habit(h: &Headline, today: NaiveDate) -> Option<Habit> {
         })
         .collect();
     let on_time = |i: usize| due(i).is_none_or(|d| done[i] <= late(d));
-    let streak = if m == 0 || today > late(s.date) { 0 } else { 1 + (1..m).rev().take_while(|&i| on_time(i)).count() as u32 };
-    Some(Habit { bar, streak })
+    let overdue = today > late(s.date);
+    let streak = if m == 0 || overdue { 0 } else { 1 + (1..m).rev().take_while(|&i| on_time(i)).count() as u32 };
+    let best = (0..m).scan(0, |run, i| { *run = if i > 0 && on_time(i) { *run + 1 } else { 1 }; Some(*run) }).max().unwrap_or(0);
+    let start = done.partition_point(|&c| c <= today - Duration::days(days));
+    let ok = (start..m).filter(|&i| on_time(i)).count();
+    let due_n = m - start + overdue as usize;
+    let pct = (ok * 100).checked_div(due_n).unwrap_or(0) as u32;
+    Some(Habit { bar, streak, best, pct })
+}
+
+/// Open habit headings with their history over the last DAYS days, worst PCT first.
+pub fn habits(files: &[Arc<OrgFile>], kw: &Kw, today: NaiveDate, days: i64) -> Vec<Item> {
+    let mut out: Vec<Item> = files.iter().flat_map(|f| f.headlines.iter().filter(|h| !h.archived() && h.keyword.as_deref().is_some_and(|k| !kw.is_done(k))).filter_map(move |h| {
+        let hb = habit_n(h, today, days)?;
+        Some(Item { habit: Some(hb), ..item(f, h, h.scheduled.as_ref().map_or(today, |t| t.date), "habit", String::new(), None) })
+    })).collect();
+    out.sort_by_key(|i| i.habit.as_ref().map(|h| (h.pct, h.streak)));
+    out
 }
 
 pub fn add_interval(d: NaiveDate, n: u32, unit: char) -> NaiveDate {
@@ -2722,6 +2747,21 @@ mod tests {
         let items = agenda(&fs, &kw(), d("2026-10-02"), 2, d("2026-10-02"));
         assert_eq!(items.iter().map(|i| i.habit.as_ref().map(|h| &h.bar[19..])).collect::<Vec<_>>(), vec![Some(".!"), None]);
         assert!(todos(&fs, &kw(), false, |_, _| true, d("2026-10-02"))[0].habit.is_some());
+        // Overview stats (#802): a late completion starts a new run; PCT per due occurrence in the window.
+        let h30 = |ds: &[&str], today: &str| habit_n(&parse(Path::new("h.org"), &doc("2026-10-03 Sat .+1d", ds), &kw()).headlines[0], d(today), 30).unwrap();
+        let ds = ["2026-08-20", "2026-08-21", "2026-08-22", "2026-08-23", "2026-09-28", "2026-09-29", "2026-10-01", "2026-10-02"];
+        let h = h30(&ds, "2026-10-02");
+        // In 30 days: 4 completions, 09-28 and 10-01 late.
+        assert_eq!((h.bar.len(), h.streak, h.best, h.pct), (30, 2, 4, 50));
+        let h = habit_n(&parse(Path::new("h.org"), &doc("2026-10-03 Sat .+1d", &ds), &kw()).headlines[0], d("2026-10-02"), 90).unwrap();
+        assert_eq!((h.bar.len(), h.pct), (90, 75)); // 8 completions, 2 late
+        // Overdue now counts as a missed occurrence.
+        assert_eq!(h30(&ds, "2026-10-05").pct, 40);
+        // No completions: all zero.
+        let h = h30(&[], "2026-10-02");
+        assert_eq!((h.streak, h.best, h.pct), (0, 0, 0));
+        let fs = [Arc::new(parse(Path::new("h.org"), &format!("{}* TODO Plain\n{}", doc("2026-10-03 Sat .+1d", &ds), doc("2026-10-01 Thu .+1d", &[]).replace("Run", "Never")), &kw()))];
+        assert_eq!(super::habits(&fs, &kw(), d("2026-10-02"), 30).iter().map(|i| (i.title.as_str(), i.habit.as_ref().unwrap().pct)).collect::<Vec<_>>(), vec![("Never", 0), ("Run", 50)]);
         assert_eq!(cycle_todo("* X :t:", 0, &kw(), 1, at(), false), "* TODO X :t:");
         assert_eq!(cycle_todo("* DONE X", 0, &kw(), 1, at(), false), "* X");
     }
