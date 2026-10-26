@@ -27,3 +27,8 @@ test("personRows lists tasks with priority and date, then notes", () => {
     ["Ask @anna", "Meeting · line 3", ["/n/m.org", 2]],
   ]);
 });
+
+test("personRows lists ledger payments last", () => {
+  const rows = personRows({ tasks: [], notes: [], payments: [{ path: "/n/ledger.org", line: 4, date: "2026-10-25", cents: -1250, currency: "EUR", text: "lunch @anna" }] }, (p) => p);
+  assert.deepEqual(rows.map((r) => [r.label, r.detail, r.value]), [["−12.50 EUR lunch @anna", "ledger · 2026-10-25", ["/n/ledger.org", 4]]]);
+});
