@@ -177,8 +177,9 @@ pub fn id_categories(files: &[Arc<crate::org::OrgFile>]) -> HashMap<String, Stri
     m
 }
 
-/// Whether E belongs to PROJECT, the rule the project cards use for tasks: its `#category` is the project's name (any
+/// (Reference for `project_totals`, which applies it per entry via an index.) Whether E belongs to PROJECT, the rule the project cards use for tasks: its `#category` is the project's name (any
 /// case), or its `[[id:…]]` link points at a note or heading (IDS) in that category. An unknown ID counts as unlinked.
+#[cfg(test)]
 pub fn belongs(e: &Entry, project: &str, ids: &HashMap<String, String>) -> bool {
     let is = |c: &str| c.eq_ignore_ascii_case(project);
     e.category().is_some_and(is) || e.link().and_then(|l| ids.get(l.strip_prefix("id:")?.split("::").next()?.trim())).is_some_and(|c| is(c))
@@ -187,15 +188,29 @@ pub fn belongs(e: &Entry, project: &str, ids: &HashMap<String, String>) -> bool 
 /// All-time income and expense of each of NAMES in TEXT, per currency (by code; only income, expense and net set).
 /// Projects without entries are left out.
 pub fn project_totals(text: &str, names: &[String], ids: &HashMap<String, String>) -> BTreeMap<String, Vec<Total>> {
-    let entries: Vec<Entry> = text.lines().filter_map(parse_entry).collect();
-    let mut out = BTreeMap::new();
-    for n in names {
-        let mut by: BTreeMap<&str, Total> = BTreeMap::new();
-        for e in entries.iter().filter(|e| belongs(e, n, ids)) {
-            let t = by.entry(&e.currency).or_insert_with(|| Total { currency: e.currency.clone(), ..Default::default() });
+    // Index names by lowercased (ASCII, like `belongs`) text once; each entry then looks up its category and linked category.
+    let mut by_name: HashMap<String, Vec<usize>> = HashMap::new();
+    for (i, n) in names.iter().enumerate() {
+        by_name.entry(n.to_ascii_lowercase()).or_default().push(i);
+    }
+    let mut sums: Vec<BTreeMap<String, Total>> = names.iter().map(|_| BTreeMap::new()).collect();
+    for e in text.lines().filter_map(parse_entry) {
+        let linked = e.link().and_then(|l| ids.get(l.strip_prefix("id:")?.split("::").next()?.trim()));
+        let hits = |c: Option<&str>| c.and_then(|c| by_name.get(&c.to_ascii_lowercase())).into_iter().flatten().copied();
+        let mut to: Vec<usize> = hits(e.category()).collect();
+        for i in hits(linked.map(String::as_str)) {
+            if !to.contains(&i) {
+                to.push(i);
+            }
+        }
+        for i in to {
+            let t = sums[i].entry(e.currency.clone()).or_insert_with(|| Total { currency: e.currency.clone(), ..Default::default() });
             if e.cents > 0 { t.income += e.cents } else { t.expense += e.cents }
             t.net += e.cents;
         }
+    }
+    let mut out = BTreeMap::new();
+    for (n, by) in names.iter().zip(sums) {
         if !by.is_empty() {
             out.insert(n.clone(), by.into_values().collect());
         }
@@ -495,6 +510,9 @@ mod tests {
         assert_eq!(t.keys().collect::<Vec<_>>(), ["Acme", "x"]);
         assert_eq!(t["Acme"].iter().map(|t| (t.currency.as_str(), t.income, t.expense, t.net)).collect::<Vec<_>>(), [("EUR", 90000, -34000, 56000), ("SEK", 0, -500, -500)]);
         assert_eq!((t["x"].len(), t["x"][0].expense), (1, -200));
+        // One entry for two projects (tag and link differ) counts for both; same project twice counts once; case-twin names each get totals.
+        let t = project_totals("- 2026-10-01 -10 EUR a #acme [[id:other]]\n- 2026-10-02 -5 EUR b #acme [[id:note]]\n", &["acme".into(), "Acme".into(), "x".into()], &ids);
+        assert_eq!((t["acme"][0].expense, t["Acme"][0].expense, t["x"][0].expense), (-1500, -1500, -1000));
     }
 
     #[test]
