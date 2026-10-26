@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { cards, merge, money, ROUNDINGS, toProject, type Card, type Project, type Row, type Task, type Tracked } from "$lib/projects";
   import { hm } from "$lib/clock";
+  import { costLine } from "$lib/ledger";
   import BudgetBar from "$lib/BudgetBar.svelte";
   import type { TimeApi } from "$lib/Time.svelte";
 
@@ -12,6 +13,8 @@
   let rows = $state<Row[]>([]);
   let list = $state<Card[]>([]);
   let saved = $state<Record<string, Project>>({}); // projects.toml as last loaded, for the cards' budgets
+  type LedgerTotal = { currency: string; income: number; expense: number };
+  let ledger = $state.raw<Record<string, LedgerTotal[]>>({}); // each card's all-time ledger cost and income (#790)
   let running = $state<string | null>(null); // the project being tracked ("Other" for none), null when not tracking
   let off = $state<{ kind: string; code: string; dirty: boolean }[]>([]);
   let error = $state("");
@@ -23,6 +26,7 @@
       saved = projects;
       const d = await invoke<{ projects: Tracked[]; project: string | null }>("tc_dashboard");
       list = cards(projects, d.projects, await invoke<Task[]>("todos"));
+      ledger = await invoke<Record<string, LedgerTotal[]>>("ledger_projects", { names: list.map((c) => c.project) });
       running = d.project == null ? null : d.project || "Other";
       const codes = await invoke<Record<string, { export_code: string }>>("tc_leave_codes");
       off = Object.entries(codes).map(([kind, c]) => off.find((o) => o.kind === kind && o.dirty) ?? { kind, code: c.export_code, dirty: false });
@@ -63,6 +67,7 @@
           <strong class="big">{hm(c.worked)}</strong>
           <small>this week · {hm(c.month)} this month · {c.billable.toFixed(2)} h billable{#if c.earned != null} · {money(c.earned, c.currency)} earned this month{/if}</small>
           <div class="progress" title="Share of this week's tracked time"><i style:width="{c.share * 100}%"></i></div>
+          {#each ledger[c.project] ?? [] as t (t.currency)}<small class="ledger" title="All-time ledger entries tagged #{c.project} or linked to a heading in it">{costLine(t)}</small>{/each}
           <BudgetBar project={saved[c.project]} worked={c.worked} month={c.month} />
           <div class="foot">
             <small>{c.tasks.length} open task{c.tasks.length === 1 ? "" : "s"}</small>
@@ -167,6 +172,7 @@
   .mono { font-family: var(--mono); }
   .big { display: block; font: 500 28px var(--mono); }
   .pcard small { color: var(--dim); font-size: var(--fs-sm); }
+  .pcard small.ledger { display: block; margin-top: var(--s1); font-family: var(--mono); }
   .progress { height: 8px; border-radius: 999px; background: var(--active); overflow: hidden; margin: var(--s2) 0; }
   .progress i { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
   .foot { display: flex; gap: var(--s2); align-items: center; min-height: 1.6em; }

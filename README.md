@@ -93,7 +93,7 @@ sync tools that touch files make notes look fresh).
 **People** — tag a heading or task `:@anna:` or write `@anna` in a note. `Space n @` picks a
 person (from the `@` tags, or type any name) and lists their open tasks (tagged, inheriting the
 tag, or naming `@anna` in the title) and then every other line mentioning `@anna` (any case;
-email addresses don't count, journal included); `Enter` jumps there.
+email addresses don't count, journal included), then their ledger entries; `Enter` jumps there.
 
 <img src="docs/gifs/links.gif" width="800" alt="Opening a note, showing its backlinks and graph, and following a link with Enter">
 
@@ -938,6 +938,12 @@ per currency (amounts in other currencies are totalled on their own, never conve
 per `#category` (entries without one as *uncategorised*) and per `@payee`, then the month's entries;
 click one to open the ledger at its line. `h` / `l` or the arrows switch months. An entry counts in
 the month of its own date, whichever heading it sits under.
+
+**Projects and people.** A project card (Projects view, `Space t P`) shows a *Ledger · cost … · income …* line
+per currency, all time, from the entries whose `#tag` is the project's name (any case) or whose
+`[[id:…]]` link points at a note or heading in that project's category (the rule the cards use for
+tasks; a link to a deleted ID counts as unlinked). `Space n @` lists a person's ledger entries
+(their `@payee`) after the tasks and mentions; `Enter` opens the ledger at that line.
 
 ## Export
 

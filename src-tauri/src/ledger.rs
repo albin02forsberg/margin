@@ -2,13 +2,11 @@
 //! `- 2026-10-25 -12.50 EUR lunch @anna #food [[id:…]]` (negative = expense, positive = income).
 //! Dates stay unbracketed so entries never reach the agenda. Lines are only ever appended;
 //! anything `parse_entry` doesn't understand is left as it is.
-// link() is for the exports (#790, #791).
-#![cfg_attr(not(test), allow(dead_code))]
 use chrono::NaiveDate;
 use regex::Regex;
 use serde::Serialize;
-use std::collections::BTreeMap;
-use std::sync::LazyLock;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, LazyLock};
 
 static ENTRY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+(\S+)\s+([A-Z]{3})(?:\s+(.*?))?\s*$").unwrap());
 static WORD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:^|\s)([#@])([\w][\w.-]*)").unwrap());
@@ -134,12 +132,7 @@ pub struct Row {
 /// TEXT's entries dated in MONTH (`YYYY-MM`, whatever heading they sit under), oldest first, and their
 /// totals per currency (CURRENCY first, then by code; never converted).
 pub fn summarize(text: &str, month: &str, currency: &str) -> (Vec<Total>, Vec<Row>) {
-    let mut rows: Vec<Row> = text.lines().enumerate().filter_map(|(line, l)| {
-        let e = parse_entry(l).filter(|e| e.date.format("%Y-%m").to_string() == month)?;
-        let (category, payee) = (e.category().map(str::to_string), e.payee().map(str::to_string));
-        Some(Row { line, date: e.date, cents: e.cents, currency: e.currency, text: e.text, category, payee })
-    }).collect();
-    rows.sort_by_key(|r| (r.date, r.line));
+    let rows = rows(text, |e| e.date.format("%Y-%m").to_string() == month);
     type Sums = (i64, i64, BTreeMap<Option<String>, i64>, BTreeMap<String, i64>);
     let mut by: BTreeMap<(bool, &str), Sums> = BTreeMap::new();
     for r in &rows {
@@ -157,6 +150,62 @@ pub fn summarize(text: &str, month: &str, currency: &str) -> (Vec<Total>, Vec<Ro
     }
     let totals = by.into_iter().map(|((_, cur), (income, expense, c, p))| Total { currency: cur.into(), income, expense, net: income + expense, categories: ranked(c), payees: ranked(p) }).collect();
     (totals, rows)
+}
+
+/// TEXT's entries that KEEP accepts, oldest first.
+fn rows(text: &str, keep: impl Fn(&Entry) -> bool) -> Vec<Row> {
+    let mut rows: Vec<Row> = text.lines().enumerate().filter_map(|(line, l)| {
+        let e = parse_entry(l).filter(&keep)?;
+        let (category, payee) = (e.category().map(str::to_string), e.payee().map(str::to_string));
+        Some(Row { line, date: e.date, cents: e.cents, currency: e.currency, text: e.text, category, payee })
+    }).collect();
+    rows.sort_by_key(|r| (r.date, r.line));
+    rows
+}
+
+/// Every note and heading `:ID:` in FILES with its org category, for resolving entries' `[[id:…]]` links.
+pub fn id_categories(files: &[Arc<crate::org::OrgFile>]) -> HashMap<String, String> {
+    let mut m = HashMap::new();
+    for f in files {
+        m.extend(f.id.iter().map(|id| (id.clone(), f.category.clone())));
+        m.extend(f.headlines.iter().filter_map(|h| Some((h.id.clone()?, h.category.clone()))));
+    }
+    m
+}
+
+/// Whether E belongs to PROJECT, the rule the project cards use for tasks: its `#category` is the project's name (any
+/// case), or its `[[id:…]]` link points at a note or heading (IDS) in that category. An unknown ID counts as unlinked.
+pub fn belongs(e: &Entry, project: &str, ids: &HashMap<String, String>) -> bool {
+    let is = |c: &str| c.eq_ignore_ascii_case(project);
+    e.category().is_some_and(is) || e.link().and_then(|l| ids.get(l.strip_prefix("id:")?.split("::").next()?.trim())).is_some_and(|c| is(c))
+}
+
+/// All-time income and expense of each of NAMES in TEXT, per currency (by code; only income, expense and net set).
+/// Projects without entries are left out.
+pub fn project_totals(text: &str, names: &[String], ids: &HashMap<String, String>) -> BTreeMap<String, Vec<Total>> {
+    let entries: Vec<Entry> = text.lines().filter_map(parse_entry).collect();
+    let mut out = BTreeMap::new();
+    for n in names {
+        let mut by: BTreeMap<&str, Total> = BTreeMap::new();
+        for e in entries.iter().filter(|e| belongs(e, n, ids)) {
+            let t = by.entry(&e.currency).or_insert_with(|| Total { currency: e.currency.clone(), ..Default::default() });
+            if e.cents > 0 { t.income += e.cents } else { t.expense += e.cents }
+            t.net += e.cents;
+        }
+        if !by.is_empty() {
+            out.insert(n.clone(), by.into_values().collect());
+        }
+    }
+    out
+}
+
+/// TEXT's entries whose `@payee` is NAME (any case, leading `@` optional), oldest first.
+pub fn payments(text: &str, name: &str) -> Vec<Row> {
+    let name = name.trim().trim_start_matches('@');
+    if name.is_empty() {
+        return vec![];
+    }
+    rows(text, |e| e.payee().is_some_and(|p| p.eq_ignore_ascii_case(name)))
 }
 
 #[cfg(test)]
@@ -230,5 +279,31 @@ mod tests {
         assert_eq!((t[1].income, t[1].expense, t[1].net, t[2].net), (0, -10000, -10000, 50));
         assert_eq!(summarize(text, "2026-09", "EUR"), (vec![], vec![]));
         assert_eq!(summarize("", "2026-10", "EUR"), (vec![], vec![]));
+    }
+
+    #[test]
+    fn projects_match_by_tag_or_id_link() {
+        let kw = kw();
+        let f = |p: &str, t: &str| Arc::new(crate::org::parse(std::path::Path::new(p), t, &kw));
+        let files = [f("/n/acme.org", ":PROPERTIES:\n:ID: note\n:END:\n* Kickoff\n:PROPERTIES:\n:ID: kick\n:END:\n"), f("/n/x.org", "* Other\n:PROPERTIES:\n:ID: other\n:END:\n")];
+        let ids = id_categories(&files);
+        assert_eq!((ids["note"].as_str(), ids["kick"].as_str(), ids["other"].as_str()), ("acme", "acme", "x"));
+        let e = |l: &str| parse_entry(l).unwrap();
+        assert!(belongs(&e("- 2026-10-02 -40 EUR train [[id:kick][Kickoff]]"), "ACME", &ids));
+        assert!(!belongs(&e("- 2026-10-05 -1 EUR gone [[id:deleted]]"), "acme", &ids)); // deleted ID: unlinked
+        assert!(!belongs(&e("- 2026-10-05 -1 EUR #acmeish"), "acme", &ids));
+        assert!(!belongs(&e("- 2026-10-05 -1 EUR no link or tag"), "acme", &ids));
+        let text = "* 2026-10\n- 2026-10-01 +900 EUR invoice #Acme\n- 2026-10-02 -40 EUR train [[id:kick][Kickoff]]\n- 2026-10-03 -300 EUR hotel [[id:note]]\n- 2026-10-04 -5 SEK fika #acme\n- 2026-10-05 -1 EUR gone [[id:deleted]]\n- 2026-10-06 -2 EUR other [[id:other]] #food\n";
+        let t = project_totals(text, &["Acme".into(), "x".into(), "none".into()], &ids);
+        assert_eq!(t.keys().collect::<Vec<_>>(), ["Acme", "x"]);
+        assert_eq!(t["Acme"].iter().map(|t| (t.currency.as_str(), t.income, t.expense, t.net)).collect::<Vec<_>>(), [("EUR", 90000, -34000, 56000), ("SEK", 0, -500, -500)]);
+        assert_eq!((t["x"].len(), t["x"][0].expense), (1, -200));
+    }
+
+    #[test]
+    fn payments_are_the_payee_s_entries() {
+        let text = "- 2026-10-05 -7 EUR dinner @Anna\n- 2026-10-01 -12.50 EUR lunch @anna #food\n- 2026-10-02 -1 EUR @annabel\nnote @anna\n";
+        assert_eq!(payments(text, "@ANNA").iter().map(|r| (r.line, r.cents)).collect::<Vec<_>>(), [(1, -1250), (0, -700)]);
+        assert_eq!(payments(text, " @ ").len(), 0);
     }
 }

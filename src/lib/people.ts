@@ -1,3 +1,5 @@
+import { money } from "./ledger.ts";
+
 /** People for `Space n @` (#704): `@name` tags, one per name in any case (first spelling kept), sorted. */
 export function peopleFrom(tags: string[]): string[] {
   const seen = new Map<string, string>();
@@ -13,12 +15,15 @@ export const personName = (s: string) => s.trim().replace(/^@+/, "").trim();
 
 type Task = { path: string; line: number; keyword: string | null; title: string; date: string; priority: string | null };
 type Note = { path: string; line: number; title: string; text: string };
+type Payment = { path: string; line: number; date: string; cents: number; currency: string; text: string };
 
-/** Picker rows for a person view: open tasks first (with priority and date), then the notes mentioning them. REL names a file. */
-export function personRows(v: { tasks: Task[]; notes: Note[] }, rel: (p: string) => string) {
+/** Picker rows for a person view: open tasks first (with priority and date), then the notes mentioning them, then their
+ *  ledger entries (#790). REL names a file. */
+export function personRows(v: { tasks: Task[]; notes: Note[]; payments?: Payment[] }, rel: (p: string) => string) {
   const due = (d: string) => (d.startsWith("+") ? "" : ` · ${d}`);
   return [
     ...v.tasks.map((t) => ({ label: `${t.keyword ?? ""} ${t.priority ? `[#${t.priority}] ` : ""}${t.title}`.trim(), detail: `task · ${rel(t.path)}${due(t.date)}`, value: [t.path, t.line] as unknown })),
     ...v.notes.map((n) => ({ label: n.text, detail: `${n.title || rel(n.path)} · line ${n.line + 1}`, value: [n.path, n.line] as unknown })),
+    ...(v.payments ?? []).map((p) => ({ label: `${money(p.cents, p.currency)} ${p.text}`.trim(), detail: `ledger · ${p.date}`, value: [p.path, p.line] as unknown })),
   ];
 }

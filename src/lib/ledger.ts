@@ -14,3 +14,9 @@ export function shiftMonth(month: string, n: number) {
 
 /** MONTH (`YYYY-MM`) as "October 2026". */
 export const monthName = (month: string) => new Date(+month.slice(0, 4), +month.slice(5, 7) - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
+/** A project card's ledger line for one currency (#790): "Ledger · cost 340.00 EUR · income 900.00 EUR", parts left out when 0. */
+export function costLine(t: { currency: string; income: number; expense: number }) {
+  const parts = [t.expense ? `cost ${money(-t.expense, t.currency, false)}` : "", t.income ? `income ${money(t.income, t.currency, false)}` : ""];
+  return ["Ledger", ...parts.filter(Boolean)].join(" · ");
+}
