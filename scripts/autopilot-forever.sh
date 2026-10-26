@@ -15,6 +15,10 @@
 #           AUTOPILOT_STALL        kill and restart a run with no events for this many seconds (default 1200)
 #           AUTOPILOT_MIN_DISK_GB  clean the agents' build cache, then pause, below this (default 8)
 #           AUTOPILOT_CONTEXT      coordinator context window in tokens for rotation (default 200000)
+#           AUTOPILOT_SLEEP_TRIAGE while sleeping between runs (pacing, low disk, between-run waits; not usage-limit or
+#                                  weekly-cap sleeps) run one `/triage` pass when issues/comments change, max one per 30 min;
+#                                  triage only plans, labels and answers (it may start the reviewer, opus), never builds (default 1, 0 = off)
+#           AUTOPILOT_SLEEP_TRIAGE_POLL seconds between the cheap `gh` change checks while sleeping (default 600)
 #           CLAUDE_BIN             (default claude)
 # Guards:   limits (sleeps to the exact 5h/weekly reset), hang watchdog, fast-exit backoff,
 #           context rotation (fresh coordinator at 70-90% context), main-CI circuit breaker
@@ -51,6 +55,8 @@ cap=${AUTOPILOT_WEEKLY_CAP:-0.95}
 target=${AUTOPILOT_WEEKLY_TARGET:-0.9}
 stall=${AUTOPILOT_STALL:-1200}
 min_disk=${AUTOPILOT_MIN_DISK_GB:-8}
+sleep_triage=${AUTOPILOT_SLEEP_TRIAGE:-1}
+st_poll=${AUTOPILOT_SLEEP_TRIAGE_POLL:-600}
 export AUTOPILOT_LIMITS="$limits" AUTOPILOT_HEARTBEAT="$hb" AUTOPILOT_TAIL="$tailf" AUTOPILOT_ROTATE="$rotate"
 AUTOPILOT_MAX=$(sed -nE 's/.*--max[ =]([0-9]+).*/\1/p' <<<"$args"); export AUTOPILOT_MAX=${AUTOPILOT_MAX:-3}
 
@@ -86,16 +92,36 @@ limit_summary() {
   jq -r '.unifiedWindows // {} | "5h \((.five_hour.utilization // 0) * 100 | round)% · week \((.seven_day.utilization // 0) * 100 | round)%"' "$limits" 2>/dev/null
 }
 
-# countdown <seconds> <why>: one updating line on a TTY, silent otherwise (launchd log); honours STOP.
+# Fingerprint of all issues (updated_at + comment count): changes on new issues, comments, label edits.
+issues_fp() { gh api "repos/$repo/issues?state=all&sort=updated&per_page=30" --jq '[.[]|[.number,.updated_at,.comments]]|sort' 2>/dev/null | shasum; }
+st_fp=""; st_last=0
+# While the runner sleeps: when the issues changed, run one /triage pass (no /ship, nothing gets built), at most
+# once per 30 min, killed after 20 min. The fingerprint is re-taken afterwards so the triager's own comments don't retrigger.
+sleep_triage_tick() {
+  local fp now pid wd
+  fp=$(issues_fp); now=$(date +%s)
+  [ -n "$st_fp" ] || { st_fp=$fp; return 0; }
+  [ "$fp" != "$st_fp" ] && [ $((now - st_last)) -ge 1800 ] || return 0
+  say "sleeping: issues changed, running a triage-only pass"
+  "$claude_bin" -p "/triage" --model sonnet --permission-mode auto >> "$log" 2>&1 &
+  pid=$!
+  ( sleep 1200; kill "$pid" 2>/dev/null ) & wd=$!
+  wait "$pid" 2>/dev/null; kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
+  st_last=$(date +%s); st_fp=$(issues_fp)
+}
+
+# countdown <seconds> <why> [notriage]: one updating line on a TTY, silent otherwise (launchd log); honours STOP.
 countdown() {
-  local until left sum
+  local until left sum next=0
   until=$(( $(date +%s) + $1 ))
+  [ "${3:-}" = notriage ] || [ "$sleep_triage" = 0 ] || next=$(( $(date +%s) + st_poll ))
   sum=$(limit_summary)
   while [ "$(date +%s)" -lt "$until" ] && [ ! -e "$dir/STOP" ]; do
     left=$(( until - $(date +%s) ))
     [ -t 1 ] && printf '\r\033[K💤 %s - next run in %dd %dh %02dm %02ds%s (STOP file: ~/.cache/margin-autopilot/STOP)' "$2" \
       $((left / 86400)) $((left % 86400 / 3600)) $((left % 3600 / 60)) $((left % 60)) "${sum:+ · $sum}"
     sleep 5
+    [ "$next" -gt 0 ] && [ "$(date +%s)" -ge "$next" ] && [ ! -e "$dir/STOP" ] && { sleep_triage_tick; next=$(( $(date +%s) + st_poll )); }
     self_update
   done
   [ -t 1 ] && printf '\r\033[K'
@@ -113,7 +139,7 @@ weekly_gate() {  # at the weekly cap: wait out the week
   awk -v u="$u" -v c="$cap" 'BEGIN{exit !(u >= c)}' || return 1
   say "weekly usage $u >= cap $cap: pausing until $(date -r "$r" '+%F %T')"
   notify "paused" "Weekly usage at $(awk -v u="$u" 'BEGIN{printf "%d", u*100}')%. Resuming $(date -r "$r" '+%a %H:%M')"
-  countdown $((r - now + 120)) "weekly cap reached"
+  countdown $((r - now + 120)) "weekly cap reached" notriage
 }
 
 # pace_wait <u> <resetsAt> <now> <target>: seconds to sleep so weekly usage tracks target * elapsed
@@ -159,6 +185,7 @@ while [ ! -e "$dir/STOP" ]; do
   pace_gate && continue
   disk_gate && continue
 
+  limit_hit=
   prompt="/autopilot $args"; kind=normal
   if [ "$(ci_state)" = red ]; then
     if [ "$fixes" -ge 2 ]; then
@@ -209,7 +236,7 @@ while [ ! -e "$dir/STOP" ]; do
     if [ -n "$rat" ] && [ "$rat" -gt "$now" ] 2>/dev/null; then wait=$((rat - now + 120)); else wait=$(reset_wait "$tailflt"); wait=${wait:-1800}; fi
     maxwait=21600; case "$rtype" in seven_day*) maxwait=$((8 * 86400));; esac
     [ "$wait" -gt "$maxwait" ] && wait=1800
-    why="usage limit (${rtype:-unknown window})"
+    why="usage limit (${rtype:-unknown window})"; limit_hit=1
     case "$rtype" in seven_day*) notify "paused" "Weekly limit hit. Resuming $(date -v+${wait}S '+%a %H:%M')";; esac
     say "limit ($rtype): sleeping ${wait}s"
   elif grep -qiE 'failed to authenticate|oauth|not logged in|/login' <<<"$tailout"; then
@@ -226,6 +253,6 @@ while [ ! -e "$dir/STOP" ]; do
       fast=0
     fi
   fi
-  countdown "$wait" "$why"
+  countdown "$wait" "$why" ${limit_hit:+notriage}
 done
 say "STOP found, exiting"
