@@ -67,10 +67,14 @@ pub fn parse_entry(line: &str) -> Option<Entry> {
 
 /// E as a ledger line (always signed, two decimals).
 pub fn format_entry(e: &Entry) -> String {
-    let sign = if e.cents < 0 { '-' } else { '+' };
-    let a = e.cents.unsigned_abs();
-    let line = format!("- {} {sign}{}.{:02} {}", e.date, a / 100, a % 100, e.currency);
+    let line = format!("- {} {} {}", e.date, signed(e.cents), e.currency);
     if e.text.is_empty() { line } else { format!("{line} {}", e.text) }
+}
+
+/// CENTS as `-12.50` / `+1200.00`.
+fn signed(cents: i64) -> String {
+    let a = cents.unsigned_abs();
+    format!("{}{}.{:02}", if cents < 0 { '-' } else { '+' }, a / 100, a % 100)
 }
 
 /// Quick-add INPUT `[YYYY-MM-DD] [+|-]AMOUNT [CUR] text…`: unsigned is an expense, `+` income;
@@ -208,6 +212,199 @@ pub fn payments(text: &str, name: &str) -> Vec<Row> {
     rows(text, |e| e.payee().is_some_and(|p| p.eq_ignore_ascii_case(name)))
 }
 
+// ---------------------------------------------------------------- CSV (#791)
+
+/// CSV TEXT split on DELIM into rows of fields. `"…"` quotes (`""` for a quote) may hold the delimiter and line
+/// breaks; a leading BOM, `\r` and blank lines are dropped. Hand-written: no CSV crate for this much.
+pub fn csv_rows(text: &str, delim: char) -> Vec<Vec<String>> {
+    let (mut rows, mut row, mut f, mut q) = (vec![], vec![], String::new(), false);
+    let mut it = text.trim_start_matches('\u{feff}').chars().peekable();
+    while let Some(c) = it.next() {
+        match c {
+            '"' if q && it.peek() == Some(&'"') => {
+                f.push('"');
+                it.next();
+            }
+            '"' if q => q = false,
+            '"' if f.is_empty() => q = true,
+            c if q => f.push(c),
+            '\r' => {}
+            c if c == delim => row.push(std::mem::take(&mut f)),
+            '\n' => {
+                row.push(std::mem::take(&mut f));
+                if row.len() > 1 || !row[0].is_empty() { rows.push(std::mem::take(&mut row)) } else { row.clear() }
+            }
+            c => f.push(c),
+        }
+    }
+    if !f.is_empty() || !row.is_empty() {
+        row.push(f);
+        rows.push(row);
+    }
+    rows
+}
+
+/// One CSV field, quoted when it holds a comma, quote or line break.
+fn csv_field(s: &str) -> String {
+    if s.contains([',', '"', '\n', '\r']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.into() }
+}
+
+/// TEXT's entries dated FROM..=TO as CSV (date, amount, currency, category, payee, link, text), oldest first.
+pub fn to_csv(text: &str, from: NaiveDate, to: NaiveDate) -> String {
+    let mut es: Vec<Entry> = text.lines().filter_map(parse_entry).filter(|e| (from..=to).contains(&e.date)).collect();
+    es.sort_by_key(|e| e.date);
+    let mut out = String::from("date,amount,currency,category,payee,link,text\n");
+    for e in &es {
+        let f = [e.date.to_string(), signed(e.cents), e.currency.clone(), e.category().unwrap_or_default().into(), e.payee().unwrap_or_default().into(), e.link().unwrap_or_default().into(), e.text.clone()];
+        out += &f.iter().map(|s| csv_field(s)).collect::<Vec<_>>().join(",");
+        out.push('\n');
+    }
+    out
+}
+
+/// Which columns (0-based) of a bank CSV hold what, and how it is written. As text (`spec`, 1-based):
+/// `date=1 amount=3 text=2+4 currency=5 delimiter=; decimal=,` (currency is optional; `delimiter=tab`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Mapping {
+    pub date: usize,
+    pub amount: usize,
+    pub text: Vec<usize>,
+    pub currency: Option<usize>,
+    pub delim: char,
+    pub decimal: char,
+}
+
+impl Mapping {
+    pub fn parse(spec: &str) -> Result<Mapping, String> {
+        let mut m = Mapping { date: usize::MAX, amount: usize::MAX, text: vec![], currency: None, delim: ',', decimal: '.' };
+        let col = |v: &str| v.trim().parse::<usize>().ok().filter(|&n| n > 0).map(|n| n - 1).ok_or_else(|| format!("{v:?} isn't a column number (1, 2, …)"));
+        for w in spec.split_whitespace() {
+            let (k, v) = w.split_once('=').ok_or_else(|| format!("write {w:?} as key=value"))?;
+            match k {
+                "date" => m.date = col(v)?,
+                "amount" => m.amount = col(v)?,
+                "text" => m.text = v.split('+').map(col).collect::<Result<_, _>>()?,
+                "currency" => m.currency = Some(col(v)?),
+                "delimiter" => m.delim = match v { "tab" => '\t', "," | ";" | "|" => v.chars().next().unwrap(), _ => return Err(format!("the delimiter {v:?} isn't , ; | or tab")) },
+                "decimal" => m.decimal = match v { "." | "," => v.chars().next().unwrap(), _ => return Err(format!("the decimal separator {v:?} isn't . or ,")) },
+                _ => return Err(format!("unknown key {k:?}: use date, amount, text, currency, delimiter or decimal")),
+            }
+        }
+        if m.date == usize::MAX || m.amount == usize::MAX {
+            return Err("say which columns hold the date and the amount, e.g. date=1 amount=3".into());
+        }
+        Ok(m)
+    }
+
+    pub fn spec(&self) -> String {
+        let n = |c: usize| (c + 1).to_string();
+        let text = self.text.iter().map(|&c| n(c)).collect::<Vec<_>>().join("+");
+        let mut s = format!("date={} amount={}", n(self.date), n(self.amount));
+        if !text.is_empty() {
+            s += &format!(" text={text}");
+        }
+        if let Some(c) = self.currency {
+            s += &format!(" currency={}", n(c));
+        }
+        format!("{s} delimiter={} decimal={}", if self.delim == '\t' { "tab".into() } else { self.delim.to_string() }, self.decimal)
+    }
+
+    /// A first guess for CSV: the delimiter most used on the first line, then the first column of dates, the first
+    /// other column of amounts, the column of longest text; a comma decimal with `;`.
+    pub fn guess(csv: &str) -> Mapping {
+        let first = csv.trim_start_matches('\u{feff}').lines().next().unwrap_or_default();
+        let delim = [',', ';', '\t', '|'].into_iter().max_by_key(|&d| (first.matches(d).count(), d == ',')).unwrap();
+        let decimal = if delim == ';' { ',' } else { '.' };
+        let rows: Vec<Vec<String>> = csv_rows(csv, delim).into_iter().take(20).collect();
+        let cols = rows.iter().map(Vec::len).max().unwrap_or(0);
+        let hits = |c: usize, ok: &dyn Fn(&str) -> bool| rows.iter().filter(|r| r.get(c).is_some_and(|v| ok(v))).count();
+        let best = |skip: &[usize], ok: &dyn Fn(&str) -> bool| (0..cols).filter(|c| !skip.contains(c)).map(|c| (hits(c, ok), c)).filter(|x| x.0 > 0).max_by_key(|&(h, c)| (h, std::cmp::Reverse(c))).map(|x| x.1);
+        let date = best(&[], &|v| bank_date(v).is_some()).unwrap_or(0);
+        let amount = best(&[date], &|v| bank_amount(v, decimal).is_some()).unwrap_or(1.min(cols.saturating_sub(1)));
+        let len = |c: usize| rows.iter().filter_map(|r| r.get(c)).map(|v| v.chars().count()).sum::<usize>();
+        let text = (0..cols).filter(|c| ![date, amount].contains(c)).max_by_key(|&c| (len(c), std::cmp::Reverse(c))).into_iter().collect();
+        Mapping { date, amount, text, currency: None, delim, decimal }
+    }
+}
+
+/// A bank's date: `2026-10-25`, `2026/10/25`, `20261025`, `25.10.2026`, `25/10/2026` or `25-10-2026` (day first),
+/// a time after it ignored.
+fn bank_date(s: &str) -> Option<NaiveDate> {
+    let s = s.trim().split(['T', ' ']).next()?;
+    ["%Y-%m-%d", "%Y/%m/%d", "%Y%m%d", "%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y"].iter().find_map(|f| NaiveDate::parse_from_str(s, f).ok())
+}
+
+/// A bank's amount as signed cents, with DECIMAL as the decimal separator: `-1 234,50`, `1,234.50`, `(12.50)` and
+/// `12.50-` are negative; spaces, the other separator, `'` and currency signs are dropped.
+fn bank_amount(s: &str, decimal: char) -> Option<i64> {
+    let s: String = s.chars().filter(|c| c.is_ascii_digit() || "+-().,".contains(*c)).filter(|&c| c == decimal || !".,".contains(c)).map(|c| if c == decimal { '.' } else { c }).collect();
+    let (neg, s) = match s.strip_prefix('(').and_then(|r| r.strip_suffix(')')) {
+        Some(r) => (true, r),
+        None => (false, s.as_str()),
+    };
+    let s = match s.strip_suffix('-') {
+        Some(r) => format!("-{r}"),
+        None => s.into(),
+    };
+    let c = amount(&s).ok()?;
+    Some(if neg { -c.abs() } else { c })
+}
+
+/// A bank CSV read with M: the rows that hold a date and an amount as entries (in CURRENCY unless a currency column
+/// says otherwise), each flagged true when it is already in KNOWN (ledger and inbox text) by date, amount and text.
+/// A known entry matches once, so two equal coffees on a day stay two. The count of other rows comes last.
+pub fn read_csv(csv: &str, m: &Mapping, currency: &str, known: &[&str]) -> (Vec<(Entry, bool)>, usize) {
+    let mut seen: HashMap<(NaiveDate, i64, String), usize> = HashMap::new();
+    for e in known.iter().flat_map(|t| t.lines()).filter_map(parse_entry) {
+        *seen.entry((e.date, e.cents, e.text)).or_default() += 1;
+    }
+    let (mut out, mut skipped) = (vec![], 0);
+    for r in csv_rows(csv, m.delim) {
+        let cell = |c: usize| r.get(c).map_or("", |s| s.as_str());
+        let (Some(date), Some(cents)) = (bank_date(cell(m.date)), bank_amount(cell(m.amount), m.decimal)) else {
+            skipped += 1;
+            continue;
+        };
+        let text = m.text.iter().map(|&c| cell(c)).collect::<Vec<_>>().join(" ").split_whitespace().collect::<Vec<_>>().join(" ");
+        let cur = m.currency.map(|c| cell(c).trim().to_uppercase()).filter(|c| c.len() == 3 && c.bytes().all(|b| b.is_ascii_uppercase()));
+        let e = Entry { date, cents, currency: cur.unwrap_or_else(|| currency.trim().to_uppercase()), text };
+        let dupe = seen.get_mut(&(e.date, e.cents, e.text.clone())).filter(|n| **n > 0).map(|n| *n -= 1).is_some();
+        out.push((e, dupe));
+    }
+    (out, skipped)
+}
+
+/// The heading title of an import proposal in the inbox.
+pub const REVIEW: &str = "Review ledger import";
+
+/// INBOX with each of ES appended as a `* TODO Review ledger import` heading holding the entry line.
+pub fn propose(inbox: &str, es: &[Entry], kw: &crate::org::Kw) -> String {
+    let todo = kw.todo.first().map_or("TODO", String::as_str);
+    let mut t = inbox.to_string();
+    if !t.is_empty() && !t.ends_with('\n') {
+        t.push('\n');
+    }
+    for e in es {
+        t += &format!("* {todo} {REVIEW}\n{}\n", format_entry(e));
+    }
+    t
+}
+
+/// The entry under the heading at or above LINE of INBOX filed into LEDGER under its month, and that heading's subtree
+/// removed: (new inbox, new ledger, the entry line).
+pub fn accept(inbox: &str, line: usize, ledger: &str, kw: &crate::org::Kw) -> Result<(String, String, String), String> {
+    let mut lines: Vec<String> = inbox.lines().map(String::from).collect();
+    let h = (0..=line).rev().find(|&i| lines.get(i).is_some_and(|l| crate::org::heading_level(l).is_some())).ok_or("put the cursor on a ledger import heading")?;
+    let (a, b) = crate::org::subtree_range(&lines, h);
+    let e = lines[a..b].iter().find_map(|l| parse_entry(l)).ok_or("this heading has no ledger entry line")?;
+    lines.drain(a..b);
+    let mut t = lines.join("\n");
+    if !t.is_empty() && inbox.ends_with('\n') {
+        t.push('\n');
+    }
+    Ok((t, add(ledger, &e, kw), format_entry(&e)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,5 +502,82 @@ mod tests {
         let text = "- 2026-10-05 -7 EUR dinner @Anna\n- 2026-10-01 -12.50 EUR lunch @anna #food\n- 2026-10-02 -1 EUR @annabel\nnote @anna\n";
         assert_eq!(payments(text, "@ANNA").iter().map(|r| (r.line, r.cents)).collect::<Vec<_>>(), [(1, -1250), (0, -700)]);
         assert_eq!(payments(text, " @ ").len(), 0);
+    }
+
+    #[test]
+    fn csv_rows_handle_quotes_bom_and_delimiters() {
+        let r = csv_rows("\u{feff}a,\"b, c\",\"say \"\"hi\"\"\"\r\n\r\n\"two\nlines\",,x\nlast", ',');
+        assert_eq!(r, [vec!["a", "b, c", "say \"hi\""], vec!["two\nlines", "", "x"], vec!["last"]]);
+        assert_eq!(csv_rows("1;2,5;x\n", ';'), [vec!["1", "2,5", "x"]]);
+        assert_eq!(csv_rows("", ','), Vec::<Vec<String>>::new());
+    }
+
+    #[test]
+    fn bank_amounts_and_dates() {
+        let a = |s, d| bank_amount(s, d);
+        let got = [a("-12,50", ','), a("1 234,50", ','), a("1.234,50", ','), a("(12.50)", '.'), a("1,234.50", '.'), a("12.50-", '.'), a("€ 3", '.'), a("+7.5", '.')];
+        assert_eq!(got, [-1250, 123450, 123450, -1250, 123450, -1250, 300, 750].map(Some));
+        for bad in ["", "Amount", "0", "1.234", "2026-10-01"] {
+            assert_eq!(a(bad, '.'), None, "{bad}");
+        }
+        for s in ["2026-10-25", "2026/10/25", "20261025", "25.10.2026", "25/10/2026", "2026-10-25 13:00", "2026-10-25T13:00:00"] {
+            assert_eq!(bank_date(s), Some(d("2026-10-25")), "{s}");
+        }
+        assert_eq!(bank_date("Date"), None);
+    }
+
+    #[test]
+    fn mapping_spec_round_trips_and_guesses() {
+        let m = Mapping::parse("date=1 amount=3 text=2+4 currency=5 delimiter=; decimal=,").unwrap();
+        assert_eq!((m.date, m.amount, &m.text, m.currency, m.delim, m.decimal), (0, 2, &vec![1, 3], Some(4), ';', ','));
+        assert_eq!(Mapping::parse(&m.spec()), Ok(m));
+        assert_eq!(Mapping::parse("amount=2 delimiter=tab").unwrap_err(), "say which columns hold the date and the amount, e.g. date=1 amount=3");
+        assert!(Mapping::parse("date=0 amount=1").is_err() && Mapping::parse("date=1 amount=2 x=3").is_err() && Mapping::parse("date=1 amount=2 decimal=;").is_err());
+        let g = Mapping::guess("\u{feff}Bokföringsdag;Text;Belopp;Saldo\n2026-10-03;ICA Kvantum Malmö;-412,50;1 000,00\n2026-10-04;Lön;25 000,00;26 000,00\n");
+        assert_eq!(g.spec(), "date=1 amount=3 text=2 delimiter=; decimal=,");
+        assert_eq!(Mapping::guess("Description,Date,Amount\nCoffee,10/25/2026,x\nTea shop,25/10/2026,-3.50\n").spec(), "date=2 amount=3 text=1 delimiter=, decimal=.");
+    }
+
+    #[test]
+    fn read_csv_skips_duplicates_in_ledger_and_inbox() {
+        let m = Mapping::parse("date=1 amount=3 text=2 delimiter=; decimal=,").unwrap();
+        let csv = "Datum;Text;Belopp\n2026-10-03;ICA  Kvantum;-412,50\n2026-10-04;Coffee;-3\n2026-10-04;Coffee;-3\n2026-10-05;\"Rent; Oct\";(9 000,00)\n2026-10-06;Inbox one;+5\nbad;row;x\n";
+        let ledger = "* 2026-10\n- 2026-10-04 -3.00 EUR Coffee\n";
+        let inbox = "* TODO Review ledger import\n- 2026-10-06 +5.00 EUR Inbox one\n";
+        let (es, skipped) = read_csv(csv, &m, "eur", &[ledger, inbox]);
+        let got: Vec<_> = es.iter().map(|(e, d)| (format_entry(e), *d)).collect();
+        assert_eq!(got, [
+            ("- 2026-10-03 -412.50 EUR ICA Kvantum".to_string(), false),
+            ("- 2026-10-04 -3.00 EUR Coffee".into(), true),
+            ("- 2026-10-04 -3.00 EUR Coffee".into(), false), // the second coffee of the day is new
+            ("- 2026-10-05 -9000.00 EUR Rent; Oct".into(), false),
+            ("- 2026-10-06 +5.00 EUR Inbox one".into(), true),
+        ]);
+        assert_eq!(skipped, 2); // the header and the bad row
+    }
+
+    #[test]
+    fn export_round_trips_through_import() {
+        let text = "* 2026-10\n- 2026-10-25 -12.50 EUR lunch, \"good\" @anna #food [[id:abc]]\n- 2026-10-01 +1200 SEK pay #work\n- 2026-09-30 -1 EUR before\n- 2026-11-01 -1 EUR after\n";
+        let csv = to_csv(text, d("2026-10-01"), d("2026-10-31"));
+        assert_eq!(csv, "date,amount,currency,category,payee,link,text\n2026-10-01,+1200.00,SEK,work,,,pay #work\n2026-10-25,-12.50,EUR,food,anna,id:abc,\"lunch, \"\"good\"\" @anna #food [[id:abc]]\"\n");
+        let m = Mapping::parse("date=1 amount=2 text=7 currency=3").unwrap();
+        let back: Vec<Entry> = read_csv(&csv, &m, "USD", &[]).0.into_iter().map(|x| x.0).collect();
+        let mut want: Vec<Entry> = text.lines().filter_map(parse_entry).filter(|e| e.date.format("%Y-%m").to_string() == "2026-10").collect();
+        want.reverse();
+        assert_eq!(back, want);
+    }
+
+    #[test]
+    fn proposals_go_to_the_inbox_and_accept_moves_one() {
+        let e = |s| parse_quick(s, d("2026-10-25"), "EUR").unwrap();
+        let inbox = propose("* TODO Call\n", &[e("12.50 lunch"), e("+5 refund")], &kw());
+        assert_eq!(inbox, "* TODO Call\n* TODO Review ledger import\n- 2026-10-25 -12.50 EUR lunch\n* TODO Review ledger import\n- 2026-10-25 +5.00 EUR refund\n");
+        let (rest, ledger, line) = accept(&inbox, 2, "#+title: ledger\n", &kw()).unwrap();
+        assert_eq!(rest, "* TODO Call\n* TODO Review ledger import\n- 2026-10-25 +5.00 EUR refund\n");
+        assert_eq!((ledger.as_str(), line.as_str()), ("#+title: ledger\n* 2026-10\n- 2026-10-25 -12.50 EUR lunch\n", "- 2026-10-25 -12.50 EUR lunch"));
+        assert_eq!(accept(&inbox, 0, "", &kw()).unwrap_err(), "this heading has no ledger entry line");
+        assert!(accept("no heading\n", 0, "", &kw()).is_err());
+        assert_eq!(propose("", &[], &kw()), "");
     }
 }
