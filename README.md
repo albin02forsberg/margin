@@ -86,7 +86,7 @@ the note or heading to open. `Ctrl+R` on a tag there (or *Notes: rename or merge
 palette) renames it everywhere: heading tags (tasks too), `#+FILETAGS:` and `tag:` terms in saved
 views; typing an existing tag merges the two. It shows the count first, copies every note it changes
 to `.trash/tag-rename-<time>/` before writing, and skips (and lists) notes with unsaved edits.
-*Notes: undo a tag rename…* puts those notes back, except ones edited since (listed, left alone); the
+*Tags: undo a rename (notes put back)…* puts those notes back, except ones edited since (listed, left alone); the
 renamed versions go to `.trash/tag-rename-undo-<time>/`, and saved views keep the new name. `Space n C` lists recently changed notes (journal included), newest
 first, with how long ago each changed. `Space n Z` lists notes untouched for a year (oldest first);
 `Space n *` opens a random note, older ones likelier (journal, inbox, trash and archives are skipped;

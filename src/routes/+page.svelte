@@ -2647,7 +2647,7 @@
     { label: "Note: history (git commits; diff, restore, copy)…", leader: "n V", run: () => act(noteHistory) },
     { label: "Notes: browse by tag…", leader: "n T", run: browseTags },
     { label: "Notes: rename or merge a tag (notes and saved views)…", run: () => renameTag() },
-    { label: "Notes: undo a tag rename…", run: undoTagRename },
+    { label: "Tags: undo a rename (notes put back)…", run: undoTagRename },
     { label: "People: a person's open tasks and mentions (@name)…", leader: "n @", run: personView },
     { label: "Flashcards: review due :drill: headings", leader: "n d", run: reviewDrill },
     { label: "Note: pin / unpin (pinned notes come first in Ctrl+P)", leader: "n p", run: pinNote },
