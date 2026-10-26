@@ -1556,6 +1556,26 @@
     flash(`Renamed :${old}: to :${name}: in ${s(r.places, "place")} in ${s(r.notes, "note")} and ${s(r.views, "view")}${r.copies ? `; old copies in ${rel(r.copies)}` : ""}${bad ? `; ${bad}` : ""}`);
   }
 
+  /** Undo a tag rename (#816): puts back the notes it changed that weren't edited since; saved views stay renamed. */
+  async function undoTagRename() {
+    type Undo = { folder: string; old: string; new: string; notes: number; secs: number };
+    const items = (await call<Undo[]>("tag_renames")).map((u) => ({
+      label: `:${u.old}: → :${u.new}: · ${u.notes} note${u.notes === 1 ? "" : "s"}`,
+      detail: new Date(u.secs * 1000).toLocaleString(),
+      value: u.folder as unknown,
+    }));
+    if (!items.length) return flash("No tag rename to undo");
+    const folder = await pick({ prompt: "Undo a tag rename", hint: "notes edited since are left alone; saved views keep the new name", items });
+    if (!folder) return;
+    const skip = tabs.filter((t) => t.kind === "file" && t.dirty).map((t) => t.path!); // never overwrite unsaved edits
+    const r = await call<{ restored: string[]; conflicts: string[]; errors: string[]; undo: string | null }>("tag_rename_undo", { folder, skip })
+      .catch((e) => (flash(`⚠ ${e}`), null));
+    if (!r) return;
+    syncFromDisk();
+    const left = r.conflicts.length ? `; left alone (edited since or unsaved): ${r.conflicts.map(rel).join(", ")}` : "";
+    flash(`Restored ${r.restored.length} note${r.restored.length === 1 ? "" : "s"}${r.undo ? `; renamed versions in ${rel(r.undo)}` : ""}${left}${r.errors.length ? `; ${r.errors.join("; ")}` : ""}`);
+  }
+
   /** Pick a person (`@name` tag, or type one), then one of their open tasks or a line mentioning them (#704). */
   async function personView() {
     const people = peopleFrom(await call<string[]>("org_tags"));
@@ -2627,6 +2647,7 @@
     { label: "Note: history (git commits; diff, restore, copy)…", leader: "n V", run: () => act(noteHistory) },
     { label: "Notes: browse by tag…", leader: "n T", run: browseTags },
     { label: "Notes: rename or merge a tag (notes and saved views)…", run: () => renameTag() },
+    { label: "Tags: undo a rename (notes put back)…", run: undoTagRename },
     { label: "People: a person's open tasks and mentions (@name)…", leader: "n @", run: personView },
     { label: "Flashcards: review due :drill: headings", leader: "n d", run: reviewDrill },
     { label: "Note: pin / unpin (pinned notes come first in Ctrl+P)", leader: "n p", run: pinNote },
