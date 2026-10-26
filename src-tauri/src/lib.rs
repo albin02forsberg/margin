@@ -1348,6 +1348,72 @@ fn notes_tagged(s: State<App>, tag: String) -> Vec<(PathBuf, usize, String)> {
     notes::tagged(&s.files(), &tag, not_a_note(&s.cfg()))
 }
 
+/// What renaming a tag changes (or changed): tagged PLACES (headings and `#+FILETAGS` lines) in NOTES,
+/// saved VIEWS, notes SKIPPED (unsaved edits), ERRORS (unwritable notes) and the folder of the COPIES.
+#[derive(serde::Serialize, Default)]
+struct TagRename {
+    places: usize,
+    notes: usize,
+    views: usize,
+    skipped: Vec<PathBuf>,
+    errors: Vec<String>,
+    copies: Option<PathBuf>,
+}
+
+/// Rename tag OLD (any case) to NEW in every note's heading tags (tasks too) and `#+FILETAGS`, and in saved
+/// views' `tag:` terms (#785); an existing NEW merges. Only counts unless APPLY; the count uses the same
+/// rewrite, so it matches what is written. Notes (or config.toml) in SKIP, open with unsaved edits, are left alone and listed.
+/// APPLY backs up, writes the views first (a config error stops before any note), then copies each note it
+/// changes to `<notes>/.trash/tag-rename-<time>/` before writing it.
+#[tauri::command(async)]
+fn tag_rename(app: AppHandle, s: State<App>, old: String, new: String, skip: Vec<PathBuf>, apply: bool) -> R<TagRename> {
+    let (old, new) = (old.trim().trim_matches(':'), new.trim().trim_matches(':'));
+    if !notes::tag_ok(new) {
+        return Err(format!("“{new}” isn't a tag: use letters, digits, _ @ # or %"));
+    }
+    if old.is_empty() || old == new {
+        return Err("That's already its name.".into());
+    }
+    let notes_dir = s.cfg().notes();
+    let (views, n) = config::retag_views(&std::fs::read_to_string(&s.cfg_path).map_err(|e| e.to_string())?, old, new)?;
+    let mut r = TagRename { views: n, ..Default::default() };
+    if n > 0 && skip.contains(&s.cfg_path) {
+        (r.views, r.skipped) = (0, vec![s.cfg_path.clone()]); // config.toml open with unsaved edits
+    }
+    if apply {
+        s.backup();
+        if r.views > 0 {
+            config::write_atomic(&s.cfg_path, views).map_err(|e| e.to_string())?;
+            reload_config(app, s.clone())?;
+        }
+    }
+    let copies = notes_dir.join(".trash").join(chrono::Local::now().format("tag-rename-%Y%m%d-%H%M%S").to_string());
+    let _lock = note_writes();
+    for f in s.files() {
+        let Ok(text) = std::fs::read_to_string(&f.path) else { continue };
+        let (out, places) = notes::retag(&text, old, new);
+        if places == 0 {
+            continue;
+        }
+        if skip.contains(&f.path) {
+            r.skipped.push(f.path.clone());
+            continue;
+        }
+        if apply {
+            let res = f.path.strip_prefix(&notes_dir).map(|p| copies.join(p)).map_err(std::io::Error::other)
+                .and_then(|dst| std::fs::create_dir_all(dst.parent().unwrap_or(&copies)).and_then(|_| std::fs::copy(&f.path, &dst)))
+                .and_then(|_| config::write_atomic(&f.path, out));
+            if let Err(e) = res {
+                r.errors.push(format!("{}: {e}", f.path.display()));
+                continue;
+            }
+            r.copies = Some(copies.clone());
+        }
+        (r.places, r.notes) = (r.places + places, r.notes + 1);
+    }
+    Ok(r)
+}
+
 /// Open top-level inbox entries: level-1 headlines that aren't done or archived (plain notes count).
 fn open_entries(f: &org::OrgFile, kw: &org::Kw) -> usize {
     f.headlines.iter().filter(|h| h.level == 1 && !h.archived() && !h.keyword.as_deref().is_some_and(|k| kw.is_done(k))).count()
@@ -2402,7 +2468,7 @@ pub fn run() {
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
-            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
+            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, babel::babel_run

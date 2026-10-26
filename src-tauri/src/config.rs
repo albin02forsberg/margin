@@ -381,6 +381,74 @@ pub fn rename_view(text: &str, query: &str, name: &str) -> Result<String, String
     Ok(out)
 }
 
+/// Task query Q with its `tag:OLD` / `-tag:OLD` terms (any case, value quoted or not) naming NEW
+/// instead, split into terms like `org::query`; None if it has none.
+pub fn retag_query(q: &str, old: &str, new: &str) -> Option<String> {
+    let old = old.to_lowercase();
+    let (mut terms, mut start, mut quoted) = (vec![], None, false);
+    for (i, c) in q.char_indices() {
+        quoted ^= c == '"';
+        if c.is_whitespace() && !quoted {
+            terms.extend(start.take().map(|s| s..i));
+        } else if start.is_none() {
+            start = Some(i);
+        }
+    }
+    terms.extend(start.map(|s| s..q.len()));
+    let (mut out, mut last) = (String::new(), 0);
+    for r in terms {
+        let w = &q[r.clone()];
+        let w = w.strip_prefix('-').filter(|w| !w.is_empty()).unwrap_or(w);
+        if let Some((_, v)) = w.split_once(':').filter(|(k, v)| k.eq_ignore_ascii_case("tag") && v.trim_matches('"').to_lowercase() == old) {
+            out += &q[last..r.end - v.len()];
+            out += new;
+            last = r.end;
+        }
+    }
+    (last > 0).then(|| out + &q[last..])
+}
+
+/// TEXT (a config.toml) with the saved views' `tag:OLD` terms renamed to NEW (retag_query), and how many
+/// views changed. Only those `query = …` lines change, so comments survive; inline `views = […]` are
+/// rewritten whole (set_tables).
+pub fn retag_views(text: &str, old: &str, new: &str) -> Result<(String, usize), String> {
+    let err = |e: toml::de::Error| format!("can't update the views in config.toml: {e}");
+    let mut want: toml::Table = text.parse().map_err(err)?;
+    let mut n = 0;
+    for v in want.get_mut("views").and_then(|v| v.as_array_mut()).into_iter().flatten().filter_map(|v| v.as_table_mut()) {
+        if let Some(q) = v.get("query").and_then(|q| q.as_str()).and_then(|q| retag_query(q, old, new)) {
+            v.insert("query".into(), q.into());
+            n += 1;
+        }
+    }
+    if n == 0 {
+        return Ok((text.to_string(), 0));
+    }
+    let mut inside = false;
+    let out: String = text
+        .split_inclusive('\n')
+        .map(|l| {
+            let t = l.trim_start();
+            if t.starts_with('[') {
+                inside = t.split('#').next().unwrap_or("").trim_end() == "[[views]]";
+            } else if inside && t.split_once('=').is_some_and(|(k, _)| k.trim() == "query") {
+                let q = l.parse::<toml::Table>().ok().and_then(|x| x.get("query")?.as_str().and_then(|q| retag_query(q, old, new)));
+                if let Some(q) = q {
+                    let eol = &l[l.trim_end_matches(['\r', '\n']).len()..];
+                    return format!("{}query = {}{}{eol}", &l[..l.len() - t.len()], toml::Value::String(q), trailing_comment(l));
+                }
+            }
+            l.to_string()
+        })
+        .collect();
+    if out.parse::<toml::Table>().ok().as_ref() == Some(&want) {
+        toml::from_str::<Config>(&out).map_err(err)?;
+        return Ok((out, n));
+    }
+    let items = want["views"].as_array().into_iter().flatten().filter_map(|v| v.as_table().cloned()).collect();
+    set_tables(text, "views", items).map(|(s, _)| (s, n))
+}
+
 /// TEXT (a config.toml) with the setup answers: notes and data folders and comma-separated
 /// profiles (trimmed, case-insensitive duplicates dropped); an empty answer keeps the current value.
 /// Only those top-level lines change, so comments survive; errors if anything else would.
@@ -635,6 +703,18 @@ mod tests {
         // A `[[views]]` lookalike inside a multi-line string is refused, not miswritten.
         let body = "[[templates]]\nkey = \"v\"\nname = \"V\"\nbody = \"\"\"\n[[views]]\nname = x\n\"\"\"\n\n[[views]]\nname = \"A\"\nquery = \"a\"\n";
         assert!(rename_view(body, "a", "X").is_err_and(|e| e.contains("changing")));
+    }
+
+    #[test]
+    fn retag_queries_and_views() {
+        assert_eq!(retag_query("tag:work -TAG:Work tag:\"work\" tag:workshop \"tag:work\" due:<7d", "work", "job").unwrap(), "tag:job -TAG:job tag:job tag:workshop \"tag:work\" due:<7d");
+        assert_eq!(retag_query("todo:NEXT tag:home", "work", "job"), None);
+        let text = "# mine\r\n[[views]]\r\nname = \"W\"\r\n  query = \"tag:work due:<7d\" # mine\r\n\r\n[[views]]\r\nname = \"H\"\r\nquery = \"tag:home\"\r\n";
+        let (s, n) = retag_views(text, "Work", "job").unwrap();
+        assert_eq!((s, n), (text.replace("\"tag:work due:<7d\"", "\"tag:job due:<7d\""), 1)); // CRLF, indent, comments kept
+        assert_eq!(retag_views(text, "nope", "x").unwrap(), (text.to_string(), 0));
+        let (s, n) = retag_views("views = [{ name = \"W\", query = \"tag:work\" }]\n", "work", "job").unwrap();
+        assert_eq!((toml::from_str::<Config>(&s).unwrap().views[0].query.as_str(), n), ("tag:job", 1)); // inline: rewritten whole
     }
 
     #[test]

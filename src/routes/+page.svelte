@@ -1519,7 +1519,8 @@
   async function browseTags() {
     const tags = await call<[string, number][]>("notes_tags");
     if (!tags.length) return flash("No tags in your notes");
-    const tag = await pick({ prompt: "Browse notes by tag", items: tags.map(([t, n]) => ({ label: `${t} · ${n}`, value: t as unknown })) });
+    const tag = await pick({ prompt: "Browse notes by tag", hint: "Ctrl+R renames or merges the selected tag", actions: { r: "rename" }, items: tags.map(([t, n]) => ({ label: `${t} · ${n}`, value: t as unknown })) });
+    if (tag?.action) return renameTag(tag.value);
     if (!tag) return;
     const hits = await call<[string, number, string][]>("notes_tagged", { tag });
     const r = await pick({
@@ -1527,6 +1528,32 @@
       items: hits.map(([p, line, title]) => ({ label: title || niceName(p), detail: line ? `heading in ${rel(p)}` : rel(p), value: [p, line] as unknown })),
     });
     if (r) await openFile(...(r as [string, number]));
+  }
+
+  type TagRename = { places: number; notes: number; views: number; skipped: string[]; errors: string[]; copies: string | null };
+  /** Rename tag OLD (picked if not given) across notes and saved views, or merge it into an existing tag (#785).
+   *  Shows the count first; notes with unsaved edits are skipped, the changed notes' old copies go to .trash. */
+  async function renameTag(old?: string) {
+    old ??= (await pick({ prompt: "Rename or merge a tag", items: (await call<[string, number][]>("notes_tags")).map(([t, n]) => ({ label: `${t} · ${n}`, value: t as unknown })) })) ?? undefined;
+    if (!old) return;
+    const name = ((await ask(`Rename :${old}: to`, old, "an existing tag merges; letters, digits, _ @ # %")) ?? "").trim().replace(/^:+|:+$/g, "");
+    if (!name || name === old) return;
+    const skip = tabs.filter((t) => t.kind === "file" && t.dirty).map((t) => t.path!); // never overwrite unsaved edits
+    const args = { old, new: name, skip };
+    const s = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+    const p = await call<TagRename>("tag_rename", { ...args, apply: false }).catch((e) => (flash(`⚠ ${e}`), null));
+    if (!p) return;
+    const left = p.skipped.length ? `; skips ${p.skipped.map(rel).join(", ")} (unsaved edits: save them first)` : "";
+    if (!p.places && !p.views) return flash(`Nothing to rename${left}`);
+    const what = `${s(p.places, "tagged heading/file")} in ${s(p.notes, "note")}, ${s(p.views, "saved view")}`;
+    const ok = await pick({ prompt: `Rename :${old}: to :${name}:? ${what}${left}`, hint: "old copies of the notes go to .trash", items: [{ label: "Rename", value: true }, { label: "Cancel", value: false }] });
+    if (!ok) return;
+    const r = await ownCfg(() => call<TagRename>("tag_rename", { ...args, apply: true })).catch((e) => (flash(`⚠ ${e}`), null));
+    if (!r) return;
+    if (r.views) cfg = await call("config");
+    syncFromDisk();
+    const bad = [...r.skipped.map((x) => `skipped ${rel(x)}`), ...r.errors].join("; ");
+    flash(`Renamed :${old}: to :${name}: in ${s(r.places, "place")} in ${s(r.notes, "note")} and ${s(r.views, "view")}${r.copies ? `; old copies in ${rel(r.copies)}` : ""}${bad ? `; ${bad}` : ""}`);
   }
 
   /** Pick a person (`@name` tag, or type one), then one of their open tasks or a line mentioning them (#704). */
@@ -2550,6 +2577,7 @@
     { label: "Notes: stale notes (untouched for a year)…", leader: "n Z", run: () => staleNotes(false) },
     { label: "Note: history (git commits; diff, restore, copy)…", leader: "n V", run: () => act(noteHistory) },
     { label: "Notes: browse by tag…", leader: "n T", run: browseTags },
+    { label: "Notes: rename or merge a tag (notes and saved views)…", run: () => renameTag() },
     { label: "People: a person's open tasks and mentions (@name)…", leader: "n @", run: personView },
     { label: "Flashcards: review due :drill: headings", leader: "n d", run: reviewDrill },
     { label: "Note: pin / unpin (pinned notes come first in Ctrl+P)", leader: "n p", run: pinNote },

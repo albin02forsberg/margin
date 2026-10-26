@@ -14,6 +14,8 @@
     allowCustom?: boolean;
     /** Single keys that pick a value while the query is empty (one-keypress prompts). */
     keys?: Record<string, unknown>;
+    /** Ctrl/Cmd+key acts on the selected item: resolves `{ action, value }` (e.g. `{ r: "rename" }`). */
+    actions?: Record<string, string>;
   };
 
   /** Orderless fuzzy match: every space-separated word must match as a subsequence. */
@@ -108,6 +110,7 @@
     const c = e.ctrlKey || e.metaKey;
     if (e.key === "Escape") done(null);
     else if (o.keys && !query && !c && !e.altKey && Object.hasOwn(o.keys, e.key)) done(o.keys[e.key]);
+    else if (c && o.actions && Object.hasOwn(o.actions, e.key) && filtered.length) done({ action: o.actions[e.key], value: filtered[sel].value });
     else if (e.key === "Enter") {
       const custom = o.allowCustom ?? !hasList;
       if (!hasList || ((c || e.shiftKey) && custom)) done(query);

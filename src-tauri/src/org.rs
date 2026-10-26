@@ -21,7 +21,7 @@ static WARN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^-\d+[dwmy]$").unwr
 static ALIAS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#""([^"]+)"|(\S+)"#).unwrap());
 static TS_HEAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<\d{4}-\d{2}-\d{2}(?:\s+[^\s>\d+\-.][^\s>\d]*)?").unwrap());
 pub(crate) static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[(id|file):([^\]]+)\](?:\[([^\]]*)\])?\]").unwrap());
-static TAGS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+(:[^\s]+:)\s*$").unwrap());
+pub(crate) static TAGS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+(:[^\s]+:)\s*$").unwrap());
 static STATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^\s*- State "([^"]+)"\s+from .*?\[(\d{4}-\d{2}-\d{2})"#).unwrap());
 static CLOSED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"CLOSED:\s*\[(\d{4}-\d{2}-\d{2})(?:\s+[^\s\]\d]+)?(?:\s+(\d{1,2}:\d{2}))?[^\]]*\]\s*").unwrap());
 /// An entry in a `:BLOCKER:` value: `[[id:x][desc]]` (id 1, desc 2) or a bare `x` (3).

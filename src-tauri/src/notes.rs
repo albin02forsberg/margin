@@ -494,6 +494,62 @@ pub fn tagged(files: &[Arc<OrgFile>], tag: &str, skip: impl Fn(&Path) -> bool) -
     tag_sites(files, &skip).filter(|s| s.3.iter().any(|t| t.to_lowercase() == tag)).map(|(f, l, t, _)| (f.path.clone(), l, t.to_string())).collect()
 }
 
+/// Whether NAME can be an org tag: letters, digits and `_@#%` only.
+pub fn tag_ok(name: &str) -> bool {
+    !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || "_@#%".contains(c))
+}
+
+/// TAGS as a `:a:b:` group with OLD (lowercase) swapped for NEW, dropping the repeat (any case) that
+/// makes; None if OLD isn't among them.
+fn swap_tag<'a>(tags: impl Iterator<Item = &'a str>, old: &str, new: &'a str) -> Option<String> {
+    let (mut hit, mut out) = (false, Vec::<&str>::new());
+    for t in tags {
+        let t = if t.to_lowercase() == old { hit = true; new } else { t };
+        if !out.iter().any(|o| o.to_lowercase() == t.to_lowercase()) {
+            out.push(t);
+        }
+    }
+    hit.then(|| format!(":{}:", out.join(":")))
+}
+
+/// TEXT with tag OLD (any case, whole tags only) renamed to NEW in headline tag groups (tasks too) and
+/// `#+FILETAGS:` lines outside verbatim blocks, and how many of those changed (#785). An aligned
+/// (padded) group keeps its right edge.
+pub fn retag(text: &str, old: &str, new: &str) -> (String, usize) {
+    let (old, blocks, mut n) = (old.to_lowercase(), verbatim_lines(text), 0);
+    let out = text
+        .split_inclusive('\n')
+        .enumerate()
+        .map(|(i, l)| {
+            let body = l.trim_end_matches(['\r', '\n']);
+            let eol = &l[body.len()..];
+            if blocks.iter().any(|r| r.contains(&i)) {
+                return l.to_string();
+            }
+            if crate::org::heading_level(body).is_some() {
+                let Some(c) = crate::org::TAGS.captures(body) else { return l.to_string() };
+                let (m, g) = (c.get(0).unwrap(), c.get(1).unwrap());
+                let Some(t) = swap_tag(g.as_str().split(':').filter(|t| !t.is_empty()), &old, new) else { return l.to_string() };
+                n += 1;
+                let ws = &body[m.start()..g.start()];
+                let pad = if ws.len() > 1 { " ".repeat((ws.len() + g.len()).saturating_sub(t.len()).max(1)) } else { ws.to_string() };
+                return format!("{}{pad}{t}{}{eol}", &body[..m.start()], &body[g.end()..]);
+            }
+            let s = body.trim_start();
+            if s.get(..11).is_some_and(|k| k.eq_ignore_ascii_case("#+filetags:")) {
+                let (k, v) = body.split_at(body.len() - s.len() + 11);
+                if let Some(t) = swap_tag(v.split(':').map(str::trim).filter(|t| !t.is_empty()), &old, new) {
+                    n += 1;
+                    let ws = &v[..v.len() - v.trim_start().len()];
+                    return format!("{k}{}{t}{eol}", if ws.is_empty() { " " } else { ws });
+                }
+            }
+            l.to_string()
+        })
+        .collect();
+    (out, n)
+}
+
 pub fn graph(files: &[Arc<OrgFile>], path: &Path, depth: usize) -> Graph {
     let Some(start) = files.iter().position(|f| f.path == path) else { return Graph::default() };
     let adj = adjacency(files);
@@ -1068,6 +1124,26 @@ mod tests {
         assert_eq!(t.iter().map(|(p, l, n)| (p.to_str().unwrap(), *l, n.as_str())).collect::<Vec<_>>(), [("/n/acme.org", 0, "Acme"), ("/n/acme.org", 2, "Call"), ("/n/bare.org", 0, "bare")]);
         assert!(tagged(&fs, "money", skip).is_empty());
         assert!(tagged(&fs, "archive", skip).is_empty());
+    }
+
+    #[test]
+    fn retag_renames_merges_and_counts() {
+        let doc = "#+title: A\n#+FILETAGS: :work:home:\n* Call :Work:\n* TODO Invoice                 :money:work:\r\n\
+                   * Merge :job:work:\n* Shop :workshop:\n* Title only\n#+begin_src org\n* In block :work:\n#+end_src\n\
+                   :PROPERTIES:\n:TAGS: :work:\n:END:\n* :work:\n";
+        let (out, n) = retag(doc, "WORK", "job");
+        assert_eq!(n, 5);
+        assert_eq!(
+            out,
+            "#+title: A\n#+FILETAGS: :job:home:\n* Call :job:\n* TODO Invoice                  :money:job:\r\n\
+             * Merge :job:\n* Shop :workshop:\n* Title only\n#+begin_src org\n* In block :work:\n#+end_src\n\
+             :PROPERTIES:\n:TAGS: :work:\n:END:\n* :job:\n"
+        );
+        // Case-only rename, and no change at all.
+        assert_eq!(retag("* A :Work:\n", "work", "work"), ("* A :work:\n".into(), 1));
+        assert_eq!(retag("* A :workshop:\n#+filetags: x\n", "work", "job"), ("* A :workshop:\n#+filetags: x\n".into(), 0));
+        assert!(tag_ok("@anna") && tag_ok("a_b#1%") && tag_ok("Été"));
+        assert!(!tag_ok("") && !tag_ok("a b") && !tag_ok("a:b") && !tag_ok("a-b"));
     }
 
     #[test]
