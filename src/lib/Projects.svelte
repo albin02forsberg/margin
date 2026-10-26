@@ -21,14 +21,17 @@
 
   async function load() {
     try {
-      const projects = await invoke<Record<string, Project>>("tc_projects");
+      const [projects, d, tasks, codes] = await Promise.all([
+        invoke<Record<string, Project>>("tc_projects"),
+        invoke<{ projects: Tracked[]; project: string | null }>("tc_dashboard"),
+        invoke<Task[]>("todos"),
+        invoke<Record<string, { export_code: string }>>("tc_leave_codes"),
+      ]);
       rows = merge(rows, projects);
       saved = projects;
-      const d = await invoke<{ projects: Tracked[]; project: string | null }>("tc_dashboard");
-      list = cards(projects, d.projects, await invoke<Task[]>("todos"));
+      list = cards(projects, d.projects, tasks);
       ledger = await invoke<Record<string, LedgerTotal[]>>("ledger_projects", { names: list.map((c) => c.project) });
       running = d.project == null ? null : d.project || "Other";
-      const codes = await invoke<Record<string, { export_code: string }>>("tc_leave_codes");
       off = Object.entries(codes).map(([kind, c]) => off.find((o) => o.kind === kind && o.dirty) ?? { kind, code: c.export_code, dirty: false });
       error = "";
     } catch (e) {
