@@ -32,6 +32,18 @@ export function srcAt(text: string, pos: number): Src | null {
   return null;
 }
 
+/** Index after the existing result starting at line J: `: ` lines, a begin/end block, a `:RESULTS:` drawer,
+ *  `|` table lines or one file link. An unclosed block or drawer consumes nothing. */
+function resultEnd(ls: Line[], j: number): number {
+  const t = ls[j]?.text ?? "";
+  if (/^\s*:( |$)/.test(t)) { while (j < ls.length && /^\s*:( |$)/.test(ls[j].text)) j++; return j; }
+  const blk = /^\s*#\+begin_(example|src|export)\b/i.exec(t);
+  const close = blk ? new RegExp(`^\\s*#\\+end_${blk[1]}\\b`, "i") : /^\s*:RESULTS:\s*$/i.test(t) ? /^\s*:END:\s*$/i : null;
+  if (close) { for (let k = j + 1; k < ls.length; k++) if (close.test(ls[k].text)) return k + 1; return j; }
+  if (/^\s*\|/.test(t)) { while (j < ls.length && /^\s*\|/.test(ls[j].text)) j++; return j; }
+  return /^\s*\[\[file:[^\]]*\]\]\s*$/i.test(t) ? j + 1 : j;
+}
+
 /** The edit that puts OUTPUT under block SRC as `#+RESULTS:` + `: ` lines (org's verbatim form, which no
  *  output can close early), replacing the `#+RESULTS:` (and its `:` lines) that follows the block, if any. */
 export function resultsChange(text: string, src: Src, output: string): { from: number; to: number; insert: string } {
@@ -41,8 +53,7 @@ export function resultsChange(text: string, src: Src, output: string): { from: n
   let i = 0;
   while (i < ls.length && !ls[i].text.trim()) i++;
   if (src.end < text.length && i < ls.length && /^\s*#\+RESULTS(\[[^\]]*\])?:/i.test(ls[i].text)) {
-    let j = i + 1;
-    while (j < ls.length && /^\s*:( |$)/.test(ls[j].text)) j++;
+    const j = resultEnd(ls, i + 1);
     const base = src.end + 1;
     return { from: base + ls[i].from, to: base + ls[j - 1].to, insert: res };
   }

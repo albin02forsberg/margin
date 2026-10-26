@@ -35,3 +35,15 @@ test("resultsChange replaces the results that follow, shorter or longer", () => 
   const other = "#+begin_src sh\n#+end_src\n\n* Heading\n#+RESULTS:\n: x";
   assert.equal(run(other, 0, "n"), "#+begin_src sh\n#+end_src\n\n#+RESULTS:\n: n\n\n* Heading\n#+RESULTS:\n: x", "only results right after the block");
 });
+
+test("resultsChange replaces block, drawer, table and file-link results; unclosed ones are left alone", () => {
+  const head = "#+begin_src sh\n#+end_src\n";
+  for (const old of ["#+begin_example\nx\n: y\n#+end_example", "#+BEGIN_SRC sh\nx\n#+END_SRC", ":RESULTS:\nx\n:END:", "| a | b |\n|---+---|\n| 1 | 2 |", "[[file:a.png]]"]) {
+    assert.equal(run(`${head}#+RESULTS:\n${old}\nafter`, 0, "n"), `${head}#+RESULTS:\n: n\nafter`, old);
+  }
+  assert.equal(run(`${head}#+RESULTS:\n| a |\npara | x`, 0, "n"), `${head}#+RESULTS:\n: n\npara | x`, "table stops at first non-table line");
+  const open = `${head}#+RESULTS:\n#+begin_example\nx\nafter`;
+  assert.equal(run(open, 0, "n"), `${head}#+RESULTS:\n: n\n#+begin_example\nx\nafter`, "unclosed block kept");
+  const drawer = `${head}#+RESULTS:\n:RESULTS:\nx`;
+  assert.equal(run(drawer, 0, "n"), `${head}#+RESULTS:\n: n\n:RESULTS:\nx`, "unclosed drawer kept");
+});
