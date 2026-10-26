@@ -1860,6 +1860,55 @@
     flash(`✓ ${line}`);
   }
 
+  /** The ledger's entries in a date range as CSV (#791). */
+  async function ledgerExport() {
+    const start = await datePick("Export ledger from");
+    if (start == null) return;
+    const end = await datePick("Export ledger to");
+    if (end == null) return;
+    const path = await ask("Save CSV as", join(cfg.export, "ledger.csv"));
+    if (path) flash(await call("ledger_csv", { start, end, path }));
+  }
+
+  /** A bank CSV's new rows proposed in the inbox as `* TODO Review ledger import` headings (#791), after a preview
+   *  whose column mapping can be changed. */
+  async function ledgerImport() {
+    const path = await ask("Bank CSV to import", "", "absolute path to a .csv file");
+    if (!path?.trim()) return;
+    let spec: string | null = null;
+    for (;;) {
+      const p = await call<{ spec: string; rows: [string, boolean][]; new: number; dupes: number; skipped: number }>("ledger_import_preview", { path, spec });
+      spec = p.spec;
+      const body = [`Columns: ${p.spec}`, "", ...p.rows.map(([l, d]) => `${l}${d ? "   (already there)" : ""}`), p.new + p.dupes > p.rows.length ? "…" : ""].join("\n");
+      const go = await pick({
+        prompt: `Import ${p.new} new entr${p.new === 1 ? "y" : "ies"} into the inbox? (${p.dupes} already there, ${p.skipped} rows without a date or amount)`, body,
+        items: [...(p.new ? [{ label: "Import for review", value: "go" }] : []), { label: "Change columns…", value: "edit", detail: p.spec }],
+      });
+      if (go === "go") break;
+      if (go !== "edit") return;
+      const next = await ask("Columns (1-based)", p.spec, "date=1 amount=3 text=2+4 [currency=5] delimiter=, ; | tab decimal=. ,");
+      if (next == null) return;
+      spec = next;
+    }
+    const inbox: string = await call("capture_path", { file: cfg.config.inbox });
+    let n = [0, 0];
+    await recorded(() => toFile(inbox, async (text) => { const [next, added, dupes] = await call<[string, number, number]>("ledger_import", { text, path, spec }); n = [added, dupes]; return next; }));
+    flash(`✓ ${n[0]} ledger entr${n[0] === 1 ? "y" : "ies"} to review in the inbox${n[1] ? ` (${n[1]} skipped as already there)` : ""}: Ledger: accept import entry at cursor files one`);
+  }
+
+  /** The ledger entry under the heading at the cursor (an imported proposal) filed into the ledger, the heading removed. */
+  async function ledgerAccept() {
+    const loc = editorLoc();
+    if (!loc) return flash("Open the inbox and put the cursor on a ledger import entry.");
+    const ledger: string = await call("capture_path", { file: cfg.config.ledger_file });
+    let rest = "", line = "";
+    await recorded(async () => {
+      await toFile(ledger, async (l) => { [rest, l, line] = await call<[string, string, string]>("ledger_accept", { text: await textOf(loc.path), line: loc.line, ledger: l }); return l; });
+      await toFile(loc.path, async () => rest);
+    });
+    flash(`✓ ${line}`);
+  }
+
   /** The ledger's month view; only once the ledger file exists. */
   async function openLedger() {
     const [path] = await call<[string | null]>("ledger_month", { month: "" }); // capture_path would create it
@@ -2603,6 +2652,9 @@
     { label: "AI drafts: choose model…", leader: "f a", run: aiChoose },
     { label: "Ledger: add an entry…", leader: "f l", run: ledgerAdd },
     { label: "Go to Ledger (month totals)", leader: "v l", run: openLedger },
+    { label: "Ledger: export entries as CSV…", leader: "e l", run: ledgerExport },
+    { label: "Ledger: import a bank CSV into the inbox for review…", run: ledgerImport },
+    { label: "Ledger: accept import entry at cursor", run: ledgerAccept },
     { label: "Save", keys: ["Ctrl+S"], leader: "f s", run: () => saveTab(tab, true) },
     { label: "Reload from disk (discard unsaved changes)", leader: "f r", run: reloadFromDisk },
     { label: "Save all", leader: "f S", run: saveAll },

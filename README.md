@@ -945,6 +945,20 @@ per currency, all time, from the entries whose `#tag` is the project's name (any
 tasks; a link to a deleted ID counts as unlinked). `Space n @` lists a person's ledger entries
 (their `@payee`) after the tasks and mentions; `Enter` opens the ledger at that line.
 
+**CSV export and bank import.** **Ledger: export entries as CSV…** (`Space e l`) writes a date
+range as `date,amount,currency,category,payee,link,text` (a bare file name lands in `export_dir`;
+never into the app's data or config folder). **Ledger: import a bank CSV into the inbox for
+review…** reads a bank's CSV export and shows a preview with its guessed columns, e.g.
+`date=1 amount=3 text=2 delimiter=; decimal=,` (1-based; `text=2+4` joins columns, `currency=5`
+reads a currency column, else the default currency; *Change columns…* to fix them). Quoted fields,
+a BOM, `;` or tab delimiters, comma decimals, `1 234,50`, `(12.50)` and `12.50-` (negative) and
+day-first dates (`25.10.2026`, `25/10/2026`) are understood; files that aren't UTF-8 are read as
+Latin-1. Nothing goes into the ledger yet: each new row becomes a `* TODO Review ledger import`
+heading in the inbox, and rows already in the ledger or waiting in the inbox (same date, amount and
+text) are skipped, so importing a file twice adds nothing. Fix the text if you like, then
+**Ledger: accept import entry at cursor** files the entry under its month and removes the heading
+(`Space n u` undoes both).
+
 ## Export
 
 `Space e` exports the open note (including unsaved edits) as HTML (`e h`),
