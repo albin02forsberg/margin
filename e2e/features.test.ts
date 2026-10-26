@@ -1990,3 +1990,33 @@ describe("Run code blocks (babel)", () => {
     await fileMatches(file(), (s) => s === doc, "undo didn't remove the results");
   });
 });
+
+describe("Tag rename and open task-search tabs", () => {
+  let d: Dirs;
+  before(async () => {
+    d = await launch({ files: ({ notes }) => writeFileSync(join(notes, "tasks.org"), "* TODO Buy milk :home:\n* NEXT Call the bank :work:money:\n") });
+    await find(".agenda h1", "Today");
+  });
+  after(close, { timeout: 30_000 });
+
+  it("renaming a tag rewrites open task-search tabs, and closes one that becomes a duplicate (#824)", async () => {
+    const rename = async (from: string, to: string) => {
+      await palette("rename or merge a tag");
+      await answer("Rename or merge a tag", from);
+      await answer(`Rename :${from}: to`, to);
+      await answer(`Rename :${from}: to :${to}:?`, "Rename");
+    };
+    const tabs = async () => (await texts(".tabs .tab")).filter((t) => t.includes("tag:"));
+    await palette("Search tasks");
+    await answer("Search tasks", "tag:money");
+    await find(".agenda h1", "tag:money");
+    await rename("money", "cash");
+    await find(".agenda h1", "tag:cash");
+    await browser.waitUntil(async () => (await texts(".agenda .row .title")).join("|") === "Call the bank", { timeoutMsg: "renamed tab doesn't list its task" });
+    await palette("Search tasks");
+    await answer("Search tasks", "tag:home");
+    await rename("cash", "home"); // tag:cash becomes tag:home, already open
+    await browser.waitUntil(async () => (await tabs()).length === 1, { timeoutMsg: "duplicate tab kept" });
+    await browser.waitUntil(async () => (await texts(".agenda .row .title")).sort().join("|") === "Buy milk|Call the bank", { timeoutMsg: "merged tab doesn't list both" });
+  });
+});
