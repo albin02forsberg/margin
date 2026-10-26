@@ -696,6 +696,13 @@ link relative to the note. `:query` uses the saved views' grammar (`[[views]]`, 
 list (default 20) and `:sort priority|date|title` orders it (default priority, like the views). The lines are plain list
 items: tick the task itself, not the line, and run `Space t u` again to refresh. No match writes `(no matches)`; a bad
 query or option leaves the block alone and says why.
+It also fills property tables (like org's column view): `#+BEGIN: columnview :query "tag:book" :cols "ITEM STATUS RATING" :sort -RATING`
+… `#+END:` gets an org table with one row per matching heading, task or not (so `* Dune :book:` with a `:RATING:` drawer
+counts). `ITEM` links to the heading (its `:ID:` if it has one); `TODO`, `TAGS`, `SCHEDULED`, `DEADLINE`, `EFFORT` and
+`CLOCKSUM` (time clocked on it) come from the heading, any other column is a property (case doesn't matter, a missing
+one is an empty cell). `:sort COL` (`-COL` descending) compares numbers and durations as numbers, else text, empty cells
+last; `:limit` caps the rows (default 50, at most 500); `:cols` defaults to `ITEM`. `|` in a value is written `\vert{}`.
+Archived headings are skipped. Emacs-only options (`:id`, `:hlines`, …) leave the block alone.
 `Space t a` ("I started earlier") and `Space t O` ("I stopped earlier", for when you forgot to stop) take minutes ago (`25`) or a time (`14:05`). A start can't move before the previous session's end.
 
 `Space t n` (or `n` in the Time view) logs a finished session after the fact: pick a day (Today, Yesterday, the last days by name, or type `fri`, `-2d`, `2026-10-12`; a weekday name means its most recent past occurrence), a start and end (`09:00`), a project and a note. It must not overlap logged time, reach into the future or cross midnight.

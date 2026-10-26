@@ -2136,6 +2136,92 @@ fn tasks_block(s: State<App>, path: PathBuf, args: String) -> R<String> {
     Ok(tasks_body(items, &files, path.parent().unwrap_or(&path), limit, &sort))
 }
 
+/// Options of a `#+BEGIN: columnview` header (#809): `:query "…"` (required, the saved views' grammar over all headings),
+/// `:cols "ITEM STATUS"` (default ITEM), `:sort COL` (`-COL` descending) and `:limit N` (default 50, at most 500).
+/// Anything else (Emacs' `:id`, `:hlines` …) is an error, so such blocks stay untouched.
+type ColOpts = (String, Vec<String>, Option<(String, bool)>, usize);
+fn columnview_opts(args: &str) -> R<ColOpts> {
+    let (mut query, mut cols, mut sort, mut limit) = (None, vec!["ITEM".to_string()], None, 50);
+    for (key, val) in block_opts("columnview", args)? {
+        match key.as_str() {
+            ":query" => query = Some(val),
+            ":cols" => cols = val.split_whitespace().map(String::from).collect(),
+            ":sort" => {
+                let (c, desc) = val.strip_prefix('-').map_or((val.as_str(), false), |c| (c, true));
+                if c.is_empty() { return Err("columnview: :sort needs a column".into()) }
+                sort = Some((c.to_string(), desc));
+            }
+            ":limit" => limit = val.parse().ok().filter(|n| (1..=500).contains(n)).ok_or_else(|| format!("columnview: :limit takes a number up to 500, not {val}"))?,
+            o => return Err(format!("columnview: unsupported option {o}")),
+        }
+    }
+    if cols.is_empty() { return Err("columnview: :cols needs at least one column".into()) }
+    Ok((query.filter(|q| !q.trim().is_empty()).ok_or("columnview: needs :query \"…\"")?, cols, sort, limit))
+}
+
+/// Body of a columnview block in the note in folder DIR: an aligned org table with a COLS header and one row per heading
+/// of FILES for which KEEP holds (any heading, keyword or not; archived ones skipped), sorted by SORT (numbers and
+/// durations as numbers before text, text ignoring case, empty cells last), the first LIMIT. ITEM links to the heading;
+/// TODO, TAGS, SCHEDULED, DEADLINE, EFFORT and CLOCKSUM (from SPENT) come from it, any other column is its property.
+fn columnview_body(files: &[Arc<org::OrgFile>], keep: impl Fn(&org::OrgFile, &org::Headline) -> bool, cols: &[String], sort: Option<&(String, bool)>, limit: usize, dir: &Path, spent: &dyn Fn(&str, &str) -> Option<u32>) -> String {
+    let hm = |m: u32| format!("{}:{:02}", m / 60, m % 60);
+    let esc = |s: &str| s.replace(['\n', '\r'], " ").replace('|', "\\vert{}");
+    let mut rows: Vec<(Vec<String>, String)> = vec![];
+    for f in files {
+        let lines = std::cell::OnceCell::new();
+        for h in f.headlines.iter().filter(|h| !h.archived() && keep(f, h)) {
+            let cell = |c: &str| esc(&match c.to_uppercase().as_str() {
+                "ITEM" => {
+                    let t = notes::heading_bare(&h.title);
+                    match &h.id {
+                        _ if t.is_empty() || t.contains(['[', ']', '|']) => t,
+                        Some(id) => format!("[[id:{id}][{t}]]"),
+                        None => format!("[[file:{}::*{t}][{t}]]", notes::rel_path(dir, &f.path)),
+                    }
+                }
+                "TODO" => h.keyword.clone().unwrap_or_default(),
+                "TAGS" if h.tags.is_empty() => String::new(),
+                "TAGS" => format!(":{}:", h.tags.join(":")),
+                "SCHEDULED" => h.scheduled.as_ref().map(|t| t.date.to_string()).unwrap_or_default(),
+                "DEADLINE" => h.deadline.as_ref().map(|t| t.date.to_string()).unwrap_or_default(),
+                "EFFORT" => h.effort.map(hm).unwrap_or_default(),
+                "CLOCKSUM" => spent(&h.category, &h.title).map(hm).unwrap_or_default(),
+                _ => org::heading_prop(lines.get_or_init(|| f.text.lines().map(String::from).collect::<Vec<_>>()), h.line, c).unwrap_or_default(),
+            });
+            rows.push((cols.iter().map(|c| cell(c)).collect(), sort.map(|(c, _)| if c.eq_ignore_ascii_case("ITEM") { notes::heading_bare(&h.title) } else { cell(c) }).unwrap_or_default()));
+        }
+    }
+    if let Some((_, desc)) = sort {
+        let num = |s: &str| s.parse::<f64>().ok().filter(|x| x.is_finite()).or_else(|| org::parse_effort(s).map(f64::from));
+        rows.sort_by(|(_, a), (_, b)| match (a.is_empty(), b.is_empty()) {
+            (false, false) => {
+                let o = match (num(a), num(b)) {
+                    (Some(x), Some(y)) => x.total_cmp(&y),
+                    (x, y) => y.is_some().cmp(&x.is_some()).then_with(|| a.to_lowercase().cmp(&b.to_lowercase())),
+                };
+                if *desc { o.reverse() } else { o }
+            }
+            (x, y) => x.cmp(&y),
+        });
+    }
+    let table: Vec<Vec<String>> = std::iter::once(cols.iter().map(|c| esc(c)).collect()).chain(rows.into_iter().take(limit).map(|r| r.0)).collect();
+    let w: Vec<usize> = (0..cols.len()).map(|i| table.iter().map(|r| r[i].chars().count()).max().unwrap_or(0)).collect();
+    let row = |r: &[String]| format!("| {} |\n", r.iter().zip(&w).map(|(c, w)| format!("{c:<w$}")).collect::<Vec<_>>().join(" | "));
+    let rule = format!("|{}|\n", w.iter().map(|w| "-".repeat(w + 2)).collect::<Vec<_>>().join("+"));
+    row(&table[0]) + &rule + &table[1..].iter().map(|r| row(r)).collect::<String>()
+}
+
+/// Body of the columnview block with header options ARGS in note PATH (#809).
+#[tauri::command(async)]
+fn columnview_block(s: State<App>, path: PathBuf, args: String) -> R<String> {
+    s.check(&path)?;
+    let (query, cols, sort, limit) = columnview_opts(&args)?;
+    let (files, kw, f) = (s.files(), s.kw(), spent_lookup(&s));
+    let (g, bl) = (f.clone(), org::blocked(&files, &kw));
+    let (keep, _) = org::query(&query, today(), &kw, move |h| g(&h.category, &h.title), move |o, h| bl.contains_key(&(o.path.clone(), h.line)))?;
+    Ok(columnview_body(&files, keep, &cols, sort.as_ref(), limit, path.parent().unwrap_or(&path), &*f))
+}
+
 /// Body of a clocktable block with header options ARGS (#693).
 #[tauri::command]
 fn tc_clocktable(s: State<App>, args: String) -> R<String> {
@@ -2404,7 +2490,7 @@ pub fn run() {
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_rhythm, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_rhythm, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, babel::babel_run
         ])
         .build(tauri::generate_context!())
@@ -2517,6 +2603,48 @@ mod tests {
         assert_eq!(tasks_body(items("tag:work"), &files, dir, 1, "date"), "- TODO [[file:../inbox.org::*Call Bo][Call Bo]] (SCHEDULED 2026-10-25)\n");
         assert_eq!(tasks_body(items("odd"), &files, Path::new("/n/projects"), 20, "title"), "- TODO Odd [x] title\n"); // brackets: no link
         assert_eq!(tasks_body(items("tag:nope"), &files, dir, 20, "priority"), "(no matches)\n");
+    }
+
+    #[test]
+    fn columnview_options() {
+        let o = |q: &str, c: &[&str], s: Option<(&str, bool)>, l| Ok((q.to_string(), c.iter().map(|c| c.to_string()).collect(), s.map(|(c, d)| (c.to_string(), d)), l));
+        assert_eq!(columnview_opts(":query tag:book"), o("tag:book", &["ITEM"], None, 50));
+        assert_eq!(columnview_opts(":query \"tag:book\" :cols \"ITEM STATUS  RATING\" :sort -RATING :limit 5"), o("tag:book", &["ITEM", "STATUS", "RATING"], Some(("RATING", true)), 5));
+        assert_eq!(columnview_opts(":sort ITEM :query x"), o("x", &["ITEM"], Some(("ITEM", false)), 50));
+        for bad in [":cols ITEM", ":query \"\"", ":query x :cols \"\"", ":query x :limit 0", ":query x :limit 501", ":query x :sort -", ":query x :id local", ":query"] {
+            assert!(columnview_opts(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn columnview_table() {
+        let k = kw();
+        let file = |p: &str, t: &str| Arc::new(org::parse(Path::new(p), t, &k));
+        let files = vec![
+            file("/n/books.org", "* Books\n** Dune :book:\n:PROPERTIES:\n:STATUS: read\n:RATING: 5\n:ID: b-1\n:END:\n** Emma :book:\n:PROPERTIES:\n:status: reading\n:RATING: 10\n:END:\n\
+                                  ** TODO A|B :book:\nDEADLINE: <2026-10-30 Fri>\n:PROPERTIES:\n:EFFORT: 1:30\n:END:\n** Old :book:ARCHIVE:\n"),
+            file("/n/misc.org", "* Zed :book:\n* Other\n"),
+        ];
+        let body = |q: &str, cols: &[&str], sort: Option<(&str, bool)>, limit| {
+            let (keep, _) = org::query(q, NaiveDate::from_ymd_opt(2026, 10, 24).unwrap(), &k, |_| None, |_, _| false).unwrap();
+            let cols: Vec<String> = cols.iter().map(|c| c.to_string()).collect();
+            let spent = |_: &str, t: &str| (t == "Dune").then_some(75);
+            columnview_body(&files, keep, &cols, sort.map(|(c, d)| (c.to_string(), d)).as_ref(), limit, Path::new("/n/daily"), &spent)
+        };
+        // Keyword-less tagged headings with properties match (not just tasks); property names ignore case.
+        assert_eq!(
+            body("tag:book", &["ITEM", "status", "RATING", "TODO", "TAGS", "DEADLINE", "EFFORT", "CLOCKSUM"], None, 50),
+            "| ITEM                               | status  | RATING | TODO | TAGS   | DEADLINE   | EFFORT | CLOCKSUM |\n\
+             |------------------------------------+---------+--------+------+--------+------------+--------+----------|\n\
+             | [[id:b-1][Dune]]                   | read    | 5      |      | :book: |            |        | 1:15     |\n\
+             | [[file:../books.org::*Emma][Emma]] | reading | 10     |      | :book: |            |        |          |\n\
+             | A\\vert{}B                          |         |        | TODO | :book: | 2026-10-30 | 1:30   |          |\n\
+             | [[file:../misc.org::*Zed][Zed]]    |         |        |      | :book: |            |        |          |\n"
+        );
+        // Numeric sort (10 after 5), descending, empty cells last; then the limit.
+        assert_eq!(body("tag:book", &["ITEM", "RATING"], Some(("RATING", true)), 3).lines().skip(2).map(|l| l.split('|').nth(2).unwrap().trim().to_string()).collect::<Vec<_>>(), ["10", "5", ""]);
+        assert_eq!(body("tag:book", &["ITEM"], Some(("ITEM", false)), 50).lines().skip(2).map(|l| l.split('|').nth(1).unwrap().trim().to_string()).collect::<Vec<_>>(), ["A\\vert{}B", "[[id:b-1][Dune]]", "[[file:../books.org::*Emma][Emma]]", "[[file:../misc.org::*Zed][Zed]]"]);
+        assert_eq!(body("tag:nope", &["ITEM"], None, 50), "| ITEM |\n|------|\n");
     }
 
     #[test]

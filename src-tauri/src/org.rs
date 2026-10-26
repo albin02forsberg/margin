@@ -1192,6 +1192,11 @@ fn get_prop(lines: &[String], line: usize, key: &str) -> Option<String> {
     lines[i + 1..drawer_end(lines, i)?].iter().find_map(|l| PROP.captures(l).filter(|c| c[1].eq_ignore_ascii_case(key)).map(|c| c[2].to_string()))
 }
 
+/// get_prop for callers outside this module; LINES is the file's text split once (`text.lines()`).
+pub fn heading_prop(lines: &[String], line: usize, key: &str) -> Option<String> {
+    get_prop(lines, line, key)
+}
+
 /// Append `[[id:ID][TITLE]]` to the `:BLOCKER:` of the heading at LINE (org-depend);
 /// unchanged when ID is already listed, an error when it is the heading's own `:ID:`.
 const NO_HEADING: &str = "Put the cursor on a task heading first.";
