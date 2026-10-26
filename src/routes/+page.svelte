@@ -1957,13 +1957,13 @@
     if (it) await openFile((it as AgendaItem).path, (it as AgendaItem).line);
   }
 
-  /** Regenerate every `#+BEGIN: clocktable` (#693) and `#+BEGIN: tasks` (#756) block of the open note in one edit
+  /** Regenerate every `#+BEGIN: clocktable` (#693), `#+BEGIN: tasks` (#756) and `#+BEGIN: columnview` (#809) block of the open note in one edit
    *  (one undo step, saved like typing); a block with options Margin doesn't know is left alone and named in the message. */
   async function updateClockTables() {
     if (!inFile()) return flash("Open a note first.");
     const v = view, doc = v.state.doc.toString(), blocks = clockBlocks(doc), path = tab.path!;
-    if (!blocks.length) return flash("No #+BEGIN: clocktable or tasks … #+END: block in this note.");
-    const res = await Promise.allSettled(blocks.map((b) => b.name === "tasks" ? call<string>("tasks_block", { path, args: b.args }) : call<string>("tc_clocktable", { args: b.args })));
+    if (!blocks.length) return flash("No #+BEGIN: clocktable, tasks or columnview … #+END: block in this note.");
+    const res = await Promise.allSettled(blocks.map((b) => b.name === "clocktable" ? call<string>("tc_clocktable", { args: b.args }) : call<string>(`${b.name}_block`, { path, args: b.args })));
     if (v.state.doc.toString() !== doc) return flash("⚠ The note changed meanwhile; run it again.");
     const changes = blocks.flatMap((b, i) => { const r = res[i]; return r.status === "fulfilled" && doc.slice(b.from, b.to) !== r.value ? [{ from: b.from, to: b.to, insert: r.value }] : []; });
     if (changes.length) v.dispatch({ changes });

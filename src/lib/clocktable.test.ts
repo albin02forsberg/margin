@@ -23,10 +23,16 @@ test("clockBlocks names tasks blocks next to clocktables", () => {
   assert.equal(text.slice(bs[0].from, bs[0].to), "- old\n");
 });
 
+test("clockBlocks names columnview blocks", () => {
+  const text = '#+BEGIN: columnview :query "tag:book" :cols "ITEM RATING"\n| old |\n#+END:\n';
+  const [b] = clockBlocks(text);
+  assert.deepEqual([b.name, b.args, text.slice(b.from, b.to)], ["columnview", ':query "tag:book" :cols "ITEM RATING"', "| old |\n"]);
+});
+
 test("clockBlocks skips unterminated blocks and other dynamic blocks", () => {
   assert.deepEqual(clockBlocks("#+BEGIN: clocktable :block today\nno end\n"), []);
   assert.deepEqual(clockBlocks("#+BEGIN: clocktable :block today"), []);
-  assert.deepEqual(clockBlocks("#+BEGIN: columnview\n#+END:\n#+BEGIN: clocktablex\n#+END:\n#+BEGIN: tasksx\n#+END:\n"), []);
+  assert.deepEqual(clockBlocks("#+BEGIN: columnviews\n#+END:\n#+BEGIN: clocktablex\n#+END:\n#+BEGIN: tasksx\n#+END:\n"), []);
   const text = "#+BEGIN: clocktable :block today\nlost\n#+BEGIN: clocktable :block thisweek\n#+END:\n";
   assert.deepEqual(clockBlocks(text).map((b) => b.args), [":block thisweek"]);
 });
