@@ -598,14 +598,17 @@ fn trash_to(root: &Path, f: &Path) -> R<PathBuf> {
 }
 
 /// Where the trashed note TRASHED (under `ROOT/.trash`) goes back to: its subpath under ROOT, minus the
-/// `.N` that `trash_to` appended on a name clash.
+/// `.N` that `trash_to` appended on a name clash, and minus a tag rename's `tag-rename-*` folder (#816).
 fn restore_target(root: &Path, trashed: &Path) -> R<PathBuf> {
     let bad = || format!("{} isn't a note in {}", trashed.display(), root.join(".trash").display());
-    let rel = trashed
+    let mut rel = trashed
         .strip_prefix(root.join(".trash"))
         .ok()
         .filter(|r| r.components().all(|c| matches!(c, Component::Normal(_))))
         .ok_or_else(bad)?;
+    if rel.components().count() > 1 && rel.iter().next().and_then(|c| c.to_str()).is_some_and(|c| c.starts_with("tag-rename-")) {
+        rel = rel.strip_prefix(rel.iter().next().unwrap()).unwrap();
+    }
     let name = rel.file_name().and_then(|n| n.to_str()).ok_or_else(bad)?;
     let base = match name.rsplit_once('.') {
         Some((b, n)) if !n.is_empty() && n.bytes().all(|c| c.is_ascii_digit()) && b.ends_with(".org") => b,
@@ -1427,13 +1430,43 @@ struct TagRename {
     skipped: Vec<PathBuf>,
     errors: Vec<String>,
     copies: Option<PathBuf>,
+    /// The notes written, as (path under the notes dir, sha256 of the new text): the undo manifest's files.
+    #[serde(skip)]
+    written: Vec<(PathBuf, String)>,
+}
+
+/// `manifest.json` in a tag rename's copies folder (#816): what `tag_rename_undo` needs to put the notes back.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct RenameManifest {
+    old: String,
+    new: String,
+    files: Vec<(PathBuf, String)>,
+}
+
+fn sha256(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(text))
+}
+
+/// Create a new folder BASE, or BASE-2, BASE-3… if taken (`create_dir` fails on an existing one, so two
+/// renames in one second get their own). Returns the folder made.
+fn unique_dir(base: &Path) -> std::io::Result<PathBuf> {
+    std::fs::create_dir_all(base.parent().unwrap_or(base))?;
+    for i in 1.. {
+        let d = if i == 1 { base.to_path_buf() } else { PathBuf::from(format!("{}-{i}", base.display())) };
+        match std::fs::create_dir(&d) {
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            r => return r.map(|_| d),
+        }
+    }
+    unreachable!()
 }
 
 /// Rename tag OLD (any case) to NEW in every note's heading tags (tasks too) and `#+FILETAGS`, and in saved
 /// views' `tag:` terms (#785); an existing NEW merges. Only counts unless APPLY; the count uses the same
 /// rewrite, so it matches what is written. Notes (or config.toml) in SKIP, open with unsaved edits, are left alone and listed.
 /// APPLY backs up, writes the views first (a config error stops before any note), then copies each note it
-/// changes to `<notes>/.trash/tag-rename-<time>/` before writing it.
+/// changes to a new `<notes>/.trash/tag-rename-<time>/` before writing it, with a `manifest.json` for the undo.
 #[tauri::command(async)]
 fn tag_rename(app: AppHandle, s: State<App>, old: String, new: String, skip: Vec<PathBuf>, apply: bool) -> R<TagRename> {
     let (old, new) = (old.trim().trim_matches(':'), new.trim().trim_matches(':'));
@@ -1456,11 +1489,30 @@ fn tag_rename(app: AppHandle, s: State<App>, old: String, new: String, skip: Vec
             reload_config(app, s.clone())?;
         }
     }
-    let copies = notes_dir.join(".trash").join(chrono::Local::now().format("tag-rename-%Y%m%d-%H%M%S").to_string());
     // Only the apply writes, so only it holds the lock that autosaves wait on (#821).
     let _lock = apply.then(note_writes);
-    retag_files(&s.files(), &notes_dir, old, new, &skip, apply.then_some(copies.as_path()), &mut r);
+    let copies = match apply {
+        true => Some(unique_dir(&notes_dir.join(".trash").join(chrono::Local::now().format("tag-rename-%Y%m%d-%H%M%S").to_string())).map_err(|e| e.to_string())?),
+        false => None,
+    };
+    retag_files(&s.files(), &notes_dir, old, new, &skip, copies.as_deref(), &mut r);
+    if let Some(copies) = copies {
+        write_manifest(&copies, old, new, &mut r);
+    }
     Ok(r)
+}
+
+/// After the apply: COPIES gets the undo manifest of what R wrote, or is removed if no note was written.
+fn write_manifest(copies: &Path, old: &str, new: &str, r: &mut TagRename) {
+    if r.written.is_empty() {
+        let _ = std::fs::remove_dir_all(copies);
+        return;
+    }
+    let m = RenameManifest { old: old.into(), new: new.into(), files: std::mem::take(&mut r.written) };
+    let res = serde_json::to_string_pretty(&m).map_err(std::io::Error::other).and_then(|j| std::fs::write(copies.join("manifest.json"), j));
+    if let Err(e) = res {
+        r.errors.push(format!("undo record: {e}"));
+    }
 }
 
 /// tag_rename's per-note pass over FILES: counts, and with COPIES (the apply) copies each changed note there
@@ -1478,17 +1530,121 @@ fn retag_files(files: &[Arc<org::OrgFile>], notes_dir: &Path, old: &str, new: &s
             continue;
         }
         if let Some(copies) = copies {
-            let res = f.path.strip_prefix(notes_dir).map(|p| copies.join(p)).map_err(std::io::Error::other)
-                .and_then(|dst| std::fs::create_dir_all(dst.parent().unwrap_or(copies)).and_then(|_| std::fs::copy(&f.path, &dst)))
-                .and_then(|_| config::write_atomic(&f.path, out));
-            if let Err(e) = res {
-                r.errors.push(format!("{}: {e}", f.path.display()));
-                continue;
+            let hash = sha256(&out);
+            let res = f.path.strip_prefix(notes_dir).map_err(std::io::Error::other).and_then(|rel| {
+                let dst = copies.join(rel);
+                std::fs::create_dir_all(dst.parent().unwrap_or(copies))?;
+                std::fs::copy(&f.path, &dst)?;
+                config::write_atomic(&f.path, out).map(|_| rel.to_path_buf())
+            });
+            match res {
+                Ok(rel) => r.written.push((rel, hash)),
+                Err(e) => {
+                    r.errors.push(format!("{}: {e}", f.path.display()));
+                    continue;
+                }
             }
             r.copies = Some(copies.to_path_buf());
         }
         (r.places, r.notes) = (r.places + places, r.notes + 1);
     }
+}
+
+/// A tag rename that can be undone: its copies FOLDER, OLD and NEW tag, how many NOTES, and when (unix seconds).
+#[derive(serde::Serialize)]
+struct RenameUndo {
+    folder: PathBuf,
+    old: String,
+    new: String,
+    notes: usize,
+    secs: u64,
+}
+
+/// The tag renames in `ROOT/.trash` with a manifest not yet undone, newest first.
+fn rename_undos(root: &Path) -> Vec<RenameUndo> {
+    let mut v: Vec<RenameUndo> = std::fs::read_dir(root.join(".trash")).into_iter().flatten().flatten()
+        .filter(|e| e.file_name().to_str().is_some_and(|n| n.starts_with("tag-rename-")))
+        .filter_map(|e| {
+            let p = e.path().join("manifest.json");
+            let m: RenameManifest = serde_json::from_str(&std::fs::read_to_string(&p).ok()?).ok()?;
+            let secs = std::fs::metadata(&p).and_then(|m| m.modified()).ok()?.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+            Some(RenameUndo { folder: e.path(), old: m.old, new: m.new, notes: m.files.len(), secs })
+        })
+        .collect();
+    v.sort_by(|a, b| b.secs.cmp(&a.secs).then_with(|| b.folder.cmp(&a.folder)));
+    v
+}
+
+/// What undoing a tag rename did: notes RESTORED, CONFLICTS (edited since, gone, or open with unsaved edits:
+/// left alone), ERRORS, and the folder (UNDO) that got the renamed versions it replaced.
+#[derive(serde::Serialize, Default)]
+struct RenameUndone {
+    restored: Vec<PathBuf>,
+    conflicts: Vec<PathBuf>,
+    errors: Vec<String>,
+    undo: Option<PathBuf>,
+}
+
+/// Put back the notes the tag rename in FOLDER (`ROOT/.trash/tag-rename-*`) changed, if each is still exactly
+/// what it wrote (manifest hash); each is first copied to a new `ROOT/.trash/tag-rename-undo-<time>/`.
+/// Then marks the manifest undone (`manifest.undone.json`), unless an error left something to retry.
+fn undo_retag(root: &Path, folder: &Path, skip: &[PathBuf]) -> R<RenameUndone> {
+    let name = folder.strip_prefix(root.join(".trash")).ok().filter(|r| r.components().count() == 1).and_then(|r| r.to_str());
+    if !name.is_some_and(|n| n.starts_with("tag-rename-") && !n.starts_with("tag-rename-undo-")) {
+        return Err(format!("{} isn't a tag rename in .trash", folder.display()));
+    }
+    let manifest = folder.join("manifest.json");
+    let text = std::fs::read_to_string(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
+    let m: RenameManifest = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", manifest.display()))?;
+    let mut r = RenameUndone::default();
+    for (rel, hash) in m.files {
+        let note = root.join(&rel);
+        if !rel.components().all(|c| matches!(c, Component::Normal(_))) {
+            r.errors.push(format!("{}: not a note path", rel.display()));
+            continue;
+        }
+        if skip.contains(&note) || std::fs::read_to_string(&note).map_or(true, |t| sha256(&t) != hash) {
+            r.conflicts.push(note);
+            continue;
+        }
+        let res = (|| -> std::io::Result<()> {
+            let original = std::fs::read_to_string(folder.join(&rel))?;
+            let undo = match &r.undo {
+                Some(d) => d.clone(),
+                None => {
+                    let base = root.join(".trash").join(chrono::Local::now().format("tag-rename-undo-%Y%m%d-%H%M%S").to_string());
+                    r.undo.insert(unique_dir(&base)?).clone()
+                }
+            };
+            let dst = undo.join(&rel);
+            std::fs::create_dir_all(dst.parent().unwrap_or(&undo))?;
+            std::fs::copy(&note, &dst)?;
+            config::write_atomic(&note, original)
+        })();
+        match res {
+            Ok(()) => r.restored.push(note),
+            Err(e) => r.errors.push(format!("{}: {e}", note.display())),
+        }
+    }
+    if r.errors.is_empty() {
+        std::fs::rename(&manifest, folder.join("manifest.undone.json")).map_err(|e| e.to_string())?;
+    }
+    Ok(r)
+}
+
+/// The tag renames that can be undone, newest first (#816).
+#[tauri::command(async)]
+fn tag_renames(s: State<App>) -> Vec<RenameUndo> {
+    rename_undos(&s.cfg().notes())
+}
+
+/// Undo the tag rename whose copies are in FOLDER (after a backup); notes in SKIP (unsaved edits) are left alone.
+#[tauri::command(async)]
+fn tag_rename_undo(s: State<App>, folder: PathBuf, skip: Vec<PathBuf>) -> R<RenameUndone> {
+    s.check(&folder)?;
+    s.backup();
+    let _lock = note_writes();
+    undo_retag(&s.cfg().notes(), &folder, &skip)
 }
 
 /// Open top-level inbox entries: level-1 headlines that aren't done or archived (plain notes count).
@@ -2631,7 +2787,7 @@ pub fn run() {
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
-            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
+            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, tag_rename_undo, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, babel::babel_run
@@ -3044,6 +3200,10 @@ mod tests {
         assert_eq!(restore_target(&root, &t("sub/a.org")).unwrap(), root.join("sub/a.org"));
         assert_eq!(restore_target(&root, &t("sub/a.org.12")).unwrap(), root.join("sub/a.org"));
         assert_eq!(restore_target(&root, &t("v1.2.org")).unwrap(), root.join("v1.2.org"));
+        // A tag rename's copy goes back in place (and is refused while the note exists), not to a stray folder.
+        assert_eq!(restore_target(&root, &t("tag-rename-20260101-120000/sub/a.org")).unwrap(), root.join("sub/a.org"));
+        assert_eq!(restore_target(&root, &t("tag-rename-undo-20260101-120000-2/a.org")).unwrap(), root.join("a.org"));
+        assert_eq!(restore_target(&root, &t("tag-rename-x.org")).unwrap(), root.join("tag-rename-x.org"));
         for bad in [root.join("sub/a.org"), t("../a.org"), t("a.txt"), t("a.org.x"), root.join(".trash")] {
             assert!(restore_target(&root, &bad).is_err(), "{}", bad.display());
         }
@@ -3091,6 +3251,50 @@ mod tests {
         assert_eq!(std::fs::read_to_string(copies.join("sub/a.org")).unwrap(), "* A :Work:\n");
         assert_eq!(std::fs::read_to_string(root.join("b.org")).unwrap(), "* B :work:\n");
         assert!(!copies.join("b.org").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn tag_rename_undo_restores_unchanged_notes_only() {
+        let root = std::env::temp_dir().join(format!("margin-retag-undo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        // Two renames in one second get their own folders.
+        let base = root.join(".trash/tag-rename-20260101-120000");
+        let (d1, d2) = (unique_dir(&base).unwrap(), unique_dir(&base).unwrap());
+        assert_eq!((d1.as_path(), d2.clone()), (base.as_path(), root.join(".trash/tag-rename-20260101-120000-2")));
+        std::fs::remove_dir(&d1).unwrap();
+        let kw = org::Kw { todo: vec![], done: vec![] };
+        let note = |rel: &str, text: &str| {
+            let p = root.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, text).unwrap();
+            Arc::new(org::parse(&p, text, &kw))
+        };
+        let files = [note("sub/a.org", "* A :work:\n"), note("b.org", "* B :work:\n"), note("c.org", "* C :work:\n"), note("d.org", "* D\n")];
+        let mut r = TagRename::default();
+        retag_files(&files, &root, "work", "job", &[], Some(&d1), &mut r);
+        write_manifest(&d1, "work", "job", &mut r);
+        assert!(r.errors.is_empty());
+        let undos = rename_undos(&root);
+        assert_eq!(undos.len(), 1);
+        assert_eq!((undos[0].folder.as_path(), undos[0].old.as_str(), undos[0].new.as_str(), undos[0].notes), (d1.as_path(), "work", "job", 3));
+        // An apply that wrote nothing leaves no folder behind.
+        write_manifest(&d2, "x", "y", &mut TagRename::default());
+        assert!(!d2.exists());
+        // b.org was edited since, c.org has unsaved edits: both are left alone.
+        std::fs::write(root.join("b.org"), "* B :job:\nmore\n").unwrap();
+        assert!(undo_retag(&root, &root.join(".trash/elsewhere"), &[]).is_err());
+        let u = undo_retag(&root, &d1, &[root.join("c.org")]).unwrap();
+        assert_eq!((u.restored, u.errors.len()), (vec![root.join("sub/a.org")], 0));
+        assert_eq!(u.conflicts, vec![root.join("b.org"), root.join("c.org")]);
+        let read = |p: &Path| std::fs::read_to_string(p).unwrap();
+        assert_eq!(read(&root.join("sub/a.org")), "* A :work:\n");
+        assert_eq!(read(&u.undo.unwrap().join("sub/a.org")), "* A :job:\n"); // the undo is itself undoable
+        assert_eq!(read(&root.join("b.org")), "* B :job:\nmore\n");
+        assert_eq!(read(&root.join("c.org")), "* C :job:\n");
+        // Done: no longer listed, and a second undo finds nothing.
+        assert!(d1.join("manifest.undone.json").exists() && rename_undos(&root).is_empty());
+        assert!(undo_retag(&root, &d1, &[]).is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 
