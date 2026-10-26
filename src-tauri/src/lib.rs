@@ -1457,8 +1457,17 @@ fn tag_rename(app: AppHandle, s: State<App>, old: String, new: String, skip: Vec
         }
     }
     let copies = notes_dir.join(".trash").join(chrono::Local::now().format("tag-rename-%Y%m%d-%H%M%S").to_string());
-    let _lock = note_writes();
-    for f in s.files() {
+    // Only the apply writes, so only it holds the lock that autosaves wait on (#821).
+    let _lock = apply.then(note_writes);
+    retag_files(&s.files(), &notes_dir, old, new, &skip, apply.then_some(copies.as_path()), &mut r);
+    Ok(r)
+}
+
+/// tag_rename's per-note pass over FILES: counts, and with COPIES (the apply) copies each changed note there
+/// and writes it. A note whose cached text lacks OLD (any case) isn't read from disk; the rest are re-read.
+fn retag_files(files: &[Arc<org::OrgFile>], notes_dir: &Path, old: &str, new: &str, skip: &[PathBuf], copies: Option<&Path>, r: &mut TagRename) {
+    let old_lc = old.to_lowercase();
+    for f in files.iter().filter(|f| f.text.to_lowercase().contains(&old_lc)) {
         let Ok(text) = std::fs::read_to_string(&f.path) else { continue };
         let (out, places) = notes::retag(&text, old, new);
         if places == 0 {
@@ -1468,19 +1477,18 @@ fn tag_rename(app: AppHandle, s: State<App>, old: String, new: String, skip: Vec
             r.skipped.push(f.path.clone());
             continue;
         }
-        if apply {
-            let res = f.path.strip_prefix(&notes_dir).map(|p| copies.join(p)).map_err(std::io::Error::other)
-                .and_then(|dst| std::fs::create_dir_all(dst.parent().unwrap_or(&copies)).and_then(|_| std::fs::copy(&f.path, &dst)))
+        if let Some(copies) = copies {
+            let res = f.path.strip_prefix(notes_dir).map(|p| copies.join(p)).map_err(std::io::Error::other)
+                .and_then(|dst| std::fs::create_dir_all(dst.parent().unwrap_or(copies)).and_then(|_| std::fs::copy(&f.path, &dst)))
                 .and_then(|_| config::write_atomic(&f.path, out));
             if let Err(e) = res {
                 r.errors.push(format!("{}: {e}", f.path.display()));
                 continue;
             }
-            r.copies = Some(copies.clone());
+            r.copies = Some(copies.to_path_buf());
         }
         (r.places, r.notes) = (r.places + places, r.notes + 1);
     }
-    Ok(r)
 }
 
 /// Open top-level inbox entries: level-1 headlines that aren't done or archived (plain notes count).
@@ -3055,6 +3063,34 @@ mod tests {
         std::fs::remove_file(root.join("sub/a.org")).unwrap();
         assert_eq!(restore_to(&root, &one).unwrap(), root.join("sub/a.org"));
         assert!(restore_to(&root, &one).is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn retag_files_skips_notes_without_the_tag() {
+        let root = std::env::temp_dir().join(format!("margin-retag-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        let kw = org::Kw { todo: vec![], done: vec![] };
+        // CACHED is what the index holds; DISK what's on disk (the plain note gained the tag after indexing).
+        let note = |rel: &str, cached: &str, disk: &str| {
+            let p = root.join(rel);
+            std::fs::write(&p, disk).unwrap();
+            Arc::new(org::parse(&p, cached, &kw))
+        };
+        let files = [note("sub/a.org", "* A :Work:\n", "* A :Work:\n"), note("b.org", "* B\n", "* B :work:\n")];
+        let mut r = TagRename::default();
+        retag_files(&files, &root, "work", "job", &[], None, &mut r);
+        assert_eq!((r.places, r.notes, r.copies), (1, 1, None));
+        assert_eq!(std::fs::read_to_string(root.join("sub/a.org")).unwrap(), "* A :Work:\n");
+        let copies = root.join(".trash/tag-rename-x");
+        let mut r = TagRename::default();
+        retag_files(&files, &root, "work", "job", &[], Some(&copies), &mut r);
+        assert_eq!((r.places, r.notes, r.copies.as_deref()), (1, 1, Some(copies.as_path())));
+        assert_eq!(std::fs::read_to_string(root.join("sub/a.org")).unwrap(), "* A :job:\n");
+        assert_eq!(std::fs::read_to_string(copies.join("sub/a.org")).unwrap(), "* A :Work:\n");
+        assert_eq!(std::fs::read_to_string(root.join("b.org")).unwrap(), "* B :work:\n");
+        assert!(!copies.join("b.org").exists());
         let _ = std::fs::remove_dir_all(&root);
     }
 
