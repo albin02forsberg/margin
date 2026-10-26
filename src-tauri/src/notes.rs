@@ -972,7 +972,7 @@ pub fn transclude(files: &[Arc<OrgFile>], from: &Path, link: &str, props: &str, 
 }
 
 /// TEXT (the buffer of note FROM) with each `#+TRANSCLUDE:` line replaced by what it shows, for export (#796); a failed one
-/// becomes `[transclusion: why]`. Lines inside `#+begin_…` blocks and all other lines stay as they are.
+/// becomes `[transclusion: why]`. No TRANSCLUDE_MAX cut (a printed export shows everything). Lines inside `#+begin_…` blocks and all other lines stay as they are.
 pub fn expand_transclusions(files: &[Arc<OrgFile>], from: &Path, text: &str, allow: &dyn Fn(&Path) -> Result<(), String>) -> String {
     let mut inside = false;
     let mut out: Vec<String> = vec![];
@@ -982,7 +982,7 @@ pub fn expand_transclusions(files: &[Arc<OrgFile>], from: &Path, text: &str, all
             inside = t.starts_with("#+begin_");
         }
         match TRANSCLUDE.captures(l).filter(|_| !inside) {
-            Some(c) => match transclude(files, from, &c[1], &c[2], allow) {
+            Some(c) => match transclude_in(files, from, c[1].trim(), &c[2], allow, &mut vec![]) {
                 Ok(t) => out.extend(t.text.lines().map(String::from)),
                 Err(e) => out.push(format!("[transclusion: {e}]")),
             },
@@ -1477,6 +1477,18 @@ mod tests {
         assert_eq!(x("#+transclude: [[file:b.org::*Gone]]"), "[transclusion: no heading \"Gone\"]");
         let src = "#+begin_src org\n#+TRANSCLUDE: [[file:b.org::*B]]\n#+end_src\n#+TRANSCLUDE: [[file:b.org::*B]]";
         assert_eq!(x(src), "#+begin_src org\n#+TRANSCLUDE: [[file:b.org::*B]]\n#+end_src\nb text\nmore");
+    }
+
+    #[test]
+    fn export_transclusion_is_not_cut_at_max() {
+        let big = format!("* Big\n{}", (1..=250).map(|i| format!("l{i}\n")).collect::<String>());
+        let fs = files(&[("/n/b.org", big.as_str())]);
+        let allow = |_: &Path| Ok(());
+        let out = expand_transclusions(&fs, Path::new("/n/a.org"), "#+TRANSCLUDE: [[file:b.org::*Big]]\n", &allow);
+        assert_eq!(out.lines().count(), 250);
+        assert!(!out.contains('…'));
+        let t = transclude(&fs, Path::new("/n/a.org"), "file:b.org::*Big", "", &allow).unwrap();
+        assert_eq!(t.text.lines().count(), TRANSCLUDE_MAX + 1);
     }
 
     #[test]
