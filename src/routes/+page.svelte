@@ -1551,6 +1551,7 @@
     const r = await ownCfg(() => call<TagRename>("tag_rename", { ...args, apply: true })).catch((e) => (flash(`⚠ ${e}`), null));
     if (!r) return;
     if (r.views) cfg = await call("config");
+    await retagTabs(old, name);
     syncFromDisk();
     const bad = [...r.skipped.map((x) => `skipped ${rel(x)}`), ...r.errors].join("; ");
     flash(`Renamed :${old}: to :${name}: in ${s(r.places, "place")} in ${s(r.notes, "note")} and ${s(r.views, "view")}${r.copies ? `; old copies in ${rel(r.copies)}` : ""}${bad ? `; ${bad}` : ""}`);
@@ -1574,6 +1575,20 @@
     syncFromDisk();
     const left = r.conflicts.length ? `; left alone (edited since or unsaved): ${r.conflicts.map(rel).join(", ")}` : "";
     flash(`Restored ${r.restored.length} note${r.restored.length === 1 ? "" : "s"}${r.undo ? `; renamed versions in ${rel(r.undo)}` : ""}${left}${r.errors.length ? `; ${r.errors.join("; ")}` : ""}`);
+  }
+
+  /** Rewrite `tag:OLD` to NEW in the open task-search tabs; a tab whose new query is already open is closed (#824). */
+  async function retagTabs(old: string, name: string) {
+    const ts = tabs.filter((t) => t.kind === "todo" && t.query != null);
+    if (!ts.length) return;
+    const qs = await call<(string | null)[]>("retag_queries", { queries: ts.map((t) => t.query!), old, new: name }).catch(() => []);
+    for (const [i, t] of ts.entries()) {
+      const q = qs[i];
+      if (q == null) continue;
+      const key = `search:${q}`;
+      if (tabs.some((x) => x !== t && x.key === key)) await closeTab(tabs.indexOf(t));
+      else Object.assign(t, { query: q, key });
+    }
   }
 
   /** Pick a person (`@name` tag, or type one), then one of their open tasks or a line mentioning them (#704). */

@@ -84,7 +84,7 @@ and same-file `[[*Heading]]` / `[[#custom-id]]` links; `Enter` opens the note at
 pick a tag from `#+FILETAGS:` or a non-task heading's own tags (with counts, any case), then
 the note or heading to open. `Ctrl+R` on a tag there (or *Notes: rename or merge a tag…* in the
 palette) renames it everywhere: heading tags (tasks too), `#+FILETAGS:` and `tag:` terms in saved
-views; typing an existing tag merges the two. It shows the count first, copies every note it changes
+views and open task-search tabs; typing an existing tag merges the two. It shows the count first, copies every note it changes
 to `.trash/tag-rename-<time>/` before writing, and skips (and lists) notes with unsaved edits.
 *Tags: undo a rename (notes put back)…* puts those notes back, except ones edited since (listed, left alone); the
 renamed versions go to `.trash/tag-rename-undo-<time>/`, and saved views keep the new name. `Space n C` lists recently changed notes (journal included), newest

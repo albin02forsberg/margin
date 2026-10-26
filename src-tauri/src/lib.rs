@@ -1462,6 +1462,12 @@ fn unique_dir(base: &Path) -> std::io::Result<PathBuf> {
     unreachable!()
 }
 
+/// Each task query with its `tag:OLD` terms renamed to NEW (config::retag_query), None where it has none (#824).
+#[tauri::command]
+fn retag_queries(queries: Vec<String>, old: String, new: String) -> Vec<Option<String>> {
+    queries.iter().map(|q| config::retag_query(q, &old, &new)).collect()
+}
+
 /// Rename tag OLD (any case) to NEW in every note's heading tags (tasks too) and `#+FILETAGS`, and in saved
 /// views' `tag:` terms (#785); an existing NEW merges. Only counts unless APPLY; the count uses the same
 /// rewrite, so it matches what is written. Notes (or config.toml) in SKIP, open with unsaved edits, are left alone and listed.
@@ -2787,7 +2793,7 @@ pub fn run() {
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
-            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, tag_rename_undo, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
+            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, tag_rename_undo, retag_queries, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, babel::babel_run
@@ -2815,6 +2821,12 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retag_queries_maps_each_query() {
+        let q = vec!["tag:Old due:<7d".into(), "-tag:old".into(), "tag:other".into()];
+        assert_eq!(retag_queries(q, "old".into(), "new".into()), vec![Some("tag:new due:<7d".into()), Some("-tag:new".into()), None]);
+    }
 
     #[test]
     fn person_view_lists_open_tagged_tasks_and_mentions() {
