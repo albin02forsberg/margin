@@ -5,6 +5,17 @@ name: Screenshots
 # ones you want to keep (replace the files, so the repo doesn't grow with each run).
 on:
   workflow_dispatch:
+    inputs:
+      only:
+        description: "Comma list of shots to save (e.g. graph,today); empty = all"
+        default: ""
+      pr:
+        description: "PR number: publish the shots to the media branch and add a ## Preview section to its body (#726)"
+        default: ""
+
+permissions:
+  contents: write # the media branch
+  pull-requests: write # the PR body
 
 jobs:
   screenshots:
@@ -27,11 +38,26 @@ jobs:
       - run: cargo install tauri-driver --locked
       - run: npm ci
       # Taller than the 1280x800 shots: the time shot uses 1280x900.
+      - name: Drop the committed media when only some shots are wanted (so only the new ones are published)
+        if: inputs.only != ''
+        run: rm -f docs/screenshots/*.png docs/gifs/*.gif
       - run: xvfb-run -a -s "-screen 0 1280x1024x24" npm run screenshots
+        env:
+          SCREENSHOTS_ONLY: ${{ inputs.only }}
       - name: Shrink
         run: mogrify -dither None -colors 256 -strip docs/screenshots/*.png
       - name: Size cap
+        if: inputs.only == ''
         run: node scripts/media-size.ts
+      - name: Publish to the PR
+        if: inputs.pr != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          shopt -s nullglob
+          node scripts/pr-media.ts "${{ inputs.pr }}" docs/screenshots/*.png docs/gifs/*.gif --body
       - uses: actions/upload-artifact@v4
         if: always() # what did get recorded helps when a clip fails
         with:
