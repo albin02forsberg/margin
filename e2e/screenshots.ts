@@ -8,6 +8,11 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { browser, close, find, Key, launch, texts, type Dirs } from "./setup.ts";
 import { GIFS } from "../scripts/media-size.ts";
+import { selected } from "../scripts/pr-media.ts";
+
+/** SCREENSHOTS_ONLY=a,b: save just those PNGs/GIFs (the flows still run); a feature's shot is one more shot("name") in pngs(). */
+const only = process.env.SCREENSHOTS_ONLY ?? "";
+const want = (name: string) => selected([name], only).length > 0;
 
 const out = resolve(process.env.SCREENSHOTS_DIR ?? "docs/screenshots");
 const gifOut = resolve(process.env.GIFS_DIR ?? "docs/gifs");
@@ -234,7 +239,7 @@ async function picker(keys: string | string[], prompt: string) {
 const opened = (file: string) => browser.waitUntil(async () => (await browser.$(".status .file").getText()) === file, { timeoutMsg: `${file} didn't open` });
 
 async function pngs() {
-  const shot = async (name: string) => { await pause(); await browser.saveScreenshot(join(out, `${name}.png`)); console.log(`saved ${name}.png`); };
+  const shot = async (name: string) => { if (!want(name)) return; await pause(); await browser.saveScreenshot(join(out, `${name}.png`)); console.log(`saved ${name}.png`); };
   const open = async (q: string, file: string) => {
     await picker([Key.Ctrl, "p"], "Open a note");
     await type(q);
@@ -444,7 +449,7 @@ async function gifs() {
     await browser.keys([Key.Ctrl, "1"]); // every clip starts on Today
     await find(".agenda h1", "Today");
     await pause(800);
-    await clip(name, clips[name]);
+    if (want(name)) await clip(name, clips[name]);
   }
 }
 
@@ -457,7 +462,7 @@ let failed = false;
 try {
   // Dark is the app's default look; GTK_THEME keeps WebKit from reporting a light preference.
   await session("Adwaita:dark", pngs);
-  await session("Adwaita", gifs); // the GIFs in light, on fresh data
+  if (!only || GIFS.some(want)) await session("Adwaita", gifs); // the GIFs in light, on fresh data
 } catch (e) {
   console.error(e);
   failed = true;

@@ -199,6 +199,10 @@ writes `docs/screenshots/*.png` (dark) and `docs/gifs/*.gif` (light); or run the
 **Screenshots** workflow (Actions → Run workflow) and download its artifact,
 already shrunk. Shrink local PNGs before committing, e.g.
 `magick mogrify -dither None -colors 256 -strip docs/screenshots/*.png`.
+`SCREENSHOTS_ONLY=graph,today` saves just those shots. To show a feature in a PR
+without growing `main`, run the workflow with `only=<shots>` and `pr=<number>`: it
+pushes them to the `media` branch (`pr-<n>/`, never merged) and adds a `## Preview`
+section to the PR (`scripts/pr-media.ts`).
 `node scripts/media-size.ts` checks the cap (each file under 1.5 MB, all of them
 under 10 MB); replace the files rather than adding new ones, and keep GIFs out of
 feature PRs.
