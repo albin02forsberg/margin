@@ -1,4 +1,5 @@
 import { money } from "./ledger.ts";
+import { waitAge, type Waiting } from "./waiting.ts";
 
 /** People for `Space n @` (#704): `@name` tags, one per name in any case (first spelling kept), sorted. */
 export function peopleFrom(tags: string[]): string[] {
@@ -17,12 +18,14 @@ type Task = { path: string; line: number; keyword: string | null; title: string;
 type Note = { path: string; line: number; title: string; text: string };
 type Payment = { path: string; line: number; date: string; cents: number; currency: string; text: string };
 
-/** Picker rows for a person view: open tasks first (with priority and date), then the notes mentioning them, then their
- *  ledger entries (#790). REL names a file. */
-export function personRows(v: { tasks: Task[]; notes: Note[]; payments?: Payment[] }, rel: (p: string) => string) {
+/** Picker rows for a person view: tasks waiting on them (#808, with age, as of TODAY), then their other open tasks (with
+ *  priority and date), the notes mentioning them, then their ledger entries (#790). REL names a file. */
+export function personRows(v: { tasks: Task[]; notes: Note[]; payments?: Payment[]; waiting?: Waiting[] }, rel: (p: string) => string, today = "") {
   const due = (d: string) => (d.startsWith("+") ? "" : ` · ${d}`);
+  const waits = new Set((v.waiting ?? []).map((w) => `${w.path}:${w.line}`));
   return [
-    ...v.tasks.map((t) => ({ label: `${t.keyword ?? ""} ${t.priority ? `[#${t.priority}] ` : ""}${t.title}`.trim(), detail: `task · ${rel(t.path)}${due(t.date)}`, value: [t.path, t.line] as unknown })),
+    ...(v.waiting ?? []).map((w) => ({ label: `Waiting on them: ${w.title}`, detail: `${waitAge(w.since, today)} · ${rel(w.path)}${due(w.date)}`, value: [w.path, w.line] as unknown })),
+    ...v.tasks.filter((t) => !waits.has(`${t.path}:${t.line}`)).map((t) => ({ label: `${t.keyword ?? ""} ${t.priority ? `[#${t.priority}] ` : ""}${t.title}`.trim(), detail: `task · ${rel(t.path)}${due(t.date)}`, value: [t.path, t.line] as unknown })),
     ...v.notes.map((n) => ({ label: n.text, detail: `${n.title || rel(n.path)} · line ${n.line + 1}`, value: [n.path, n.line] as unknown })),
     ...(v.payments ?? []).map((p) => ({ label: `${money(p.cents, p.currency)} ${p.text}`.trim(), detail: `ledger · ${p.date}`, value: [p.path, p.line] as unknown })),
   ];

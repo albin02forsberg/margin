@@ -54,6 +54,7 @@
   import { windowTitle } from "$lib/wintitle";
   import { orderNotes, parsePins, togglePin } from "$lib/pins";
   import { peopleFrom, personName, personRows } from "$lib/people";
+  import { waitingRows, type Waiting } from "$lib/waiting";
   import { addBookmark, bookmarkAt, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, retitleBookmarks, type Bookmark } from "$lib/bookmarks";
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
   import { pushRecent, sortByRecent, parseRecents } from "$lib/recents";
@@ -758,6 +759,21 @@
       await edit(loc, "cycle", String(dir));
     },
     keyword: (loc, _it, k = "") => edit(loc, "keyword", String(k)),
+    /** Waiting for (#808): set WAIT with whom it waits on (`:WAITING_ON:`) and an optional follow-up (SCHEDULED); one undo step. */
+    async waiting(loc) {
+      if (!(await heading(loc))) return flash("Not on a task.");
+      const k = kw();
+      if (!k.todo.some((x) => x === "WAIT" || x === "WAITING")) return flash("No WAIT keyword: add WAIT to your todo keywords in Settings.");
+      const people = peopleFrom(await call<string[]>("org_tags"));
+      const who = await pick({ prompt: "Waiting on whom?", items: [...people.map((n) => ({ label: `@${n}`, value: `@${n}` as unknown })), { label: "Nobody in particular", value: "" }], allowCustom: true, hint: "or type who/what and press Ctrl+↵" });
+      if (who == null) return;
+      const follow = await datePick("Follow up on (sets SCHEDULED; Esc keeps the current date)", false, "SCHEDULED", false);
+      // The date first: it only adds lines below the heading, so LOC still finds the heading for the second edit.
+      await recorded(async () => {
+        if (follow != null) await setDate(loc, "SCHEDULED", follow);
+        await edit(loc, "waiting", String(who));
+      });
+    },
     schedule: (loc) => planDate(loc, "SCHEDULED"),
     deadline: (loc) => planDate(loc, "DEADLINE"),
     async priority(loc) {
@@ -1456,6 +1472,14 @@
     if (r) { const s = r as (typeof o)[number]; await openFile(s.path, s.line); }
   }
 
+  /** Waiting for (#808): WAIT tasks by whom they wait on, with age and follow-up; Enter opens one. */
+  async function waitingView() {
+    const o = await call<Waiting[]>("waiting_for");
+    if (!o.length) return flash("Nothing waiting: Space x W marks a task as waiting on someone.");
+    const r = await pick({ prompt: "Waiting for", items: waitingRows(o, new Date().toLocaleDateString("sv-SE"), rel) });
+    if (r) await openFile(...(r as [string, number]));
+  }
+
   /** `:GOAL:` headings with their subtask progress and days to target (#739). */
   async function goalsView() {
     type G = { path: string; line: number; title: string; done: number; total: number; percent: number | null; days_left: number | null; bad_target: boolean; status: "on_track" | "at_risk" | null; spent: number };
@@ -1597,7 +1621,7 @@
     const v = await pick({ prompt: "Person", items: people.map((n) => ({ label: `@${n}`, value: n as unknown })), allowCustom: true, hint: people.length ? "or type a name and press Ctrl+↵" : "no :@name: tags yet; type a name and press Ctrl+↵" });
     const name = v == null ? "" : personName(String(v));
     if (!name) return;
-    const rows = personRows(await call("person_view", { name }), rel);
+    const rows = personRows(await call("person_view", { name }), rel, new Date().toLocaleDateString("sv-SE"));
     if (!rows.length) return flash(`Nothing for @${name} yet: tag a task :@${name}: or write @${name} in a note`);
     const r = await pick({ prompt: `@${name}`, items: rows });
     if (r) await openFile(...(r as [string, number]));
@@ -2758,6 +2782,8 @@
     { label: "Note: archive all done tasks", leader: "x a", run: () => act(archiveDone) },
     { label: "Tasks: stuck projects (open subtasks, no next action)…", leader: "x S", run: () => act(stuckProjects) },
     { label: "Tasks: goals (:GOAL: headings, progress, days left)…", leader: "x G", run: () => act(goalsView) },
+    { label: "Task: waiting on someone… (WAIT, who, follow-up)", leader: "x W", run: () => atCursor("waiting") },
+    { label: "Tasks: waiting for (by person, how long)…", leader: "x w", run: () => act(waitingView) },
     { label: "Habits: overview (streaks, completion rate)", leader: "x H", run: () => act(() => openView("habits")) },
     { label: "Task: track time on it", leader: "x i", run: () => atCursor("clockIn") },
     { label: "New heading / list item / table row below", keys: ["Alt+Enter"], ctx: "editor", leader: "x h", run: tableOr("rowBelow", () => ed.newItem(view)) },

@@ -1197,6 +1197,62 @@ pub fn heading_prop(lines: &[String], line: usize, key: &str) -> Option<String> 
     get_prop(lines, line, key)
 }
 
+// ---------------------------------------------------------------- waiting for (#808)
+
+/// The open keyword of waiting-for tasks: `WAIT` (or `WAITING`), if the user's keywords have one.
+pub fn wait_kw(kw: &Kw) -> Option<&str> {
+    kw.todo.iter().map(String::as_str).find(|k| matches!(*k, "WAIT" | "WAITING"))
+}
+
+/// Mark the task at LINE as waiting on WHO (blank: unspecified): the wait keyword, `:WAITING_ON:`, and
+/// `:WAITING_SINCE: [date]` from NOW (kept when it already waited).
+pub fn set_waiting(text: &str, line: usize, kw: &Kw, who: &str, now: NaiveDateTime) -> Result<String, String> {
+    let w = wait_kw(kw).ok_or("No WAIT keyword: add WAIT to your todo keywords in Settings.")?;
+    let hl = headline_at(&to_lines(text), line).ok_or(NO_HEADING)?;
+    let was = heading(text, hl, kw).ok_or(NO_HEADING)?.keyword.as_deref() == Some(w);
+    let t = if was { text.to_string() } else { set_keyword(text, hl, kw, Some(w), now, false) };
+    let t = set_prop(&t, hl, "WAITING_ON", Some(who.trim()).filter(|w| !w.is_empty()));
+    if was && get_prop(&to_lines(&t), hl, "WAITING_SINCE").is_some() { return Ok(t) }
+    Ok(set_prop(&t, hl, "WAITING_SINCE", Some(&format!("[{}]", now.format("%Y-%m-%d %a")))))
+}
+
+/// Drop `:WAITING_ON:` / `:WAITING_SINCE:` from the heading at HL once it no longer has the wait keyword.
+pub fn drop_waiting(text: &str, hl: usize, kw: &Kw) -> String {
+    let lines = to_lines(text);
+    let Some(p) = lines.get(hl).and_then(|l| Parts::parse(l, kw)) else { return text.to_string() };
+    let keys = ["WAITING_ON", "WAITING_SINCE"];
+    if p.keyword.is_some() && p.keyword.as_deref() == wait_kw(kw) || keys.iter().all(|k| get_prop(&lines, hl, k).is_none()) {
+        return text.to_string();
+    }
+    keys.iter().fold(text.to_string(), |t, k| set_prop(&t, hl, k, None))
+}
+
+/// An open waiting-for task: whom it waits on (`:WAITING_ON:`) and since when (`:WAITING_SINCE:`).
+#[derive(Serialize, Clone, Debug)]
+pub struct Waiting {
+    #[serde(flatten)]
+    pub item: Item,
+    pub who: Option<String>,
+    pub since: Option<NaiveDate>,
+}
+
+/// Open tasks with the wait keyword, by who (unspecified last, case-insensitive), then the longest waiting first.
+pub fn waiting(files: &[Arc<OrgFile>], kw: &Kw, today: NaiveDate) -> Vec<Waiting> {
+    let Some(w) = wait_kw(kw) else { return vec![] };
+    let mut lines: HashMap<PathBuf, Vec<String>> = HashMap::new();
+    let mut out: Vec<Waiting> = todos(files, kw, false, |_, h| h.keyword.as_deref() == Some(w), today)
+        .into_iter()
+        .map(|item| {
+            let ls = lines.entry(item.path.clone()).or_insert_with(|| files.iter().find(|f| f.path == item.path).map_or(vec![], |f| to_lines(&f.text)));
+            let who = get_prop(ls, item.line, "WAITING_ON").filter(|w| !w.trim().is_empty());
+            let since = get_prop(ls, item.line, "WAITING_SINCE").and_then(|s| s.trim_start_matches(['[', '<']).get(..10)?.parse().ok());
+            Waiting { item, who, since }
+        })
+        .collect();
+    out.sort_by_key(|x| (x.who.is_none(), x.who.as_ref().map(|w| w.to_lowercase()), x.since.is_none(), x.since));
+    out
+}
+
 /// Append `[[id:ID][TITLE]]` to the `:BLOCKER:` of the heading at LINE (org-depend);
 /// unchanged when ID is already listed, an error when it is the heading's own `:ID:`.
 const NO_HEADING: &str = "Put the cursor on a task heading first.";
@@ -2231,6 +2287,21 @@ mod tests {
         let fs = [Arc::new(parse(Path::new("/n/a.org"), a, &kw)), Arc::new(parse(Path::new("/n/b.org"), b, &kw))];
         let g: Vec<_> = goals(&fs, &kw, d("2026-10-24"), &|_, _| None).into_iter().map(|g| (g.title, g.done, g.total)).collect();
         assert_eq!(g, [("Launch".to_string(), 2, 3), ("Other".to_string(), 0, 2)]);
+    }
+
+    #[test]
+    fn waiting_lists_wait_tasks_by_who_then_oldest() {
+        let kw = Kw { todo: vec!["TODO".into(), "WAITING".into()], ..kw() };
+        assert_eq!(wait_kw(&kw), Some("WAITING"));
+        assert_eq!(wait_kw(&self::kw()), None);
+        let p = |who: &str, since: &str| format!(":PROPERTIES:\n:WAITING_ON: {who}\n:WAITING_SINCE: {since}\n:END:\n");
+        let a = format!("* WAITING new\n{}* WAITING old\n{}* WAITING bare\n* TODO other\n{}* WAITING bob\n{}* DONE gone\n{}",
+            p("@anna", "[2026-10-20 Tue]"), p("@Anna", "[2026-10-01 Thu]"), p("@anna", "[2026-01-01]"), p("Bob", "junk"), p("@anna", "[2026-01-01]"));
+        let fs = [Arc::new(parse(Path::new("/n/a.org"), &a, &kw))];
+        let w: Vec<_> = waiting(&fs, &kw, d("2026-10-27")).into_iter().map(|w| (w.item.title, w.who, w.since)).collect();
+        let s = |x: &str| Some(x.to_string());
+        assert_eq!(w, [("old".into(), s("@Anna"), Some(d("2026-10-01"))), ("new".into(), s("@anna"), Some(d("2026-10-20"))), ("bob".into(), s("Bob"), None), ("bare".into(), None, None)]);
+        assert!(waiting(&fs, &self::kw(), d("2026-10-27")).is_empty());
     }
 
     #[test]

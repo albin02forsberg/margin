@@ -93,7 +93,7 @@ first, with how long ago each changed. `Space n Z` lists notes untouched for a y
 sync tools that touch files make notes look fresh).
 
 **People** — tag a heading or task `:@anna:` or write `@anna` in a note. `Space n @` picks a
-person (from the `@` tags, or type any name) and lists their open tasks (tagged, inheriting the
+person (from the `@` tags, or type any name) and lists the tasks waiting on them (see **Waiting for**), their open tasks (tagged, inheriting the
 tag, or naming `@anna` in the title) and then every other line mentioning `@anna` (any case;
 email addresses don't count, journal included), then their ledger entries; `Enter` jumps there.
 
@@ -337,6 +337,14 @@ with a `blocked` chip; `blocked:yes` / `blocked:no` searches for them. Unknown I
 `Space x B` in a note picks an open task that the heading at the cursor waits for and adds it to its `:BLOCKER:`
 (the picked task gets an `:ID:` if it has none; one `Space n u` undoes both; one already listed changes nothing and says so),
 `Space x b` picks one of its blockers and removes it, and `Space x O` turns `:ORDERED:` on or off. Both do nothing (and say so) when the cursor is above the first heading. Marking a blocked task done from the editor (`Space x x`, `Space x t`, `S-→`) asks first, like the agenda.
+**Waiting for** (GTD): `Space x W` on a task sets it to `WAIT`, asks whom it waits on (an `@name`, any text, or nobody)
+and an optional follow-up date, and writes `:WAITING_ON:` and `:WAITING_SINCE: [date]` (plain org properties). The
+follow-up becomes the task's `SCHEDULED:` date (Esc keeps the current one), so the task comes back in Today then; one
+`Space n u` undoes it all. Running it again on a waiting task changes whom it waits on and keeps the date. `Space x w`
+(or "Tasks: waiting for" in the palette) lists open `WAIT` tasks grouped by whom they wait on, longest first, with
+"waiting 9 days" ("age unknown" without `:WAITING_SINCE:`) and the follow-up date, flagged once it is due. Moving a task
+off `WAIT` in Margin removes both properties; a keyword changed in Emacs leaves them, which is harmless. A `WAITING`
+keyword works too; without either, `Space x W` says so.
 Subtrees archived in place with an `:ARCHIVE:` tag (Emacs's `C-c C-x a`) are left out of Today, Tasks, reminders and the calendar feed, as in org's agenda; they stay in the note and in search.
 A time range (`<2026-10-16 Fri 10:00-11:00>`) shows as `10:00-11:00`; a date
 range (`<2026-10-19 Mon>--<2026-10-21 Wed>`) shows on each of its days with a
@@ -526,6 +534,8 @@ Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`, `no` p
 | Space x b | Remove blocker…: pick one of the `:BLOCKER:` entries of the heading at the cursor and drop it (the property goes when none are left; the task it named keeps its `:ID:`); Space n u undoes |
 | Space x O | Toggle `:ORDERED: t` on the heading at the cursor (its subtasks then get done in order) |
 | Space x G | Goals: `:GOAL:` headings with tasks done below them and days to their `:TARGET:` (or deadline); Enter jumps to one |
+| Space x W | Waiting on someone: set the task at the cursor to `WAIT` with whom (`:WAITING_ON:`), since when and an optional follow-up date (see **Waiting for**) |
+| Space x w | Waiting for: open `WAIT` tasks by whom they wait on, with how long and the follow-up date; Enter jumps to one |
 | Space x S | Stuck projects: open tasks with open subtasks but nothing scheduled, due or NEXT below them; Enter jumps to one |
 | Space x a | Archive every done task of the note to `<note>.org_archive` (top-most done subtrees, in order; repeaters and `:ARCHIVE:` subtrees stay); `u` / Space n u undoes both files |
 | Space n b | Notes linking here, plus unlinked mentions of this note's title (**Link** turns one into an `[[id:]]` link; Space n u undoes) |
