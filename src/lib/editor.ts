@@ -1154,6 +1154,10 @@ const theme = EditorView.theme({
   ".cm-org-pipe": { color: "var(--border)" },
 });
 
+/** A read-only, org-styled state for the link peek panel (#849): no vim, so ex commands there can't act on the open tab. */
+export const peekState = (doc: string, opts: { todo: string[]; done: string[]; path?: string }) =>
+  EditorState.create({ doc, extensions: [theme, orgConf.of(opts), orgStyle, EditorView.lineWrapping, EditorState.readOnly.of(true)] });
+
 export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; path?: string; onChange: () => void; onUpdate?: (s: EditorState, docChanged: boolean) => void }) {
   const ext: Extension[] = [
     vim({ status: true }),

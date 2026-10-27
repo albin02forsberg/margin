@@ -14,7 +14,7 @@
   import * as ed from "$lib/editor";
   import { linkFor, asUrl, asWebUrl } from "$lib/weblink";
   import { srcAt, resultsChange } from "$lib/babel";
-  import { bareTitle, bracketRetitle, findTarget, linkHeadings, retitlePlan, splitTarget } from "$lib/links";
+  import { bareTitle, bracketRetitle, findTarget, linkHeadings, peekTarget, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
   import { type Goal, goalWhen, isoWeek, putReview, reviewBody, reviewEntry } from "$lib/review";
@@ -105,6 +105,8 @@
   let graph = $state.raw<NoteGraph | null>(null);
   let showGraph = $state(false);
   let showChat = $state(false);
+  /** The link peek panel (#849): what the link at the cursor of tab KEY shows, read-only. */
+  let peek = $state.raw<{ key: string; path: string; line: number; text: string } | null>(null);
   let chat = $state<Chat>();
   let reload = $state(0);
   const stored = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -1421,6 +1423,32 @@
     const pos = view.state.doc.line(line + 1).from;
     jumpTo(pos);
   }
+
+  /** Show the target of the link at the cursor read-only beside the editor (#849); Enter there opens it, Esc closes. */
+  async function peekLink(target = ed.linkAtCursor(view)) {
+    if (!inFile()) return flash("Open a note first.");
+    if (!target) return flash("No link here.");
+    const link = peekTarget(target);
+    if (!link) return flash("Web links can't be peeked; Enter opens them.");
+    const r = await call<{ path: string; line: number; text: string }>("transclude_text", { link, props: null, from: tab.path });
+    peek = { key: tab.key, ...r };
+  }
+
+  function closePeek(open = false) {
+    const p = peek;
+    peek = null;
+    if (open && p) act(() => openFile(p.path, p.line));
+    else view.focus();
+  }
+
+  /** Mounts the peek's read-only view and focuses it, so Esc and Enter reach the panel. */
+  function peekView(el: HTMLElement, p: { path: string; text: string }) {
+    const v = new EditorView({ parent: el, state: ed.peekState(p.text || "(empty)", { ...kw(), path: p.path }) });
+    el.focus();
+    return { destroy: () => v.destroy() };
+  }
+
+  $effect(() => { if (peek && peek.key !== tab?.key) peek = null; });
 
   async function noteItems() {
     const [files, nodes, t] = await Promise.all([call<string[]>("list_files"), call<NoteNode[]>("notes_nodes"), call<Record<string, string>>("note_titles")]);
@@ -2765,6 +2793,7 @@
     { label: "Bookmark: add at cursor…", leader: "m m", run: addBookmarkHere },
     { label: "Bookmark: delete…", leader: "m d", run: deleteBookmark },
     { label: "Bookmark: jump to…", leader: "'", run: jumpBookmark },
+    { label: "Links: peek at the link at cursor (Enter opens, Esc closes)", keys: ["Shift+Enter"], ctx: "normal", leader: "l p", run: () => (ed.linkAtCursor(view) ? (act(() => peekLink()), true) : (flash("No link here."), false)) },
     { label: "Show note graph", leader: "n g", run: () => { showGraph = !showGraph; return refreshBacklinks(); } },
     { label: "AI chat (local model)", leader: "n a", run: toggleChat },
     { label: "Undo last edit made from a task view or the links panel", leader: "n u", run: () => undo().then(refreshBacklinks) },
@@ -2944,7 +2973,7 @@
     { label: "Export: time report (HTML/PDF)…", leader: "e t", run: exportReport },
   ];
 
-  const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", i: "Insert", T: "Table", m: "Bookmarks", s: "Search", t: "Time tracking", e: "Export", v: "Go to & view", b: "Tabs" };
+  const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", i: "Insert", T: "Table", m: "Bookmarks", s: "Search", t: "Time tracking", e: "Export", v: "Go to & view", b: "Tabs", l: "Links" };
   const leader: MenuNode[] = (() => {
     const root: MenuNode[] = Object.entries(GROUPS).map(([key, label]) => ({ key, label, children: [] }));
     for (const c of cmds) {
@@ -2978,12 +3007,13 @@
   }
 
   /** Under 1000 px the graph / links panels are drawers over the pane (see the CSS); Esc outside the editor or a click on the pane closes them. */
-  const drawerOpen = () => (showGraph || showBacklinks || showChat) && matchMedia("(max-width: 999px)").matches;
-  const closeDrawer = () => { showGraph = showBacklinks = showChat = false; };
+  const drawerOpen = () => (showGraph || showBacklinks || showChat || !!peek) && matchMedia("(max-width: 999px)").matches;
+  const closeDrawer = () => { showGraph = showBacklinks = showChat = false; peek = null; };
 
   function onKey(e: KeyboardEvent) {
     if (picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen() || tableDialog?.isOpen() || formulaDialog?.isOpen() || drill?.isOpen() || metrics?.isOpen() || rhythm?.isOpen()) return;
     const inEditor = isText(tab) && view.contentDOM.contains(e.target as Node);
+    if (peek && (e.key === "Escape" || e.key === "Enter") && (e.target as Element).closest?.(".peek")) { e.preventDefault(); e.stopPropagation(); closePeek(e.key === "Enter"); return; }
     if (e.key === "Escape" && !inEditor && drawerOpen()) { closeDrawer(); e.preventDefault(); return; }
     const idle = inEditor && ed.vimIdle(view);
     const c = combo(e);
@@ -3372,6 +3402,15 @@
       {/if}
       <!-- hidden, not removed, so the chat survives closing the panel -->
       <aside class="links chat" style:display={showChat ? null : "none"}><Chat bind:this={chat} ask={chatAsk} open={(p, l) => openFile(p, l)} note={tab?.kind === "file" ? tab.title : null} noteLabel={() => chatPart().label} insert={tab?.kind === "file" ? insertAtCursor : undefined} excluded={chatExcluded} /></aside>
+      {#if peek}
+        {#key peek}
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <aside class="links peek" tabindex="0" use:peekView={peek}>
+            <h3 title={peek.path}>Peek · {niceName(peek.path)}{peek.line ? `:${peek.line + 1}` : ""}</h3>
+            <p>Enter opens · Esc closes</p>
+          </aside>
+        {/key}
+      {/if}
       {#if showBacklinks}
         <aside class="links">
           <h3>Linked from <small>{backlinks.length}</small></h3>
@@ -3485,6 +3524,8 @@
   .links button span { display: block; color: var(--dim); font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .links p { color: var(--dim); margin: 6px; font-size: var(--fs-sm); }
   .links.chat { width: min(360px, 40vw); overflow: hidden; }
+  .links.peek { width: min(420px, 40vw); outline: none; }
+  .links.peek:focus-visible { box-shadow: var(--soft), var(--ring); }
   .mention { display: flex; align-items: center; }
   .mention button:first-child { min-width: 0; }
   .links .link-it { width: auto; flex: none; color: var(--link); font-size: var(--fs-sm); }
