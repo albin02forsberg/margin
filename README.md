@@ -370,6 +370,13 @@ space leave it, `Esc` stops (what you already did stays). Moves keep time and re
 its own undo (`Space n u`). At the end it shows `Done 2, moved 1 · 6h 30m clocked of 8h 00m` and
 can add that line to today's journal.
 
+`Space t g` (**Today: plan the day**) is its morning twin: it walks overdue tasks, then tasks
+scheduled or due in the next 3 days, then open `[#A]`/`[#B]` tasks with no date (blocked tasks,
+habits and what is already scheduled today are left out), one key each: `t` today, `m` tomorrow,
+`s` pick a date, `n` or space leave it, `Esc` stops. Each choice sets `SCHEDULED` (a deadline stays
+as it is) and is its own undo. It ends with `Planned 2 for today · 3h 30m estimated of 8h 00m`
+(the `:EFFORT:` of today's open tasks against your expected hours), which can go into today's journal.
+
 `*` in Today or Tasks marks the selected task (and moves down), like org agenda's marks;
 the header shows how many are marked and `Esc` clears them. While tasks are marked, `x`
 (done), `>`/`<` (reschedule), `+`/`-` (priority), `A` (archive), the board's `H`/`L`, and

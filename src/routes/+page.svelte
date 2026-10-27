@@ -48,6 +48,7 @@
   import { notesText, notesTitle, notesToShow, type Notes } from "$lib/whatsnew";
   import { dayTime, focusLeft, inactiveStamp, naive, parseWhen, worked, type WeekDay } from "$lib/clock";
   import { shutdownKeys, shutdownTasks, summarise, type ShutdownAction } from "$lib/shutdown";
+  import { morningKeys, planCandidates, planSummary, type MorningAction } from "$lib/morning";
   import { parseSession, type Entry } from "$lib/session";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
   import { wordCount, wordsLabel } from "$lib/words";
@@ -1099,6 +1100,44 @@
     const path: string = await call("capture_path", { file: journalFile(), journal: true });
     await recorded(() => toFile(path, (text) => call("capture_insert", { text, heading: null, entry: `* ${pad(t.getHours())}:${pad(t.getMinutes())} Shutdown: ${sum}` })));
     flash("Shutdown summary added to today's journal.");
+  }
+
+  /** Morning plan (#846), shutdown's twin: overdue, due-soon (3 days) and undated A/B tasks one keypress each (today,
+   *  tomorrow, a date, leave); each sets SCHEDULED (any DEADLINE stays) as one undo group; Esc stops. */
+  async function planDay() {
+    const t = new Date(), today = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+    const q = (p: string) => call<AgendaItem[]>("search_todos", { query: `scheduled:none due:none blocked:no pri:${p}` });
+    const [ag, a, b] = await Promise.all([call<AgendaItem[]>("agenda", { start: today, days: 4 }), q("a"), q("b")]);
+    const tasks = planCandidates(ag, [...a, ...b], today, kw().todo);
+    if (!tasks.length) return flash("Nothing to plan.");
+    const label = { today: "Today", tomorrow: "Tomorrow", date: "Pick a date…", skip: "Leave it" };
+    const keyOf = Object.fromEntries(Object.entries(morningKeys).map(([k, a]) => [a, k]));
+    const items = (Object.keys(label) as MorningAction[]).map((a) => ({ label: `${keyOf[a]}  ${label[a]}`, value: a }));
+    const why = { overdue: "overdue", soon: "due soon", undated: "no date" };
+    let planned = 0, stopped = false;
+    for (const [i, it] of tasks.entries()) {
+      const a: MorningAction | null = await pick({ prompt: `Plan ${i + 1}/${tasks.length}: ${it.title}`, items, keys: morningKeys, hint: `${it.label || why[it.why]} · ${rel(it.path)}` });
+      if (!a) { stopped = true; break; }
+      if (a === "skip") continue;
+      const input = a === "date" ? await datePick(`Schedule “${it.title}” for`, false, "SCHEDULED", false) : a;
+      if (input == null) continue;
+      const loc = { path: it.path, line: it.line }, before = (await textOf(it.path)).split("\n").length;
+      try {
+        if ((await heading(loc))?.title !== it.title) { flash(`⚠ “${it.title}” changed meanwhile; skipped.`); continue; }
+        await recorded(() => setDate(loc, "SCHEDULED", input));
+        if (a === "today") planned++;
+      } catch (e) { flash(`⚠ ${e}; skipped.`); continue; }
+      // A new SCHEDULED line shifts the later tasks of this file.
+      const delta = (await textOf(it.path)).split("\n").length - before;
+      if (delta) for (const o of tasks.slice(i + 1)) if (o.path === it.path && o.line > it.line) o.line += delta;
+    }
+    const [now, tc] = await Promise.all([call<AgendaItem[]>("agenda", { start: today, days: 1 }), call<{ week: WeekDay[] }>("tc_dashboard").catch(() => ({ week: [] as WeekDay[] }))]);
+    const sum = planSummary(planned, shutdownTasks(now, kw().todo).reduce((s, x) => s + (x.effort ?? 0), 0), worked(tc.week, today).expected);
+    if (stopped) return flash(`Plan stopped: ${sum}`);
+    if (!(await pick({ prompt: sum, items: [{ label: "Add to today's journal", value: true }, { label: "Close", value: false }] }))) return;
+    const path: string = await call("capture_path", { file: journalFile(), journal: true });
+    await recorded(() => toFile(path, (text) => call("capture_insert", { text, heading: null, entry: `* ${pad(t.getHours())}:${pad(t.getMinutes())} Plan: ${sum}` })));
+    flash("Plan added to today's journal.");
   }
 
   async function editTags(loc: Loc) {
@@ -2880,6 +2919,7 @@
     { label: "Time: update dynamic blocks (#+BEGIN: clocktable / tasks) in this note", leader: "t u", run: () => act(updateClockTables) },
     { label: "Weekly review into today's journal (re-run replaces the marked block)", leader: "t R", run: () => act(weeklyReview) },
     { label: "Today: evening shutdown (walk today's open tasks: done, tomorrow, next week…)", leader: "t q", run: () => act(shutdown) },
+    { label: "Today: plan the day (walk overdue, due-soon and undated A/B tasks: today, tomorrow, a date…)", leader: "t g", run: () => act(planDay) },
     { label: "Time: estimates vs actuals (how far off are my :EFFORT: guesses?)…", leader: "t A", run: () => act(estimateReport) },
     { label: "Time: day timeline (sessions, tasks closed, notes edited)…", leader: "t T", run: () => act(dayTimeline) },
     { label: "Time: when do I work? (weekday x hour heatmap)", leader: "t H", run: t("rhythm") },
