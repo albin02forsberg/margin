@@ -566,6 +566,7 @@
       <div class="empty">
         <p>{filter ? `Nothing matches “${filter}”.` : query != null ? "No tasks match." : mode === "todo" ? "No open tasks. 🎉" : "Nothing planned."}</p>
         <p>Press <kbd>n</kbd> to add a task{mode === "agenda" ? ", or h / l to look at other days" : ""}.</p>
+        {#if !filter && query == null}<p>New here? <kbd>Space</kbd> <kbd>?</kbd> opens the tutorial, <kbd>Ctrl+K</kbd> finds every command.</p>{/if}
       </div>
     {/if}
   </div>
