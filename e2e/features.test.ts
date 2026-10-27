@@ -799,6 +799,7 @@ describe("Journal, archive and move", () => {
         writeFileSync(join(notes, "gated.org"), "* Plan\n:PROPERTIES:\n:ORDERED: t\n:END:\n** TODO First\n** TODO Second\n");
         writeFileSync(join(notes, "clone.org"), "* DONE Check-in\nCLOSED: [2026-10-01 Thu 10:00] SCHEDULED: <2026-10-01 Thu>\n* After\n");
         writeFileSync(join(notes, "shutdown.org"), `* TODO Wrap report\nSCHEDULED: <${orgDay(new Date())}>\n* TODO Call vendor\nSCHEDULED: <${orgDay(new Date())} +1w>\n`);
+        writeFileSync(join(notes, "morning.org"), "* TODO [#A] Draft budget\n* TODO [#A] Renew passport\n");
       },
     });
   });
@@ -874,6 +875,19 @@ describe("Journal, archive and move", () => {
     await browser.keys(Key.Enter);
     await fileMatches(f("shutdown.org"), (s) => /^\* DONE Wrap report\n/.test(s) && s.includes(`* TODO Call vendor\nSCHEDULED: <${orgDay(tomorrow)} +1w>\n`), "tasks not done / moved to tomorrow");
     await fileMatches(f(join("daily", `${isoDay(new Date())}.org`)), (s) => /\n\* \d\d:\d\d Shutdown: Done 1, moved 1 · /.test(s), "summary not in today's journal");
+  });
+
+  it("Space t g walks undated A/B tasks one key each (t today, n leave) and sets SCHEDULED (#846)", async () => {
+    await leader("tg");
+    // Other fixtures add candidates too: leave all but "Draft budget".
+    const n = Number((await (await find(".picker label span", "Plan 1/")).getText()).match(/Plan 1\/(\d+)/)![1]);
+    for (let i = 1; i <= n; i++) {
+      const text = await (await find(".picker label span", `Plan ${i}/${n}: `)).getText();
+      await browser.keys(text.includes("Draft budget") ? "t" : "n");
+    }
+    await find(".picker label span", "Planned 1 for today");
+    await browser.keys(Key.Escape);
+    await fileMatches(f("morning.org"), (s) => s === `* TODO [#A] Draft budget\nSCHEDULED: <${orgDay(new Date())}>\n* TODO [#A] Renew passport\n`, "undated task not scheduled for today");
   });
 
   it("Space n J opens the journal for a chosen past date, creating it with a title", async () => {
