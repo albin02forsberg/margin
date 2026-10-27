@@ -346,7 +346,7 @@ follow-up becomes the task's `SCHEDULED:` date (Esc keeps the current one), so t
 off `WAIT` in Margin removes both properties; a keyword changed in Emacs leaves them, which is harmless. A `WAITING`
 keyword works too; without either, `Space x W` says so.
 **Someday/maybe** (GTD, Things' Someday): a task tagged `:someday:` (any case; on the task, an ancestor heading or
-`#+filetags:` to park a whole file) is parked: hidden from Today, Tasks, stuck projects and the inbox count, but not deleted.
+`#+filetags:` to park a whole file) is parked: hidden from Today, Tasks, stuck projects and the inbox count, but not deleted, the morning plan and the weekly review's overdue/next-week lists, but not deleted.
 "Task: park as someday/maybe / activate again" in the palette toggles the tag on the task at the cursor; "Someday/maybe
 review" opens them as a task list (`tag:someday`), where `s` schedules, `#` removes the tag to activate one and `A` archives.
 The weekly review counts them. Reminders still fire for a parked task that has a deadline or scheduled time.
