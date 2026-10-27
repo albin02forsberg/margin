@@ -752,7 +752,7 @@ describe("Tags", () => {
     await fileMatches(f, (s) => s.startsWith("* TODO Park me :someday:\n"), "someday tag not added");
     await today(false);
     await palette("Someday/maybe review");
-    await find(".agenda h1", "Someday/maybe");
+    await find(".agenda h1", "tag:someday");
     await find(".agenda .row .title", "Park me");
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "park");
