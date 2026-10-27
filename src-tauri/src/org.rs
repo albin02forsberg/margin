@@ -3187,6 +3187,11 @@ mod tests {
         let mine = [Arc::new(parse(Path::new("/n/my notes.org"), "* TODO My idea :idea:\n", &kw()))];
         let (f, _) = query("file:\"MY NOTES\" tag:\"idea\" -tag:\"x y\"", t, &kw(), |_| None, |_, _| false).unwrap();
         assert_eq!(todos(&mine, &kw(), false, f, t).len(), 1);
+        // -tag:someday hides own, inherited and #+filetags parked tasks (#856)
+        let park = [Arc::new(parse(Path::new("/n/a.org"), "* TODO [#A] Own :someday:\n* TODO Proj :someday:\n** TODO [#A] Kid\n* TODO [#A] Live\n", &kw())),
+            Arc::new(parse(Path::new("/n/b.org"), "#+filetags: :someday:\n* TODO [#A] File\n", &kw()))];
+        let (f, _) = query("scheduled:none due:none pri:A -tag:someday", t, &kw(), |_| None, |_, _| false).unwrap();
+        assert_eq!(todos(&park, &kw(), false, f, t).into_iter().map(|i| i.title).collect::<Vec<_>>(), ["Live"]);
         assert_eq!(q("todo:TODO tag:home scheduled:<+1m"), "Plan trip, Call mum");
         assert_eq!(q("report -pri:a"), "Report draft");
         assert!(query("due:<someday", t, &kw(), |_| None, |_, _| false).is_err());

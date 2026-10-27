@@ -1116,7 +1116,7 @@
    *  tomorrow, a date, leave); each sets SCHEDULED (any DEADLINE stays) as one undo group; Esc stops. */
   async function planDay() {
     const t = new Date(), today = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
-    const q = (p: string) => call<AgendaItem[]>("search_todos", { query: `scheduled:none due:none blocked:no pri:${p}` });
+    const q = (p: string) => call<AgendaItem[]>("search_todos", { query: `scheduled:none due:none blocked:no pri:${p} -tag:someday` });
     const [ag, a, b] = await Promise.all([call<AgendaItem[]>("agenda", { start: today, days: 4 }), q("a"), q("b")]);
     const tasks = planCandidates(ag, [...a, ...b], today, kw().todo);
     if (!tasks.length) return flash("Nothing to plan.");
@@ -2096,7 +2096,7 @@
     const off = (n: number) => day(new Date(t.getFullYear(), t.getMonth(), t.getDate() - ((t.getDay() + 6) % 7) + n));
     const q = (query: string) => call<AgendaItem[]>("search_todos", { query });
     const [closed, sched, due, next, inbox, dash, goals, someday] = await Promise.all([
-      q(`closed:>=${off(0)} closed:<=${off(6)}`), q(`scheduled:<${day(t)}`), q(`due:<${day(t)}`), q(`scheduled:>=${off(7)} scheduled:<=${off(13)}`),
+      q(`closed:>=${off(0)} closed:<=${off(6)}`), q(`scheduled:<${day(t)} -tag:someday`), q(`due:<${day(t)} -tag:someday`), q(`scheduled:>=${off(7)} scheduled:<=${off(13)} -tag:someday`),
       call<number>("inbox_count"), call<{ projects: { project: string; worked: number }[] }>("tc_dashboard"),
       call<Goal[]>("org_goals"), q("tag:someday"),
     ]);
