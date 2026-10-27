@@ -292,6 +292,8 @@ pub enum DateOrder {
 pub struct Mapping {
     pub date: usize,
     pub amount: usize,
+    /// The money-in column when the bank splits debit (`amount`) and credit: `amount=3-4`.
+    pub amount2: Option<usize>,
     pub text: Vec<usize>,
     pub currency: Option<usize>,
     pub delim: char,
@@ -301,13 +303,16 @@ pub struct Mapping {
 
 impl Mapping {
     pub fn parse(spec: &str) -> Result<Mapping, String> {
-        let mut m = Mapping { date: usize::MAX, amount: usize::MAX, text: vec![], currency: None, delim: ',', decimal: '.', dates: DateOrder::Dmy };
+        let mut m = Mapping { date: usize::MAX, amount: usize::MAX, amount2: None, text: vec![], currency: None, delim: ',', decimal: '.', dates: DateOrder::Dmy };
         let col = |v: &str| v.trim().parse::<usize>().ok().filter(|&n| n > 0).map(|n| n - 1).ok_or_else(|| format!("{v:?} isn't a column number (1, 2, …)"));
         for w in spec.split_whitespace() {
             let (k, v) = w.split_once('=').ok_or_else(|| format!("write {w:?} as key=value"))?;
             match k {
                 "date" => m.date = col(v)?,
-                "amount" => m.amount = col(v)?,
+                "amount" => match v.split_once('-') {
+                    Some((a, b)) => (m.amount, m.amount2) = (col(a)?, Some(col(b)?)),
+                    None => (m.amount, m.amount2) = (col(v)?, None),
+                },
                 "text" => m.text = v.split('+').map(col).collect::<Result<_, _>>()?,
                 "currency" => m.currency = Some(col(v)?),
                 "delimiter" => m.delim = match v { "tab" => '\t', "," | ";" | "|" => v.chars().next().unwrap(), _ => return Err(format!("the delimiter {v:?} isn't , ; | or tab")) },
@@ -325,7 +330,7 @@ impl Mapping {
     pub fn spec(&self) -> String {
         let n = |c: usize| (c + 1).to_string();
         let text = self.text.iter().map(|&c| n(c)).collect::<Vec<_>>().join("+");
-        let mut s = format!("date={} amount={}", n(self.date), n(self.amount));
+        let mut s = format!("date={} amount={}", n(self.date), n(self.amount) + &self.amount2.map_or(String::new(), |c| format!("-{}", n(c))));
         if !text.is_empty() {
             s += &format!(" text={text}");
         }
@@ -357,7 +362,7 @@ impl Mapping {
         let amount = best(&[date], &|v| bank_amount(v, decimal).is_some()).unwrap_or(1.min(cols.saturating_sub(1)));
         let len = |c: usize| rows.iter().filter_map(|r| r.get(c)).map(|v| v.chars().count()).sum::<usize>();
         let text = (0..cols).filter(|c| ![date, amount].contains(c)).max_by_key(|&c| (len(c), std::cmp::Reverse(c))).into_iter().collect();
-        Mapping { date, amount, text, currency: None, delim, decimal, dates }
+        Mapping { date, amount, amount2: None, text, currency: None, delim, decimal, dates }
     }
 }
 
@@ -406,7 +411,16 @@ pub fn read_csv(csv: &str, m: &Mapping, currency: &str, known: &[&str]) -> (Vec<
     let (mut out, mut skipped) = (vec![], 0);
     for r in csv_rows(csv, m.delim) {
         let cell = |c: usize| r.get(c).map_or("", |s| s.as_str());
-        let (Some(date), Some(cents)) = (bank_date(cell(m.date), m.dates), bank_amount(cell(m.amount), m.decimal)) else {
+        let cents = match m.amount2 {
+            // debit and credit columns: money in minus money out, each unsigned; a net of zero isn't an entry
+            Some(c2) => {
+                let side = |c: usize| bank_amount(cell(c), m.decimal).map(i64::abs);
+                let (out, inc) = (side(m.amount), side(c2));
+                (out.is_some() || inc.is_some()).then(|| inc.unwrap_or(0) - out.unwrap_or(0)).filter(|&c| c != 0)
+            }
+            None => bank_amount(cell(m.amount), m.decimal),
+        };
+        let (Some(date), Some(cents)) = (bank_date(cell(m.date), m.dates), cents) else {
             skipped += 1;
             continue;
         };
@@ -596,6 +610,19 @@ mod tests {
         assert_eq!(Mapping::parse(&us.spec()), Ok(us));
         assert!(Mapping::parse("date=1 amount=2 dates=x").is_err());
         assert_eq!(Mapping::guess("Description,Date,Amount\nCoffee,10/25/2026,x\nTea shop,25/10/2026,-3.50\n").spec(), "date=2 amount=3 text=1 delimiter=, decimal=.");
+    }
+
+    #[test]
+    fn debit_and_credit_columns() {
+        let m = Mapping::parse("date=1 text=2 amount=3-4 delimiter=; decimal=,").unwrap();
+        assert_eq!((m.amount, m.amount2), (2, Some(3)));
+        assert_eq!(Mapping::parse(&m.spec()), Ok(m.clone()));
+        assert!(Mapping::parse("date=1 amount=3-x").is_err());
+        let csv = "Datum;Text;Ut;In\n2026-10-03;Shop;412,50;\n2026-10-04;Pay;;25 000,00\n2026-10-05;Refund;-3,00;\n2026-10-06;Both;5,00;5,00\n2026-10-07;Net;2,00;10,00\n2026-10-08;Empty;;\n";
+        let (es, skipped) = read_csv(csv, &m, "eur", &[]);
+        let got: Vec<_> = es.iter().map(|(e, _)| format_entry(e)).collect();
+        assert_eq!(got, ["- 2026-10-03 -412.50 EUR Shop", "- 2026-10-04 +25000.00 EUR Pay", "- 2026-10-05 -3.00 EUR Refund", "- 2026-10-07 +8.00 EUR Net"]);
+        assert_eq!(skipped, 3); // the header, net zero and both empty
     }
 
     #[test]
