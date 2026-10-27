@@ -1921,7 +1921,7 @@
       });
       if (go === "go") break;
       if (go !== "edit") return;
-      const next = await ask("Columns (1-based)", p.spec, "date=1 amount=3 text=2+4 [currency=5] delimiter=, ; | tab decimal=. , [dates=mdy]");
+      const next = await ask("Columns (1-based)", p.spec, "date=1 amount=3 text=2+4 [currency=5] delimiter=, ; | tab decimal=. , [dates=mdy] (amount=3-4: out, in)");
       if (next == null) return;
       spec = next;
     }
