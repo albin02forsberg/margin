@@ -94,3 +94,14 @@ export const onlyEchoes = (paths: string[], refresh: string[], echo: Set<string>
 /** Whether FILE is one of the changed PATHS or under one (a moved or deleted folder); no PATHS means everything changed. */
 export const changed = (file: string, paths?: string[]) => !paths || paths.some((p) => file === p || (file.startsWith(p) && /[\\/]/.test(file[p.length])));
 
+
+/** `:e NAME`: the note whose path (absolute, or relative to NOTES), file name or TITLES entry matches NAME, case-insensitively and `.org` optional. */
+export function findNote(name: string, files: string[], titles: Map<string, string>, notes: string): string | undefined {
+  const key = (s: string) => s.toLowerCase().replace(/\\/g, "/").replace(/\.org$/, "");
+  const n = key(name.trim());
+  const rel = (f: string) => (f.startsWith(notes) ? f.slice(notes.length + 1) : f);
+  const file = (f: string) => key(f.split(/[\\/]/).pop()!);
+  return files.find((f) => key(f) === n || key(rel(f)) === n)
+    ?? files.find((f) => file(f) === n || file(f).replace(/^\d{14}-/, "").replace(/_/g, " ") === n)
+    ?? files.find((f) => titles.get(f)?.toLowerCase() === name.trim().toLowerCase());
+}

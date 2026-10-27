@@ -13,7 +13,7 @@ import { vim, Vim, getCM } from "@replit/codemirror-vim";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import * as tbl from "./orgtable";
 import { renumber, itemSwap } from "./list";
-import { applySet, type NumOpts } from "./setopt";
+import { setArg, type NumOpts } from "./setopt";
 import { EMPH, toggleEmphasis } from "./emphasis";
 import { FN, addFootnote, footnoteTarget } from "./footnote";
 import { headingAt, level, narrowField, subtreeEnd } from "./narrow";
@@ -25,7 +25,11 @@ export type { Snippet } from "./snippet";
 /** Set by the app; vim ex commands, mappings and clicks call through these. */
 export const hooks = {
   save: () => {},
-  close: () => {},
+  saveAll: () => {},
+  /** FORCE (`:q!`, `:bd!`) drops unsaved edits instead of saving them. */
+  close: (_force?: boolean) => {},
+  /** `:e[!] [NAME]`: open the note NAME, or reload the current one from disk. */
+  edit: (_name: string, _force: boolean) => {},
   follow: (_target?: string) => {},
   tab: (_d: number) => {},
   /** The user's `[[snippets]]` (config.toml), expanded by `<key` + Tab. */
@@ -41,13 +45,31 @@ async function askAll(text: string): Promise<Record<string, string> | null> {
   return answers;
 }
 
+type ExP = { args?: string[]; argString?: string };
+/** An ex command's `!` and the rest of its argument (`:e! name` → [true, "name"]). */
+const bang = (p: ExP): [boolean, string] => { const s = (p.argString ?? "").trim(); return [s.startsWith("!"), s.replace(/^!\s*/, "")]; };
 Vim.defineEx("write", "w", () => hooks.save());
-Vim.defineEx("quit", "q", () => hooks.close());
+Vim.defineEx("quit", "q", (_cm: unknown, p: ExP) => hooks.close(bang(p)[0]));
 Vim.defineEx("wq", "wq", () => { hooks.save(); hooks.close(); });
+Vim.defineEx("xit", "x", () => { hooks.save(); hooks.close(); });
+Vim.defineEx("wall", "wa", () => hooks.saveAll());
+Vim.defineEx("bnext", "bn", () => hooks.tab(1));
+Vim.defineEx("bprevious", "bp", () => hooks.tab(-1));
+Vim.defineEx("bdelete", "bd", (_cm: unknown, p: ExP) => hooks.close(bang(p)[0]));
+Vim.defineEx("edit", "e", (_cm: unknown, p: ExP) => { const [f, n] = bang(p); hooks.edit(n, f); });
 
-// `:set number` / `relativenumber`: one session-wide option set, a compartment per view.
-let numOpts: NumOpts = { number: false, relativenumber: false };
+// `:set number` / `relativenumber` / `wrap`: session-wide vim options, a compartment per view.
+// Global only: the callback ignores per-editor (cm) calls, so codemirror-vim keeps no stale local copies.
+const vimOpts = { number: false, relativenumber: false, wrap: true };
+for (const [name, alias] of [["number", "nu"], ["relativenumber", "rnu"], ["wrap", "wrap"]] as const)
+  Vim.defineOption(name, undefined, "boolean", [alias], (v?: boolean, cm?: unknown) => {
+    if (cm) return undefined;
+    if (v === undefined) return vimOpts[name];
+    vimOpts[name] = v;
+  });
 const numConf = new Compartment();
+const wrapConf = new Compartment();
+const wrapExt = () => (vimOpts.wrap ? EditorView.lineWrapping : []);
 const views = new Set<EditorView>();
 // `spellcheck` setting: org notes only; one session-wide flag, a compartment per view.
 let spellOn = false;
@@ -79,10 +101,22 @@ const trackViews = ViewPlugin.fromClass(class {
   constructor(readonly v: EditorView) { views.add(v); }
   destroy() { views.delete(this.v); }
 });
-Vim.defineEx("set", "se", (_cm: unknown, p: { args?: string[] }) => {
-  numOpts = applySet(numOpts, p.args ?? []);
-  for (const v of views) v.dispatch({ effects: numConf.reconfigure(numExt(numOpts)) });
+// Replaces codemirror-vim's `:set` (one arg only) so `:set nu rnu` works; its own options (`tw`, …) still go through setOption.
+Vim.defineEx("set", "se", (cm: any, p: ExP) => {
+  if (!p.args) return say(cm, "Argument required");
+  for (const a of p.args) {
+    const r = setArg(a, (n) => Vim.getOption(n, cm));
+    const err = "set" in r ? Vim.setOption(r.set[0], r.set[1], cm) : undefined;
+    if ("msg" in r || err) { say(cm, "msg" in r ? r.msg : err!.message); break; }
+  }
+  for (const v of views) v.dispatch({ effects: [numConf.reconfigure(numExt(vimOpts)), wrapConf.reconfigure(wrapExt())] });
 });
+/** Show MSG in the vim status bar, like vim's own messages. */
+function say(cm: { openNotification?: (n: Node, o: object) => unknown }, msg: string) {
+  const el = Object.assign(document.createElement("div"), { className: "cm-vim-message", textContent: msg });
+  el.style.whiteSpace = "pre";
+  cm.openNotification?.(el, { bottom: true, duration: 5000 });
+}
 Vim.defineAction("orgFollow", () => hooks.follow());
 Vim.mapCommand("gf", "action", "orgFollow", {}, { context: "normal" });
 Vim.defineAction("nextTab", () => hooks.tab(1));
@@ -1123,13 +1157,13 @@ const theme = EditorView.theme({
 export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; path?: string; onChange: () => void; onUpdate?: (s: EditorState, docChanged: boolean) => void }) {
   const ext: Extension[] = [
     vim({ status: true }),
-    numConf.of(numExt(numOpts)),
+    numConf.of(numExt(vimOpts)),
     trackViews,
     history(),
     drawSelection(),
     highlightActiveLine(),
     highlightSelectionMatches(),
-    EditorView.lineWrapping,
+    wrapConf.of(wrapExt()),
     codeFolding({ placeholderText: "⋯" }),
     keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
     theme,

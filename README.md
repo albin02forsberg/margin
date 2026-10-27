@@ -513,7 +513,7 @@ template captured with the window hidden is filed without opening it.
 
 ## Editing notes
 
-Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`, `no` prefix to turn off) show line numbers in every editor until you quit. On top of that:
+Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`) show line numbers and `:set nowrap` turns off line wrapping in every editor until you quit (`no` prefix turns an option off, `!` toggles it, `?` shows it; several at once: `:set nu rnu`). Ex commands: `:w`, `:wa` (all tabs), `:q` / `:x` / `:wq` (save and close the tab), `:q!` (close without saving), `:bn` / `:bp` (next / previous tab, like `gt` / `gT`), `:bd` (close tab), `:e name` (open a note by file name, path or title; creates it if none matches), `:e!` (reload from disk), `:noh`, `:s`, `:g`, `:sort`. On top of that:
 
 | | |
 |---|---|

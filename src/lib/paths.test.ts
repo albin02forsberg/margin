@@ -1,6 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ago, changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath, weekJournals } from "./paths.ts";
+import { ago, changed, findNote, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath, weekJournals } from "./paths.ts";
+
+test("findNote", () => {
+  const files = ["/n/inbox.org", "/n/work/Plan.org", "/n/20260101120000-big_idea.org", "/n/x.org"];
+  const titles = new Map([["/n/x.org", "Reading list"]]);
+  const f = (q: string) => findNote(q, files, titles, "/n");
+  assert.equal(f("inbox"), "/n/inbox.org");
+  assert.equal(f("work/plan.org"), "/n/work/Plan.org");
+  assert.equal(f("/n/work/Plan.org"), "/n/work/Plan.org");
+  assert.equal(f("plan"), "/n/work/Plan.org");
+  assert.equal(f("big idea"), "/n/20260101120000-big_idea.org");
+  assert.equal(f("Reading List"), "/n/x.org");
+  assert.equal(f("nope"), undefined);
+});
 
 test("resolvePath", () => {
   assert.equal(resolvePath("/n/sub", "../other/target.org"), "/n/other/target.org");
