@@ -1192,6 +1192,57 @@ pub fn clocktable(sessions: &[Session], project: Option<&str>, start: NaiveDate,
     org_table(&rows)
 }
 
+/// The `#+NAME: invoice` table of PROJECT for FROM..=TO (#832): billable hours per task from the carry-rounded
+/// sessions (so they add up to the month report's billable), each at the project's rate; the total row prices
+/// the summed hours with `earned`, the report's number. An error without a rate.
+pub fn invoice_table(sessions: &[Session], projects: &Projects, project: &str, from: NaiveDate, to: NaiveDate) -> Result<String, String> {
+    let p = projects.get(project).ok_or_else(|| format!("No project named {project}"))?;
+    let rate = p.rate().ok_or_else(|| format!("{project} has no hourly rate: set one in Time: project settings (Space t P)"))?;
+    let rounded = apply_carry(&prepare_report_sessions(sessions), projects).0;
+    let mut by: BTreeMap<&str, f64> = BTreeMap::new();
+    for s in rounded.iter().filter(|s| s.project == project && from <= s.date && s.date <= to) {
+        *by.entry(if is_blank_desc(&s.desc) { "(no description)" } else { s.desc.trim() }).or_default() += s.hours;
+    }
+    let mut tasks: Vec<_> = by.into_iter().filter(|t| t.1.abs() > 1e-9).collect();
+    tasks.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let cur = p.currency.trim();
+    let mut rows = vec![["Task", "Hours", "Rate", "Amount"].map(String::from).to_vec()];
+    for (t, h) in &tasks {
+        rows.push(vec![t.replace('|', "\\vert{}"), format!("{h:.2}"), format!("{rate:.2}"), format!("{:.2}", earned(*h, rate))]);
+    }
+    let total = tasks.iter().fold(0.0, |a, t| a + t.1);
+    rows.push(vec!["*Total*".into(), format!("*{total:.2}*"), String::new(), format!("*{}*", money(earned(total, rate), cur))]);
+    Ok(format!("#+NAME: invoice\n{}", org_table(&rows)))
+}
+
+/// TEXT with its `#+NAME: invoice` table replaced by BLOCK (from invoice_table), everything else kept byte for
+/// byte; without one, BLOCK is appended after a blank line.
+pub fn put_invoice(text: &str, block: &str) -> String {
+    let eol = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let block = block.trim_end().replace('\n', eol);
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let Some(b) = lines.iter().position(|l| l.trim().eq_ignore_ascii_case("#+NAME: invoice")) else {
+        let sep = match text {
+            "" => String::new(),
+            t if t.ends_with(&format!("{eol}{eol}")) => String::new(),
+            t if t.ends_with('\n') => eol.to_string(),
+            _ => format!("{eol}{eol}"),
+        };
+        return format!("{text}{sep}{block}{eol}");
+    };
+    let e = (b + 1..lines.len()).find(|&i| !lines[i].trim_start().starts_with('|')).unwrap_or(lines.len());
+    let tail = if e == lines.len() && !lines[e - 1].ends_with('\n') { "" } else { eol };
+    format!("{}{block}{tail}{}", lines[..b].concat(), lines[e..].concat())
+}
+
+/// `invoices/<project>-<YYYY-MM>.org` for PROJECT and the month of FIRST, with characters that aren't safe in a
+/// file name (path separators, Windows' reserved ones, control characters) as `-` and no leading dot.
+pub fn invoice_file(project: &str, first: NaiveDate) -> PathBuf {
+    let name: String = project.trim().chars().map(|c| if c.is_control() || "/\\:*?\"<>|".contains(c) { '-' } else { c }).collect();
+    let name = name.trim_start_matches(['.', ' ']);
+    Path::new("invoices").join(format!("{}-{}.org", if name.is_empty() { "project" } else { name }, first.format("%Y-%m")))
+}
+
 pub fn holidays_report(year: i32, cal: &Calendar) -> String {
     let mut o = format!("#+TITLE: {}Public Holidays {year}\n\n", if cal.swedish { "Swedish " } else { "" });
     if cal.swedish {
@@ -1673,6 +1724,58 @@ mod tests {
         // Without any rate the table is as before.
         let r = weekly_report(&ss[3..], &p, (&[], &LeaveCodes::new()), &w(8.0), d("2026-10-05"), d("2026-10-11"), "Work");
         assert!(r.contains("| Share |\n") && !r.contains("Earned") && !r.contains("Rate"), "{r}");
+    }
+
+    #[test]
+    fn invoice_table_matches_month_report() {
+        let s = |day: &str, p: &str, desc: &str, h| Session { date: d(day), project: p.into(), desc: desc.into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None };
+        let p = Projects::from([("Acme".into(), Project { rate: Some(95.5), currency: "EUR".into(), ..Project::new("A") }), ("Free".into(), Project::new("F"))]);
+        // 0.5 h rounding with carry from September on: 1.4 -> 1.5, 0.7 - 0.1 -> 0.5, 0.6 + 0.1 -> 0.5, 2.0 + 0.2 -> 2.0.
+        let ss = [s("2026-09-30", "Acme", "Old", 1.4), s("2026-10-01", "Acme", "Spec | review", 0.7), s("2026-10-02", "Acme", "Build", 0.6), s("2026-10-03", "Acme", "", 2.0), s("2026-10-03", "Free", "x", 3.0)];
+        let (from, to) = (d("2026-10-01"), d("2026-10-31"));
+        let t = invoice_table(&ss, &p, "Acme", from, to).unwrap();
+        assert!(t.starts_with("#+NAME: invoice\n| Task "), "{t}");
+        assert!(t.contains("| Spec \\vert{} review |"), "{t}");
+        assert!(t.contains("| (no description) "), "{t}");
+        // Billable equals the month report's; the total prices the summed hours, as the dashboard's `earned` does.
+        let report = weekly_report(&ss, &p, (&[], &LeaveCodes::new()), &w(8.0), from, to, "Work");
+        let row = report.lines().find(|l| l.starts_with("| Acme")).unwrap();
+        let billable = row.split('|').nth(4).unwrap().trim().trim_end_matches(" h").to_string();
+        assert_eq!(billable, "3.00");
+        let total = t.lines().last().unwrap();
+        assert!(total.contains(&format!("*{billable}*")), "{total} vs {report}");
+        let hours: f64 = billable.parse().unwrap();
+        assert!(total.contains(&format!("*{:.2} EUR*", earned(hours, 95.5))) && total.contains("EUR"), "{total}");
+        assert!(!t.contains("Old"), "September stays out: {t}");
+        assert_eq!(invoice_table(&ss, &p, "Free", from, to).unwrap_err(), "Free has no hourly rate: set one in Time: project settings (Space t P)");
+        assert!(invoice_table(&ss, &p, "Nope", from, to).is_err());
+        // An empty month: just the total row.
+        assert!(invoice_table(&ss, &p, "Acme", d("2026-11-01"), d("2026-11-30")).unwrap().ends_with("| *Total* | *0.00* |      | *0.00 EUR* |\n"));
+    }
+
+    #[test]
+    fn put_invoice_replaces_only_the_table() {
+        let (old, new) = ("#+NAME: invoice\n| a | 1 |\n| b | 2 |\n", "#+NAME: invoice\n| c | 3 |\n");
+        let text = format!("#+TITLE: Invoice\n\nDear client,\n{old}\nPayment in 30 days.\n");
+        assert_eq!(put_invoice(&text, new), "#+TITLE: Invoice\n\nDear client,\n#+NAME: invoice\n| c | 3 |\n\nPayment in 30 days.\n");
+        assert_eq!(put_invoice(&put_invoice(&text, new), new), put_invoice(&text, new));
+        assert_eq!(put_invoice("x\r\n#+name: invoice\r\n| a |\r\nend", new), "x\r\n#+NAME: invoice\r\n| c | 3 |\r\nend");
+        assert_eq!(put_invoice("x\n#+NAME: invoice\n| a |", new), "x\n#+NAME: invoice\n| c | 3 |");
+        // No table yet: appended after a blank line.
+        assert_eq!(put_invoice("", new), new);
+        assert_eq!(put_invoice("notes", new), format!("notes\n\n{new}"));
+        assert_eq!(put_invoice("notes\n", new), format!("notes\n\n{new}"));
+        assert_eq!(put_invoice("notes\n\n", new), format!("notes\n\n{new}"));
+    }
+
+    #[test]
+    fn invoice_file_names() {
+        let f = |p| invoice_file(p, d("2026-10-01"));
+        assert_eq!(f("Acme"), Path::new("invoices").join("Acme-2026-10.org"));
+        assert_eq!(f("../a/b\\c:d"), Path::new("invoices").join("-a-b-c-d-2026-10.org"));
+        assert_eq!(f(".hidden"), Path::new("invoices").join("hidden-2026-10.org"));
+        assert_eq!(f(".."), Path::new("invoices").join("project-2026-10.org"));
+        assert!(f("../../etc").components().all(|c| c != std::path::Component::ParentDir));
     }
 
     #[test]

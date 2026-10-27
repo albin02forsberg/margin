@@ -2332,6 +2332,19 @@
     if (d != null) await report("monthly", "Month report", d);
   }
 
+  /** An invoice note for a project with a rate and a month (#832); a re-run replaces only its `#+NAME: invoice` table. */
+  async function invoice() {
+    const projects = await call<Record<string, { rate?: number | null }>>("tc_projects");
+    const items = Object.keys(projects).filter((p) => (projects[p].rate ?? 0) > 0);
+    if (!items.length) return flash("⚠ No project has an hourly rate: set one in Time: project settings (Space t P)");
+    const project = await pick({ prompt: "Invoice for project", items });
+    if (project == null) return;
+    const d = await datePick("Invoice for the month containing", false, undefined, false);
+    if (d == null) return;
+    await openFile(await call<string>("tc_invoice", { project, dateInput: d }));
+    flash("Invoice written; a re-run replaces only its #+NAME: invoice table");
+  }
+
   async function exportCsv() {
     const start = await datePick("Export from");
     if (start == null) return;
@@ -2815,6 +2828,7 @@
     { label: "Time: when to leave today", leader: "t w", run: t("leave") },
     { label: "Time: public holidays", leader: "t h", run: t("holidays") },
     { label: "Time: export CSV…", leader: "t e", run: t("export") },
+    { label: "Time: invoice for project… (billable hours × rate into invoices/<project>-<month>.org)", leader: "t I", run: () => act(invoice) },
     { label: "Time: switch profile…", leader: "t p", run: () => switchProfile() },
     { label: "Time: project settings", leader: "t P", run: t("projects") },
     { label: "Time: open work diary", leader: "t d", run: t("diary") },
