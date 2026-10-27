@@ -2,7 +2,7 @@
 //! `- 2026-10-25 -12.50 EUR lunch @anna #food [[id:…]]` (negative = expense, positive = income).
 //! Dates stay unbracketed so entries never reach the agenda. Lines are only ever appended;
 //! anything `parse_entry` doesn't understand is left as it is.
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use regex::Regex;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
@@ -278,7 +278,16 @@ pub fn to_csv(text: &str, from: NaiveDate, to: NaiveDate) -> String {
 }
 
 /// Which columns (0-based) of a bank CSV hold what, and how it is written. As text (`spec`, 1-based):
-/// `date=1 amount=3 text=2+4 currency=5 delimiter=; decimal=,` (currency is optional; `delimiter=tab`).
+/// `date=1 amount=3 text=2+4 currency=5 delimiter=; decimal=,` (currency is optional; `delimiter=tab`; `dates=mdy`
+/// or `ymd` for dates that aren't day first).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum DateOrder {
+    #[default]
+    Dmy,
+    Mdy,
+    Ymd,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mapping {
     pub date: usize,
@@ -287,11 +296,12 @@ pub struct Mapping {
     pub currency: Option<usize>,
     pub delim: char,
     pub decimal: char,
+    pub dates: DateOrder,
 }
 
 impl Mapping {
     pub fn parse(spec: &str) -> Result<Mapping, String> {
-        let mut m = Mapping { date: usize::MAX, amount: usize::MAX, text: vec![], currency: None, delim: ',', decimal: '.' };
+        let mut m = Mapping { date: usize::MAX, amount: usize::MAX, text: vec![], currency: None, delim: ',', decimal: '.', dates: DateOrder::Dmy };
         let col = |v: &str| v.trim().parse::<usize>().ok().filter(|&n| n > 0).map(|n| n - 1).ok_or_else(|| format!("{v:?} isn't a column number (1, 2, …)"));
         for w in spec.split_whitespace() {
             let (k, v) = w.split_once('=').ok_or_else(|| format!("write {w:?} as key=value"))?;
@@ -302,7 +312,8 @@ impl Mapping {
                 "currency" => m.currency = Some(col(v)?),
                 "delimiter" => m.delim = match v { "tab" => '\t', "," | ";" | "|" => v.chars().next().unwrap(), _ => return Err(format!("the delimiter {v:?} isn't , ; | or tab")) },
                 "decimal" => m.decimal = match v { "." | "," => v.chars().next().unwrap(), _ => return Err(format!("the decimal separator {v:?} isn't . or ,")) },
-                _ => return Err(format!("unknown key {k:?}: use date, amount, text, currency, delimiter or decimal")),
+                "dates" => m.dates = match v { "dmy" => DateOrder::Dmy, "mdy" => DateOrder::Mdy, "ymd" => DateOrder::Ymd, _ => return Err(format!("the date order {v:?} isn't dmy, mdy or ymd")) },
+                _ => return Err(format!("unknown key {k:?}: use date, amount, text, currency, delimiter, decimal or dates")),
             }
         }
         if m.date == usize::MAX || m.amount == usize::MAX {
@@ -321,7 +332,12 @@ impl Mapping {
         if let Some(c) = self.currency {
             s += &format!(" currency={}", n(c));
         }
-        format!("{s} delimiter={} decimal={}", if self.delim == '\t' { "tab".into() } else { self.delim.to_string() }, self.decimal)
+        s += &format!(" delimiter={} decimal={}", if self.delim == '\t' { "tab".into() } else { self.delim.to_string() }, self.decimal);
+        match self.dates {
+            DateOrder::Dmy => s,
+            DateOrder::Mdy => s + " dates=mdy",
+            DateOrder::Ymd => s + " dates=ymd",
+        }
     }
 
     /// A first guess for CSV: the delimiter most used on the first line, then the first column of dates, the first
@@ -334,19 +350,33 @@ impl Mapping {
         let cols = rows.iter().map(Vec::len).max().unwrap_or(0);
         let hits = |c: usize, ok: &dyn Fn(&str) -> bool| rows.iter().filter(|r| r.get(c).is_some_and(|v| ok(v))).count();
         let best = |skip: &[usize], ok: &dyn Fn(&str) -> bool| (0..cols).filter(|c| !skip.contains(c)).map(|c| (hits(c, ok), c)).filter(|x| x.0 > 0).max_by_key(|&(h, c)| (h, std::cmp::Reverse(c))).map(|x| x.1);
-        let date = best(&[], &|v| bank_date(v).is_some()).unwrap_or(0);
+        let date = best(&[], &|v| bank_date(v, DateOrder::Dmy).or_else(|| bank_date(v, DateOrder::Mdy)).is_some()).unwrap_or(0);
+        // month first when some second field is above 12 and no first field is
+        let field = |r: &Vec<String>, i: usize| r.get(date).and_then(|v| v.trim().split(|c: char| !c.is_ascii_digit()).nth(i)?.parse::<u32>().ok()).unwrap_or(0);
+        let dates = if rows.iter().all(|r| field(r, 0) <= 12) && rows.iter().any(|r| field(r, 1) > 12) { DateOrder::Mdy } else { DateOrder::Dmy };
         let amount = best(&[date], &|v| bank_amount(v, decimal).is_some()).unwrap_or(1.min(cols.saturating_sub(1)));
         let len = |c: usize| rows.iter().filter_map(|r| r.get(c)).map(|v| v.chars().count()).sum::<usize>();
         let text = (0..cols).filter(|c| ![date, amount].contains(c)).max_by_key(|&c| (len(c), std::cmp::Reverse(c))).into_iter().collect();
-        Mapping { date, amount, text, currency: None, delim, decimal }
+        Mapping { date, amount, text, currency: None, delim, decimal, dates }
     }
 }
 
-/// A bank's date: `2026-10-25`, `2026/10/25`, `20261025`, `25.10.2026`, `25/10/2026` or `25-10-2026` (day first),
-/// a time after it ignored.
-fn bank_date(s: &str) -> Option<NaiveDate> {
+/// A bank's date: `2026-10-25`, `2026/10/25`, `20261025`, or with `. / -` separators `25.10.2026` (day first for
+/// ORDER dmy, month first for mdy, year first for ymd), the year also as two digits; a time after it ignored.
+fn bank_date(s: &str, order: DateOrder) -> Option<NaiveDate> {
     let s = s.trim().split(['T', ' ']).next()?;
-    ["%Y-%m-%d", "%Y/%m/%d", "%Y%m%d", "%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y"].iter().find_map(|f| NaiveDate::parse_from_str(s, f).ok())
+    let mut fs = vec!["%Y-%m-%d".to_string(), "%Y/%m/%d".into(), "%Y%m%d".into()];
+    for sep in ['.', '/', '-'] {
+        // `%y` before `%Y`: chrono's `%Y` would take `26` as the year 26
+        for y in ["y", "Y"] {
+            fs.push(match order {
+                DateOrder::Dmy => format!("%d{sep}%m{sep}%{y}"),
+                DateOrder::Mdy => format!("%m{sep}%d{sep}%{y}"),
+                DateOrder::Ymd => format!("%{y}{sep}%m{sep}%d"),
+            });
+        }
+    }
+    fs.iter().find_map(|f| NaiveDate::parse_from_str(s, f).ok().filter(|d| d.year() >= 1000))
 }
 
 /// A bank's amount as signed cents, with DECIMAL as the decimal separator: `-1 234,50`, `1,234.50`, `(12.50)` and
@@ -376,7 +406,7 @@ pub fn read_csv(csv: &str, m: &Mapping, currency: &str, known: &[&str]) -> (Vec<
     let (mut out, mut skipped) = (vec![], 0);
     for r in csv_rows(csv, m.delim) {
         let cell = |c: usize| r.get(c).map_or("", |s| s.as_str());
-        let (Some(date), Some(cents)) = (bank_date(cell(m.date)), bank_amount(cell(m.amount), m.decimal)) else {
+        let (Some(date), Some(cents)) = (bank_date(cell(m.date), m.dates), bank_amount(cell(m.amount), m.decimal)) else {
             skipped += 1;
             continue;
         };
@@ -539,9 +569,17 @@ mod tests {
             assert_eq!(a(bad, '.'), None, "{bad}");
         }
         for s in ["2026-10-25", "2026/10/25", "20261025", "25.10.2026", "25/10/2026", "2026-10-25 13:00", "2026-10-25T13:00:00"] {
-            assert_eq!(bank_date(s), Some(d("2026-10-25")), "{s}");
+            assert_eq!(bank_date(s, DateOrder::Dmy), Some(d("2026-10-25")), "{s}");
         }
-        assert_eq!(bank_date("Date"), None);
+        assert_eq!(bank_date("Date", DateOrder::Dmy), None);
+        let (dmy, mdy, ymd) = (DateOrder::Dmy, DateOrder::Mdy, DateOrder::Ymd);
+        assert_eq!(bank_date("25.10.26", dmy), Some(d("2026-10-25"))); // not the year 26
+        assert_eq!(bank_date("25/10/26", dmy), Some(d("2026-10-25")));
+        assert_eq!(bank_date("03/10/2026", dmy), Some(d("2026-10-03")));
+        assert_eq!(bank_date("03/10/2026", mdy), Some(d("2026-03-10")));
+        assert_eq!(bank_date("10/25/26", mdy), Some(d("2026-10-25")));
+        assert_eq!(bank_date("26-10-25", ymd), Some(d("2026-10-25")));
+        assert_eq!(bank_date("26-10-25", dmy), Some(d("2025-10-26")));
     }
 
     #[test]
@@ -553,6 +591,10 @@ mod tests {
         assert!(Mapping::parse("date=0 amount=1").is_err() && Mapping::parse("date=1 amount=2 x=3").is_err() && Mapping::parse("date=1 amount=2 decimal=;").is_err());
         let g = Mapping::guess("\u{feff}Bokföringsdag;Text;Belopp;Saldo\n2026-10-03;ICA Kvantum Malmö;-412,50;1 000,00\n2026-10-04;Lön;25 000,00;26 000,00\n");
         assert_eq!(g.spec(), "date=1 amount=3 text=2 delimiter=; decimal=,");
+        let us = Mapping::guess("Description,Date,Amount\nCoffee,10/25/2026,-1.00\nTea,03/10/2026,-3.50\n");
+        assert_eq!(us.spec(), "date=2 amount=3 text=1 delimiter=, decimal=. dates=mdy");
+        assert_eq!(Mapping::parse(&us.spec()), Ok(us));
+        assert!(Mapping::parse("date=1 amount=2 dates=x").is_err());
         assert_eq!(Mapping::guess("Description,Date,Amount\nCoffee,10/25/2026,x\nTea shop,25/10/2026,-3.50\n").spec(), "date=2 amount=3 text=1 delimiter=, decimal=.");
     }
 
