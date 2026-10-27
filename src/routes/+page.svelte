@@ -1912,9 +1912,9 @@
     if (!path?.trim()) return;
     let spec: string | null = null;
     for (;;) {
-      const p = await call<{ spec: string; rows: [string, boolean][]; new: number; dupes: number; skipped: number }>("ledger_import_preview", { path, spec });
+      const p = await call<{ spec: string; remembered: boolean; rows: [string, boolean][]; new: number; dupes: number; skipped: number }>("ledger_import_preview", { path, spec });
       spec = p.spec;
-      const body = [`Columns: ${p.spec}`, "", ...p.rows.map(([l, d]) => `${l}${d ? "   (already there)" : ""}`), p.new + p.dupes > p.rows.length ? "…" : ""].join("\n");
+      const body = [`Columns: ${p.spec}${p.remembered ? "  (remembered)" : ""}`, "", ...p.rows.map(([l, d]) => `${l}${d ? "   (already there)" : ""}`), p.new + p.dupes > p.rows.length ? "…" : ""].join("\n");
       const go = await pick({
         prompt: `Import ${p.new} new entr${p.new === 1 ? "y" : "ies"} into the inbox? (${p.dupes} already there, ${p.skipped} rows without a date or amount)`, body,
         items: [...(p.new ? [{ label: "Import for review", value: "go" }] : []), { label: "Change columns…", value: "edit", detail: p.spec }],

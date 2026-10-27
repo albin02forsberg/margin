@@ -1019,38 +1019,49 @@ fn ledger_csv(s: State<App>, start: String, end: String, path: PathBuf) -> R<Str
     Ok(format!("✅ {} ledger entries exported to {}", csv.lines().count() - 1, path.display()))
 }
 
+/// Where the remembered CSV column mappings live: app state, in the local data dir (not data_dir, which backups commit).
+fn import_memo(app: &AppHandle) -> R<PathBuf> {
+    Ok(app.path().app_local_data_dir().map_err(|e| e.to_string())?.join("ledger-import.json"))
+}
+
 /// A bank CSV at PATH (absolute `.csv`, not in the data or config folder; UTF-8, else read as Latin-1) and the mapping
-/// SPEC (None: guessed) it is read with.
-fn bank_csv(s: &App, path: &Path, spec: Option<&str>) -> R<(String, ledger::Mapping)> {
+/// SPEC it is read with (None: the one remembered for its header if that still parses, else guessed), and whether
+/// that was the remembered one.
+fn bank_csv(s: &App, app: &AppHandle, path: &Path, spec: Option<&str>) -> R<(String, ledger::Mapping, bool)> {
     csv_dest(path, &[s.cfg().data(), s.cfg_path.parent().unwrap().to_path_buf()])?;
     let b = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let csv = String::from_utf8(b).unwrap_or_else(|e| e.into_bytes().iter().map(|&b| b as char).collect());
-    let m = match spec.filter(|s| !s.trim().is_empty()) {
-        Some(sp) => ledger::Mapping::parse(sp)?,
-        None => ledger::Mapping::guess(&csv),
-    };
-    Ok((csv, m))
+    if let Some(sp) = spec.filter(|s| !s.trim().is_empty()) {
+        return Ok((csv, ledger::Mapping::parse(sp)?, false));
+    }
+    let memo = import_memo(app).ok().and_then(|p| ledger::remembered(&p, &csv)).and_then(|sp| ledger::Mapping::parse(&sp).ok());
+    let remembered = memo.is_some();
+    Ok((csv.clone(), memo.unwrap_or_else(|| ledger::Mapping::guess(&csv)), remembered))
 }
 
 /// What importing the bank CSV at PATH with SPEC (None: a guess) would propose, against the ledger and the inbox on disk:
-/// `{ spec, rows: [[entry line, duplicate]] (the first 15), new, dupes, skipped }`.
+/// `{ spec, remembered (read from the spec remembered for this header), rows: [[entry line, duplicate]] (the first 15), new, dupes, skipped }`.
 #[tauri::command(async)]
-fn ledger_import_preview(s: State<App>, path: PathBuf, spec: Option<String>) -> R<Value> {
-    let (csv, m) = bank_csv(&s, &path, spec.as_deref())?;
+fn ledger_import_preview(s: State<App>, app: AppHandle, path: PathBuf, spec: Option<String>) -> R<Value> {
+    let (csv, m, remembered) = bank_csv(&s, &app, &path, spec.as_deref())?;
     let c = s.cfg();
     let inbox = std::fs::read_to_string(c.notes().join(&c.inbox)).unwrap_or_default();
     let (es, skipped) = ledger::read_csv(&csv, &m, &c.ledger_currency, &[&ledger_text(&s)?.1, &inbox]);
     let dupes = es.iter().filter(|x| x.1).count();
     let rows: Vec<(String, bool)> = es.iter().take(15).map(|(e, d)| (ledger::format_entry(e), *d)).collect();
-    Ok(json!({ "spec": m.spec(), "rows": rows, "new": es.len() - dupes, "dupes": dupes, "skipped": skipped }))
+    Ok(json!({ "spec": m.spec(), "remembered": remembered, "rows": rows, "new": es.len() - dupes, "dupes": dupes, "skipped": skipped }))
 }
 
 /// TEXT (the inbox) with the new entries of the bank CSV at PATH proposed for review: [new text, added, duplicates].
 #[tauri::command(async)]
-fn ledger_import(s: State<App>, text: String, path: PathBuf, spec: String) -> R<(String, usize, usize)> {
-    let (csv, m) = bank_csv(&s, &path, Some(&spec))?;
+fn ledger_import(s: State<App>, app: AppHandle, text: String, path: PathBuf, spec: String) -> R<(String, usize, usize)> {
+    let (csv, m, _) = bank_csv(&s, &app, &path, Some(&spec))?;
     let (es, _) = ledger::read_csv(&csv, &m, &s.cfg().ledger_currency, &[&ledger_text(&s)?.1, &text]);
     let new: Vec<ledger::Entry> = es.iter().filter(|x| !x.1).map(|x| x.0.clone()).collect();
+    // Best effort: a failed write must not lose the import.
+    if let Ok(p) = import_memo(&app) {
+        ledger::remember(&p, &csv, &spec).ok();
+    }
     Ok((ledger::propose(&text, &new, &s.kw()), new.len(), es.len() - new.len()))
 }
 

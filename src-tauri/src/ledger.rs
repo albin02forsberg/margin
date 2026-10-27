@@ -400,6 +400,32 @@ fn bank_amount(s: &str, decimal: char) -> Option<i64> {
     Some(if neg { -c.abs() } else { c })
 }
 
+/// The CSV's header line, normalized (BOM-stripped, trimmed, lowercased): the key a bank's column mapping is remembered by.
+pub fn header_key(csv: &str) -> String {
+    csv.trim_start_matches('\u{feff}').lines().next().unwrap_or_default().trim().to_lowercase()
+}
+
+/// The mapping spec remembered for CSV's header in the JSON store at STORE (missing or corrupt: none).
+pub fn remembered(store: &std::path::Path, csv: &str) -> Option<String> {
+    let map: HashMap<String, String> = serde_json::from_str(&std::fs::read_to_string(store).ok()?).ok()?;
+    map.get(&header_key(csv)).cloned()
+}
+
+/// Remember SPEC for CSV's header in STORE, unless the first line is a transaction (a header-less export) or empty.
+pub fn remember(store: &std::path::Path, csv: &str, spec: &str) -> Result<(), String> {
+    let key = header_key(csv);
+    let m = Mapping::parse(spec)?;
+    if key.is_empty() || !read_csv(csv.lines().next().unwrap_or_default(), &m, "EUR", &[]).0.is_empty() {
+        return Ok(());
+    }
+    let mut map: HashMap<String, String> = std::fs::read_to_string(store).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    map.insert(key, spec.to_string());
+    if let Some(d) = store.parent() {
+        std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+    }
+    crate::config::write_atomic(store, serde_json::to_string(&map).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+}
+
 /// A bank CSV read with M: the rows that hold a date and an amount as entries (in CURRENCY unless a currency column
 /// says otherwise), each flagged true when it is already in KNOWN (ledger and inbox text) by date, amount and text.
 /// A known entry matches once, so two equal coffees on a day stay two. The count of other rows comes last.
@@ -668,6 +694,27 @@ mod tests {
         let mut want: Vec<Entry> = text.lines().filter_map(parse_entry).filter(|e| e.date.format("%Y-%m").to_string() == "2026-10").collect();
         want.reverse();
         assert_eq!(back, want);
+    }
+
+    #[test]
+    fn column_mapping_is_remembered_by_header() {
+        let dir = std::env::temp_dir().join(format!("margin-ledger-memo-{}", std::process::id()));
+        let store = dir.join("ledger-import.json");
+        let csv = "\u{feff} Datum;Belopp;Text \n2026-10-02;-5,00;kaffe\n";
+        assert_eq!(header_key(csv), "datum;belopp;text");
+        assert_eq!(remembered(&store, csv), None);
+        remember(&store, csv, "date=1 amount=2 text=3 delimiter=; decimal=,").unwrap();
+        assert_eq!(remembered(&store, "Datum;BELOPP;text\n"), Some("date=1 amount=2 text=3 delimiter=; decimal=,".into()));
+        assert_eq!(remembered(&store, "other;header\n"), None);
+        // A header-less export (first line is a transaction) is never stored.
+        remember(&store, "2026-10-02;-5,00;kaffe\n", "date=1 amount=2 text=3 delimiter=; decimal=,").unwrap();
+        assert_eq!(remembered(&store, "2026-10-02;-5,00;kaffe\n"), None);
+        // A corrupt store is ignored and overwritten.
+        std::fs::write(&store, "{nope").unwrap();
+        assert_eq!(remembered(&store, csv), None);
+        remember(&store, csv, "date=1 amount=2 delimiter=;").unwrap();
+        assert!(remembered(&store, csv).is_some());
+        std::fs::remove_dir_all(dir).ok();
     }
 
     #[test]
