@@ -6,7 +6,7 @@
 //      AUTOPILOT_MAX (agent slots, default 3), AUTOPILOT_CONTEXT (context window tokens, default 200000),
 //      AUTOPILOT_REPO (default albin02forsberg/margin).
 import { createInterface } from "node:readline";
-import { appendFileSync, writeFileSync, readFileSync, openSync, mkdirSync } from "node:fs";
+import { appendFileSync, writeFileSync, readFileSync, openSync, mkdirSync, existsSync } from "node:fs";
 import { ReadStream } from "node:tty";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -36,6 +36,9 @@ const OWNER = "albin02forsberg";
 const STATE_DIR = limitsFile ? dirname(limitsFile) : join(homedir(), ".cache", "margin-autopilot");
 const DISMISSED = join(STATE_DIR, "dismissed.json");
 const standalone = process.argv.includes("--decide"); // decision panel only, no run attached
+// --sleep <until-epoch-s> <why>: the runner is waiting for a reset; keep the dashboard up until then (or STOP).
+const si = process.argv.indexOf("--sleep");
+const sleepUntil = si > 0 ? Number(process.argv[si + 1]) * 1000 : 0, sleepWhy = si > 0 ? process.argv[si + 2] || "" : "";
 let dismissed = new Set();
 try { dismissed = new Set(JSON.parse(readFileSync(DISMISSED, "utf8"))); } catch {}
 const notified = new Set();
@@ -313,7 +316,9 @@ function render() {
   else L.push(green(" ✔ nothing needs you"));
   if (st.msg) L.push(" " + st.msg);
   L.push(dim("─".repeat(w)));
-  L.push(` ${cyan(spin)} ${bold("Now")}  ${cut(st.now, w - 10)}`);
+  L.push(sleepUntil
+    ? ` 💤 ${bold("Sleeping")}  ${cut(sleepWhy, w - 40)} - next run in ${dur(sleepUntil - now)}`
+    : ` ${cyan(spin)} ${bold("Now")}  ${cut(st.now, w - 10)}`);
 
   // usage + context
   L.push("");
@@ -400,7 +405,12 @@ const writeTail = () => { if (TAIL) { try { writeFileSync(TAIL, rawTail.join("\n
 // The runner/rotation stop the run with `pkill -f <session>`; the session id is also our argv[2], so we get SIGTERM too.
 process.on("SIGTERM", () => { writeTail(); process.exit(143); });
 
-if (standalone) {   // no run attached: the key stream keeps the process alive
+if (sleepUntil) {   // no run attached: show limits from the last run and stay up until the deadline or STOP
+  try { const l = JSON.parse(readFileSync(limitsFile, "utf8")); st.limits = { ...l, seen: l.ts }; } catch {}
+  process.stdin.destroy();
+  setInterval(() => { if (Date.now() >= sleepUntil || existsSync(join(STATE_DIR, "STOP"))) process.exit(0); }, 1000);
+  render();
+} else if (standalone) {   // no run attached: the key stream keeps the process alive
   process.stdin.destroy();
   render();
 } else {

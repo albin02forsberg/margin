@@ -82,6 +82,7 @@ self_update() {
   if ! bash -n "$self" 2>/dev/null; then say "script changed but has a syntax error, keeping the old version"; return 0; fi
   say "script changed: restarting"
   [ -t 1 ] && printf '\r\033[K'
+  [ -n "${ui:-}" ] && kill "$ui" 2>/dev/null   # countdown's dashboard child (dynamic scope)
   rm -rf "$lock"   # exec skips the EXIT trap; the new process would see its own pid as "already running"
   exec bash "$self"   # via bash: works without the execute bit
 }
@@ -112,18 +113,23 @@ sleep_triage_tick() {
 
 # countdown <seconds> <why> [notriage]: one updating line on a TTY, silent otherwise (launchd log); honours STOP.
 countdown() {
-  local until left sum next=0
+  local until left sum next=0 ui=
   until=$(( $(date +%s) + $1 ))
+  # on a TTY keep the dashboard up while sleeping; the one-line countdown is the fallback without node
+  if [ -t 1 ] && command -v node >/dev/null; then
+    AUTOPILOT_LOG="$log" node scripts/autopilot-ui.mjs --sleep "$until" "$2" & ui=$!
+  fi
   [ "${3:-}" = notriage ] || [ "$sleep_triage" = 0 ] || next=$(( $(date +%s) + st_poll ))
   sum=$(limit_summary)
   while [ "$(date +%s)" -lt "$until" ] && [ ! -e "$dir/STOP" ]; do
     left=$(( until - $(date +%s) ))
-    [ -t 1 ] && printf '\r\033[K💤 %s - next run in %dd %dh %02dm %02ds%s (STOP file: ~/.cache/margin-autopilot/STOP)' "$2" \
+    [ -t 1 ] && [ -z "$ui" ] && printf '\r\033[K💤 %s - next run in %dd %dh %02dm %02ds%s (STOP file: ~/.cache/margin-autopilot/STOP)' "$2" \
       $((left / 86400)) $((left % 86400 / 3600)) $((left % 3600 / 60)) $((left % 60)) "${sum:+ · $sum}"
     sleep 5
     [ "$next" -gt 0 ] && [ "$(date +%s)" -ge "$next" ] && [ ! -e "$dir/STOP" ] && { sleep_triage_tick; next=$(( $(date +%s) + st_poll )); }
     self_update
   done
+  [ -n "$ui" ] && { kill "$ui" 2>/dev/null; wait "$ui" 2>/dev/null; }
   [ -t 1 ] && printf '\r\033[K'
   return 0
 }
