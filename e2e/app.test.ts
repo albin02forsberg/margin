@@ -68,6 +68,29 @@ describe("Margin", () => {
     await browser.waitUntil(async () => (await browser.$$(".cm-lineNumbers")).length === 0);
   });
 
+  it(":set nowrap / wrap toggle line wrapping; an unknown option says so (#480)", async () => {
+    const ex = async (s: string) => { await type(s); await browser.keys(Key.Enter); };
+    await ex(":set nowrap");
+    await browser.waitUntil(async () => (await browser.$$(".cm-content.cm-lineWrapping")).length === 0, { timeoutMsg: "still wrapping" });
+    await ex(":set wrap");
+    await browser.$(".cm-content.cm-lineWrapping").waitForExist();
+    await ex(":set bogus");
+    await find(".cm-vim-message", "Unknown option: bogus");
+  });
+
+  it(":e opens a note by name, :x saves and closes it (#480)", async () => {
+    await type(":e tasks");
+    await browser.keys(Key.Enter);
+    await find(".status .file", "tasks.org");
+    await type("Go");
+    await type("Edited by e2e");
+    await browser.keys(Key.Escape);
+    await type(":x");
+    await browser.keys(Key.Enter);
+    await find(".status .file", "scratch.org");
+    await fileMatches(join(notes, "tasks.org"), (s) => s.includes("\nEdited by e2e"), ":x didn't save");
+  });
+
   it("keeps a note deleted outside the app on screen, flagged", async () => {
     const file = join(notes, "scratch.org");
     unlinkSync(file);

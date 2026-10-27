@@ -24,7 +24,7 @@
   import { clockBlocks } from "$lib/clocktable";
   import { pickStale } from "$lib/stale";
   import { lineDiff } from "$lib/linediff";
-  import { ago, changed, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath, weekJournals } from "$lib/paths";
+  import { ago, changed, findNote, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath, weekJournals } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
@@ -3012,6 +3012,21 @@
     flash("Reloaded from disk.");
   }
 
+  /** `:q!` / `:bd!`: forget T's unsaved edits so closing it doesn't write them. */
+  function discardEdits(t?: Tab) {
+    if (t?.kind !== "file") return;
+    clearTimeout(saveTimers.get(t.key));
+    t.dirty = false;
+  }
+
+  /** `:e NAME` opens the note NAME matches (path, file name or title), creating it when none does; `:e` / `:e!` reload this one from disk. */
+  async function editNote(name: string, force: boolean) {
+    if (!name) return tab?.dirty && !force ? flash("Unsaved edits — :e! discards them and reloads from disk.") : reloadFromDisk();
+    const [files, titles] = await Promise.all([call<string[]>("list_files"), call<Record<string, string>>("note_titles")]);
+    const f = findNote(name, files, new Map(Object.entries(titles)), cfg.notes);
+    await (f ? openFile(f) : createNote(name));
+  }
+
   // Coalesce bursts of change events into one sync at a time.
   let syncChain = Promise.resolve();
   let syncQueued = false;
@@ -3090,7 +3105,9 @@
       cfg = await call("config");
       view = new EditorView({ parent: editorEl! });
       ed.hooks.save = () => act(() => saveTab(tab, true));
-      ed.hooks.close = () => act(() => closeTab());
+      ed.hooks.saveAll = () => act(saveAll);
+      ed.hooks.close = (force) => act(() => { if (force) discardEdits(tab); return closeTab(); });
+      ed.hooks.edit = (name, force) => act(() => editNote(name, force));
       ed.hooks.follow = (target) => act(() => followLink(target ?? ed.linkAtCursor(view)));
       ed.hooks.tab = (d) => act(() => cycleTab(d));
       ed.hooks.snippets = () => cfg?.snippets ?? [];
