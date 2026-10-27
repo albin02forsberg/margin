@@ -753,13 +753,27 @@ fn person(files: &[Arc<org::OrgFile>], root: &Path, kw: &org::Kw, name: &str) ->
     (org::todos(files, kw, false, keep, today()), notes::mentions_of(files, root, name))
 }
 
-/// The person view (`Space n @`): `{ tasks, notes, payments }` for `@NAME`; PAYMENTS are their ledger entries (#790)
-/// with the ledger's path.
+/// Waiting-for tasks whose `:WAITING_ON:` names NAME (`@name`, the bare name, or a text mentioning `@name`).
+fn waiting_on(files: &[Arc<org::OrgFile>], kw: &org::Kw, name: &str) -> Vec<org::Waiting> {
+    let Some(re) = notes::person_re(name) else { return vec![] };
+    let n = name.trim().trim_start_matches('@');
+    org::waiting(files, kw, today()).into_iter().filter(|w| w.who.as_deref().is_some_and(|x| x.trim().trim_start_matches('@').eq_ignore_ascii_case(n) || re.is_match(x))).collect()
+}
+
+/// The person view (`Space n @`): `{ tasks, notes, payments, waiting }` for `@NAME`; PAYMENTS are their ledger entries
+/// (#790) with the ledger's path, WAITING the tasks waiting on them (#808).
 #[tauri::command(async)]
 fn person_view(s: State<App>, name: String) -> Value {
-    let (tasks, notes) = person(&s.files(), &s.cfg().notes(), &s.kw(), &name);
+    let (files, kw) = (s.files(), s.kw());
+    let (tasks, notes) = person(&files, &s.cfg().notes(), &kw, &name);
     let payments: Vec<Value> = ledger_text(&s).map(|(p, t)| ledger::payments(&t, &name).into_iter().map(|r| json!({ "path": p, "line": r.line, "date": r.date, "cents": r.cents, "currency": r.currency, "text": r.text })).collect()).unwrap_or_default();
-    json!({ "tasks": with_spent(&*spent_lookup(&s), tasks), "notes": notes, "payments": payments })
+    json!({ "tasks": with_spent(&*spent_lookup(&s), tasks), "notes": notes, "payments": payments, "waiting": waiting_on(&files, &kw, &name) })
+}
+
+/// The waiting-for list (`Space x w`, #808): open WAIT tasks with whom and since when (see org::waiting).
+#[tauri::command(async)]
+fn waiting_for(s: State<App>) -> Vec<org::Waiting> {
+    org::waiting(&s.files(), &s.kw(), today())
 }
 
 #[tauri::command]
@@ -767,7 +781,8 @@ fn org_heading(s: State<App>, text: String, line: usize) -> Option<org::Parts> {
     org::heading(&text, line, &s.kw())
 }
 
-/// Headline edits. OP: cycle (VALUE ±1) | keyword (VALUE or none) | priority (letter or none)
+/// Headline edits. OP: cycle (VALUE ±1) | keyword (VALUE or none; leaving WAIT drops `:WAITING_ON:`/`:WAITING_SINCE:`)
+/// | waiting (VALUE: whom it waits on; see org::set_waiting) | priority (letter or none)
 /// | priority-cycle (±1) | tags ("a:b") | title (new text) | shift ("SCHEDULED 1")
 /// | effort ("0:30", "2h"; empty clears) | prop (a "KEY VALUE" per line; no VALUE removes KEY) | move ("SCHEDULED tomorrow": absolute date, keeps time and repeater)
 /// | blocker ("ID TITLE": append to `:BLOCKER:`) | unblocker (ID: drop from `:BLOCKER:`) | ordered (toggle `:ORDERED:`).
@@ -782,8 +797,12 @@ fn org_edit_op(text: &str, line: usize, op: &str, value: Option<String>, kw: &or
     let n = || v.trim().parse::<i32>().map_err(|_| format!("bad number: {v}"));
     let opt = || Some(v.trim()).filter(|x| !x.is_empty());
     Ok(match op {
-        "cycle" => org::cycle_todo(text, line, kw, n()?, now, log),
-        "keyword" => org::set_keyword(text, line, kw, opt(), now, log),
+        "cycle" | "keyword" => {
+            let hl = org::headline_at(&text.lines().map(String::from).collect::<Vec<_>>(), line).unwrap_or(line);
+            let t = if op == "cycle" { org::cycle_todo(text, line, kw, n()?, now, log) } else { org::set_keyword(text, line, kw, opt(), now, log) };
+            org::drop_waiting(&t, hl, kw)
+        }
+        "waiting" => org::set_waiting(text, line, kw, &v, now)?,
         "priority" => org::set_priority(text, line, kw, opt()),
         "priority-cycle" => org::cycle_priority(text, line, kw, n()?),
         "title" if v.trim().is_empty() => return Err("A task needs a title.".into()),
@@ -2816,7 +2835,7 @@ pub fn run() {
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
-            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, tag_rename_undo, retag_queries, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
+            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, tag_rename_undo, retag_queries, person_view, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, babel::babel_run
@@ -3057,6 +3076,35 @@ mod tests {
     fn edit(text: &str, op: &str, v: Option<&str>) -> R<String> {
         let now = "2026-01-08T09:00:00".parse::<NaiveDateTime>().unwrap();
         org_edit_op(text, 0, op, v.map(String::from), &kw(), now, false)
+    }
+
+    #[test]
+    fn waiting_op_sets_and_keyword_change_clears_it() {
+        let kw = org::Kw { todo: vec!["TODO".into(), "WAIT".into()], done: vec!["DONE".into()] };
+        let now = "2026-01-08T09:00:00".parse::<NaiveDateTime>().unwrap();
+        let ed = |t: &str, line, op, v: &str| org_edit_op(t, line, op, Some(v.into()), &kw, now, true).unwrap();
+        // From a body line, and from DONE: CLOSED goes, so the heading must not be lost.
+        let t = ed("* DONE Ask\nCLOSED: [2026-01-01 Thu]\nbody\n* TODO Next\n", 2, "waiting", "@anna");
+        assert_eq!(t, "* WAIT Ask\n:PROPERTIES:\n:WAITING_ON: @anna\n:WAITING_SINCE: [2026-01-08 Thu]\n:END:\nbody\n* TODO Next\n");
+        // Changing whom it waits on keeps the date; a blank who drops WAITING_ON only.
+        let old = t.replace("2026-01-08 Thu", "2026-01-01 Thu");
+        assert_eq!(ed(&old, 0, "waiting", " "), "* WAIT Ask\n:PROPERTIES:\n:WAITING_SINCE: [2026-01-01 Thu]\n:END:\nbody\n* TODO Next\n");
+        // Leaving WAIT (keyword or cycle, cursor on a body line) drops both; staying keeps them.
+        assert_eq!(ed(&t, 4, "keyword", "TODO"), "* TODO Ask\nbody\n* TODO Next\n");
+        assert!(ed(&t, 4, "cycle", "1").starts_with("* DONE Ask\nCLOSED: [2026-01-08 Thu 09:00]\nbody"));
+        assert_eq!(ed(&t, 0, "keyword", "WAIT"), t);
+        // Without a WAIT keyword it is an error, not an edit.
+        assert!(org_edit_op("* TODO a\n", 0, "waiting", None, &self::kw(), now, false).is_err());
+    }
+
+    #[test]
+    fn waiting_on_matches_the_person() {
+        let kw = org::Kw { todo: vec!["TODO".into(), "WAIT".into()], done: vec!["DONE".into()] };
+        let p = |who: &str| format!(":PROPERTIES:\n:WAITING_ON: {who}\n:END:\n");
+        let doc = format!("* WAIT a\n{}* WAIT b\n{}* WAIT c\n{}* WAIT d\n{}* DONE e\n{}", p("@Anna"), p("anna"), p("contract from @anna (legal)"), p("annabel"), p("@anna"));
+        let files = [Arc::new(org::parse(Path::new("/n/w.org"), &doc, &kw))];
+        let t: Vec<_> = waiting_on(&files, &kw, "@anna").into_iter().map(|w| w.item.title).collect();
+        assert_eq!(t, ["a", "b", "c"]);
     }
 
     #[test]
