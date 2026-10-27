@@ -967,7 +967,7 @@ range as `date,amount,currency,category,payee,link,text` (a bare file name lands
 never into the app's data or config folder). **Ledger: import a bank CSV into the inbox for
 review…** reads a bank's CSV export and shows a preview with its guessed columns, e.g.
 `date=1 amount=3 text=2 delimiter=; decimal=,` (1-based; `text=2+4` joins columns, `currency=5`
-reads a currency column, else the default currency; `amount=3-4` for separate money-out and money-in columns; *Change columns…* to fix them). Quoted fields,
+reads a currency column, else the default currency; `amount=3-4` for separate money-out and money-in columns; *Change columns…* to fix them; an imported mapping is remembered per header line and reused next time, marked "(remembered)"). Quoted fields,
 a BOM, `;` or tab delimiters, comma decimals, `1 234,50`, `(12.50)` and `12.50-` (negative) and
 day-first dates (`25.10.2026`, `25/10/26`) are understood (add `dates=mdy` or `dates=ymd` for month-first or year-first ones; a column like `10/25/2026` is guessed as month-first); files that aren't UTF-8 are read as
 Latin-1. Nothing goes into the ledger yet: each new row becomes a `* TODO Review ledger import`
