@@ -1905,6 +1905,23 @@ fn tc_projects(s: State<App>) -> R<timeclock::Projects> {
     s.tc().load_projects()
 }
 
+/// Write PROJECT's invoice for the month containing DATE_INPUT (empty: this month) into `<notes>/invoices/<project>-<YYYY-MM>.org`
+/// (#832); a re-run replaces only its `#+NAME: invoice` table. Returns the note's path.
+#[tauri::command(async)]
+fn tc_invoice(s: State<App>, project: String, date_input: Option<String>) -> R<PathBuf> {
+    let (from, to) = month_range(date_input.as_deref().filter(|d| !d.trim().is_empty()).map(date).transpose()?, today());
+    let tc = s.tc();
+    let block = timeclock::invoice_table(&tc.sessions(), &tc.load_projects()?, &project, from, to)?;
+    let path = s.cfg().notes().join(timeclock::invoice_file(&project, from));
+    s.check(&path)?;
+    let _lock = note_writes();
+    let text = read_or_empty(&path)?;
+    let text = if text.is_empty() { format!("#+TITLE: Invoice {project} {}\n\n", from.format("%Y-%m")) } else { text };
+    std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
+    config::write_atomic(&path, timeclock::put_invoice(&text, &block)).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
 #[tauri::command]
 fn tc_save_project(s: State<App>, name: String, project: Project) -> R<()> {
     if project.rate.is_some_and(|r| !(r.is_finite() && r >= 0.0)) {
@@ -2794,7 +2811,7 @@ pub fn run() {
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, tag_rename_undo, retag_queries, person_view, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
-            tc_status, tc_leave_time, tc_projects, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
+            tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, babel::babel_run
         ])

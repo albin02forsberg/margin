@@ -182,6 +182,24 @@ describe("Time tracking", () => {
     }
   });
 
+  it("Space t I writes an invoice note for a project with a rate and the picked month (#832)", async () => {
+    const projects = join(d.data, "work", "projects.toml"), [orig, origP] = [read(log), read(projects)];
+    try {
+      writeFileSync(projects, origP.replace('export_code = "ACME"', 'export_code = "ACME"\nrate = 100\ncurrency = "EUR"'));
+      writeFileSync(log, `{"ev":"in","t":"2020-01-06T09:00:00","project":"Acme"}\n{"ev":"out","t":"2020-01-06T10:30:00","note":"invoice | entry"}\n`);
+      await noPicker();
+      await palette("Time: invoice for project");
+      await answer("Invoice for project", "Acme");
+      await answer("Invoice for the month containing", "2020-01-15");
+      const note = join(d.notes, "invoices", "Acme-2020-01.org");
+      await fileMatches(note, (s) => s.includes("#+NAME: invoice") && s.includes("invoice \\vert{} entry") && s.includes("*150.00 EUR*"), "no invoice note");
+      await find(".cm-content", "150.00 EUR");
+    } finally {
+      writeFileSync(log, orig);
+      writeFileSync(projects, origP);
+    }
+  });
+
   it("Space t u fills clocktable and tasks blocks and leaves an Emacs-only block alone", async () => {
     const orig = read(log);
     try {
