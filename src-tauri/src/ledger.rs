@@ -464,6 +464,21 @@ pub fn accept(inbox: &str, line: usize, ledger: &str, kw: &crate::org::Kw) -> Re
     Ok((t, add(ledger, &e, kw), format_entry(&e)))
 }
 
+/// Every open `REVIEW` proposal of INBOX that holds an entry line filed into LEDGER: (new inbox, new ledger, count).
+pub fn accept_all(inbox: &str, ledger: &str, kw: &crate::org::Kw) -> Result<(String, String, usize), String> {
+    let (mut inbox, mut ledger, mut n) = (inbox.to_string(), ledger.to_string(), 0);
+    // Re-scan after each filing (line numbers shift); a filed heading is gone, so the loop ends.
+    while let Some(h) = inbox.lines().enumerate().position(|(i, l)| {
+        crate::org::heading_level(l) == Some(1)
+            && crate::org::heading(&inbox, i, kw).is_some_and(|p| p.title == REVIEW && p.keyword.as_ref().is_some_and(|k| !kw.done.contains(k)))
+            && inbox.lines().skip(i + 1).take_while(|l| crate::org::heading_level(l).is_none()).any(|l| parse_entry(l).is_some())
+    }) {
+        (inbox, ledger, _) = accept(&inbox, h, &ledger, kw)?;
+        n += 1;
+    }
+    Ok((inbox, ledger, n))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -665,6 +680,14 @@ mod tests {
         assert_eq!((ledger.as_str(), line.as_str()), ("#+title: ledger\n* 2026-10\n- 2026-10-25 -12.50 EUR lunch\n", "- 2026-10-25 -12.50 EUR lunch"));
         assert_eq!(accept(&inbox, 0, "", &kw()).unwrap_err(), "this heading has no ledger entry line");
         assert!(accept("no heading\n", 0, "", &kw()).is_err());
+        // accept_all files only open entry-holding proposals and leaves everything else.
+        let e = |t| format!("- 2026-10-02 -5.00 EUR {t}");
+        let inbox = format!("* TODO Review ledger import\n{}\n* TODO buy milk\n* TODO Review ledger import\n{}\n* DONE Review ledger import\n{}\n* TODO Review ledger import\nno entry\n", e("a"), e("b"), e("c"));
+        let (rest, ledger, n) = accept_all(&inbox, "", &kw()).unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(rest, format!("* TODO buy milk\n* DONE Review ledger import\n{}\n* TODO Review ledger import\nno entry\n", e("c")));
+        assert!(ledger.contains(" a") && ledger.contains(" b") && !ledger.contains(" c"));
+        assert_eq!(accept_all(&rest, &ledger, &kw()).unwrap().2, 0);
         assert_eq!(propose("", &[], &kw()), "");
     }
 }

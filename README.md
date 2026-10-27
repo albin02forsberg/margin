@@ -963,7 +963,7 @@ day-first dates (`25.10.2026`, `25/10/26`) are understood (add `dates=mdy` or `d
 Latin-1. Nothing goes into the ledger yet: each new row becomes a `* TODO Review ledger import`
 heading in the inbox, and rows already in the ledger or waiting in the inbox (same date, amount and
 text) are skipped, so importing a file twice adds nothing. Fix the text if you like, then
-**Ledger: accept import entry at cursor** files the entry under its month and removes the heading
+**Ledger: accept all import entries in the inbox** files every open proposal at once; **Ledger: accept import entry at cursor** files the entry under its month and removes the heading
 (`Space n u` undoes both).
 
 ## Export
