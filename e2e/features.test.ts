@@ -659,6 +659,7 @@ describe("Tags", () => {
         writeFileSync(join(notes, "bulktags.org"), `* TODO Bulk one :x:\nSCHEDULED: ${day}\n* TODO Bulk two :y:\nSCHEDULED: ${day}\n`);
         writeFileSync(join(notes, "effort.org"), `* TODO Estimate me\nSCHEDULED: ${day}\n:PROPERTIES:\n:ID: e1\n:END:\n`);
         writeFileSync(join(notes, "inh.org"), "#+FILETAGS: :work:\n* Proj :proj:\n** TODO Child task\n* TODO Loose task\n");
+        writeFileSync(join(notes, "park.org"), `* TODO Park me\nSCHEDULED: ${day}\n`);
       },
     });
   });
@@ -734,6 +735,31 @@ describe("Tags", () => {
     await answer("Search tasks", "tag:work tag:proj");
     await find(".agenda h1", "tag:work tag:proj");
     await browser.waitUntil(async () => (await texts(".agenda .row .title")).join("|") === "Child task", { timeoutMsg: "search doesn't list exactly the inheriting child" });
+  });
+
+  it("someday/maybe: parking hides a task from Today, the review lists it, activating brings it back (#833)", async () => {
+    const f = join(d.notes, "park.org");
+    const today = async (shown: boolean) => {
+      await browser.keys([Key.Ctrl, "1"]);
+      await find(".agenda h1", "Today");
+      await browser.waitUntil(async () => (await texts(".agenda .row .title")).includes("Park me") === shown, { timeoutMsg: `Park me ${shown ? "missing from" : "still in"} Today` });
+    };
+    await today(true);
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "park");
+    await find(".status .file", "park.org");
+    await palette("Task: park as someday/maybe");
+    await fileMatches(f, (s) => s.startsWith("* TODO Park me :someday:\n"), "someday tag not added");
+    await today(false);
+    await palette("Someday/maybe review");
+    await find(".agenda h1", "Someday/maybe");
+    await find(".agenda .row .title", "Park me");
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "park");
+    await find(".status .file", "park.org");
+    await palette("Task: park as someday/maybe");
+    await fileMatches(f, (s) => s.startsWith("* TODO Park me\nSCHEDULED:"), "someday tag not removed");
+    await today(true);
   });
 });
 

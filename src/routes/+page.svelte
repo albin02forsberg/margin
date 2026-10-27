@@ -783,6 +783,14 @@
     "priority-up": (loc) => edit(loc, "priority-cycle", "1"),
     "priority-down": (loc) => edit(loc, "priority-cycle", "-1"),
     tags: (loc) => editTags(loc),
+    /** Park as someday/maybe or activate again (#833): toggles the own `:someday:` tag. */
+    async someday(loc) {
+      const h = await heading(loc);
+      if (!h) return flash("Not on a task.");
+      const on = h.tags.some((t) => t.toLowerCase() === "someday");
+      await edit(loc, "tags", (on ? h.tags.filter((t) => t.toLowerCase() !== "someday") : [...h.tags, "someday"]).join(":"));
+      flash(on ? "Activated: back in Today and Tasks" : "Parked as someday/maybe (Someday/maybe review lists it)");
+    },
     async effort(loc) {
       if (!(await heading(loc))) return flash("Not on a task.");
       const v = await pick({
@@ -2020,14 +2028,14 @@
     const t = new Date(), day = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const off = (n: number) => day(new Date(t.getFullYear(), t.getMonth(), t.getDate() - ((t.getDay() + 6) % 7) + n));
     const q = (query: string) => call<AgendaItem[]>("search_todos", { query });
-    const [closed, sched, due, next, inbox, dash, goals] = await Promise.all([
+    const [closed, sched, due, next, inbox, dash, goals, someday] = await Promise.all([
       q(`closed:>=${off(0)} closed:<=${off(6)}`), q(`scheduled:<${day(t)}`), q(`due:<${day(t)}`), q(`scheduled:>=${off(7)} scheduled:<=${off(13)}`),
       call<number>("inbox_count"), call<{ projects: { project: string; worked: number }[] }>("tc_dashboard"),
-      call<Goal[]>("org_goals"),
+      call<Goal[]>("org_goals"), q("tag:someday"),
     ]);
     const done = doneLog(closed.filter((i) => i.keyword && kw().done.includes(i.keyword))), seen = new Set<string>();
     const overdue = [...sched, ...due].filter((i) => !i.habit && !seen.has(`${i.path}\n${i.line}`) && !!seen.add(`${i.path}\n${i.line}`));
-    const body = reviewBody(done, dash.projects, overdue, next.filter((i) => !i.habit), inbox, goals);
+    const body = reviewBody(done, dash.projects, overdue, next.filter((i) => !i.habit), inbox, goals, someday.length);
     let path = "";
     for (const f of weekJournals(await call<string[]>("list_files"), cfg.config.daily_dir, off(0), day(t))) if (putReview(await textOf(f), body) !== null) { path = f; break; }
     if (!path) path = await call("capture_path", { file: journalFile(), journal: true });
@@ -2770,6 +2778,8 @@
     { label: "Task: due date…", leader: "x d", run: () => atCursor("deadline") },
     { label: "Task: rename…", leader: "x e", run: () => atCursor("title") },
     { label: "Task: tags…", leader: "x g", run: () => atCursor("tags") },
+    { label: "Task: park as someday/maybe / activate again", run: () => atCursor("someday") },
+    { label: "Someday/maybe review (parked tasks: s schedules, # removes someday to activate, A archives)", run: () => act(() => openSearch("Someday/maybe", "tag:someday")) },
     { label: "Task: set effort…", leader: "x E", run: () => atCursor("effort") },
     { label: "Task: add a note…", leader: "x z", run: () => atCursor("note") },
     { label: "Task: move to…", leader: "x m", run: () => atCursor("move") },

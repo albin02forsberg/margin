@@ -18,7 +18,7 @@ the editor has vim keys.
   over the previous entry's open items: unchecked `- [ ]` items and TODO
   subtrees (not done or `:ARCHIVE:`) move under `* Carried over from <date>`
   in today's entry; `Space n u` puts them back. `Space t R` writes a
-  `* Weekly review <2026-W43>` into today's entry: Inbox count, tasks closed
+  `* Weekly review <2026-W43>` into today's entry: Inbox count (and parked someday/maybe tasks, when any), tasks closed
   this week (with `Estimates: 120% of plan` when they had an `:EFFORT:` and
   clocked time), hours per project, `:GOAL:` progress (when you have goals), overdue tasks and what's scheduled next week,
   then empty `** Went well` / `** To change` headings. Running it again
@@ -345,6 +345,11 @@ follow-up becomes the task's `SCHEDULED:` date (Esc keeps the current one), so t
 "waiting 9 days" ("age unknown" without `:WAITING_SINCE:`) and the follow-up date, flagged once it is due. Moving a task
 off `WAIT` in Margin removes both properties; a keyword changed in Emacs leaves them, which is harmless. A `WAITING`
 keyword works too; without either, `Space x W` says so.
+**Someday/maybe** (GTD, Things' Someday): a task tagged `:someday:` (any case; on the task, an ancestor heading or
+`#+filetags:` to park a whole file) is parked: hidden from Today, Tasks, stuck projects and the inbox count, but not deleted.
+"Task: park as someday/maybe / activate again" in the palette toggles the tag on the task at the cursor; "Someday/maybe
+review" opens them as a task list (`tag:someday`), where `s` schedules, `#` removes the tag to activate one and `A` archives.
+The weekly review counts them. Reminders still fire for a parked task that has a deadline or scheduled time.
 Subtrees archived in place with an `:ARCHIVE:` tag (Emacs's `C-c C-x a`) are left out of Today, Tasks, reminders and the calendar feed, as in org's agenda; they stay in the note and in search.
 A time range (`<2026-10-16 Fri 10:00-11:00>`) shows as `10:00-11:00`; a date
 range (`<2026-10-19 Mon>--<2026-10-21 Wed>`) shows on each of its days with a

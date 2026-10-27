@@ -698,7 +698,8 @@ fn with_spent(spent: &dyn Fn(&str, &str) -> Option<u32>, items: Vec<org::Item>) 
 
 #[tauri::command(async)]
 fn agenda(s: State<App>, start: String, days: i64) -> R<Vec<org::Item>> {
-    Ok(with_spent(&*spent_lookup(&s), org::agenda(&s.files(), &s.kw(), date(&start)?, days, today())))
+    let items = org::agenda(&s.files(), &s.kw(), date(&start)?, days, today()).into_iter().filter(|i| !org::someday(&i.tags, &i.inherited)).collect();
+    Ok(with_spent(&*spent_lookup(&s), items))
 }
 
 /// Stuck projects: open tasks with open subtasks but no next action (see org::stuck).
@@ -721,7 +722,7 @@ fn overdue_scheduled(s: State<App>) -> Vec<(PathBuf, usize)> {
 
 #[tauri::command(async)]
 fn todos(s: State<App>) -> Vec<org::Item> {
-    with_spent(&*spent_lookup(&s), org::todos(&s.files(), &s.kw(), false, |_, _| true, today()))
+    with_spent(&*spent_lookup(&s), org::todos(&s.files(), &s.kw(), false, |_, h| !h.someday(), today()))
 }
 
 /// The habits overview (`Space x H`): open habits over the last DAYS days, worst completion rate first.
@@ -1689,9 +1690,9 @@ fn tag_rename_undo(s: State<App>, folder: PathBuf, skip: Vec<PathBuf>) -> R<Rena
     undo_retag(&s.cfg().notes(), &folder, &skip)
 }
 
-/// Open top-level inbox entries: level-1 headlines that aren't done or archived (plain notes count).
+/// Open top-level inbox entries: level-1 headlines that aren't done, archived or someday (plain notes count).
 fn open_entries(f: &org::OrgFile, kw: &org::Kw) -> usize {
-    f.headlines.iter().filter(|h| h.level == 1 && !h.archived() && !h.keyword.as_deref().is_some_and(|k| kw.is_done(k))).count()
+    f.headlines.iter().filter(|h| h.level == 1 && !h.archived() && !h.someday() &&!h.keyword.as_deref().is_some_and(|k| kw.is_done(k))).count()
 }
 
 /// Entries waiting in the inbox (for the nav badge). Reads the file directly, so an absolute inbox path outside the notes dir counts too.
@@ -3079,7 +3080,7 @@ mod tests {
 
     #[test]
     fn inbox_entries_skip_done_nested_and_archived() {
-        let t = "* TODO a\n** TODO nested\n* DONE b\n* plain note\n* TODO old :ARCHIVE:\n* NEXT c\n";
+        let t = "* TODO a\n** TODO nested\n* DONE b\n* plain note\n* TODO old :ARCHIVE:\n* NEXT c\n* TODO later :someday:\n";
         assert_eq!(open_entries(&org::parse(Path::new("inbox.org"), t, &kw()), &kw()), 3);
         assert_eq!(open_entries(&org::parse(Path::new("inbox.org"), "", &kw()), &kw()), 0);
     }
