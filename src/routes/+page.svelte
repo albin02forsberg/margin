@@ -1944,6 +1944,17 @@
     flash(`✓ ${line}`);
   }
 
+  /** Every open import proposal in the inbox filed into the ledger at once (#837); one undo step. */
+  async function ledgerAcceptAll() {
+    const [ledger, inbox] = await Promise.all([call<string>("capture_path", { file: cfg.config.ledger_file }), call<string>("capture_path", { file: cfg.config.inbox })]);
+    let rest = "", n = 0;
+    await recorded(async () => {
+      await toFile(ledger, async (l) => { [rest, l, n] = await call<[string, string, number]>("ledger_accept_all", { text: await textOf(inbox), ledger: l }); return l; });
+      if (n) await toFile(inbox, async () => rest);
+    });
+    flash(n ? `✓ ${n} ledger entr${n === 1 ? "y" : "ies"} filed from the inbox` : "No ledger import entries to accept in the inbox.");
+  }
+
   /** The ledger's month view; only once the ledger file exists. */
   async function openLedger() {
     const [path] = await call<[string | null]>("ledger_month", { month: "" }); // capture_path would create it
@@ -2691,6 +2702,7 @@
     { label: "Ledger: export entries as CSV…", leader: "e l", run: ledgerExport },
     { label: "Ledger: import a bank CSV into the inbox for review…", run: ledgerImport },
     { label: "Ledger: accept import entry at cursor", run: ledgerAccept },
+    { label: "Ledger: accept all import entries in the inbox", run: ledgerAcceptAll },
     { label: "Save", keys: ["Ctrl+S"], leader: "f s", run: () => saveTab(tab, true) },
     { label: "Reload from disk (discard unsaved changes)", leader: "f r", run: reloadFromDisk },
     { label: "Save all", leader: "f S", run: saveAll },
