@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bareTitle, bracketRetitle, findTarget, linkHeadings, norm, retitlePlan, splitTarget } from "./links.ts";
+import { bareTitle, bracketRetitle, findTarget, linkHeadings, norm, peekTarget, retitlePlan, splitTarget } from "./links.ts";
 
 const doc = "#+title: T\n* TODO [#A] Install :tag:\n:PROPERTIES:\n:CUSTOM_ID: setup\n:END:\nbody text\n** Usage\r\nmore\n";
 
@@ -75,4 +75,12 @@ test("bracketRetitle", () => {
   assert.equal(bracketRetitle("* Old\n* Old\n", "* New [x]\n* Old\n", 0), null);
   assert.equal(bracketRetitle("* Old\n", "* New\n", 0), null);
   assert.equal(findTarget("* New [x]\n", "*New [x]"), 0);
+});
+
+test("peekTarget passes org targets, prefixes bare paths and refuses URLs", () => {
+  for (const t of ["id:abc", "file:a.org::*Foo", "*Install", "#setup"]) assert.equal(peekTarget(t), t);
+  assert.equal(peekTarget("./a b.org::*X"), "file:./a b.org::*X");
+  assert.equal(peekTarget("C:\\n\\a.org"), "file:C:\\n\\a.org");
+  assert.equal(peekTarget("https://x.org"), null);
+  assert.equal(peekTarget("mailto:a@b.c"), null);
 });

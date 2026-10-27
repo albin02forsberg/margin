@@ -8,6 +8,12 @@ export function splitTarget(t: string): { file: string; search: string } {
   return i < 0 ? { file: s, search: "" } : { file: s.slice(0, i), search: s.slice(i + 2) };
 }
 
+/** Link T as `transclude_text` takes it, for the peek panel (#849): bare paths get `file:`; null for URLs and other schemes. */
+export function peekTarget(t: string): string | null {
+  if (/^(id|file):|^[*#]/.test(t)) return t;
+  return /^[a-z][\w+.-]+:/i.test(t) ? null : `file:${t}`;
+}
+
 const KW = "TODO|DONE|NEXT|WAIT\\w*|CANCEL\\w*";
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** Heading regex capturing the title after an optional keyword (from KEYWORDS, else the defaults), priority and tags. */

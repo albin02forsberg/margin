@@ -77,7 +77,8 @@ push it a day, or `s` to schedule it. `Y` copies the shown list as Markdown chec
 <img src="docs/gifs/time.gif" width="800" alt="The Time view: pausing, resuming and switching the running timer to another project">
 
 **Links and backlinks** — `Space n b` shows the notes linking here, `Space n g` the local
-graph, and `Enter` on a link follows it. `Space n O` lists notes with no links in or out
+graph, and `Enter` on a link follows it. `Shift+Enter` (or `Space l p`) on a link peeks at its target instead:
+the linked note or heading shows read-only in a side panel, `Enter` there opens it, `Esc` closes it. `Space n O` lists notes with no links in or out
 (journal and inbox left out), most recently changed first. `Space n L` lists broken links: `[[id:]]` links to an
 unknown ID, `[[file:]]` links to a missing file or to a `::*Heading` / `::#custom-id` the file lacks,
 and same-file `[[*Heading]]` / `[[#custom-id]]` links; `Enter` opens the note at the link. `Space n T` browses notes by tag:
@@ -541,6 +542,7 @@ Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`) show l
 | Space n b | Notes linking here, plus unlinked mentions of this note's title (**Link** turns one into an `[[id:]]` link; Space n u undoes) |
 | Space n L | Broken links in notes (journal, inbox and trash not scanned; links inside src/example/export blocks ignored): unknown `[[id:]]`, missing `[[file:]]` targets, headings or `CUSTOM_ID`s; Enter opens the note at the link |
 | Space n g | Graph of notes within two links of this one; click a note to open it |
+| Shift+Enter / Space l p | Peek at the link at the cursor: its note or heading shows read-only beside the editor (a drawer under 1000 px); Enter opens it, Esc closes |
 | Space n r | Rename this note (same folder, `.org` added if missing); `[[file:]]` links to it in other notes are updated after a backup, `[[id:]]` links need nothing |
 | Space n p | Pin or unpin this note: pinned notes come first in Ctrl+P (marked ★, in pin order); pins are kept per machine and follow renames and moves |
 | Space n P | Open one of the pinned notes |

@@ -139,6 +139,8 @@ describe("Features", () => {
         writeFileSync(join(notes, "fan.org"), "#+title: Fan\n\nSee [[id:doomed-id][the doomed note]].\n");
         writeFileSync(join(notes, "embed.org"), "#+title: Embed\n\n#+TRANSCLUDE: [[file:source.org::*Agenda]]\nAfter.\n");
         writeFileSync(join(notes, "source.org"), "#+title: Source\n\n* Agenda\n- reuse me\n");
+        writeFileSync(join(notes, "peeker.org"), "[[file:peeked.org::*Plan][the plan]] is over there.\n");
+        writeFileSync(join(notes, "peeked.org"), "#+title: Peeked\n\n* Plan\n- peek at me\n* Other\n- not me\n");
       },
     });
   });
@@ -361,6 +363,24 @@ describe("Features", () => {
     assert.equal(read(join(d.notes, "embed.org")), "#+title: Embed\n\n#+TRANSCLUDE: [[file:source.org::*Agenda]]\nAfter.\n");
     await (await find(".cm-transclude", "changed on disk")).click();
     await find(".status .file", "source.org");
+  });
+
+  it("peeks at a linked heading in a side panel; Esc closes it, Shift+Enter reopens it and Enter opens the note (#849)", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "peeker");
+    await find(".status .file", "peeker.org");
+    await browser.keys(" ");
+    await type("lp");
+    const text = await (await find(".links.peek", "peek at me")).getText();
+    assert.ok(!text.includes("not me"), text);
+    await browser.keys(Key.Escape);
+    await browser.waitUntil(async () => !(await browser.$(".links.peek").isExisting()));
+    await find(".status .file", "peeker.org");
+    await browser.keys([Key.Shift, Key.Enter]);
+    await find(".links.peek", "peek at me");
+    await browser.keys(Key.Enter);
+    await find(".status .file", "peeked.org");
+    assert.ok(!(await browser.$(".links.peek").isExisting()));
   });
 
   it("exports a note and the notes it links to as linked HTML pages", async () => {
