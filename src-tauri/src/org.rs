@@ -124,6 +124,17 @@ impl Headline {
     pub fn archived(&self) -> bool {
         self.tags.iter().chain(&self.inherited).any(|t| t == "ARCHIVE")
     }
+
+    /// Parked as someday/maybe (#833): see someday.
+    pub fn someday(&self) -> bool {
+        someday(&self.tags, &self.inherited)
+    }
+}
+
+/// Tagged `:someday:` (any case), own or inherited from an ancestor or `#+filetags`: hidden from the Today, Tasks,
+/// stuck-projects and inbox views (not from org::agenda, so reminders still fire), found with `tag:someday`.
+pub fn someday(tags: &[String], inherited: &[String]) -> bool {
+    tags.iter().chain(inherited).any(|t| t.eq_ignore_ascii_case("someday"))
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -642,9 +653,9 @@ pub struct Stuck {
 
 /// Stuck projects, as org's `org-stuck-projects`: open tasks with open subtasks of which none is
 /// scheduled, has a deadline or carries a NEXT keyword. Only the innermost of nested stuck projects
-/// is listed; plain headings, done tasks and `:ARCHIVE:` subtrees never count.
+/// is listed; plain headings, done tasks, `:ARCHIVE:` and `:someday:` subtrees never count.
 pub fn stuck(files: &[Arc<OrgFile>], kw: &Kw, next: &[String]) -> Vec<Stuck> {
-    let open = |h: &Headline| !h.archived() && h.keyword.as_deref().is_some_and(|k| !kw.is_done(k));
+    let open = |h: &Headline| !h.archived() && !h.someday() && h.keyword.as_deref().is_some_and(|k| !kw.is_done(k));
     let mut out = vec![];
     for f in files {
         let hs = &f.headlines;
@@ -2333,6 +2344,17 @@ mod tests {
     }
 
     #[test]
+    fn someday_own_inherited_and_filetags() {
+        let f = parse(Path::new("/n/s.org"), "* TODO Park :SomeDay:\n* TODO Proj :someday:\n** TODO child\n* TODO Live\n", &kw());
+        assert_eq!(f.headlines.iter().map(Headline::someday).collect::<Vec<_>>(), [true, true, true, false]);
+        let g = parse(Path::new("/n/p.org"), "#+filetags: :someday:\n* TODO Whole file\n", &kw());
+        assert!(g.headlines[0].someday());
+        // agenda() keeps them (reminders); only the view commands filter.
+        let h = Arc::new(parse(Path::new("/n/d.org"), "* TODO Due :someday:\nDEADLINE: <2026-10-05 Mon>\n", &kw()));
+        assert_eq!(agenda(&[h], &kw(), d("2026-10-05"), 1, d("2026-10-05")).len(), 1);
+    }
+
+    #[test]
     fn stuck_projects() {
         let doc = "* TODO Stuck\n** TODO a\n** DONE b\n\
 * TODO Scheduled\n** TODO a\nSCHEDULED: <2026-10-05 Mon>\n\
@@ -2344,6 +2366,8 @@ mod tests {
 * TODO Outer\n** TODO Inner\n*** TODO a\n** TODO b\n\
 * TODO Moving\n** TODO Inner2\n*** TODO a\n** TODO b\nSCHEDULED: <2026-10-05 Mon>\n\
 * TODO Old :ARCHIVE:\n** TODO a\n\
+* TODO Parked :someday:\n** TODO a\n\
+* TODO Idea\n** TODO a :someday:\n\
 * TODO Leaf\n";
         let f = Arc::new(parse(Path::new("/n/x.org"), doc, &kw()));
         let got: Vec<_> = stuck(&[f], &kw(), &["NEXT".into()]).into_iter().map(|s| (s.title, s.open)).collect();

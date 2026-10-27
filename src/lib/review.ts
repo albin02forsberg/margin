@@ -24,12 +24,13 @@ const list = (xs: string[], none: string) => (xs.length ? xs.map((x) => `- ${x}`
 const task = (t: Task) => `${t.title}${t.category ? ` (${t.category})` : ""}`;
 
 /** The generated part, between the BEGIN/END markers: DONE (doneLog rows, by close time; with their estimates vs clocked time), the week's HOURS
- *  per project (tc_dashboard `projects`), GOALS (section omitted without any), OVERDUE and NEXT (scheduled next week) tasks and the INBOX count. */
-export function reviewBody(done: Task[], hours: Hours[], overdue: Task[], next: Task[], inbox: number, goals: Goal[] = []) {
+ *  per project (tc_dashboard `projects`), GOALS (section omitted without any), OVERDUE and NEXT (scheduled next week) tasks, the INBOX count and the SOMEDAY count (#833; line omitted at 0). */
+export function reviewBody(done: Task[], hours: Hours[], overdue: Task[], next: Task[], inbox: number, goals: Goal[] = [], someday = 0) {
   const worked = hours.filter((h) => h.worked > 0), total = worked.reduce((a, h) => a + h.worked, 0);
   return [
     BEGIN,
     `Inbox: ${inbox} entr${inbox === 1 ? "y" : "ies"} waiting.`,
+    ...(someday ? [`Someday/maybe: ${someday} parked task${someday === 1 ? "" : "s"} (Someday/maybe review).`] : []),
     `** Done (${done.length})`,
     ...list(done.map((t) => `${t.date} ${task(t)}`), "nothing closed"),
     ...[estimateLine(done)].filter((l) => l !== null),

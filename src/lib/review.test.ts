@@ -25,6 +25,12 @@ test("reviewBody lists each part, with a placeholder when empty", () => {
   assert.match(reviewBody([], [], [], [], 0), /no time tracked/);
 });
 
+test("reviewBody counts parked someday tasks after the inbox line, and leaves the line out at 0", () => {
+  assert.equal(reviewBody([], [], [], [], 0, [], 2).split("\n")[2], "Someday/maybe: 2 parked tasks (Someday/maybe review).");
+  assert.match(reviewBody([], [], [], [], 0, [], 1), /: 1 parked task \(/);
+  assert.doesNotMatch(reviewBody([], [], [], [], 0), /Someday/);
+});
+
 test("reviewBody adds the estimates line after Done when tasks have an estimate and clocked time", () => {
   const body = reviewBody([{ ...t("Ship it", "2026-10-20"), effort: 60, spent: 72 }], [], [], [], 0).split("\n");
   assert.equal(body[body.indexOf("- 2026-10-20 Ship it (work)") + 1], "Estimates: 120% of plan (1 task).");
