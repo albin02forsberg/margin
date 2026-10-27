@@ -2958,6 +2958,7 @@
     { label: "Time: update dynamic blocks (#+BEGIN: clocktable / tasks) in this note", leader: "t u", run: () => act(updateClockTables) },
     { label: "Weekly review into today's journal (re-run replaces the marked block)", leader: "t R", run: () => act(weeklyReview) },
     { label: "Today: evening shutdown (walk today's open tasks: done, tomorrow, next week…)", leader: "t q", run: () => act(shutdown) },
+    ...([["for 10 min", 10], ["for 1 h", 60], ["until tomorrow 9:00", null]] as const).map(([when, minutes]) => ({ label: `Reminders: snooze the last one ${when}`, run: () => act(async () => flash((await call<string | null>("remind_snooze", { minutes })) ?? "No reminder to snooze.")) })),
     { label: "Today: plan the day (walk overdue, due-soon and undated A/B tasks: today, tomorrow, a date…)", leader: "t g", run: () => act(planDay) },
     { label: "Time: estimates vs actuals (how far off are my :EFFORT: guesses?)…", leader: "t A", run: () => act(estimateReport) },
     { label: "Time: day timeline (sessions, tasks closed, notes edited)…", leader: "t T", run: () => act(dayTimeline) },

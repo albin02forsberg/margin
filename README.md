@@ -1020,6 +1020,13 @@ warning cookie (`-3d`) when they have one. Clicking one opens the task (Linux; e
 notifications are display-only for now). Settings: `reminders`, `remind_before_minutes`,
 `deadline_warning_days`.
 
+To be reminded again later, snooze the last reminder from the palette
+(Ctrl+K): "Reminders: snooze the last one for 10 min", "for 1 h" or "until
+tomorrow 9:00". On Linux the notification itself has "Snooze 10 min" and
+"Snooze 1 h" buttons. The task file is not touched; a snoozed reminder is
+skipped if its task is done by then, and snoozes are kept in memory only, so
+quitting the app drops them.
+
 With the clock running, one more notification says "Today's hours are done." when
 the day's expected hours are worked (not on a break, a day off or a rest-of-day leave);
 it follows the `reminders` setting.

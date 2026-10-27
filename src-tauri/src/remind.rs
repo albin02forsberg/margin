@@ -5,10 +5,11 @@ use crate::App;
 use chrono::{Duration, NaiveDateTime, NaiveTime};
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_notification::NotificationExt;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Due {
     /// Starts with the date it belongs to, so old keys can be dropped.
     pub key: String,
@@ -91,6 +92,12 @@ fn tick(app: &AppHandle) {
             notify(app, d);
         }
     }
+    // After the normal path, so a date-only deadline it re-sent today is seen and not repeated.
+    let kw = s.kw();
+    let open = |p: &Path, line: usize| files.iter().filter(|f| f.path == p).flat_map(|f| &f.headlines).any(|h| h.line == line && !h.keyword.as_deref().is_some_and(|k| kw.is_done(k)));
+    for d in take_snoozed(&mut lock(&SNOOZED), now, &sent, open) {
+        notify(app, d);
+    }
     if changed {
         let _ = std::fs::write(&file, sent.into_iter().map(|k| k + "\n").collect::<String>());
     }
@@ -137,17 +144,59 @@ fn once_a_day(sent: &mut BTreeSet<String>, today: chrono::NaiveDate, name: &str,
     !sent.contains(&key) && cond() && sent.insert(key)
 }
 
+/// The last reminder shown, for "snooze"; and snoozed ones with the time they fire again (lost on restart).
+static SHOWN: Mutex<Option<Due>> = Mutex::new(None);
+static SNOOZED: Mutex<Vec<(NaiveDateTime, Due)>> = Mutex::new(vec![]);
+
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// When a snooze of MINUTES from NOW ends; None means tomorrow 9:00.
+fn snooze_until(now: NaiveDateTime, minutes: Option<i64>) -> NaiveDateTime {
+    minutes.map_or_else(|| (now.date() + Duration::days(1)).and_hms_opt(9, 0, 0).unwrap(), |m| now + Duration::minutes(m))
+}
+
+/// Take the snoozed reminders whose time has come. Dropped instead: tasks no longer OPEN (done or gone),
+/// and ones from an earlier day that the normal path already SENT again today (date-only deadlines).
+fn take_snoozed(q: &mut Vec<(NaiveDateTime, Due)>, now: NaiveDateTime, sent: &BTreeSet<String>, open: impl Fn(&Path, usize) -> bool) -> Vec<Due> {
+    let today = now.date().to_string();
+    let (due, rest) = std::mem::take(q).into_iter().partition::<Vec<_>, _>(|(at, _)| *at <= now);
+    *q = rest;
+    due.into_iter().map(|(_, d)| d).filter(|d| open(&d.path, d.line) && !(d.key.get(..10).is_some_and(|k| k < today.as_str()) && sent.contains(&format!("{today}{}", &d.key[10..])))).collect()
+}
+
+/// Queue D to fire again after MINUTES (None: tomorrow 9:00); the confirmation to show.
+fn snooze(d: Due, minutes: Option<i64>) -> String {
+    let at = snooze_until(crate::timeclock::now(), minutes);
+    let msg = format!("Snoozed \"{}\" until {}", d.title, at.format(if minutes.is_some() { "%H:%M" } else { "tomorrow %H:%M" }));
+    lock(&SNOOZED).push((at, d));
+    msg
+}
+
+/// Snooze the last reminder shown; None when there is none (or it was snoozed already).
+#[tauri::command]
+pub fn remind_snooze(minutes: Option<i64>) -> Option<String> {
+    lock(&SHOWN).take().map(|d| snooze(d, minutes))
+}
+
 /// Show D; clicking it opens the entry where the desktop reports clicks (Linux, via D-Bus).
 fn notify(app: &AppHandle, d: Due) {
+    *lock(&SHOWN) = Some(d.clone());
     #[cfg(target_os = "linux")]
-    if let Ok(h) = notify_rust::Notification::new().appname("Margin").summary(&d.title).body(&d.body).action("default", "Open").show() {
+    if let Ok(h) = notify_rust::Notification::new().appname("Margin").summary(&d.title).body(&d.body).action("default", "Open").action("snooze10", "Snooze 10 min").action("snooze60", "Snooze 1 h").show() {
         let app = app.clone();
         std::thread::spawn(move || {
-            h.wait_for_action(|a| {
-                if a == "default" {
+            h.wait_for_action(|a| match a {
+                "default" => {
                     crate::tray::show(&app);
                     let _ = tauri::Emitter::emit(&app, "open-entry", serde_json::json!({ "path": d.path, "line": d.line }));
                 }
+                "snooze10" | "snooze60" => {
+                    let _ = lock(&SHOWN).take_if(|s| *s == d); // so the palette can't queue it twice
+                    snooze(d, Some(if a == "snooze10" { 10 } else { 60 }));
+                }
+                _ => {}
             })
         });
         return;
@@ -226,6 +275,35 @@ mod tests {
         let keys: Vec<String> = due(&items, &kw, at("13:55"), Duration::minutes(10), 1).into_iter().map(|d| d.key).collect();
         assert_eq!(keys[0], "2026-10-02 scheduled /n/a.org:0 14:00:00");
         assert!(keys.iter().all(|k| k.starts_with("2026-10-02")));
+    }
+
+    #[test]
+    fn snoozed_reminders_fire_once_when_due() {
+        let day: chrono::NaiveDate = "2026-10-02".parse().unwrap();
+        let at = |d: chrono::NaiveDate, h, m| d.and_hms_opt(h, m, 0).unwrap();
+        let d = |key: &str, line| Due { key: key.into(), title: "T".into(), body: String::new(), path: "/n/a.org".into(), line };
+        assert_eq!(snooze_until(at(day, 23, 55), Some(10)), at(day.succ_opt().unwrap(), 0, 5));
+        assert_eq!(snooze_until(at(day, 23, 55), None), at(day.succ_opt().unwrap(), 9, 0));
+        assert_eq!(snooze_until(at(day, 0, 5), None), at(day.succ_opt().unwrap(), 9, 0));
+
+        let timed = d("2026-10-02 scheduled /n/a.org:0 14:00:00", 0);
+        let mut q = vec![(at(day, 14, 10), timed.clone()), (at(day, 14, 10), d("2026-10-02 scheduled /n/a.org:5 14:00:00", 5))];
+        let sent = BTreeSet::new();
+        let open = |_: &Path, line| line != 5; // line 5 was marked done meanwhile
+        assert!(take_snoozed(&mut q, at(day, 14, 9), &sent, open).is_empty());
+        assert_eq!(q.len(), 2);
+        assert_eq!(take_snoozed(&mut q, at(day, 14, 10), &sent, open), [timed]);
+        assert!(q.is_empty());
+
+        // A date-only deadline snoozed until tomorrow: the normal path re-sent it at midnight, so it is dropped.
+        let dl = d("2026-10-02 deadline /n/a.org:0", 0);
+        let next = day.succ_opt().unwrap();
+        let mut q = vec![(at(next, 9, 0), dl.clone())];
+        let sent = BTreeSet::from(["2026-10-03 deadline /n/a.org:0".to_string()]);
+        assert!(take_snoozed(&mut q, at(next, 9, 0), &sent, |_, _| true).is_empty());
+        // Not re-sent today (no longer in its warning period): it fires.
+        let mut q = vec![(at(next, 9, 0), dl.clone())];
+        assert_eq!(take_snoozed(&mut q, at(next, 9, 0), &BTreeSet::new(), |_, _| true), [dl]);
     }
 
     #[test]
