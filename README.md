@@ -248,7 +248,7 @@ separately, so one repo succeeding never hides the other's failure.
 ## Getting around
 
 New here? The first start asks for your notes folder, time-tracking folder and
-hands-on tutorial note (`Space ?` reopens it). Changing folders or dropping the current
+hands-on tutorial note (`Space ?` reopens it; an empty Today or Tasks view points at it too). Changing folders or dropping the current
 profile clocks out first, and warns where old files stay (nothing is moved).
 
 - **Ctrl+K** — command palette: every action, with its shortcut. Commands you ran from it recently
