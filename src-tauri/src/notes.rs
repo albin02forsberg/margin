@@ -366,8 +366,14 @@ fn aim_links(text: &str, note: &Path, from: &Path, search: Option<&str>) -> (Str
     (out.into_owned(), n)
 }
 
+/// File-level settings keywords: meaningless inside a section, so a merged note's preamble drops them.
+const FILE_KEYWORDS: [&str; 15] = [
+    "#+title:", "#+filetags:", "#+startup:", "#+options:", "#+setupfile:", "#+language:", "#+todo:", "#+seq_todo:", "#+typ_todo:",
+    "#+property:", "#+author:", "#+date:", "#+email:", "#+description:", "#+keywords:",
+];
+
 /// SRC as a top-level section TITLE: its file properties drawer (`:ID:` included) on the heading, its
-/// preamble minus `#+title`/`#+filetags` below it, its headings one level down. An `:ID:` already in
+/// preamble minus `FILE_KEYWORDS` lines (outside `#+begin_` blocks) below it, its headings one level down. An `:ID:` already in
 /// TAKEN is replaced by a fresh one. Also returns SRC's file tags.
 fn as_section(src: &str, title: &str, taken: &BTreeSet<String>) -> (Vec<String>, Vec<String>) {
     let lines: Vec<&str> = src.lines().collect();
@@ -380,14 +386,19 @@ fn as_section(src: &str, title: &str, taken: &BTreeSet<String>) -> (Vec<String>,
             i = end + 1;
         }
     }
-    let (mut tags, key) = (vec![], |l: &str, k: &str| l.trim_start().get(..k.len()).is_some_and(|p| p.eq_ignore_ascii_case(k)));
+    let (mut tags, mut block, key) = (vec![], false, |l: &str, k: &str| l.trim_start().get(..k.len()).is_some_and(|p| p.eq_ignore_ascii_case(k)));
     let pre: Vec<&str> = lines[i..first_head]
         .iter()
         .filter(|l| {
+            if block {
+                block = !key(l, "#+end_");
+                return true;
+            }
+            block = key(l, "#+begin_");
             if key(l, "#+filetags:") {
                 tags.extend(l.trim_start()[11..].split(':').map(str::trim).filter(|t| !t.is_empty()).map(String::from));
             }
-            !key(l, "#+title:") && !key(l, "#+filetags:")
+            !FILE_KEYWORDS.iter().any(|k| key(l, k))
         })
         .copied()
         .collect();
@@ -1517,6 +1528,10 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&c).unwrap(), "[[file:sub/b.org::*Alpha Note][A]] [[file:sub/b.org::*H]] [[id:fid]]\n");
         assert_eq!(std::fs::read_to_string(&d).unwrap(), "[[file:c.org]]\n");
         assert_eq!(add_filetags(":PROPERTIES:\n:ID: x\n:END:\n* H\n", &["a".into()]), ":PROPERTIES:\n:ID: x\n:END:\n#+filetags: :a:\n* H\n");
+        // File settings go; blocks (even `#+` lines inside them), transclusions and captions stay.
+        let pre = "#+TITLE: T\n#+startup: overview\n#+Options: toc:nil\n#+author: me\n#+caption: Fig\n#+begin_src org\n#+startup: kept\n#+end_src\n#+TRANSCLUDE: [[file:x.org]]\ntext\n";
+        let want = ["* T", "#+caption: Fig", "#+begin_src org", "#+startup: kept", "#+end_src", "#+TRANSCLUDE: [[file:x.org]]", "text"];
+        assert_eq!(as_section(pre, "T", &BTreeSet::new()).0, want);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

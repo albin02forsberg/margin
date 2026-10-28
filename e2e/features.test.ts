@@ -135,7 +135,10 @@ describe("Features", () => {
         writeFileSync(join(notes, "wanderer.org"), "#+title: Wanderer\n\nSee [[file:elsewhere.org][Elsewhere]] and [[file:attachments/wanderer/x.png]].\n");
         writeFileSync(join(notes, "signpost.org"), "#+title: Signpost\n\nGo to [[file:wanderer.org::*Top][the wanderer]].\n");
         writeFileSync(join(notes, "refs.org"), "#+title: Refs\n\nSee [[file:draft.org::*Top][the draft]] and [[file:drafts.org]].\n");
-        writeFileSync(join(notes, "doomed.org"), ":PROPERTIES:\n:ID: doomed-id\n:END:\n#+title: Doomed\n\nDoomed text.\n");
+        writeFileSync(join(notes, "mergesrc.org"), "#+title: Merged Away\n#+startup: overview\n\nMoved text.\n");
+        writeFileSync(join(notes, "mergedst.org"), "#+title: Keeper\n\nKept.\n");
+        writeFileSync(join(notes, "pointer.org"), "#+title: Pointer\n\nSee [[file:mergesrc.org][it]].\n");
+        writeFileSync(join(notes, "doomed.org"),":PROPERTIES:\n:ID: doomed-id\n:END:\n#+title: Doomed\n\nDoomed text.\n");
         writeFileSync(join(notes, "fan.org"), "#+title: Fan\n\nSee [[id:doomed-id][the doomed note]].\n");
         writeFileSync(join(notes, "embed.org"), "#+title: Embed\n\n#+TRANSCLUDE: [[file:source.org::*Agenda]]\nAfter.\n");
         writeFileSync(join(notes, "source.org"), "#+title: Source\n\n* Agenda\n- reuse me\n");
@@ -285,6 +288,22 @@ describe("Features", () => {
       throw new Error(`${e}\nstatus msg: ${JSON.stringify(await texts(".status .msg"))}`); // "No closed tabs" = the entry was pruned
     }
     assert.ok(!existsSync(join(d.notes, "oldie.org")), "old name recreated");
+  });
+
+  it("merges a note into another with Space n v: a section there, links follow, the note goes to .trash", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Merged Away");
+    await find(".status .file", "mergesrc.org");
+    await browser.keys(Key.Escape);
+    await browser.keys(" ");
+    await type("nv");
+    await answer("into note", "Keeper");
+    await answer("as the section “Merged Away”? 1 link", "Merge");
+    await find(".status .msg", "Merged into Keeper — updated 1 link");
+    await find(".status .file", "mergedst.org");
+    assert.equal(read(join(d.notes, "mergedst.org")), "#+title: Keeper\n\nKept.\n\n* Merged Away\nMoved text.\n"); // #+startup dropped
+    assert.equal(read(join(d.notes, "pointer.org")), "#+title: Pointer\n\nSee [[file:mergedst.org::*Merged Away][it]].\n");
+    assert.ok(!existsSync(join(d.notes, "mergesrc.org")) && existsSync(join(d.notes, ".trash", "mergesrc.org")), "source not in .trash");
   });
 
   it("moves a note to .trash after a confirm naming its backlinks", async () => {
