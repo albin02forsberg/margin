@@ -2788,7 +2788,7 @@
     { label: "Rename note…", leader: "n r", run: renameNote },
     { label: "Note: duplicate…", leader: "n c", run: () => act(duplicateNote) },
     { label: "Move note to folder…", leader: "n m", run: moveNote },
-    { label: "Notes: merge into another note…", run: mergeNote },
+    { label: "Notes: merge into another note…", leader: "n v", run: mergeNote },
     { label: "Delete note… (move to .trash)", leader: "n D", run: trashNote },
     { label: "Restore note from .trash…", leader: "n R", run: restoreNote },
     { label: "Note: show in file manager", leader: "n f", run: () => act(() => (inFile() ? revealItemInDir(tab.path!) : flash("Open a note first."))) },
