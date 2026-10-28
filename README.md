@@ -265,7 +265,9 @@ profile clocks out first, and warns where old files stay (nothing is moved).
   its open top-level entries; done and archived ones don't count),
   **Journal** (Ctrl+J), **Time** (Ctrl+4), **Notes** (Ctrl+P, pinned notes (`Space n p`) then recent ones first), your saved
   searches, the Ctrl+K search, Settings and the running clock (Pause / Stop / Start).
-  Toggle it with Ctrl+\\ or `Space v s`. In a narrow window it keeps only the icons (under 760 px)
+  Toggle it with Ctrl+\\ or `Space v s`. **Zen mode** (`Space v z`, or "View: zen mode" in Ctrl+K) hides the
+  top bar and status bar for distraction-free writing until you toggle it again (or press Esc outside
+  the editor); it is not remembered across restarts. In a narrow window it keeps only the icons (under 760 px)
   and the links/graph panel opens over the note (under 1000 px; Esc or a click on the note closes it).
   Switching views fades the new one in and slides the bar's highlight; the system's
   "reduce motion" setting turns both off.

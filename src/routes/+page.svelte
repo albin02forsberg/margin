@@ -113,6 +113,8 @@
   const store = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch {} };
   let motion = $state(false); // view-change motion, on after the first load
   let topbar = $state(stored("sidebar", "1") === "1"); // key kept from the old sidebar toggle
+  /** Zen mode (#848): hides the top bar and status bar; never persisted and leaves `topbar` alone. */
+  let zen = $state(false);
   let recent = $state<string[]>(JSON.parse(stored("recent", "[]")));
   /** Pinned notes (this machine only), shown first in Ctrl+P in pin order; not capped, not reordered on open. */
   let pinned = $state<string[]>(parsePins(stored("pinned", "[]")));
@@ -2926,6 +2928,7 @@
       if (!ed.narrowToggle(view)) return flash("Put the cursor under a heading of an org note first.");
       countWords(view.state, false);
     } },
+    { label: "View: zen mode (hide top bar and status bar)", leader: "v z", run: () => { zen = !zen; if (zen) closeDrawer(); } },
     { label: "Toggle monospace font for notes", leader: "v m", run: () => { monoFont = !monoFont; store("mono-font", monoFont ? "1" : "0"); } },
     { label: "View: reset zoom (Ctrl/Cmd+= / - / 0 zoom in / out / reset)", leader: "v 0", run: resetZoom },
     { label: "Fold / unfold all headings (Tab folds one)", keys: ["Shift+Tab"], ctx: "normal", run: () => ed.orgShiftTab(view) },
@@ -3016,6 +3019,7 @@
     const inEditor = isText(tab) && view.contentDOM.contains(e.target as Node);
     if (peek && (e.key === "Escape" || e.key === "Enter") && (e.target as Element).closest?.(".peek")) { e.preventDefault(); e.stopPropagation(); closePeek(e.key === "Enter"); return; }
     if (e.key === "Escape" && !inEditor && drawerOpen()) { closeDrawer(); e.preventDefault(); return; }
+    if (e.key === "Escape" && !inEditor && zen) { zen = false; e.preventDefault(); return; } // in the editor Esc is Vim's
     const idle = inEditor && ed.vimIdle(view);
     const c = combo(e);
     for (const cmd of cmds) {
@@ -3320,8 +3324,8 @@
   ];
 </script>
 
-<div class="app" class:mono={monoFont}>
-  {#if topbar && cfg}
+<div class="app" class:mono={monoFont} class:zen>
+  {#if topbar && !zen && cfg}
     <header class="topnav">
       <span class="logo" aria-hidden="true">m</span>
       <nav class="views" class:has-ind={ind.on} bind:this={viewsEl}>
@@ -3530,6 +3534,7 @@
   .mention { display: flex; align-items: center; }
   .mention button:first-child { min-width: 0; }
   .links .link-it { width: auto; flex: none; color: var(--link); font-size: var(--fs-sm); }
+  .zen .status { display: none; }
   .status { display: flex; gap: var(--s3); align-items: center; padding: 0 var(--s4) var(--s2); color: var(--dim); font: var(--fs-xs) var(--mono); flex: none; min-height: 20px; }
   .mode { color: var(--bg); background: var(--accent); padding: 0 6px; border-radius: var(--radius-sm); font-weight: 700; }
   .file, .words { color: var(--dim); }

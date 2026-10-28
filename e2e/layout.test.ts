@@ -32,6 +32,20 @@ describe("Responsive layout", () => {
     await find(".topnav .views button", "Today");
   });
 
+  it("hides the top bar and status bar in zen mode; the palette still opens and Esc leaves", async () => {
+    await palette("View: zen mode");
+    await browser.waitUntil(async () => !(await browser.$(".topnav").isExisting()), { timeoutMsg: "top bar still shown in zen" });
+    assert.equal(await displayed(".status"), false, "status bar still shown in zen");
+    await palette("View: zen mode"); // Ctrl+K works in zen; toggling again restores
+    await find(".topnav .views button", "Today");
+    assert.ok(await displayed(".status"), "status bar not back");
+    await palette("View: zen mode");
+    await browser.waitUntil(async () => !(await browser.$(".topnav").isExisting()), { timeoutMsg: "top bar still shown in zen" });
+    await browser.keys(Key.Escape); // outside the editor Esc leaves zen
+    await find(".topnav .views button", "Today");
+    assert.equal(await browser.execute(() => localStorage.getItem("sidebar")), "1", "zen wrote the top bar setting");
+  });
+
   it("shows the links panel as a drawer under 1000 px, and Esc closes it", async () => {
     await width(900);
     await palette("Show note graph");
