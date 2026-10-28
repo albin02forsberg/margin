@@ -296,7 +296,11 @@
     const shown = [tab?.path, tabs.find((t) => t.key === key2)?.path]; // never the same note in both panes
     const ps = [...new Set([...(prev ? [prev] : []), ...sorted])].filter((p) => !shown.includes(p));
     const path = await pick({ prompt: "Open beside this note", items: ps.map((p) => ({ label: titles.get(p) ?? niceName(p), detail: rel(p), value: p as unknown })) });
-    if (typeof path !== "string") return;
+    if (typeof path === "string") await showSplit(path);
+  }
+
+  /** Show the note at PATH in the right pane (opening its tab if needed) and focus it unless FOCUS is false. */
+  async function showSplit(path: string, focus = true) {
     await focusPane(0, false);
     let t = fileTab(path);
     if (!t) {
@@ -310,7 +314,7 @@
     else view2.setState(t.state!);
     key2 = t.key;
     watchMode(view2);
-    await focusPane(1);
+    if (focus) await focusPane(1);
   }
 
   /** Window under the split breakpoint (1000px, as the links drawer): only the left pane shows; the right pane's tab stays open. */
@@ -588,7 +592,9 @@
       const st = stateOf(t);
       return { path: t.path!, line: st.doc.lineAt(st.selection.main.head).number - 1 };
     });
-    store("session", JSON.stringify({ tabs: entries, active: keep.indexOf(tabs[cur]) }));
+    const right = key2 != null && !narrow ? (side ? tabs[cur] : tabs.find((t) => t.key === key2)) : undefined; // the right pane's tab
+    const split = right ? keep.indexOf(right) : -1;
+    store("session", JSON.stringify({ tabs: entries, active: keep.indexOf(split >= 0 ? leftTab! : tabs[cur]), split }));
   }
   let sessionTimer: ReturnType<typeof setTimeout>;
   $effect(() => {
@@ -599,9 +605,9 @@
 
   /** Reopen the last session's tabs after Today (missing notes are skipped) and show its active one. */
   async function restoreSession() {
-    const { tabs: entries, active } = cfg.config.restore_tabs ? parseSession(stored("session", "")) : { tabs: [], active: -1 };
+    const { tabs: entries, active, split } = cfg.config.restore_tabs ? parseSession(stored("session", "")) : { tabs: [], active: -1, split: -1 };
     const r = recent; // reopening shouldn't reorder Recent
-    let at = -1;
+    let at = -1, right = ""; // RIGHT: the split pane's note, when its tab came back
     for (const [i, c] of entries.entries()) {
       try {
         if ("path" in c) {
@@ -611,11 +617,14 @@
         else if ((cfg.config.hidden_areas ?? []).includes(c.kind)) continue; // a hidden area's ledger / habits tab stays closed
         else await openView(c.kind);
         if (i === active) at = cur;
+        if (i === split && "path" in c) right = c.path;
       } catch { /* e.g. a bad query or a path outside the folders */ }
     }
     if (entries.length) {
       store("recent", JSON.stringify((recent = r)));
       await show(at >= 0 ? at : 0);
+      // the split comes back when both panes' notes did and the window is wide enough; focus stays left
+      if (right && !narrow && tab?.path !== right) try { await showSplit(right, false); } catch { /* the note vanished */ }
     }
     restored = true;
   }
@@ -3194,7 +3203,7 @@
     { label: "Export: time report (HTML/PDF)…", leader: "e t", run: exportReport },
   ];
   /** `cmds` without the areas hidden in Settings (`hidden_areas`): palette, keys and Space menu all use this. */
-  const shownCmds = $derived(visibleCmds(cmds, cfg?.config.hidden_areas ?? []).filter((c) => cfg?.config.split_view || !c.label.startsWith("Split view:")));
+  const shownCmds = $derived(visibleCmds(cmds, cfg?.config.hidden_areas ?? []));
 
   const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", i: "Insert", T: "Table", m: "Bookmarks", s: "Search", t: "Time tracking", e: "Export", v: "Go to & view", b: "Tabs", w: "Split view", l: "Links" };
   const leader: MenuNode[] = $derived.by(() => {

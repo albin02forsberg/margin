@@ -15,7 +15,6 @@ const shown = (css: string) => browser.execute((c: string) => { const e = docume
 describe("Split view", () => {
   before(async () => {
     ({ notes } = await launch({
-      config: ["split_view = true"],
       files: ({ notes }) => {
         writeFileSync(join(notes, "alpha.org"), "#+title: Alpha\n\nAlpha text.\n");
         writeFileSync(join(notes, "beta.org"), "#+title: Beta\n\nBeta text.\n");

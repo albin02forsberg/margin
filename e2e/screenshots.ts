@@ -31,7 +31,7 @@ function write(path: string, text: string) {
 }
 
 /** config.toml lines on top of setup.ts's. */
-const config = [`templates = []`, `split_view = true`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`];
+const config = [`templates = []`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`];
 
 function fixtures({ notes, data }: Dirs) {
   write(join(notes, "orchard.org"), `
