@@ -64,16 +64,16 @@ describe("Split view", () => {
     await answer("Open beside this note", "beta");
     await find(".editor.split .cm-content", "Typed in beta");
     await browser.keys(Key.Escape);
-    await browser.keys([" ", "w", "w"]);
+    await browser.keys(" "); await type("ww");
     await find(".status .file", "alpha.org");
-    await browser.keys([" ", "w", "w"]);
+    await browser.keys(" "); await type("ww");
     await find(".status .file", "beta.org");
     await type("GoSecond line");
     await browser.keys(Key.Escape);
-    await browser.keys([" ", "w", "w"]);
+    await browser.keys(" "); await type("ww");
     await find(".status .file", "alpha.org");
-    await browser.keys([" ", "w", "w"]);
-    await browser.keys([" ", "w", "c"]);
+    await browser.keys(" "); await type("ww");
+    await browser.keys(" "); await type("wc");
     await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: "split pane still shown" });
     await fileMatches(join(notes, "beta.org"), (s) => s.includes("Second line"), "the right pane's note wasn't saved on close");
     await find(".tabs .tab", "beta"); // still open as a normal tab
