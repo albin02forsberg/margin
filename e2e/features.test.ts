@@ -2099,3 +2099,28 @@ describe("Tag rename and open task-search tabs", () => {
     await browser.waitUntil(async () => (await texts(".agenda .row .title")).sort().join("|") === "Buy milk|Call the bank", { timeoutMsg: "merged tab doesn't list both" });
   });
 });
+
+describe("Replace text in all notes", () => {
+  let d: Dirs;
+  const a = "Call Acme today\nAcme again\n", b = "Acme here\n";
+  before(async () => {
+    d = await launch({ files: ({ notes }) => { writeFileSync(join(notes, "a.org"), a); writeFileSync(join(notes, "b.org"), b); } });
+    await find(".agenda h1", "Today");
+  });
+  after(close, { timeout: 30_000 });
+
+  it("previews every line, writes only the ticked ones, and undoes (#872)", async () => {
+    await palette("Notes: replace text in all notes");
+    await answer("Replace in all notes", "Acme");
+    await answer("Replace “Acme” with", "Initech");
+    await answer("3 lines of 3 in 2 notes", "b.org"); // ↵ unticks b.org's line
+    await answer("2 lines of 3 in 2 notes", "Replace 2");
+    await fileMatches(join(d.notes, "a.org"), (s) => s === "Call Initech today\nInitech again\n", "ticked lines not replaced");
+    assert.equal(read(join(d.notes, "b.org")), b, "unticked line replaced");
+    await find(".status .msg", "Replaced “Acme” on 2 lines in 1 note");
+    await noPicker();
+    await palette("Tags: undo a rename or text replace");
+    await answer("Undo a tag rename or text replace", "Acme");
+    await fileMatches(join(d.notes, "a.org"), (s) => s === a, "undo didn't put the note back");
+  });
+});

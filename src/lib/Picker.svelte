@@ -16,6 +16,8 @@
     keys?: Record<string, unknown>;
     /** Ctrl/Cmd+key acts on the selected item: resolves `{ action, value }` (e.g. `{ r: "rename" }`). */
     actions?: Record<string, string>;
+    /** Index of the item selected on open (a prompt reopened after a toggle keeps its place). */
+    at?: number;
   };
 
   /** Orderless fuzzy match: every space-separated word must match as a subsequence. */
@@ -71,7 +73,7 @@
     items = toItems(opts.items ?? []);
     query = opts.initial ?? "";
     previewText = "";
-    sel = 0;
+    sel = Math.max(0, Math.min(opts.at ?? 0, items.length - 1));
     active = true;
     await tick();
     input?.focus();
