@@ -1796,16 +1796,16 @@ struct TextReplace {
 /// One accepted hit of a text replace: (note, line, the line's text in the preview).
 type Accept = (PathBuf, usize, String);
 
-/// Replace literal FIND (any case unless CASE) with REPLACE in every note: without ACCEPT, a preview of the
+/// Replace literal FIND (any case unless CASE, whole words only if WORD) with REPLACE in every note: without ACCEPT, a preview of the
 /// lines it changes; with ACCEPT, writes those hits, each only if its line on disk still reads the same.
 /// Notes in SKIP (unsaved edits) are left alone and listed. The apply backs up and copies each changed note
 /// to a new `<notes>/.trash/tag-rename-<time>/` with an undo manifest of kind "text" (undone like a tag rename).
 #[tauri::command(async)]
-fn notes_replace(s: State<App>, find: String, replace: String, case: bool, skip: Vec<PathBuf>, accept: Option<Vec<Accept>>) -> R<TextReplace> {
+fn notes_replace(s: State<App>, find: String, replace: String, case: bool, word: bool, skip: Vec<PathBuf>, accept: Option<Vec<Accept>>) -> R<TextReplace> {
     if find.is_empty() || find.contains('\n') {
         return Err("Type the text to replace (one line).".into());
     }
-    let (re, notes_dir) = (notes::literal(&find, case), s.cfg().notes());
+    let (re, notes_dir) = (notes::literal(&find, case, word), s.cfg().notes());
     let Some(accept) = accept else { return Ok(replace_preview(&s.files(), &re, &replace, &skip)) };
     s.backup();
     let _lock = note_writes();
@@ -3490,7 +3490,7 @@ mod tests {
         };
         let a = "Acme Corp\r\nacme again\n";
         let files = [note("sub/a.org", a), note("b.org", "Call Acme\nAcme\n"), note("c.org", "Acme open\n"), note("d.org", "none\n")];
-        let (re, read) = (notes::literal("acme", false), |p: &str| std::fs::read_to_string(root.join(p)).unwrap());
+        let (re, read) = (notes::literal("acme", false, false), |p: &str| std::fs::read_to_string(root.join(p)).unwrap());
         let c = root.join("c.org");
         let p = replace_preview(&files, &re, "Initech", std::slice::from_ref(&c));
         assert_eq!((p.hits.len(), p.skipped.as_slice()), (4, std::slice::from_ref(&c)));
