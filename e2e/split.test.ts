@@ -76,16 +76,17 @@ describe("Split view", () => {
     await browser.keys(" "); await type("wc");
     await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: "split pane still shown" });
     await fileMatches(join(notes, "beta.org"), (s) => s.includes("Second line"), "the right pane's note wasn't saved on close");
-    await find(".tabs .tab", "beta"); // still open as a normal tab
-    // reopen, then narrow the window: the right pane hides and its tab opens as a normal one
+    await find(".tabs .tab", "beta"); // still open as a normal tab, and the focused note stays on the left
+    await find(".status .file", "beta.org");
+    // reopen beside it, then narrow the window: the right pane hides and its tab opens as a normal one
     await palette("Split view: open a note");
-    await answer("Open beside this note", "beta");
-    await find(".editor.split .cm-content", "Second line");
+    await answer("Open beside this note", "alpha");
+    await find(".editor.split .cm-content", "Alpha text.");
     await width(800);
     await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: "split pane shown when narrow" });
-    await (await find(".tabs .tab button", "beta")).click();
-    await find(".status .file", "beta.org");
-    await find(".pane .editor .cm-content", "Second line");
+    await (await find(".tabs .tab button", "alpha")).click();
+    await find(".status .file", "alpha.org");
+    await find(".pane .editor .cm-content", "Alpha text.");
     await width(1280);
     await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: "split came back" });
   });
