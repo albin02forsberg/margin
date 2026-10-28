@@ -84,7 +84,7 @@
   let tabs = $state<Tab[]>([]);
   let cur = $state(-1);
   let editorEl = $state<HTMLDivElement>();
-  let dropCue = $state(false);
+  let dropCue = $state<{ title: string; style: string } | null>(null);
   /** The focused pane's editor; with a split (#874) VIEW2 is the other pane's and KEY2 its tab (null: no split).
    *  SIDE: the focused pane, 0 left (`editorEl`) or 1 right (`splitEl`); `focusPane` swaps view/view2 and cur/key2. */
   let view: EditorView;
@@ -246,6 +246,10 @@
 
   async function show(i: number) {
     if (key2 != null && tabs[i]) {
+      if (isNarrow()) { // the right pane is hidden: its tab opens as a normal one, even before the effect below ran (#892)
+        if (side) await focusPane(0, false);
+        if (tabs[i].key === key2) closeSplit();
+      }
       if (tabs[i].key === key2) return focusPane(side ^ 1); // never the same note in both panes (#874)
       if (side && !isText(tabs[i])) await focusPane(0); // views only show on the left
     }
@@ -261,7 +265,7 @@
     if (t?.state) {
       view.setState(t.state);
       ed.vimClearJumps();
-      ed.onModeChange(view, (m) => (mode = m));
+      watchMode(view);
       mode = "normal";
       countWords(view.state);
       await tick();
@@ -269,6 +273,9 @@
     }
     refreshBacklinks();
   }
+
+  /** Mirror V's vim mode into the status bar while it is the focused pane (registered once per view). */
+  const watchMode = (v: EditorView) => ed.onModeChange(v, (m) => v === view && (mode = m));
 
   /** Make pane P (0 left, 1 right) the focused one: `view`, `cur` and the status bar follow it. */
   async function focusPane(p: number, focus = true) {
@@ -278,8 +285,8 @@
     cur = tabs.findIndex((t) => t.key === key2);
     key2 = k;
     side = p;
-    ed.onModeChange(view, (m) => (mode = m));
-    mode = "normal";
+    watchMode(view);
+    mode = ed.vimMode(view);
     if (isText(tab)) countWords(view.state);
     refreshBacklinks();
     if (focus && isText(tab)) { await tick(); view.focus(); }
@@ -293,6 +300,13 @@
     const ps = [...new Set([...(prev ? [prev] : []), ...sorted])].filter((p) => !shown.includes(p));
     const path = await pick({ prompt: "Open beside this note", items: ps.map((p) => ({ label: titles.get(p) ?? niceName(p), detail: rel(p), value: p as unknown })) });
     if (typeof path !== "string") return;
+    if (!isNarrow()) return showSplit(path);
+    flash("Window too narrow for a split: opened as a tab");
+    await openFile(path);
+  }
+
+  /** Show the note at PATH in the right pane (opening its tab if needed) and focus it unless FOCUS is false. */
+  async function showSplit(path: string, focus = true) {
     await focusPane(0, false);
     let t = fileTab(path);
     if (!t) {
@@ -305,8 +319,30 @@
     if (!view2) view2 = new EditorView({ parent: splitEl!, state: t.state! });
     else view2.setState(t.state!);
     key2 = t.key;
-    ed.onModeChange(view2, (m) => (mode = m));
-    await focusPane(1);
+    watchMode(view2);
+    if (focus) await focusPane(1);
+  }
+
+  /** Window under the split breakpoint (1000px, as the links drawer): only the left pane shows; the right pane's tab stays open. */
+  let narrow = $state(false);
+  /** The live breakpoint, for decisions that can't wait for the `narrow` state to catch up (#892). */
+  const isNarrow = () => matchMedia("(max-width: 999px)").matches;
+  $effect(() => {
+    const m = matchMedia("(max-width: 999px)"), f = () => (narrow = m.matches);
+    f();
+    m.addEventListener("change", f);
+    return () => m.removeEventListener("change", f);
+  });
+  $effect(() => { if (narrow && side) act(() => focusPane(0, false)); });
+
+  /** Space w w: focus the other pane. */
+  const swapPane = () => (isNarrow() ? undefined : focusPane(side ^ 1));
+
+  /** Space w c: close the split, saving the right pane's note first. */
+  async function closeSplitSaved() {
+    const k = key2;
+    closeSplit();
+    await saveTab(tabs.find((x) => x.key === k));
   }
 
   /** Close the split: the focused pane's tab stays shown, in the left pane; the other pane's tab stays open. */
@@ -318,12 +354,15 @@
       const st = view.state;
       [view, view2] = [view2!, view];
       if (isText(tab)) view.setState(st);
-      ed.onModeChange(view, (m) => (mode = m));
-      mode = "normal";
+      watchMode(view);
+      mode = ed.vimMode(view);
       side = 0;
     }
     key2 = null;
   }
+
+  /** The pane (0 left, 1 right) under window point AT. */
+  const dropPane = (at: { x: number; y: number }) => (key2 != null && !isNarrow() && splitEl?.contains(document.elementFromPoint(at.x, at.y)) ? 1 : 0);
 
   /** Restart the view-enter animation on EL (it only replays on its own when display toggles, not note to note). */
   function replay(el?: Element | null) {
@@ -561,7 +600,9 @@
       const st = stateOf(t);
       return { path: t.path!, line: st.doc.lineAt(st.selection.main.head).number - 1 };
     });
-    store("session", JSON.stringify({ tabs: entries, active: keep.indexOf(tabs[cur]) }));
+    const right = key2 != null && !narrow ? (side ? tabs[cur] : tabs.find((t) => t.key === key2)) : undefined; // the right pane's tab
+    const split = right ? keep.indexOf(right) : -1;
+    store("session", JSON.stringify({ tabs: entries, active: keep.indexOf(split >= 0 ? leftTab! : tabs[cur]), split }));
   }
   let sessionTimer: ReturnType<typeof setTimeout>;
   $effect(() => {
@@ -572,9 +613,9 @@
 
   /** Reopen the last session's tabs after Today (missing notes are skipped) and show its active one. */
   async function restoreSession() {
-    const { tabs: entries, active } = cfg.config.restore_tabs ? parseSession(stored("session", "")) : { tabs: [], active: -1 };
+    const { tabs: entries, active, split } = cfg.config.restore_tabs ? parseSession(stored("session", "")) : { tabs: [], active: -1, split: -1 };
     const r = recent; // reopening shouldn't reorder Recent
-    let at = -1;
+    let at = -1, right = ""; // RIGHT: the split pane's note, when its tab came back
     for (const [i, c] of entries.entries()) {
       try {
         if ("path" in c) {
@@ -584,11 +625,14 @@
         else if ((cfg.config.hidden_areas ?? []).includes(c.kind)) continue; // a hidden area's ledger / habits tab stays closed
         else await openView(c.kind);
         if (i === active) at = cur;
+        if (i === split && "path" in c) right = c.path;
       } catch { /* e.g. a bad query or a path outside the folders */ }
     }
     if (entries.length) {
       store("recent", JSON.stringify((recent = r)));
       await show(at >= 0 ? at : 0);
+      // the split comes back when both panes' notes did and the window is wide enough; focus stays left
+      if (right && !narrow && tab?.path !== right) try { await showSplit(right, false); } catch { /* the note vanished */ }
     }
     restored = true;
   }
@@ -1973,7 +2017,7 @@
       v.setState(t.state!);
       ed.vimClearJumps();
       v.dispatch({ selection: old.selection });
-      ed.onModeChange(v, (m) => (mode = m));
+      watchMode(v);
     }
     if (v && v === view) {
       mode = "normal";
@@ -3023,6 +3067,8 @@
     { label: "Move tab right", leader: "b >", run: () => moveTab(cur, cur + 1) },
     { label: "Close tab (also :q)", leader: "b d", run: () => closeTab() },
     { label: "Split view: open a note on the right…", leader: "w v", run: openSplit },
+    { label: "Split view: focus the other pane", leader: "w w", run: swapPane },
+    { label: "Split view: close the split", leader: "w c", run: closeSplitSaved },
     { label: "Close other tabs", leader: "b o", run: () => closeOthers() },
     { label: "Close all tabs", leader: "b D", run: () => closeOthers(true) },
     { label: "Reopen closed tab", keys: ["Ctrl+Shift+T"], leader: "b u", run: reopenTab },
@@ -3167,7 +3213,7 @@
     { label: "Export: time report (HTML/PDF)…", leader: "e t", run: exportReport },
   ];
   /** `cmds` without the areas hidden in Settings (`hidden_areas`): palette, keys and Space menu all use this. */
-  const shownCmds = $derived(visibleCmds(cmds, cfg?.config.hidden_areas ?? []).filter((c) => cfg?.config.split_view || !c.label.startsWith("Split view:")));
+  const shownCmds = $derived(visibleCmds(cmds, cfg?.config.hidden_areas ?? []));
 
   const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", i: "Insert", T: "Table", m: "Bookmarks", s: "Search", t: "Time tracking", e: "Export", v: "Go to & view", b: "Tabs", w: "Split view", l: "Links" };
   const leader: MenuNode[] = $derived.by(() => {
@@ -3476,11 +3522,22 @@
     }));
     // Dropped files (real paths from Tauri) are copied next to the note and linked where they land.
     const unlistenDrop = getCurrentWebview().onDragDropEvent((e) => {
-      dropCue = (e.payload.type === "enter" || e.payload.type === "over") && inFile();
-      if (e.payload.type !== "drop" || !e.payload.paths.length) return;
-      const { paths, position } = e.payload;
-      const at = { x: position.x / devicePixelRatio, y: position.y / devicePixelRatio };
-      act(() => attach((note) => paths.map((src) => call<string>("attach_file", { note, src })), view.posAtCoords(at) ?? undefined));
+      const pl = e.payload, over = pl.type !== "leave";
+      const at = pl.type !== "leave" ? { x: pl.position.x / devicePixelRatio, y: pl.position.y / devicePixelRatio } : null;
+      const p = at ? dropPane(at) : 0; // the pane under the pointer, not the focused one (#882)
+      const t = p === side ? tab : tabs.find((x) => x.key === key2);
+      if (pl.type !== "drop") {
+        const r = (p ? splitEl! : editorEl!.parentElement!).getBoundingClientRect();
+        dropCue = over && t?.kind === "file" ? { title: t.title, style: `left:${r.left + 6}px;top:${r.top + 6}px;width:${r.width - 12}px;height:${r.height - 12}px` } : null;
+        return;
+      }
+      dropCue = null;
+      if (pl.type !== "drop" || !pl.paths.length || !at) return;
+      const paths = pl.paths;
+      act(async () => {
+        await focusPane(p, false);
+        await attach((note) => paths.map((src) => call<string>("attach_file", { note, src })), view.posAtCoords(at) ?? undefined);
+      });
     });
     for (const el of [editorEl!, splitEl!]) el.addEventListener("paste", onPaste, true);
     if (zoom !== 1) getCurrentWebview().setZoom(zoom).catch(() => {});
@@ -3570,24 +3627,24 @@
     </nav>
 
     <main>
+      {#if dropCue}<div class="drop-cue" style={dropCue.style}>Drop to attach to {dropCue.title}</div>{/if}
       <div class="pane" onpointerdowncapture={() => { if (drawerOpen()) closeDrawer(); act(() => focusPane(0, false)); }} onfocusin={() => act(() => focusPane(0, false))}>
         <div class="editor" bind:this={editorEl} style:display={isText(leftTab) ? "block" : "none"}></div>
-        {#if dropCue}<div class="drop-cue">Drop to attach to {tab.title}</div>{/if}
         {#if cfg}
           {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo" || t.kind === "time" || t.kind === "projects" || t.kind === "ledger" || t.kind === "habits" || t.kind === "settings") as v (v.key)}
             <div class="view" data-key={v.key} style:display={v === leftTab ? "block" : "none"}>
               {#if v.kind === "time"}
-                <Time api={timeApi} active={v === tab} {reload} />
+                <Time api={timeApi} active={v === leftTab} {reload} />
               {:else if v.kind === "projects"}
-                <Projects api={timeApi} active={v === tab} {reload} />
+                <Projects api={timeApi} active={v === leftTab} {reload} />
               {:else if v.kind === "ledger"}
-                <Ledger api={timeApi} active={v === tab} {reload} />
+                <Ledger api={timeApi} active={v === leftTab} {reload} />
               {:else if v.kind === "habits"}
-                <Habits api={timeApi} active={v === tab} {reload} />
+                <Habits api={timeApi} active={v === leftTab} {reload} />
               {:else if v.kind === "settings"}
-                <Settings {version} active={v === tab} {reload} config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} missing={cfg.config_missing} save={saveSettings} recreate={recreateConfig} edit={() => act(editConfig)} />
+                <Settings {version} active={v === leftTab} {reload} config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} missing={cfg.config_missing} save={saveSettings} recreate={recreateConfig} edit={() => act(editConfig)} />
               {:else}
-                <Agenda mode={v.kind as "agenda" | "todo"} api={agendaApi} active={v === tab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} time={timeApi} logDone={!!cfg.config.log_done} />
+                <Agenda mode={v.kind as "agenda" | "todo"} api={agendaApi} active={v === leftTab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} time={timeApi} logDone={!!cfg.config.log_done} />
               {/if}
             </div>
           {/each}
@@ -3713,7 +3770,7 @@
   .tab.cur2 { background: color-mix(in srgb, var(--card) 50%, transparent); } /* the other pane's note (#874) */
   main { flex: 1; display: flex; min-height: 0; }
   .pane { flex: 1; min-width: 0; position: relative; }
-  .drop-cue { position: absolute; inset: 6px; border: 2px dashed var(--accent); border-radius: 8px; pointer-events: none; display: flex; align-items: flex-end; justify-content: center; padding-bottom: var(--s5); color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .drop-cue { position: fixed; z-index: 5; border: 2px dashed var(--accent); border-radius: 8px; pointer-events: none; display: flex; align-items: flex-end; justify-content: center; padding-bottom: var(--s5); color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--accent) 6%, transparent); }
   .editor, .view { height: 100%; }
   /* the editor as a card on the canvas: border-box keeps CodeMirror (own scroller, Vim ex-line) inside the padding */
   .editor { box-sizing: border-box; padding: 0 var(--s4) var(--s3); }
@@ -3743,6 +3800,7 @@
   /* narrow windows: compact top bar < 1200, links drawer < 1000, icon-only top bar < 760, short status bar < 560 */
   @media (max-width: 999px) {
     main { position: relative; }
+    .editor.split { display: none !important; }
     .links { position: absolute; right: 0; top: 0; bottom: 0; width: min(320px, 85vw); z-index: 10; box-shadow: var(--shadow); box-sizing: border-box; margin: 0; border-radius: var(--r) 0 0 var(--r); }
   }
   @media (max-width: 1199px) {

@@ -6,12 +6,15 @@ import { writeFileSync } from "node:fs";
 import { answer, browser, close, fileMatches, find, Key, launch, palette, read, type } from "./setup.ts";
 
 let notes: string;
+const width = (w: number) => browser.waitUntil(async () => {
+  await browser.setWindowSize(w, 800);
+  return Math.abs((await browser.execute(() => innerWidth)) - w) < 40;
+}, { timeoutMsg: `window did not resize to ${w}` });
 const shown = (css: string) => browser.execute((c: string) => { const e = document.querySelector(c); return !!e && e.getClientRects().length > 0; }, css);
 
 describe("Split view", () => {
   before(async () => {
     ({ notes } = await launch({
-      config: ["split_view = true"],
       files: ({ notes }) => {
         writeFileSync(join(notes, "alpha.org"), "#+title: Alpha\n\nAlpha text.\n");
         writeFileSync(join(notes, "beta.org"), "#+title: Beta\n\nBeta text.\n");
@@ -53,5 +56,58 @@ describe("Split view", () => {
     await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: "split pane still shown" });
     await find(".status .file", "alpha.org");
     await find(".pane .editor .cm-content", "Alpha text.");
+  });
+
+  it("Space w w moves focus, Space w c saves and closes, and a narrow window shows one pane", async () => {
+    await palette("Split view: open a note");
+    await answer("Open beside this note", "beta");
+    await find(".editor.split .cm-content", "Typed in beta");
+    await browser.keys(Key.Escape);
+    await browser.keys(" "); await type("ww");
+    await find(".status .file", "alpha.org");
+    await browser.keys(" "); await type("ww");
+    await find(".status .file", "beta.org");
+    await type("GoSecond line");
+    await browser.keys(Key.Escape);
+    await browser.keys(" "); await type("ww");
+    await find(".status .file", "alpha.org");
+    await browser.keys(" "); await type("ww");
+    await browser.keys(" "); await type("wc");
+    await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: "split pane still shown" });
+    await fileMatches(join(notes, "beta.org"), (s) => s.includes("Second line"), "the right pane's note wasn't saved on close");
+    await find(".tabs .tab", "beta"); // still open as a normal tab, and the focused note stays on the left
+    await find(".status .file", "beta.org");
+    // reopen beside it, then narrow the window: the right pane hides and its tab opens as a normal one
+    await palette("Split view: open a note");
+    await answer("Open beside this note", "alpha");
+    await find(".editor.split .cm-content", "Alpha text.");
+    await width(800);
+    await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: "split pane shown when narrow" });
+    await find(".status .file", "beta.org"); // the narrow effect moved focus to the left pane
+    await (await find(".tabs .tab button", "alpha")).click();
+    await find(".status .file", "alpha.org");
+    await find(".pane .editor .cm-content", "Alpha text.");
+    // Space w v when narrow opens the note as a tab instead (#893)
+    await palette("Split view: open a note");
+    await answer("Open beside this note", "beta");
+    await find(".status .file", "beta.org");
+    await find(".pane .editor .cm-content", "Second line");
+    assert.ok(!(await shown(".editor.split")), "split opened in a narrow window");
+    await width(1280);
+    await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: "split came back" });
+  });
+
+  it("keeps each pane's vim mode when switching panes (#882)", async () => {
+    await palette("Split view: open a note");
+    await answer("Open beside this note", "alpha"); // the previous test left beta in the left pane, and the picker hides it
+    await find(".status .mode", "NORMAL");
+    await type("i");
+    await find(".status .mode", "INSERT");
+    await (await browser.$(".pane .editor .cm-content")).click(); // the left pane is in normal mode
+    await find(".status .mode", "NORMAL");
+    await (await browser.$(".editor.split .cm-content")).click();
+    await find(".status .mode", "INSERT");
+    await browser.keys(Key.Escape);
+    await find(".status .mode", "NORMAL");
   });
 });

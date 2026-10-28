@@ -1050,8 +1050,19 @@ export function vimIdle(v: EditorView): boolean {
   return !!vs && !vs.insertMode && !vs.visualMode && !vs.inputState.operator && vs.inputState.keyBuffer.length === 0;
 }
 
+const watched = new WeakSet<object>();
+/** Call F on vim mode changes of V; registers once per vim instance (setState makes a new one) however often it is called. */
 export function onModeChange(v: EditorView, f: (mode: string) => void) {
-  (getCM(v) as any)?.on("vim-mode-change", (e: { mode: string; subMode?: string }) => f(e.subMode ? `${e.mode} ${e.subMode}` : e.mode));
+  const cm = getCM(v) as any;
+  if (!cm || watched.has(cm)) return;
+  watched.add(cm);
+  cm.on("vim-mode-change", (e: { mode: string; subMode?: string }) => f(e.subMode ? `${e.mode} ${e.subMode}` : e.mode));
+}
+
+/** The vim mode string of V as the status bar shows it ("normal", "insert", "visual", "visual linewise"). */
+export function vimMode(v: EditorView): string {
+  const vs = (getCM(v) as any)?.state?.vim;
+  return !vs ? "normal" : vs.insertMode ? "insert" : vs.visualMode ? (vs.visualLine ? "visual linewise" : vs.visualBlock ? "visual blockwise" : "visual") : "normal";
 }
 
 // ---------------------------------------------------------------- state
