@@ -90,4 +90,18 @@ describe("Split view", () => {
     await width(1280);
     await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: "split came back" });
   });
+
+  it("keeps each pane's vim mode when switching panes (#882)", async () => {
+    await palette("Split view: open a note");
+    await answer("Open beside this note", "beta");
+    await find(".status .mode", "NORMAL");
+    await type("i");
+    await find(".status .mode", "INSERT");
+    await (await browser.$(".pane .editor .cm-content")).click(); // the left pane is in normal mode
+    await find(".status .mode", "NORMAL");
+    await (await browser.$(".editor.split .cm-content")).click();
+    await find(".status .mode", "INSERT");
+    await browser.keys(Key.Escape);
+    await find(".status .mode", "NORMAL");
+  });
 });
