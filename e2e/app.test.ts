@@ -368,10 +368,14 @@ describe("Margin", () => {
       await noPicker();
       return t.length;
     };
+    const ledgerTab = async () => (await texts(".tabs .tab button")).some((t) => t.includes("Ledger"));
+    await palette("Go to Ledger");
+    await browser.waitUntil(ledgerTab, { timeoutMsg: "no Ledger tab" });
     await browser.keys([Key.Ctrl, ","]);
     await (await box()).click();
     await (await find(".settings button", "Save areas")).click();
     await fileMatches(cfg, (s) => /^hidden_areas = \["ledger"\]$/m.test(s), "hidden area not saved");
+    await browser.waitUntil(async () => !(await ledgerTab()), { timeoutMsg: "Ledger tab still open after hiding the area" });
     assert.equal(await ledgerCmds(), 0, "Ledger command still in the palette");
     await (await box()).click();
     await (await find(".settings button", "Save areas")).click();

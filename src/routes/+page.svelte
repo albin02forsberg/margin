@@ -1,6 +1,6 @@
 <script lang="ts">
   import "$lib/theme.css";
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { Channel, invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { getVersion } from "@tauri-apps/api/app";
@@ -133,6 +133,14 @@
     if (t === lastTitle) return;
     lastTitle = t;
     try { getCurrentWindow().setTitle(t).catch(() => {}); } catch {}
+  });
+  // `zen_fullscreen` (#870): zen also makes the window fullscreen; IPC only when that changes, so a fullscreen of the user's own is left alone.
+  let zenFull = false;
+  $effect(() => {
+    const fs = zen && !!cfg?.config.zen_fullscreen;
+    if (fs === zenFull) return;
+    zenFull = fs;
+    try { getCurrentWindow().setFullscreen(fs).catch(() => {}); } catch {}
   });
   const isText = (t?: Tab) => t?.kind === "file" || t?.kind === "report";
   const call = <T = any,>(cmd: string, args?: Record<string, unknown>) => invoke<T>(cmd, args);
@@ -584,6 +592,14 @@
     const t = tabs[i];
     if (t && (i = await detachTab(t)) >= 0) await showAfterClose(i);
   }
+
+  // Hiding an area in Settings closes its open tabs (#870), highest first; runs when the setting changes, not on tab changes.
+  $effect(() => {
+    const hidden: string[] = cfg?.config.hidden_areas ?? [];
+    untrack(async () => {
+      for (const t of tabs.filter((t) => hidden.includes(t.kind)).reverse()) await closeTab(tabs.indexOf(t));
+    });
+  });
 
   /** Close every tab but the current one (or ALL of them), highest first so each lands on the Reopen stack; conflict and deleted-with-edits tabs stay open.
    *  Shows a tab once at the end, so the editor and the backlinks update once. */

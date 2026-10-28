@@ -106,8 +106,10 @@ pub struct Config {
     pub ledger_file: String,
     /// Currency of ledger entries that don't name one (a 3-letter code).
     pub ledger_currency: String,
-    /// Areas ("ledger", "habits", "flashcards") whose commands leave the palette and Space menu; files are untouched.
+    /// Areas ("ledger", "habits", "flashcards", "goals") whose commands leave the palette and Space menu; files are untouched.
     pub hidden_areas: Vec<String>,
+    /// Zen mode (`Space v z`) also makes the window fullscreen.
+    pub zen_fullscreen: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -254,6 +256,7 @@ impl Default for Config {
             ledger_file: "ledger.org".into(),
             ledger_currency: "EUR".into(),
             hidden_areas: vec![],
+            zen_fullscreen: false,
         }
     }
 }
@@ -653,6 +656,8 @@ mod tests {
         assert!(save(mine, t("extra_days_off = [\"24/12\"]"), &[]).unwrap_err().contains("not a date"));
         assert!(save("profiles = [\n  \"A\",\n]\n", t("profiles = [\"B\"]"), &[]).is_err()); // multi-line: by hand
         assert!(toml::from_str::<Config>(mine).unwrap().hidden_areas.is_empty()); // old configs show every area
+        assert!(!toml::from_str::<Config>(mine).unwrap().zen_fullscreen);
+        assert!(save(mine, t("zen_fullscreen = true"), &[]).unwrap().1.zen_fullscreen);
         assert_eq!(save(mine, t("hidden_areas = [\"ledger\"]"), &[]).unwrap().1.hidden_areas, ["ledger"]);
     }
 

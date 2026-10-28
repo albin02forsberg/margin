@@ -36,6 +36,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "capture_shortcut", label: "Quick-capture shortcut", hint: "system-wide, e.g. Super+Shift+N; empty = off; if it doesn't fire (common on Wayland), bind `margin --capture` to a desktop shortcut" },
     { key: "close_to_tray", label: "Closing the window while tracking hides it to the tray", kind: "bool" },
     { key: "restore_tabs", label: "Reopen the last session's tabs on startup", kind: "bool" },
+    { key: "zen_fullscreen", label: "Zen mode goes fullscreen", kind: "bool", hint: "Space v z also makes the window fullscreen; leaving zen (Space v z or Esc) leaves it" },
     { key: "nightly_updates", label: "Nightly updates", kind: "bool", hint: "update to daily, untested builds of the latest code; switching back waits for the next stable release" },
   ] },
   { name: "Editor", fields: [
