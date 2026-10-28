@@ -106,6 +106,8 @@ pub struct Config {
     pub ledger_file: String,
     /// Currency of ledger entries that don't name one (a 3-letter code).
     pub ledger_currency: String,
+    /// Areas ("ledger", "habits", "flashcards") whose commands leave the palette and Space menu; files are untouched.
+    pub hidden_areas: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -251,6 +253,7 @@ impl Default for Config {
             nightly_updates: false,
             ledger_file: "ledger.org".into(),
             ledger_currency: "EUR".into(),
+            hidden_areas: vec![],
         }
     }
 }
@@ -649,6 +652,8 @@ mod tests {
         assert!(save(mine, t("public_holidays = \"us\""), &[]).unwrap_err().contains("\"se\" or \"none\""));
         assert!(save(mine, t("extra_days_off = [\"24/12\"]"), &[]).unwrap_err().contains("not a date"));
         assert!(save("profiles = [\n  \"A\",\n]\n", t("profiles = [\"B\"]"), &[]).is_err()); // multi-line: by hand
+        assert!(toml::from_str::<Config>(mine).unwrap().hidden_areas.is_empty()); // old configs show every area
+        assert_eq!(save(mine, t("hidden_areas = [\"ledger\"]"), &[]).unwrap().1.hidden_areas, ["ledger"]);
     }
 
     #[test]

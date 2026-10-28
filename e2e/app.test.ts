@@ -355,6 +355,30 @@ describe("Margin", () => {
     assert.ok(await (await views()).isDisplayed(), "Saved views hidden under All");
   });
 
+  it("hides an area's palette commands when it is unticked in Settings, and brings them back", async () => {
+    const cfg = join(cfgDir, "config.toml");
+    const box = () => browser.$(`//div[contains(@class, "settings")]//label[span[.="Ledger"]]/input`);
+    const ledgerCmds = async () => {
+      await browser.keys([Key.Ctrl, "k"]);
+      await find(".picker label span", "Run a command");
+      await type("Ledger: add");
+      await browser.pause(300);
+      const t = (await texts(".picker li")).filter((s) => s.includes("Ledger: add an entry"));
+      await browser.keys(Key.Escape);
+      await noPicker();
+      return t.length;
+    };
+    await browser.keys([Key.Ctrl, ","]);
+    await (await box()).click();
+    await (await find(".settings button", "Save areas")).click();
+    await fileMatches(cfg, (s) => /^hidden_areas = \["ledger"\]$/m.test(s), "hidden area not saved");
+    assert.equal(await ledgerCmds(), 0, "Ledger command still in the palette");
+    await (await box()).click();
+    await (await find(".settings button", "Save areas")).click();
+    await fileMatches(cfg, (s) => /^hidden_areas = \[\]$/m.test(s), "area not shown again");
+    assert.equal(await ledgerCmds(), 1, "Ledger command not back in the palette");
+  });
+
   it("adds and reorders saved views on the settings page", async () => {
     const cfg = join(cfgDir, "config.toml");
     const last = async (css: string) => Array.from(await browser.$$(css)).at(-1)!;

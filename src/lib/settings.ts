@@ -1,6 +1,8 @@
+import { AREAS } from "./areas.ts";
+
 /** A config.toml setting on the settings page. KIND defaults to text; lists are edited one item per line,
  *  numbers (a list of them) on one line. */
-export type Field = { key: string; label: string; kind?: "text" | "number" | "numbers" | "bool" | "list" | "multiline"; hint?: string; step?: number | "any" };
+export type Field = { key: string; label: string; kind?: "text" | "number" | "numbers" | "bool" | "list" | "multiline"; hint?: string; step?: number | "any"; options?: string[] };
 export type Form = Record<string, string | boolean>;
 
 const rel = "relative to the notes folder";
@@ -52,6 +54,9 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "ledger_file", label: "Ledger file", hint: `Space f l adds entries here, ${rel}` },
     { key: "ledger_currency", label: "Default currency", hint: "3-letter code for entries that don't name one, e.g. EUR or SEK" },
   ] },
+  { name: "Areas", fields: [
+    { key: "hidden_areas", label: "Show these areas", kind: "list", options: Object.keys(AREAS), hint: "an unticked area's commands leave the command palette and the Space menu; its files and data stay as they are" },
+  ] },
   { name: "Integrations", fields: [
     { key: "activity_watcher", label: "Built-in activity watcher", kind: "bool", hint: "records the active app and window title every 5 s into the time-tracking folder's activity/ for suggestions in the Time view; stays on this computer, never uploaded. Used when ActivityWatch is off or not running. Wayland: KDE, Hyprland, Sway and other wlroots compositors, and GNOME with a small Shell extension (installed from here)" },
     { key: "activity_media_signal", label: "Mark calls from mic and camera use", kind: "bool", hint: "notes only whether a microphone or camera is in use (never audio, video or which app) in activity/media/, so a block spent mostly on a call becomes a meeting suggestion; works with ActivityWatch or the built-in watcher. macOS only for now (the mic needs macOS 14+)" },
@@ -83,6 +88,10 @@ export function shows(cat: string, q: string, name: string, ...text: (string | u
  *  GRANTED is the Screen Recording permission (null off macOS), OK an earlier confirmation. */
 export const needsMacPrompt = (granted: boolean | null, before: boolean, after: boolean, ok: boolean) =>
   granted === false && !before && after && !ok;
+
+/** A list field's form value V (one item per line) with item O hidden (listed) or shown (left out). */
+export const hide = (v: string, o: string, hidden: boolean) =>
+  [...v.split("\n").filter((x) => x && x !== o), ...(hidden ? [o] : [])].join("\n");
 
 /** VALUE (from the config) as the form edits it. */
 export const toForm = (f: Field, v: unknown): string | boolean =>
