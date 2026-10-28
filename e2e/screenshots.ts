@@ -281,6 +281,17 @@ async function pngs() {
   await type("task");
   await shot("palette");
   await browser.keys(Key.Escape);
+
+  await command("Notes: replace text in all notes"); // the preview only: Esc writes nothing
+  await type("Harbor");
+  await browser.keys(Key.Enter);
+  await pause(300);
+  await browser.keys([Key.Ctrl, "a"]);
+  await type("Harbour");
+  await browser.keys(Key.Enter);
+  await find(".picker label span", "Replace “Harbor” with “Harbour”");
+  await shot("replace");
+  await browser.keys(Key.Escape);
 }
 
 // GIFs: each frame is a screenshot shown for a fixed time, so a clip doesn't depend on how fast

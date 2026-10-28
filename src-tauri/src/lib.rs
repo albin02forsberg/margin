@@ -1500,9 +1500,16 @@ struct TagRename {
 /// `manifest.json` in a tag rename's copies folder (#816): what `tag_rename_undo` needs to put the notes back.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct RenameManifest {
+    /// "tag" (a tag rename; manifests from before #872 have none) or "text" (a text replace, notes_replace).
+    #[serde(default = "tag_kind")]
+    kind: String,
     old: String,
     new: String,
     files: Vec<(PathBuf, String)>,
+}
+
+fn tag_kind() -> String {
+    "tag".into()
 }
 
 fn sha256(text: &str) -> String {
@@ -1565,22 +1572,34 @@ fn tag_rename(app: AppHandle, s: State<App>, old: String, new: String, skip: Vec
     };
     retag_files(&s.files(), &notes_dir, old, new, &skip, copies.as_deref(), &mut r);
     if let Some(copies) = copies {
-        write_manifest(&copies, old, new, &mut r);
+        let m = RenameManifest { kind: tag_kind(), old: old.into(), new: new.into(), files: std::mem::take(&mut r.written) };
+        write_manifest(&copies, m, &mut r.errors);
     }
     Ok(r)
 }
 
-/// After the apply: COPIES gets the undo manifest of what R wrote, or is removed if no note was written.
-fn write_manifest(copies: &Path, old: &str, new: &str, r: &mut TagRename) {
-    if r.written.is_empty() {
+/// After the apply: COPIES gets the undo manifest M, or is removed if no note was written.
+fn write_manifest(copies: &Path, m: RenameManifest, errors: &mut Vec<String>) {
+    if m.files.is_empty() {
         let _ = std::fs::remove_dir_all(copies);
         return;
     }
-    let m = RenameManifest { old: old.into(), new: new.into(), files: std::mem::take(&mut r.written) };
     let res = serde_json::to_string_pretty(&m).map_err(std::io::Error::other).and_then(|j| std::fs::write(copies.join("manifest.json"), j));
     if let Err(e) = res {
-        r.errors.push(format!("undo record: {e}"));
+        errors.push(format!("undo record: {e}"));
     }
+}
+
+/// Copy note PATH to COPIES (at its place under NOTES_DIR), then write OUT to it. Returns its undo manifest
+/// entry: (path under NOTES_DIR, sha256 of OUT).
+fn copy_then_write(notes_dir: &Path, copies: &Path, path: &Path, out: String) -> std::io::Result<(PathBuf, String)> {
+    let hash = sha256(&out);
+    let rel = path.strip_prefix(notes_dir).map_err(std::io::Error::other)?;
+    let dst = copies.join(rel);
+    std::fs::create_dir_all(dst.parent().unwrap_or(copies))?;
+    std::fs::copy(path, &dst)?;
+    config::write_atomic(path, out)?;
+    Ok((rel.to_path_buf(), hash))
 }
 
 /// tag_rename's per-note pass over FILES: counts, and with COPIES (the apply) copies each changed note there
@@ -1598,15 +1617,8 @@ fn retag_files(files: &[Arc<org::OrgFile>], notes_dir: &Path, old: &str, new: &s
             continue;
         }
         if let Some(copies) = copies {
-            let hash = sha256(&out);
-            let res = f.path.strip_prefix(notes_dir).map_err(std::io::Error::other).and_then(|rel| {
-                let dst = copies.join(rel);
-                std::fs::create_dir_all(dst.parent().unwrap_or(copies))?;
-                std::fs::copy(&f.path, &dst)?;
-                config::write_atomic(&f.path, out).map(|_| rel.to_path_buf())
-            });
-            match res {
-                Ok(rel) => r.written.push((rel, hash)),
+            match copy_then_write(notes_dir, copies, &f.path, out) {
+                Ok(w) => r.written.push(w),
                 Err(e) => {
                     r.errors.push(format!("{}: {e}", f.path.display()));
                     continue;
@@ -1618,10 +1630,12 @@ fn retag_files(files: &[Arc<org::OrgFile>], notes_dir: &Path, old: &str, new: &s
     }
 }
 
-/// A tag rename that can be undone: its copies FOLDER, OLD and NEW tag, how many NOTES, and when (unix seconds).
+/// A tag rename (or text replace: KIND "text") that can be undone: its copies FOLDER, OLD and NEW tag (or
+/// text), how many NOTES, and when (unix seconds).
 #[derive(serde::Serialize)]
 struct RenameUndo {
     folder: PathBuf,
+    kind: String,
     old: String,
     new: String,
     notes: usize,
@@ -1636,7 +1650,7 @@ fn rename_undos(root: &Path) -> Vec<RenameUndo> {
             let p = e.path().join("manifest.json");
             let m: RenameManifest = serde_json::from_str(&std::fs::read_to_string(&p).ok()?).ok()?;
             let secs = std::fs::metadata(&p).and_then(|m| m.modified()).ok()?.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
-            Some(RenameUndo { folder: e.path(), old: m.old, new: m.new, notes: m.files.len(), secs })
+            Some(RenameUndo { folder: e.path(), kind: m.kind, old: m.old, new: m.new, notes: m.files.len(), secs })
         })
         .collect();
     v.sort_by(|a, b| b.secs.cmp(&a.secs).then_with(|| b.folder.cmp(&a.folder)));
@@ -1761,6 +1775,95 @@ fn org_blocked_at(s: State<App>, path: PathBuf, text: String, line: usize) -> Op
     files.retain(|f| f.path != path);
     files.insert(0, Arc::new(org::parse(&path, &text, &kw)));
     org::blocked_at(&text, line, &files, &kw, &path)
+}
+
+/// A text replace across notes (#872): the preview's HITS as (note, line, old text, new text); the apply's
+/// LINES and NOTES written, accepted hits STALE (`path:line` changed since the preview), notes SKIPPED
+/// (unsaved edits), ERRORS and the folder of the COPIES.
+#[derive(serde::Serialize, Default)]
+struct TextReplace {
+    hits: Vec<(PathBuf, usize, String, String)>,
+    lines: usize,
+    notes: usize,
+    stale: Vec<String>,
+    skipped: Vec<PathBuf>,
+    errors: Vec<String>,
+    copies: Option<PathBuf>,
+    #[serde(skip)]
+    written: Vec<(PathBuf, String)>,
+}
+
+/// One accepted hit of a text replace: (note, line, the line's text in the preview).
+type Accept = (PathBuf, usize, String);
+
+/// Replace literal FIND (any case unless CASE) with REPLACE in every note: without ACCEPT, a preview of the
+/// lines it changes; with ACCEPT, writes those hits, each only if its line on disk still reads the same.
+/// Notes in SKIP (unsaved edits) are left alone and listed. The apply backs up and copies each changed note
+/// to a new `<notes>/.trash/tag-rename-<time>/` with an undo manifest of kind "text" (undone like a tag rename).
+#[tauri::command(async)]
+fn notes_replace(s: State<App>, find: String, replace: String, case: bool, skip: Vec<PathBuf>, accept: Option<Vec<Accept>>) -> R<TextReplace> {
+    if find.is_empty() || find.contains('\n') {
+        return Err("Type the text to replace (one line).".into());
+    }
+    let (re, notes_dir) = (notes::literal(&find, case), s.cfg().notes());
+    let Some(accept) = accept else { return Ok(replace_preview(&s.files(), &re, &replace, &skip)) };
+    s.backup();
+    let _lock = note_writes();
+    let copies = unique_dir(&notes_dir.join(".trash").join(chrono::Local::now().format("tag-rename-%Y%m%d-%H%M%S").to_string())).map_err(|e| e.to_string())?;
+    let mut r = replace_files(&s.files(), &notes_dir, &re, &replace, &skip, &accept, &copies);
+    let m = RenameManifest { kind: "text".into(), old: find, new: replace, files: std::mem::take(&mut r.written) };
+    write_manifest(&copies, m, &mut r.errors);
+    Ok(r)
+}
+
+/// notes_replace's preview over FILES, each re-read from disk.
+fn replace_preview(files: &[Arc<org::OrgFile>], re: &regex::Regex, repl: &str, skip: &[PathBuf]) -> TextReplace {
+    let mut r = TextReplace::default();
+    for f in files.iter().filter(|f| re.is_match(&f.text)) {
+        let Ok(text) = std::fs::read_to_string(&f.path) else { continue };
+        let hits = notes::replace_hits(&text, re, repl);
+        if !hits.is_empty() && skip.contains(&f.path) {
+            r.skipped.push(f.path.clone());
+            continue;
+        }
+        r.hits.extend(hits.into_iter().map(|(i, o, n)| (f.path.clone(), i, o, n)));
+    }
+    r
+}
+
+/// notes_replace's apply over FILES: writes the ACCEPT hits per note (re-read from disk), copying each
+/// changed note to COPIES first. Accepted notes no longer among FILES are reported stale.
+fn replace_files(files: &[Arc<org::OrgFile>], notes_dir: &Path, re: &regex::Regex, repl: &str, skip: &[PathBuf], accept: &[Accept], copies: &Path) -> TextReplace {
+    let mut r = TextReplace::default();
+    let mut by: std::collections::BTreeMap<&Path, Vec<(usize, String)>> = Default::default();
+    for (p, i, old) in accept {
+        by.entry(p.as_path()).or_default().push((*i, old.clone()));
+    }
+    for f in files {
+        let Some(lines) = by.remove(f.path.as_path()) else { continue };
+        if skip.contains(&f.path) {
+            r.skipped.push(f.path.clone());
+            continue;
+        }
+        let res = std::fs::read_to_string(&f.path).and_then(|text| {
+            let (out, n, stale) = notes::replace_lines(&text, re, repl, &lines);
+            r.stale.extend(stale.iter().map(|i| format!("{}:{}", f.path.display(), i + 1)));
+            if n == 0 {
+                return Ok(None);
+            }
+            copy_then_write(notes_dir, copies, &f.path, out).map(|w| Some((n, w)))
+        });
+        match res {
+            Ok(Some((n, w))) => {
+                r.written.push(w);
+                (r.lines, r.notes, r.copies) = (r.lines + n, r.notes + 1, Some(copies.to_path_buf()));
+            }
+            Ok(None) => {}
+            Err(e) => r.errors.push(format!("{}: {e}", f.path.display())),
+        }
+    }
+    r.stale.extend(by.keys().map(|p| format!("{}: gone", p.display())));
+    r
 }
 
 #[tauri::command(async)]
@@ -2872,7 +2975,7 @@ pub fn run() {
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
-            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, tag_rename_undo, retag_queries, person_view, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
+            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, babel::babel_run
@@ -3375,6 +3478,42 @@ mod tests {
     }
 
     #[test]
+    fn text_replace_previews_applies_accepted_hits_and_undoes() {
+        let root = std::env::temp_dir().join(format!("margin-replace-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        let kw = org::Kw { todo: vec![], done: vec![] };
+        let note = |rel: &str, text: &str| {
+            let p = root.join(rel);
+            std::fs::write(&p, text).unwrap();
+            Arc::new(org::parse(&p, text, &kw))
+        };
+        let a = "Acme Corp\r\nacme again\n";
+        let files = [note("sub/a.org", a), note("b.org", "Call Acme\nAcme\n"), note("c.org", "Acme open\n"), note("d.org", "none\n")];
+        let (re, read) = (notes::literal("acme", false), |p: &str| std::fs::read_to_string(root.join(p)).unwrap());
+        let c = root.join("c.org");
+        let p = replace_preview(&files, &re, "Initech", std::slice::from_ref(&c));
+        assert_eq!((p.hits.len(), p.skipped.as_slice()), (4, std::slice::from_ref(&c)));
+        // Accept all but b.org's line 2; b.org's line 1 is edited after the preview.
+        let accept: Vec<Accept> = p.hits.iter().filter(|h| !(h.0.ends_with("b.org") && h.1 == 1)).map(|h| (h.0.clone(), h.1, h.2.clone())).collect();
+        std::fs::write(root.join("b.org"), "Call Acme now\nAcme\n").unwrap();
+        let copies = unique_dir(&root.join(".trash/tag-rename-1")).unwrap();
+        let mut r = replace_files(&files, &root, &re, "Initech", &[], &accept, &copies);
+        assert_eq!((r.lines, r.notes, r.stale.clone(), r.errors.len()), (2, 1, vec![format!("{}:1", root.join("b.org").display())], 0));
+        assert_eq!((read("sub/a.org"), read("b.org")), ("Initech Corp\r\nInitech again\n".into(), "Call Acme now\nAcme\n".into()));
+        assert_eq!(std::fs::read_to_string(copies.join("sub/a.org")).unwrap(), a);
+        let m = RenameManifest { kind: "text".into(), old: "acme".into(), new: "Initech".into(), files: std::mem::take(&mut r.written) };
+        write_manifest(&copies, m, &mut r.errors);
+        let undos = rename_undos(&root);
+        assert_eq!((undos.len(), undos[0].kind.as_str(), undos[0].notes), (1, "text", 1));
+        assert_eq!(undo_retag(&root, &copies, &[]).unwrap().restored, vec![root.join("sub/a.org")]);
+        assert_eq!(read("sub/a.org"), a);
+        let old: RenameManifest = serde_json::from_str(r#"{"old":"a","new":"b","files":[]}"#).unwrap();
+        assert_eq!(old.kind, "tag", "manifests from before #872 are tag renames");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn tag_rename_undo_restores_unchanged_notes_only() {
         let root = std::env::temp_dir().join(format!("margin-retag-undo-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -3393,13 +3532,14 @@ mod tests {
         let files = [note("sub/a.org", "* A :work:\n"), note("b.org", "* B :work:\n"), note("c.org", "* C :work:\n"), note("d.org", "* D\n")];
         let mut r = TagRename::default();
         retag_files(&files, &root, "work", "job", &[], Some(&d1), &mut r);
-        write_manifest(&d1, "work", "job", &mut r);
+        let m = RenameManifest { kind: tag_kind(), old: "work".into(), new: "job".into(), files: std::mem::take(&mut r.written) };
+        write_manifest(&d1, m, &mut r.errors);
         assert!(r.errors.is_empty());
         let undos = rename_undos(&root);
         assert_eq!(undos.len(), 1);
-        assert_eq!((undos[0].folder.as_path(), undos[0].old.as_str(), undos[0].new.as_str(), undos[0].notes), (d1.as_path(), "work", "job", 3));
+        assert_eq!((undos[0].folder.as_path(), undos[0].kind.as_str(), undos[0].old.as_str(), undos[0].new.as_str(), undos[0].notes), (d1.as_path(), "tag", "work", "job", 3));
         // An apply that wrote nothing leaves no folder behind.
-        write_manifest(&d2, "x", "y", &mut TagRename::default());
+        write_manifest(&d2, RenameManifest { kind: tag_kind(), old: "x".into(), new: "y".into(), files: vec![] }, &mut vec![]);
         assert!(!d2.exists());
         // b.org was edited since, c.org has unsaved edits: both are left alone.
         std::fs::write(root.join("b.org"), "* B :job:\nmore\n").unwrap();

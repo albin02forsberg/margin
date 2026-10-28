@@ -14,6 +14,7 @@
   import * as ed from "$lib/editor";
   import { linkFor, asUrl, asWebUrl } from "$lib/weblink";
   import { srcAt, resultsChange } from "$lib/babel";
+  import { accepted, changeLabel, hitKey, type Hit as ReplaceHit } from "$lib/replace";
   import { bareTitle, bracketRetitle, findTarget, linkHeadings, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
@@ -1674,13 +1675,13 @@
   /** Undo a tag rename (#816): puts back the notes it changed that weren't edited since; saved views stay renamed. */
   async function undoTagRename() {
     type Undo = { folder: string; old: string; new: string; notes: number; secs: number };
-    const items = (await call<Undo[]>("tag_renames")).map((u) => ({
-      label: `:${u.old}: → :${u.new}: · ${u.notes} note${u.notes === 1 ? "" : "s"}`,
+    const items = (await call<(Undo & { kind: string })[]>("tag_renames")).map((u) => ({
+      label: `${u.kind === "text" ? `“${u.old}” → “${u.new}”` : `:${u.old}: → :${u.new}:`} · ${u.notes} note${u.notes === 1 ? "" : "s"}`,
       detail: new Date(u.secs * 1000).toLocaleString(),
       value: u.folder as unknown,
     }));
-    if (!items.length) return flash("No tag rename to undo");
-    const folder = await pick({ prompt: "Undo a tag rename", hint: "notes edited since are left alone; saved views keep the new name", items });
+    if (!items.length) return flash("No tag rename or text replace to undo");
+    const folder = await pick({ prompt: "Undo a tag rename or text replace", hint: "notes edited since are left alone; saved views keep the new name", items });
     if (!folder) return;
     const skip = tabs.filter((t) => t.kind === "file" && t.dirty).map((t) => t.path!); // never overwrite unsaved edits
     const r = await call<{ restored: string[]; conflicts: string[]; errors: string[]; undo: string | null }>("tag_rename_undo", { folder, skip })
@@ -1689,6 +1690,48 @@
     syncFromDisk();
     const left = r.conflicts.length ? `; left alone (edited since or unsaved): ${r.conflicts.map(rel).join(", ")}` : "";
     flash(`Restored ${r.restored.length} note${r.restored.length === 1 ? "" : "s"}${r.undo ? `; renamed versions in ${rel(r.undo)}` : ""}${left}${r.errors.length ? `; ${r.errors.join("; ")}` : ""}`);
+  }
+
+  type TextReplace = { hits: ReplaceHit[]; lines: number; notes: number; stale: string[]; skipped: string[]; errors: string[]; copies: string | null };
+  /** Space n S: replace literal text in all notes after a preview of every changed line, each ticked until ↵
+   *  unticks it (#872). Notes with unsaved edits are skipped; old copies go to .trash (undo like a tag rename). */
+  async function replaceInNotes() {
+    const find = await ask("Replace in all notes", "", "literal text on one line");
+    if (!find) return;
+    const repl = await ask(`Replace “${find}” with`, find);
+    if (repl == null) return;
+    const skip = () => tabs.filter((t) => t.kind === "file" && t.dirty).map((t) => t.path!); // never overwrite unsaved edits
+    const s = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+    const args = (caseOn: boolean, accept: [string, number, string][] | null) => ({ find, replace: repl, case: caseOn, skip: skip(), accept });
+    let caseOn = true, p: TextReplace | null = null, off = new Set<string>(), at = 0;
+    for (;;) {
+      p ??= await call<TextReplace>("notes_replace", args(caseOn, null)).catch((e) => (flash(`⚠ ${e}`), null));
+      if (!p) return;
+      const left = p.skipped.length ? `; skips ${p.skipped.map(rel).join(", ")} (unsaved edits: save them first)` : "";
+      if (!p.hits.length && !caseOn) return flash(`No “${find}” in any note${left}`); // with case on, the toggle is offered
+      if (p.hits.length > 297) return flash(`“${find}” is on ${p.hits.length} lines: too many to preview, make it more specific`);
+      const n = p.hits.length - off.size, notes = new Set(p.hits.map((h) => h[0])).size;
+      const r = await pick({ prompt: `Replace “${find}” with “${repl}”: ${s(n, "line")} of ${p.hits.length} in ${s(notes, "note")}${left}`,
+        hint: "↵ on a line ticks or unticks it; old copies go to .trash", at, items: [
+          { label: `Replace ${s(n, "line")}`, value: "apply" },
+          { label: `Match case: ${caseOn ? "on" : "off"}`, value: "case" },
+          { label: "Cancel", value: null },
+          ...p.hits.map((h, i) => ({ label: `${off.has(hitKey(h)) ? "☐" : "☑"} ${changeLabel(h[2], h[3])}`, detail: `${rel(h[0])}:${h[1] + 1}`, dim: off.has(hitKey(h)), value: i })),
+        ] });
+      if (typeof r === "number") {
+        const k = hitKey(p.hits[r]);
+        if (!off.delete(k)) off.add(k);
+        at = r + 3;
+      } else if (r === "case") [caseOn, p, off, at] = [!caseOn, null, new Set(), 1];
+      else if (r !== "apply") return;
+      else if (!n) at = 0;
+      else break;
+    }
+    const r = await call<TextReplace>("notes_replace", args(caseOn, accepted(p.hits, off))).catch((e) => (flash(`⚠ ${e}`), null));
+    if (!r) return;
+    syncFromDisk();
+    const bad = [...r.skipped.map((x) => `skipped ${rel(x)} (unsaved edits)`), ...r.stale.map((x) => `changed since the preview: ${rel(x)}`), ...r.errors].join("; ");
+    flash(`Replaced “${find}” on ${s(r.lines, "line")} in ${s(r.notes, "note")}${r.copies ? `; old copies in ${rel(r.copies)}` : ""}${bad ? `; ${bad}` : ""}`);
   }
 
   /** Rewrite `tag:OLD` to NEW in the open task-search tabs; a tab whose new query is already open is closed (#824). */
@@ -2830,7 +2873,8 @@
     { label: "Note: history (git commits; diff, restore, copy)…", leader: "n V", run: () => act(noteHistory) },
     { label: "Notes: browse by tag…", leader: "n T", run: browseTags },
     { label: "Notes: rename or merge a tag (notes and saved views)…", run: () => renameTag() },
-    { label: "Tags: undo a rename (notes put back)…", run: undoTagRename },
+    { label: "Notes: replace text in all notes (preview first)…", leader: "n S", run: replaceInNotes },
+    { label: "Tags: undo a rename or text replace (notes put back)…", run: undoTagRename },
     { label: "People: a person's open tasks and mentions (@name)…", leader: "n @", run: personView },
     { label: "Flashcards: review due :drill: headings", leader: "n d", run: reviewDrill },
     { label: "Note: pin / unpin (pinned notes come first in Ctrl+P)", leader: "n p", run: pinNote },

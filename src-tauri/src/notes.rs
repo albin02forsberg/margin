@@ -710,6 +710,43 @@ pub fn retag(text: &str, old: &str, new: &str) -> (String, usize) {
     (out, n)
 }
 
+/// FIND as a literal pattern, any case unless CASE (text replace, #872).
+pub fn literal(find: &str, case: bool) -> Regex {
+    Regex::new(&format!("{}{}", if case { "" } else { "(?i)" }, regex::escape(find))).expect("escaped pattern")
+}
+
+/// Lines of TEXT (0-based) that RE changes, as (line, old, new) with every match replaced by REPL.
+pub fn replace_hits(text: &str, re: &Regex, repl: &str) -> Vec<(usize, String, String)> {
+    text.lines()
+        .enumerate()
+        .filter_map(|(i, l)| Some((i, l.to_string(), re.replace_all(l, regex::NoExpand(repl)).into_owned())).filter(|(_, o, n)| o != n))
+        .collect()
+}
+
+/// TEXT with RE replaced by REPL on the ACCEPT lines (line, previewed text) that still read the same; line
+/// endings kept. Returns (new text, lines replaced, accepted lines changed since the preview).
+pub fn replace_lines(text: &str, re: &Regex, repl: &str, accept: &[(usize, String)]) -> (String, usize, Vec<usize>) {
+    let (mut n, mut done) = (0, vec![]);
+    let out = text
+        .split_inclusive('\n')
+        .enumerate()
+        .map(|(i, l)| {
+            let body = l.strip_suffix('\n').map_or(l, |b| b.strip_suffix('\r').unwrap_or(b));
+            if !accept.iter().any(|(a, old)| *a == i && old == body) {
+                return l.to_string();
+            }
+            let new = re.replace_all(body, regex::NoExpand(repl));
+            if new == body {
+                return l.to_string();
+            }
+            (n, _) = (n + 1, done.push(i));
+            format!("{new}{}", &l[body.len()..])
+        })
+        .collect();
+    let stale = accept.iter().map(|(a, _)| *a).filter(|a| !done.contains(a)).collect::<BTreeSet<_>>().into_iter().collect();
+    (out, n, stale)
+}
+
 pub fn graph(files: &[Arc<OrgFile>], path: &Path, depth: usize) -> Graph {
     let Some(start) = files.iter().position(|f| f.path == path) else { return Graph::default() };
     let adj = adjacency(files);
@@ -1248,6 +1285,21 @@ mod tests {
     fn files(docs: &[(&str, &str)]) -> Vec<Arc<OrgFile>> {
         let kw = Kw { todo: vec![], done: vec![] };
         docs.iter().map(|(p, t)| Arc::new(parse(Path::new(p), t, &kw))).collect()
+    }
+
+    #[test]
+    fn replace_previews_and_writes_only_accepted_unchanged_lines() {
+        let text = "Acme and acme\r\nnone\nACME.co a+b\nacme\n";
+        let (cs, ci) = (literal("acme", true), literal("Acme", false));
+        assert_eq!(replace_hits(text, &cs, "Initech"), [(0, "Acme and acme".into(), "Acme and Initech".into()), (3, "acme".into(), "Initech".into())]);
+        let hits = replace_hits(text, &ci, "$1");
+        assert_eq!(hits.iter().map(|h| (h.0, h.2.as_str())).collect::<Vec<_>>(), [(0, "$1 and $1"), (2, "$1.co a+b"), (3, "$1")]);
+        assert!(replace_hits("a+b", &literal("a+b", true), "a+b").is_empty(), "no-op hits are left out");
+        // Line 2 is left out; line 3 changed since the preview; line 9 doesn't exist.
+        let accept = [(0, "Acme and acme".into()), (3, "acme!".into()), (9, "x".into())];
+        let (out, n, stale) = replace_lines(text, &ci, "Initech", &accept);
+        assert_eq!((out.as_str(), n, stale), ("Initech and Initech\r\nnone\nACME.co a+b\nacme\n", 1, vec![3, 9]));
+        assert_eq!(replace_lines("acme", &cs, "x", &[(0, "acme".into())]).0, "x", "last line without a newline");
     }
 
     #[test]
