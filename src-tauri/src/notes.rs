@@ -721,9 +721,12 @@ pub fn retag(text: &str, old: &str, new: &str) -> (String, usize) {
     (out, n)
 }
 
-/// FIND as a literal pattern, any case unless CASE (text replace, #872).
-pub fn literal(find: &str, case: bool) -> Regex {
-    Regex::new(&format!("{}{}", if case { "" } else { "(?i)" }, regex::escape(find))).expect("escaped pattern")
+/// FIND as a literal pattern, any case unless CASE; with WORD, only where it isn't inside a longer word (a `\b`
+/// on each side that starts or ends in a word character, so `C++` and `@ann` still match; #872, #884).
+pub fn literal(find: &str, case: bool, word: bool) -> Regex {
+    let w = |c: Option<char>| if word && c.is_some_and(|c| c.is_alphanumeric() || c == '_') { r"\b" } else { "" };
+    let (a, z) = (w(find.chars().next()), w(find.chars().next_back()));
+    Regex::new(&format!("{}{a}{}{z}", if case { "" } else { "(?i)" }, regex::escape(find))).expect("escaped pattern")
 }
 
 /// Lines of TEXT (0-based) that RE changes, as (line, old, new) with every match replaced by REPL.
@@ -1301,16 +1304,20 @@ mod tests {
     #[test]
     fn replace_previews_and_writes_only_accepted_unchanged_lines() {
         let text = "Acme and acme\r\nnone\nACME.co a+b\nacme\n";
-        let (cs, ci) = (literal("acme", true), literal("Acme", false));
+        let (cs, ci) = (literal("acme", true, false), literal("Acme", false, false));
         assert_eq!(replace_hits(text, &cs, "Initech"), [(0, "Acme and acme".into(), "Acme and Initech".into()), (3, "acme".into(), "Initech".into())]);
         let hits = replace_hits(text, &ci, "$1");
         assert_eq!(hits.iter().map(|h| (h.0, h.2.as_str())).collect::<Vec<_>>(), [(0, "$1 and $1"), (2, "$1.co a+b"), (3, "$1")]);
-        assert!(replace_hits("a+b", &literal("a+b", true), "a+b").is_empty(), "no-op hits are left out");
+        assert!(replace_hits("a+b", &literal("a+b", true, false), "a+b").is_empty(), "no-op hits are left out");
         // Line 2 is left out; line 3 changed since the preview; line 9 doesn't exist.
         let accept = [(0, "Acme and acme".into()), (3, "acme!".into()), (9, "x".into())];
         let (out, n, stale) = replace_lines(text, &ci, "Initech", &accept);
         assert_eq!((out.as_str(), n, stale), ("Initech and Initech\r\nnone\nACME.co a+b\nacme\n", 1, vec![3, 9]));
         assert_eq!(replace_lines("acme", &cs, "x", &[(0, "acme".into())]).0, "x", "last line without a newline");
+        let hit = |f, w, t: &str| literal(f, true, w).is_match(t);
+        assert!(hit("cat", false, "category") && !hit("cat", true, "category") && hit("cat", true, "a cat."));
+        assert!(hit("C++", true, "C++ code") && hit("@ann", true, "hi @ann") && !hit("@ann", true, "x@annex"));
+        assert!(hit("Åsa", true, "Åsa!") && !hit("Åsa", true, "MÅsa"));
     }
 
     #[test]
