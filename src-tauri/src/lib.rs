@@ -3530,6 +3530,31 @@ mod tests {
     }
 
     #[test]
+    fn text_replace_has_no_line_cap() {
+        let root = std::env::temp_dir().join(format!("margin-replace-big-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let kw = org::Kw { todo: vec![], done: vec![] };
+        let files: Vec<_> = (0..4)
+            .map(|i| {
+                let (p, text) = (root.join(format!("n{i}.org")), "cat\n".repeat(100));
+                std::fs::write(&p, &text).unwrap();
+                Arc::new(org::parse(&p, &text, &kw))
+            })
+            .collect();
+        let re = notes::literal("cat", true, false);
+        let rep = Rep { re: &re, repl: "dog", links: false };
+        let p = replace_preview(&files, &rep, &[]);
+        assert_eq!(p.hits.len(), 400);
+        let accept: Vec<Accept> = p.hits.iter().map(|h| (h.0.clone(), h.1, h.2.clone())).collect();
+        let copies = unique_dir(&root.join(".trash/tag-rename-1")).unwrap();
+        let r = replace_files(&files, &root, &rep, &[], &accept, &copies);
+        assert_eq!((r.lines, r.notes, r.stale.len(), r.errors.len()), (400, 4, 0, 0));
+        assert_eq!(std::fs::read_to_string(root.join("n3.org")).unwrap(), "dog\n".repeat(100));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn tag_rename_undo_restores_unchanged_notes_only() {
         let root = std::env::temp_dir().join(format!("margin-retag-undo-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
