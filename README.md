@@ -267,7 +267,8 @@ profile clocks out first, and warns where old files stay (nothing is moved).
   searches, the Ctrl+K search, Settings and the running clock (Pause / Stop / Start).
   Toggle it with Ctrl+\\ or `Space v s`. **Zen mode** (`Space v z`, or "View: zen mode" in Ctrl+K) hides the
   top bar and status bar for distraction-free writing until you toggle it again (or press Esc outside
-  the editor); it is not remembered across restarts. In a narrow window it keeps only the icons (under 760 px)
+  the editor); it is not remembered across restarts. With *Zen mode goes fullscreen* (Settings → Reminders & desktop,
+  `zen_fullscreen = true`) it also makes the window fullscreen until you leave zen. In a narrow window it keeps only the icons (under 760 px)
   and the links/graph panel opens over the note (under 1000 px; Esc or a click on the note closes it).
   Switching views fades the new one in and slides the bar's highlight; the system's
   "reduce motion" setting turns both off.
@@ -1060,9 +1061,9 @@ the `# …` after a changed value) and everything else in the file. Editing the 
 elsewhere (another editor, a sync tool) applies right away; unsaved edits on the
 page are kept, with a notice if the file changed the same setting. "Reset to
 default" under a changed setting removes its line from the file. Changing the folders or profiles clocks out a running
-timer, like setup. The **Areas** group declutters Margin if you don't use some modules: untick Ledger, Habits
-or Flashcards (`hidden_areas = ["ledger"]` in the file) and their commands leave the Ctrl+K palette and the
-Space menu, and their tabs aren't reopened on startup; files and data stay as they are, and ticking it again brings everything back. Saved views and capture templates have their own groups (see [Saved searches](#saved-searches), [Capture templates](#capture-templates)); for anything else
+timer, like setup. The **Areas** group declutters Margin if you don't use some modules: untick Ledger, Habits,
+Flashcards or Goals (`hidden_areas = ["ledger"]` in the file) and their commands leave the Ctrl+K palette and the
+Space menu, and their open tabs close (and aren't reopened on startup); files and data stay as they are, and ticking it again brings everything back. Saved views and capture templates have their own groups (see [Saved searches](#saved-searches), [Capture templates](#capture-templates)); for anything else
 `Space f C` (or "Edit config.toml" on the page) opens the file; saving it there reloads the settings and warns, like the page,
 about a shortcut that won't register or files left in old folders. It's created with the defaults on first run;
 an existing file that can't be read or parsed is left alone and the app keeps the

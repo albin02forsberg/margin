@@ -3,6 +3,7 @@ export const AREAS: Record<string, string[]> = {
   ledger: ["Ledger:", "Go to Ledger"],
   habits: ["Habits:"],
   flashcards: ["Flashcards:"],
+  goals: ["Tasks: goals"],
 };
 
 /** CMDS without those of the HIDDEN areas (names as in AREAS, any case; unknown names are ignored). */
