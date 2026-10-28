@@ -84,7 +84,7 @@
   let tabs = $state<Tab[]>([]);
   let cur = $state(-1);
   let editorEl = $state<HTMLDivElement>();
-  let dropCue = $state(false);
+  let dropCue = $state<{ title: string; style: string } | null>(null);
   /** The focused pane's editor; with a split (#874) VIEW2 is the other pane's and KEY2 its tab (null: no split).
    *  SIDE: the focused pane, 0 left (`editorEl`) or 1 right (`splitEl`); `focusPane` swaps view/view2 and cur/key2. */
   let view: EditorView;
@@ -262,7 +262,7 @@
     if (t?.state) {
       view.setState(t.state);
       ed.vimClearJumps();
-      ed.onModeChange(view, (m) => (mode = m));
+      watchMode(view);
       mode = "normal";
       countWords(view.state);
       await tick();
@@ -270,6 +270,9 @@
     }
     refreshBacklinks();
   }
+
+  /** Mirror V's vim mode into the status bar while it is the focused pane (registered once per view). */
+  const watchMode = (v: EditorView) => ed.onModeChange(v, (m) => v === view && (mode = m));
 
   /** Make pane P (0 left, 1 right) the focused one: `view`, `cur` and the status bar follow it. */
   async function focusPane(p: number, focus = true) {
@@ -279,8 +282,8 @@
     cur = tabs.findIndex((t) => t.key === key2);
     key2 = k;
     side = p;
-    ed.onModeChange(view, (m) => (mode = m));
-    mode = "normal";
+    watchMode(view);
+    mode = ed.vimMode(view);
     if (isText(tab)) countWords(view.state);
     refreshBacklinks();
     if (focus && isText(tab)) { await tick(); view.focus(); }
@@ -306,7 +309,7 @@
     if (!view2) view2 = new EditorView({ parent: splitEl!, state: t.state! });
     else view2.setState(t.state!);
     key2 = t.key;
-    ed.onModeChange(view2, (m) => (mode = m));
+    watchMode(view2);
     await focusPane(1);
   }
 
@@ -339,12 +342,15 @@
       const st = view.state;
       [view, view2] = [view2!, view];
       if (isText(tab)) view.setState(st);
-      ed.onModeChange(view, (m) => (mode = m));
-      mode = "normal";
+      watchMode(view);
+      mode = ed.vimMode(view);
       side = 0;
     }
     key2 = null;
   }
+
+  /** The pane (0 left, 1 right) under window point AT. */
+  const dropPane = (at: { x: number; y: number }) => (key2 != null && !narrow && splitEl?.contains(document.elementFromPoint(at.x, at.y)) ? 1 : 0);
 
   /** Restart the view-enter animation on EL (it only replays on its own when display toggles, not note to note). */
   function replay(el?: Element | null) {
@@ -1992,7 +1998,7 @@
       v.setState(t.state!);
       ed.vimClearJumps();
       v.dispatch({ selection: old.selection });
-      ed.onModeChange(v, (m) => (mode = m));
+      watchMode(v);
     }
     if (v && v === view) {
       mode = "normal";
@@ -3497,11 +3503,22 @@
     }));
     // Dropped files (real paths from Tauri) are copied next to the note and linked where they land.
     const unlistenDrop = getCurrentWebview().onDragDropEvent((e) => {
-      dropCue = (e.payload.type === "enter" || e.payload.type === "over") && inFile();
-      if (e.payload.type !== "drop" || !e.payload.paths.length) return;
-      const { paths, position } = e.payload;
-      const at = { x: position.x / devicePixelRatio, y: position.y / devicePixelRatio };
-      act(() => attach((note) => paths.map((src) => call<string>("attach_file", { note, src })), view.posAtCoords(at) ?? undefined));
+      const pl = e.payload, over = pl.type !== "leave";
+      const at = pl.type !== "leave" ? { x: pl.position.x / devicePixelRatio, y: pl.position.y / devicePixelRatio } : null;
+      const p = at ? dropPane(at) : 0; // the pane under the pointer, not the focused one (#882)
+      const t = p === side ? tab : tabs.find((x) => x.key === key2);
+      if (pl.type !== "drop") {
+        const r = (p ? splitEl! : editorEl!.parentElement!).getBoundingClientRect();
+        dropCue = over && t?.kind === "file" ? { title: t.title, style: `left:${r.left + 6}px;top:${r.top + 6}px;width:${r.width - 12}px;height:${r.height - 12}px` } : null;
+        return;
+      }
+      dropCue = null;
+      if (pl.type !== "drop" || !pl.paths.length || !at) return;
+      const paths = pl.paths;
+      act(async () => {
+        await focusPane(p, false);
+        await attach((note) => paths.map((src) => call<string>("attach_file", { note, src })), view.posAtCoords(at) ?? undefined);
+      });
     });
     for (const el of [editorEl!, splitEl!]) el.addEventListener("paste", onPaste, true);
     if (zoom !== 1) getCurrentWebview().setZoom(zoom).catch(() => {});
@@ -3591,24 +3608,24 @@
     </nav>
 
     <main>
+      {#if dropCue}<div class="drop-cue" style={dropCue.style}>Drop to attach to {dropCue.title}</div>{/if}
       <div class="pane" onpointerdowncapture={() => { if (drawerOpen()) closeDrawer(); act(() => focusPane(0, false)); }} onfocusin={() => act(() => focusPane(0, false))}>
         <div class="editor" bind:this={editorEl} style:display={isText(leftTab) ? "block" : "none"}></div>
-        {#if dropCue}<div class="drop-cue">Drop to attach to {tab.title}</div>{/if}
         {#if cfg}
           {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo" || t.kind === "time" || t.kind === "projects" || t.kind === "ledger" || t.kind === "habits" || t.kind === "settings") as v (v.key)}
             <div class="view" data-key={v.key} style:display={v === leftTab ? "block" : "none"}>
               {#if v.kind === "time"}
-                <Time api={timeApi} active={v === tab} {reload} />
+                <Time api={timeApi} active={v === leftTab} {reload} />
               {:else if v.kind === "projects"}
-                <Projects api={timeApi} active={v === tab} {reload} />
+                <Projects api={timeApi} active={v === leftTab} {reload} />
               {:else if v.kind === "ledger"}
-                <Ledger api={timeApi} active={v === tab} {reload} />
+                <Ledger api={timeApi} active={v === leftTab} {reload} />
               {:else if v.kind === "habits"}
-                <Habits api={timeApi} active={v === tab} {reload} />
+                <Habits api={timeApi} active={v === leftTab} {reload} />
               {:else if v.kind === "settings"}
-                <Settings {version} active={v === tab} {reload} config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} missing={cfg.config_missing} save={saveSettings} recreate={recreateConfig} edit={() => act(editConfig)} />
+                <Settings {version} active={v === leftTab} {reload} config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} missing={cfg.config_missing} save={saveSettings} recreate={recreateConfig} edit={() => act(editConfig)} />
               {:else}
-                <Agenda mode={v.kind as "agenda" | "todo"} api={agendaApi} active={v === tab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} time={timeApi} logDone={!!cfg.config.log_done} />
+                <Agenda mode={v.kind as "agenda" | "todo"} api={agendaApi} active={v === leftTab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} time={timeApi} logDone={!!cfg.config.log_done} />
               {/if}
             </div>
           {/each}
@@ -3734,7 +3751,7 @@
   .tab.cur2 { background: color-mix(in srgb, var(--card) 50%, transparent); } /* the other pane's note (#874) */
   main { flex: 1; display: flex; min-height: 0; }
   .pane { flex: 1; min-width: 0; position: relative; }
-  .drop-cue { position: absolute; inset: 6px; border: 2px dashed var(--accent); border-radius: 8px; pointer-events: none; display: flex; align-items: flex-end; justify-content: center; padding-bottom: var(--s5); color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .drop-cue { position: fixed; z-index: 5; border: 2px dashed var(--accent); border-radius: 8px; pointer-events: none; display: flex; align-items: flex-end; justify-content: center; padding-bottom: var(--s5); color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--accent) 6%, transparent); }
   .editor, .view { height: 100%; }
   /* the editor as a card on the canvas: border-box keeps CodeMirror (own scroller, Vim ex-line) inside the padding */
   .editor { box-sizing: border-box; padding: 0 var(--s4) var(--s3); }
