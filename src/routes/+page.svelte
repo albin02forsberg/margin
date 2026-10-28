@@ -246,6 +246,7 @@
 
   async function show(i: number) {
     if (key2 != null && tabs[i]) {
+      if (narrow && tabs[i].key === key2) { await focusPane(0, false); closeSplit(); } // the hidden pane's tab opens as a normal tab
       if (tabs[i].key === key2) return focusPane(side ^ 1); // never the same note in both panes (#874)
       if (side && !isText(tabs[i])) await focusPane(0); // views only show on the left
     }
@@ -307,6 +308,26 @@
     key2 = t.key;
     ed.onModeChange(view2, (m) => (mode = m));
     await focusPane(1);
+  }
+
+  /** Window under the split breakpoint (1000px, as the links drawer): only the left pane shows; the right pane's tab stays open. */
+  let narrow = $state(false);
+  $effect(() => {
+    const m = matchMedia("(max-width: 999px)"), f = () => (narrow = m.matches);
+    f();
+    m.addEventListener("change", f);
+    return () => m.removeEventListener("change", f);
+  });
+  $effect(() => { if (narrow && side) act(() => focusPane(0, false)); });
+
+  /** Space w w: focus the other pane. */
+  const swapPane = () => (narrow ? undefined : focusPane(side ^ 1));
+
+  /** Space w c: close the split, saving the right pane's note first. */
+  async function closeSplitSaved() {
+    const k = key2;
+    closeSplit();
+    await saveTab(tabs.find((x) => x.key === k));
   }
 
   /** Close the split: the focused pane's tab stays shown, in the left pane; the other pane's tab stays open. */
@@ -3019,6 +3040,8 @@
     { label: "Move tab right", leader: "b >", run: () => moveTab(cur, cur + 1) },
     { label: "Close tab (also :q)", leader: "b d", run: () => closeTab() },
     { label: "Split view: open a note on the right…", leader: "w v", run: openSplit },
+    { label: "Split view: focus the other pane", leader: "w w", run: swapPane },
+    { label: "Split view: close the split", leader: "w c", run: closeSplitSaved },
     { label: "Close other tabs", leader: "b o", run: () => closeOthers() },
     { label: "Close all tabs", leader: "b D", run: () => closeOthers(true) },
     { label: "Reopen closed tab", keys: ["Ctrl+Shift+T"], leader: "b u", run: reopenTab },
@@ -3739,6 +3762,7 @@
   /* narrow windows: compact top bar < 1200, links drawer < 1000, icon-only top bar < 760, short status bar < 560 */
   @media (max-width: 999px) {
     main { position: relative; }
+    .editor.split { display: none !important; }
     .links { position: absolute; right: 0; top: 0; bottom: 0; width: min(320px, 85vw); z-index: 10; box-shadow: var(--shadow); box-sizing: border-box; margin: 0; border-radius: var(--r) 0 0 var(--r); }
   }
   @media (max-width: 1199px) {
