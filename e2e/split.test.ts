@@ -99,7 +99,7 @@ describe("Split view", () => {
 
   it("keeps each pane's vim mode when switching panes (#882)", async () => {
     await palette("Split view: open a note");
-    await answer("Open beside this note", "beta");
+    await answer("Open beside this note", "alpha"); // the previous test left beta in the left pane, and the picker hides it
     await find(".status .mode", "NORMAL");
     await type("i");
     await find(".status .mode", "INSERT");
