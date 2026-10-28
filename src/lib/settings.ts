@@ -40,6 +40,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "nightly_updates", label: "Nightly updates", kind: "bool", hint: "update to daily, untested builds of the latest code; switching back waits for the next stable release" },
   ] },
   { name: "Editor", fields: [
+    { key: "split_view", label: "Split view", kind: "bool", hint: "Space w v opens a second note beside the current one; click a pane to work in it (in development)" },
     { key: "spellcheck", label: "Spell check org notes", kind: "bool", hint: "underlines misspelled words with the system spell checker; on Linux the webview needs a system checker (hunspell/enchant) installed" },
     { key: "spellcheck_languages", label: "Spell check languages", kind: "list", hint: "Linux only; one per line, e.g. sv_SE or en_US; needs that hunspell dictionary installed; empty = system locale" },
     { key: "babel_languages", label: "Run code blocks", kind: "list", hint: "languages Ctrl+Enter / Space i r may run from a #+begin_src block, one per line: sh or shell (both run sh in the notes folder, 10 s limit); it asks first whenever the code is new or changed; empty = nothing runs (Windows: not available)" },

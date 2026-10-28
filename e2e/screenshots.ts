@@ -31,7 +31,7 @@ function write(path: string, text: string) {
 }
 
 /** config.toml lines on top of setup.ts's. */
-const config = [`templates = []`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`];
+const config = [`templates = []`, `split_view = true`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`];
 
 function fixtures({ notes, data }: Dirs) {
   write(join(notes, "orchard.org"), `
@@ -292,6 +292,15 @@ async function pngs() {
   await find(".picker label span", "Replace “Harbor” with “Harbour”");
   await shot("replace");
   await browser.keys(Key.Escape);
+
+  await open("Harbor app", "harbor.org");
+  await command("Split view: open a note");
+  await type("Orchard platform");
+  await pause(300);
+  await browser.keys(Key.Enter);
+  await opened("orchard.org"); // the right pane has focus
+  await browser.keys(Key.Escape);
+  await shot("split");
 }
 
 // GIFs: each frame is a screenshot shown for a fixed time, so a clip doesn't depend on how fast

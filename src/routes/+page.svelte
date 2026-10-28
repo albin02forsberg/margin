@@ -85,7 +85,15 @@
   let cur = $state(-1);
   let editorEl = $state<HTMLDivElement>();
   let dropCue = $state(false);
+  /** The focused pane's editor; with a split (#874) VIEW2 is the other pane's and KEY2 its tab (null: no split).
+   *  SIDE: the focused pane, 0 left (`editorEl`) or 1 right (`splitEl`); `focusPane` swaps view/view2 and cur/key2. */
   let view: EditorView;
+  let view2: EditorView | undefined;
+  let key2 = $state<string | null>(null);
+  let side = $state(0);
+  let splitEl = $state<HTMLDivElement>();
+  /** The tab shown before the current one: Split view's default pick. */
+  let prevKey = "";
   let picker = $state<Picker>();
   let menu = $state<Menu>();
   let taskDialog = $state<TaskDialog>();
@@ -126,6 +134,8 @@
   const saveBookmarks = (b: Bookmark[]) => store("bookmarks", JSON.stringify((bookmarks = b)));
 
   const tab = $derived(tabs[cur]);
+  /** What the left pane shows: the other pane's tab while the right one is focused. */
+  const leftTab = $derived(side ? tabs.find((t) => t.key === key2) : tab);
   // Window title follows the active tab (#589); IPC only when it changed, and a missing capability never breaks the page.
   let lastTitle = "";
   $effect(() => {
@@ -197,11 +207,14 @@
 
   // ---------------------------------------------------------------- tabs & files
 
-  const stateOf = (t: Tab) => (t === tabs[cur] && isText(t) ? view.state : t.state!);
+  /** The editor showing T, in either pane, if any. */
+  const viewOf = (t: Tab) => (!isText(t) ? undefined : t === tabs[cur] ? view : key2 != null && t.key === key2 ? view2 : undefined);
+  const stateOf = (t: Tab) => viewOf(t)?.state ?? t.state!;
   const fileTab = (path: string) => tabs.find((t) => t.kind === "file" && t.path === path);
 
   /** Status-bar word count of S; the whole note is only recounted when its text changed. */
   function countWords(s: EditorState, docChanged = true) {
+    if (view && s !== view.state) return; // the unfocused pane
     const t = tabs[cur], org = !t?.path || /\.org(_archive)?$/.test(t.path);
     if (docChanged) docWords = wordCount(s.doc.toString(), org);
     const r = s.selection.main;
@@ -232,14 +245,19 @@
   }
 
   async function show(i: number) {
+    if (key2 != null && tabs[i]) {
+      if (tabs[i].key === key2) return focusPane(side ^ 1); // never the same note in both panes (#874)
+      if (side && !isText(tabs[i])) await focusPane(0); // views only show on the left
+    }
     const old = tabs[cur];
     if (old && isText(old)) {
       old.state = view.state;
       await saveTab(old);
     }
+    if (old && old !== tabs[i]) prevKey = old.key;
     cur = i;
     const t = tabs[i];
-    if (motion) tick().then(() => replay(isText(t) ? editorEl : document.querySelector(`.pane > .view[data-key="${CSS.escape(t?.key ?? "")}"]`)));
+    if (motion) tick().then(() => replay(isText(t) ? (side ? splitEl : editorEl) : document.querySelector(`.pane > .view[data-key="${CSS.escape(t?.key ?? "")}"]`)));
     if (t?.state) {
       view.setState(t.state);
       ed.vimClearJumps();
@@ -250,6 +268,61 @@
       view.focus();
     }
     refreshBacklinks();
+  }
+
+  /** Make pane P (0 left, 1 right) the focused one: `view`, `cur` and the status bar follow it. */
+  async function focusPane(p: number, focus = true) {
+    if (key2 == null || p === side) return;
+    const k = tabs[cur]?.key ?? null;
+    [view, view2] = [view2!, view];
+    cur = tabs.findIndex((t) => t.key === key2);
+    key2 = k;
+    side = p;
+    ed.onModeChange(view, (m) => (mode = m));
+    mode = "normal";
+    if (isText(tab)) countWords(view.state);
+    refreshBacklinks();
+    if (focus && isText(tab)) { await tick(); view.focus(); }
+  }
+
+  /** Split view (#874): open a picked note (the previous tab first) in the right pane; the focused pane's own note just stays. */
+  async function openSplit() {
+    const { sorted, titles } = await noteItems();
+    const prev = tabs.find((t) => t.key === prevKey && t.kind === "file")?.path;
+    const shown = [tab?.path, tabs.find((t) => t.key === key2)?.path]; // never the same note in both panes
+    const ps = [...new Set([...(prev ? [prev] : []), ...sorted])].filter((p) => !shown.includes(p));
+    const path = await pick({ prompt: "Open beside this note", items: ps.map((p) => ({ label: titles.get(p) ?? niceName(p), detail: rel(p), value: p as unknown })) });
+    if (typeof path !== "string") return;
+    await focusPane(0, false);
+    let t = fileTab(path);
+    if (!t) {
+      const text: string = await call("read_file", { path });
+      tabs.push((t = { key: path, title: niceName(path), kind: "file", path, dirty: false, saved: text, state: newState(path, text, path) }));
+      t = tabs[tabs.length - 1]; // the reactive proxy
+    }
+    const old = tabs.find((x) => x.key === key2);
+    if (old && view2) { old.state = view2.state; await saveTab(old); }
+    if (!view2) view2 = new EditorView({ parent: splitEl!, state: t.state! });
+    else view2.setState(t.state!);
+    key2 = t.key;
+    ed.onModeChange(view2, (m) => (mode = m));
+    await focusPane(1);
+  }
+
+  /** Close the split: the focused pane's tab stays shown, in the left pane; the other pane's tab stays open. */
+  function closeSplit() {
+    if (key2 == null) return;
+    const o = tabs.find((x) => x.key === key2);
+    if (o && isText(o)) o.state = view2!.state;
+    if (side) {
+      const st = view.state;
+      [view, view2] = [view2!, view];
+      if (isText(tab)) view.setState(st);
+      ed.onModeChange(view, (m) => (mode = m));
+      mode = "normal";
+      side = 0;
+    }
+    key2 = null;
   }
 
   /** Restart the view-enter animation on EL (it only replays on its own when display toggles, not note to note). */
@@ -334,6 +407,7 @@
       tabs[i].state = state;
       tabs[i].report = report;
       if (i === cur) cur = -1; // force the new state in
+      else if (key === key2) view2!.setState(state);
     }
     await show(i);
   }
@@ -580,6 +654,10 @@
       closed.push({ path: t.path, line: st.doc.lineAt(st.selection.main.head).number - 1 });
     } else if (t.kind !== "file" && t.kind !== "report") closed.push({ kind: t.kind, query: t.query, title: t.title });
     if (closed.length > 20) closed.shift();
+    if (key2 != null && (t.key === key2 || t === tabs[cur])) {
+      if (t === tabs[cur]) await focusPane(side ^ 1, false); // the other pane's note stays shown
+      closeSplit(); // closing either pane's tab ends the split
+    }
     const c = tabs[cur];
     tabs.splice(i, 1);
     cur = c === t ? -1 : tabs.indexOf(c);
@@ -708,7 +786,8 @@
       reload++;
       return;
     }
-    if (t === tabs[cur]) ed.applyText(view, next);
+    const v = viewOf(t);
+    if (v) ed.applyText(v, next);
     else t.state = t.state!.update({ changes: ed.diffChange(old, next) }).state;
     t.dirty = true;
     await saveTab(t);
@@ -1882,14 +1961,17 @@
       renaming = "";
     }
     // Re-key the tab: a fresh editor state, since autosave looks tabs up by key.
-    const old = stateOf(t), text = old.doc.toString();
+    const old = stateOf(t), text = old.doc.toString(), v = viewOf(t);
+    if (v && v === view2) key2 = to;
     // A sync during the move may have flagged the old path as missing; the trailing sync re-checks.
     Object.assign(t, { key: to, path: to, title: niceName(to), state: newState(to, text, to), saved: text, dirty: false, conflict: false, missing: false });
-    if (t === tabs[cur]) {
-      view.setState(t.state!);
+    if (v) {
+      v.setState(t.state!);
       ed.vimClearJumps();
-      view.dispatch({ selection: old.selection });
-      ed.onModeChange(view, (m) => (mode = m));
+      v.dispatch({ selection: old.selection });
+      ed.onModeChange(v, (m) => (mode = m));
+    }
+    if (v && v === view) {
       mode = "normal";
       countWords(view.state);
     }
@@ -2936,6 +3018,7 @@
     { label: "Move tab left", leader: "b <", run: () => moveTab(cur, cur - 1) },
     { label: "Move tab right", leader: "b >", run: () => moveTab(cur, cur + 1) },
     { label: "Close tab (also :q)", leader: "b d", run: () => closeTab() },
+    { label: "Split view: open a note on the right…", leader: "w v", run: openSplit },
     { label: "Close other tabs", leader: "b o", run: () => closeOthers() },
     { label: "Close all tabs", leader: "b D", run: () => closeOthers(true) },
     { label: "Reopen closed tab", keys: ["Ctrl+Shift+T"], leader: "b u", run: reopenTab },
@@ -3080,9 +3163,9 @@
     { label: "Export: time report (HTML/PDF)…", leader: "e t", run: exportReport },
   ];
   /** `cmds` without the areas hidden in Settings (`hidden_areas`): palette, keys and Space menu all use this. */
-  const shownCmds = $derived(visibleCmds(cmds, cfg?.config.hidden_areas ?? []));
+  const shownCmds = $derived(visibleCmds(cmds, cfg?.config.hidden_areas ?? []).filter((c) => cfg?.config.split_view || !c.label.startsWith("Split view:")));
 
-  const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", i: "Insert", T: "Table", m: "Bookmarks", s: "Search", t: "Time tracking", e: "Export", v: "Go to & view", b: "Tabs", l: "Links" };
+  const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", i: "Insert", T: "Table", m: "Bookmarks", s: "Search", t: "Time tracking", e: "Export", v: "Go to & view", b: "Tabs", w: "Split view", l: "Links" };
   const leader: MenuNode[] = $derived.by(() => {
     const root: MenuNode[] = Object.entries(GROUPS).map(([key, label]) => ({ key, label, children: [] }));
     for (const c of shownCmds) {
@@ -3092,7 +3175,7 @@
       if (b) root.find((g) => g.key === a)!.children!.push(node);
       else root.unshift(node);
     }
-    return root;
+    return root.filter((g) => !g.children || g.children.length); // e.g. Split view while it's off
   });
 
   const pretty = (k: string) =>
@@ -3159,7 +3242,8 @@
     if (old === text) return;
     syncing = true;
     try {
-      if (t === tabs[cur]) ed.applyText(view, text);
+      const v = viewOf(t);
+      if (v) ed.applyText(v, text);
       else t.state = st.update({ changes: ed.diffChange(old, text) }).state;
     } finally {
       syncing = false;
@@ -3210,7 +3294,8 @@
     }
     syncing = true;
     try {
-      if (t === tabs[cur]) view.dispatch({ changes: change });
+      const v = viewOf(t);
+      if (v) v.dispatch({ changes: change });
       else t.state = st.update({ changes: change }).state;
     } finally {
       syncing = false;
@@ -3393,7 +3478,7 @@
       const at = { x: position.x / devicePixelRatio, y: position.y / devicePixelRatio };
       act(() => attach((note) => paths.map((src) => call<string>("attach_file", { note, src })), view.posAtCoords(at) ?? undefined));
     });
-    editorEl!.addEventListener("paste", onPaste, true);
+    for (const el of [editorEl!, splitEl!]) el.addEventListener("paste", onPaste, true);
     if (zoom !== 1) getCurrentWebview().setZoom(zoom).catch(() => {});
     window.addEventListener("keydown", onZoomKey, true);
     window.addEventListener("wheel", onZoomWheel, { passive: false });
@@ -3473,7 +3558,7 @@
     <nav class="tabs">
       {#each tabs as t, i (t.key)}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="tab" class:cur={i === cur} class:dragging={dragTab?.from === i} class:dropat={dragTab && dragTab.over === i && dragTab.from !== i} onpointerdown={(e) => tabPointerDown(e, i)} onmousedown={(e) => e.button === 1 && e.preventDefault()} onauxclick={(e) => e.button === 1 && act(() => closeTab(i))}>
+        <div class="tab" class:cur={i === cur} class:cur2={t.key === key2} class:dragging={dragTab?.from === i} class:dropat={dragTab && dragTab.over === i && dragTab.from !== i} onpointerdown={(e) => tabPointerDown(e, i)} onmousedown={(e) => e.button === 1 && e.preventDefault()} onauxclick={(e) => e.button === 1 && act(() => closeTab(i))}>
           <button title={t.path ? rel(t.path) : t.title} onclick={() => act(() => show(i))}>{t.title}{t.dirty ? " •" : ""}</button>
           <button class="x" title="Close" onclick={() => act(() => closeTab(i))}>×</button>
         </div>
@@ -3481,12 +3566,12 @@
     </nav>
 
     <main>
-      <div class="pane" onpointerdowncapture={() => drawerOpen() && closeDrawer()}>
-        <div class="editor" bind:this={editorEl} style:display={isText(tab) ? "block" : "none"}></div>
+      <div class="pane" onpointerdowncapture={() => { if (drawerOpen()) closeDrawer(); act(() => focusPane(0, false)); }} onfocusin={() => act(() => focusPane(0, false))}>
+        <div class="editor" bind:this={editorEl} style:display={isText(leftTab) ? "block" : "none"}></div>
         {#if dropCue}<div class="drop-cue">Drop to attach to {tab.title}</div>{/if}
         {#if cfg}
           {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo" || t.kind === "time" || t.kind === "projects" || t.kind === "ledger" || t.kind === "habits" || t.kind === "settings") as v (v.key)}
-            <div class="view" data-key={v.key} style:display={v === tab ? "block" : "none"}>
+            <div class="view" data-key={v.key} style:display={v === leftTab ? "block" : "none"}>
               {#if v.kind === "time"}
                 <Time api={timeApi} active={v === tab} {reload} />
               {:else if v.kind === "projects"}
@@ -3504,6 +3589,8 @@
           {/each}
         {/if}
       </div>
+      <!-- split view (#874): the right pane's editor; hidden, not removed, so its view survives closing the split -->
+      <div class="editor split" bind:this={splitEl} style:display={key2 != null ? "block" : "none"} onpointerdowncapture={() => act(() => focusPane(1, false))} onfocusin={() => act(() => focusPane(1, false))}></div>
       {#if showGraph}
         <aside class="links">
           <h3>Graph <small>{graph?.nodes.length ?? 0}</small></h3>
@@ -3619,12 +3706,14 @@
   .tab.dropat { box-shadow: var(--ring); }
   .tab.cur { background: var(--card); box-shadow: var(--soft); }
   .tab.cur button { color: var(--fg); font-weight: 500; }
+  .tab.cur2 { background: color-mix(in srgb, var(--card) 50%, transparent); } /* the other pane's note (#874) */
   main { flex: 1; display: flex; min-height: 0; }
   .pane { flex: 1; min-width: 0; position: relative; }
   .drop-cue { position: absolute; inset: 6px; border: 2px dashed var(--accent); border-radius: 8px; pointer-events: none; display: flex; align-items: flex-end; justify-content: center; padding-bottom: var(--s5); color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--accent) 6%, transparent); }
   .editor, .view { height: 100%; }
   /* the editor as a card on the canvas: border-box keeps CodeMirror (own scroller, Vim ex-line) inside the padding */
   .editor { box-sizing: border-box; padding: 0 var(--s4) var(--s3); }
+  .editor.split { flex: 1; min-width: 0; padding-left: 0; }
   .editor :global(.cm-editor) { background: var(--card); border-radius: var(--r); box-shadow: var(--soft); overflow: hidden; }
   /* Graph, Chat and Linked from: each panel its own card */
   .links { width: min(280px, 35vw); background: var(--card); border-radius: var(--r); box-shadow: var(--soft); margin: 0 var(--s4) var(--s3) 0; overflow-y: auto; padding: 10px var(--s2); flex: none; }

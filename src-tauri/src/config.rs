@@ -110,6 +110,8 @@ pub struct Config {
     pub hidden_areas: Vec<String>,
     /// Zen mode (`Space v z`) also makes the window fullscreen.
     pub zen_fullscreen: bool,
+    /// Split view (`Space w v`): a second editor pane beside the first (#873, gated while it settles).
+    pub split_view: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -257,6 +259,7 @@ impl Default for Config {
             ledger_currency: "EUR".into(),
             hidden_areas: vec![],
             zen_fullscreen: false,
+            split_view: false,
         }
     }
 }
@@ -658,6 +661,8 @@ mod tests {
         assert!(toml::from_str::<Config>(mine).unwrap().hidden_areas.is_empty()); // old configs show every area
         assert!(!toml::from_str::<Config>(mine).unwrap().zen_fullscreen);
         assert!(save(mine, t("zen_fullscreen = true"), &[]).unwrap().1.zen_fullscreen);
+        assert!(!toml::from_str::<Config>(mine).unwrap().split_view);
+        assert!(save(mine, t("split_view = true"), &[]).unwrap().1.split_view);
         assert_eq!(save(mine, t("hidden_areas = [\"ledger\"]"), &[]).unwrap().1.hidden_areas, ["ledger"]);
     }
 
