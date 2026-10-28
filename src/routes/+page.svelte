@@ -246,7 +246,10 @@
 
   async function show(i: number) {
     if (key2 != null && tabs[i]) {
-      if (narrow && tabs[i].key === key2) { await focusPane(0, false); closeSplit(); } // the hidden pane's tab opens as a normal tab
+      if (isNarrow()) { // the right pane is hidden: its tab opens as a normal one, even before the effect below ran (#892)
+        if (side) await focusPane(0, false);
+        if (tabs[i].key === key2) closeSplit();
+      }
       if (tabs[i].key === key2) return focusPane(side ^ 1); // never the same note in both panes (#874)
       if (side && !isText(tabs[i])) await focusPane(0); // views only show on the left
     }
@@ -296,7 +299,10 @@
     const shown = [tab?.path, tabs.find((t) => t.key === key2)?.path]; // never the same note in both panes
     const ps = [...new Set([...(prev ? [prev] : []), ...sorted])].filter((p) => !shown.includes(p));
     const path = await pick({ prompt: "Open beside this note", items: ps.map((p) => ({ label: titles.get(p) ?? niceName(p), detail: rel(p), value: p as unknown })) });
-    if (typeof path === "string") await showSplit(path);
+    if (typeof path !== "string") return;
+    if (!isNarrow()) return showSplit(path);
+    flash("Window too narrow for a split: opened as a tab");
+    await openFile(path);
   }
 
   /** Show the note at PATH in the right pane (opening its tab if needed) and focus it unless FOCUS is false. */
@@ -319,6 +325,8 @@
 
   /** Window under the split breakpoint (1000px, as the links drawer): only the left pane shows; the right pane's tab stays open. */
   let narrow = $state(false);
+  /** The live breakpoint, for decisions that can't wait for the `narrow` state to catch up (#892). */
+  const isNarrow = () => matchMedia("(max-width: 999px)").matches;
   $effect(() => {
     const m = matchMedia("(max-width: 999px)"), f = () => (narrow = m.matches);
     f();
@@ -328,7 +336,7 @@
   $effect(() => { if (narrow && side) act(() => focusPane(0, false)); });
 
   /** Space w w: focus the other pane. */
-  const swapPane = () => (narrow ? undefined : focusPane(side ^ 1));
+  const swapPane = () => (isNarrow() ? undefined : focusPane(side ^ 1));
 
   /** Space w c: close the split, saving the right pane's note first. */
   async function closeSplitSaved() {
@@ -354,7 +362,7 @@
   }
 
   /** The pane (0 left, 1 right) under window point AT. */
-  const dropPane = (at: { x: number; y: number }) => (key2 != null && !narrow && splitEl?.contains(document.elementFromPoint(at.x, at.y)) ? 1 : 0);
+  const dropPane = (at: { x: number; y: number }) => (key2 != null && !isNarrow() && splitEl?.contains(document.elementFromPoint(at.x, at.y)) ? 1 : 0);
 
   /** Restart the view-enter animation on EL (it only replays on its own when display toggles, not note to note). */
   function replay(el?: Element | null) {
