@@ -1848,20 +1848,20 @@
       if (!p) return;
       const left = p.skipped.length ? `; skips ${p.skipped.map(rel).join(", ")} (unsaved edits: save them first)` : "";
       if (!p.hits.length && !caseOn && !word && links) return flash(`No “${find}” in any note${left}`); // while a narrowing option is on, a toggle is offered
-      if (p.hits.length > 297) return flash(`“${find}” is on ${p.hits.length} lines: too many to preview, make it more specific`);
+      const big = p.hits.length > 297; // the Picker lists 300: show a sample, apply to all
       const n = p.hits.length - off.size, notes = new Set(p.hits.map((h) => h[0])).size;
-      const r = await pick({ prompt: `Replace “${find}” with “${repl}”: ${s(n, "line")} of ${p.hits.length} in ${s(notes, "note")}${left}`,
-        hint: "↵ on a line ticks or unticks it; old copies go to .trash", at, items: [
-          { label: `Replace ${s(n, "line")}`, value: "apply" },
+      const r = await pick({ prompt: `Replace “${find}” with “${repl}”: ${big ? `all ${s(n, "line")}` : `${s(n, "line")} of ${p.hits.length}`} in ${s(notes, "note")}${big ? "; only the first 297 are listed, so lines can't be unticked" : ""}${left}`,
+        hint: big ? "old copies go to .trash (undo: Tags: undo a rename or text replace)" : "↵ on a line ticks or unticks it; old copies go to .trash", at, items: [
+          { label: big ? `Replace all ${s(n, "line")} in ${s(notes, "note")}` : `Replace ${s(n, "line")}`, value: "apply" },
           { label: `Match case: ${caseOn ? "on" : "off"}`, value: "case" },
           { label: `Whole word: ${word ? "on" : "off"}`, value: "word" },
           { label: `Link targets and IDs: ${links ? "included" : "skipped"}`, value: "links" },
           { label: "Cancel", value: null },
-          ...p.hits.map((h, i) => ({ label: `${off.has(hitKey(h)) ? "☐" : "☑"} ${changeLabel(h[2], h[3])}`, detail: `${rel(h[0])}:${h[1] + 1}`, dim: off.has(hitKey(h)), value: i })),
+          ...p.hits.slice(0, 297).map((h, i) => ({ label: `${off.has(hitKey(h)) ? "☐" : "☑"} ${changeLabel(h[2], h[3])}`, detail: `${rel(h[0])}:${h[1] + 1}`, dim: off.has(hitKey(h)), value: i })),
         ] });
       if (typeof r === "number") {
         const k = hitKey(p.hits[r]);
-        if (!off.delete(k)) off.add(k);
+        if (!big && !off.delete(k)) off.add(k);
         at = r + 5;
       } else if (r === "case") [caseOn, p, off, at] = [!caseOn, null, new Set(), 1];
       else if (r === "word") [word, p, off, at] = [!word, null, new Set(), 2];
