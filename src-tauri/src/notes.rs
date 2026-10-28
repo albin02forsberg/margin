@@ -729,17 +729,33 @@ pub fn literal(find: &str, case: bool, word: bool) -> Regex {
     Regex::new(&format!("{}{a}{}{z}", if case { "" } else { "(?i)" }, regex::escape(find))).expect("escaped pattern")
 }
 
-/// Lines of TEXT (0-based) that RE changes, as (line, old, new) with every match replaced by REPL.
-pub fn replace_hits(text: &str, re: &Regex, repl: &str) -> Vec<(usize, String, String)> {
+/// Line L with RE replaced by REPL; unless LINKS, matches touching a link target (`[[` to the first `]`) or on
+/// an `:ID:`/`:CUSTOM_ID:` line stay as they are (#885). One helper for the preview and the apply.
+fn sub(l: &str, re: &Regex, repl: &str, links: bool) -> String {
+    static ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*:(?:CUSTOM_)?ID:").unwrap());
+    if links {
+        return re.replace_all(l, regex::NoExpand(repl)).into_owned();
+    }
+    let spans: Vec<(usize, usize)> =
+        if ID.is_match(l) { vec![(0, l.len())] } else { ANY_LINK.find_iter(l).map(|m| (m.start(), m.start() + 2 + l[m.start() + 2..].find(']').unwrap_or(0))).collect() };
+    re.replace_all(l, |c: &regex::Captures| {
+        let m = c.get(0).unwrap();
+        if spans.iter().any(|&(a, b)| m.start() < b && m.end() > a) { m.as_str().to_string() } else { repl.to_string() }
+    })
+    .into_owned()
+}
+
+/// Lines of TEXT (0-based) that RE changes, as (line, old, new) with every match replaced by REPL (see `sub`).
+pub fn replace_hits(text: &str, re: &Regex, repl: &str, links: bool) -> Vec<(usize, String, String)> {
     text.lines()
         .enumerate()
-        .filter_map(|(i, l)| Some((i, l.to_string(), re.replace_all(l, regex::NoExpand(repl)).into_owned())).filter(|(_, o, n)| o != n))
+        .filter_map(|(i, l)| Some((i, l.to_string(), sub(l, re, repl, links))).filter(|(_, o, n)| o != n))
         .collect()
 }
 
 /// TEXT with RE replaced by REPL on the ACCEPT lines (line, previewed text) that still read the same; line
 /// endings kept. Returns (new text, lines replaced, accepted lines changed since the preview).
-pub fn replace_lines(text: &str, re: &Regex, repl: &str, accept: &[(usize, String)]) -> (String, usize, Vec<usize>) {
+pub fn replace_lines(text: &str, re: &Regex, repl: &str, accept: &[(usize, String)], links: bool) -> (String, usize, Vec<usize>) {
     let (mut n, mut done) = (0, vec![]);
     let out = text
         .split_inclusive('\n')
@@ -749,7 +765,7 @@ pub fn replace_lines(text: &str, re: &Regex, repl: &str, accept: &[(usize, Strin
             if !accept.iter().any(|(a, old)| *a == i && old == body) {
                 return l.to_string();
             }
-            let new = re.replace_all(body, regex::NoExpand(repl));
+            let new = sub(body, re, repl, links);
             if new == body {
                 return l.to_string();
             }
@@ -1305,15 +1321,21 @@ mod tests {
     fn replace_previews_and_writes_only_accepted_unchanged_lines() {
         let text = "Acme and acme\r\nnone\nACME.co a+b\nacme\n";
         let (cs, ci) = (literal("acme", true, false), literal("Acme", false, false));
-        assert_eq!(replace_hits(text, &cs, "Initech"), [(0, "Acme and acme".into(), "Acme and Initech".into()), (3, "acme".into(), "Initech".into())]);
-        let hits = replace_hits(text, &ci, "$1");
+        assert_eq!(replace_hits(text, &cs, "Initech", true), [(0, "Acme and acme".into(), "Acme and Initech".into()), (3, "acme".into(), "Initech".into())]);
+        let hits = replace_hits(text, &ci, "$1", true);
         assert_eq!(hits.iter().map(|h| (h.0, h.2.as_str())).collect::<Vec<_>>(), [(0, "$1 and $1"), (2, "$1.co a+b"), (3, "$1")]);
-        assert!(replace_hits("a+b", &literal("a+b", true, false), "a+b").is_empty(), "no-op hits are left out");
+        assert!(replace_hits("a+b", &literal("a+b", true, false), "a+b", true).is_empty(), "no-op hits are left out");
         // Line 2 is left out; line 3 changed since the preview; line 9 doesn't exist.
         let accept = [(0, "Acme and acme".into()), (3, "acme!".into()), (9, "x".into())];
-        let (out, n, stale) = replace_lines(text, &ci, "Initech", &accept);
+        let (out, n, stale) = replace_lines(text, &ci, "Initech", &accept, true);
         assert_eq!((out.as_str(), n, stale), ("Initech and Initech\r\nnone\nACME.co a+b\nacme\n", 1, vec![3, 9]));
-        assert_eq!(replace_lines("acme", &cs, "x", &[(0, "acme".into())]).0, "x", "last line without a newline");
+        assert_eq!(replace_lines("acme", &cs, "x", &[(0, "acme".into())], true).0, "x", "last line without a newline");
+        let (ln, c) = (literal("cat", true, false), "[[file:cat.org][cat]] [[*cat heading][a cat]] [[#cat]]\n:ID: cat-1\nsee [[https://x/cat]] cat");
+        let h = |links| replace_hits(c, &ln, "dog", links).into_iter().map(|h| h.2).collect::<Vec<_>>();
+        assert_eq!(h(false), ["[[file:cat.org][dog]] [[*cat heading][a dog]] [[#cat]]", "see [[https://x/cat]] dog"]);
+        assert_eq!(h(true), ["[[file:dog.org][dog]] [[*dog heading][a dog]] [[#dog]]", ":ID: dog-1", "see [[https://x/dog]] dog"]);
+        let acc = [(0, c.lines().next().unwrap().to_string())];
+        assert_eq!(replace_lines(c, &ln, "dog", &acc, false).0.lines().next().unwrap(), "[[file:cat.org][dog]] [[*cat heading][a dog]] [[#cat]]");
         let hit = |f, w, t: &str| literal(f, true, w).is_match(t);
         assert!(hit("cat", false, "category") && !hit("cat", true, "category") && hit("cat", true, "a cat."));
         assert!(hit("C++", true, "C++ code") && hit("@ann", true, "hi @ann") && !hit("@ann", true, "x@annex"));
