@@ -369,6 +369,7 @@ describe("Margin", () => {
       return t.length;
     };
     const ledgerTab = async () => (await texts(".tabs .tab button")).some((t) => t.includes("Ledger"));
+    writeFileSync(join(notes, "ledger.org"), "* 2026-10\n- 2026-10-25 -12.50 EUR lunch\n"); // "Go to Ledger" only opens once the file exists
     await palette("Go to Ledger");
     await browser.waitUntil(ledgerTab, { timeoutMsg: "no Ledger tab" });
     await browser.keys([Key.Ctrl, ","]);
