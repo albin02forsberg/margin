@@ -6,6 +6,10 @@ import { writeFileSync } from "node:fs";
 import { answer, browser, close, fileMatches, find, Key, launch, palette, read, type } from "./setup.ts";
 
 let notes: string;
+const width = (w: number) => browser.waitUntil(async () => {
+  await browser.setWindowSize(w, 800);
+  return Math.abs((await browser.execute(() => innerWidth)) - w) < 40;
+}, { timeoutMsg: `window did not resize to ${w}` });
 const shown = (css: string) => browser.execute((c: string) => { const e = document.querySelector(c); return !!e && e.getClientRects().length > 0; }, css);
 
 describe("Split view", () => {
@@ -53,5 +57,37 @@ describe("Split view", () => {
     await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: "split pane still shown" });
     await find(".status .file", "alpha.org");
     await find(".pane .editor .cm-content", "Alpha text.");
+  });
+
+  it("Space w w moves focus, Space w c saves and closes, and a narrow window shows one pane", async () => {
+    await palette("Split view: open a note");
+    await answer("Open beside this note", "beta");
+    await find(".editor.split .cm-content", "Typed in beta");
+    await browser.keys(Key.Escape);
+    await browser.keys(" "); await type("ww");
+    await find(".status .file", "alpha.org");
+    await browser.keys(" "); await type("ww");
+    await find(".status .file", "beta.org");
+    await type("GoSecond line");
+    await browser.keys(Key.Escape);
+    await browser.keys(" "); await type("ww");
+    await find(".status .file", "alpha.org");
+    await browser.keys(" "); await type("ww");
+    await browser.keys(" "); await type("wc");
+    await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: "split pane still shown" });
+    await fileMatches(join(notes, "beta.org"), (s) => s.includes("Second line"), "the right pane's note wasn't saved on close");
+    await find(".tabs .tab", "beta"); // still open as a normal tab, and the focused note stays on the left
+    await find(".status .file", "beta.org");
+    // reopen beside it, then narrow the window: the right pane hides and its tab opens as a normal one
+    await palette("Split view: open a note");
+    await answer("Open beside this note", "alpha");
+    await find(".editor.split .cm-content", "Alpha text.");
+    await width(800);
+    await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: "split pane shown when narrow" });
+    await (await find(".tabs .tab button", "alpha")).click();
+    await find(".status .file", "alpha.org");
+    await find(".pane .editor .cm-content", "Alpha text.");
+    await width(1280);
+    await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: "split came back" });
   });
 });
