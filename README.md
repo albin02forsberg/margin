@@ -1057,7 +1057,9 @@ the `# …` after a changed value) and everything else in the file. Editing the 
 elsewhere (another editor, a sync tool) applies right away; unsaved edits on the
 page are kept, with a notice if the file changed the same setting. "Reset to
 default" under a changed setting removes its line from the file. Changing the folders or profiles clocks out a running
-timer, like setup. Saved views and capture templates have their own groups (see [Saved searches](#saved-searches), [Capture templates](#capture-templates)); for anything else
+timer, like setup. The **Areas** group declutters Margin if you don't use some modules: untick Ledger, Habits
+or Flashcards (`hidden_areas = ["ledger"]` in the file) and their commands leave the Ctrl+K palette and the
+Space menu, and their tabs aren't reopened on startup; files and data stay as they are, and ticking it again brings everything back. Saved views and capture templates have their own groups (see [Saved searches](#saved-searches), [Capture templates](#capture-templates)); for anything else
 `Space f C` (or "Edit config.toml" on the page) opens the file; saving it there reloads the settings and warns, like the page,
 about a shortcut that won't register or files left in old folders. It's created with the defaults on first run;
 an existing file that can't be read or parsed is left alone and the app keeps the

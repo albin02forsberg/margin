@@ -23,6 +23,7 @@
   import { buildTimeline, timelineMarkdown, type Entry as TimelineEntry } from "$lib/timeline";
   import { clockBlocks } from "$lib/clocktable";
   import { pickStale } from "$lib/stale";
+  import { visibleCmds } from "$lib/areas";
   import { lineDiff } from "$lib/linediff";
   import { ago, changed, findNote, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath, weekJournals } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
@@ -495,6 +496,7 @@
           if (!(await call<boolean>("file_exists", { path: c.path }))) continue; // a missing file would open empty
           await openFile(c.path, c.line);
         } else if (c.query != null) await openSearch(c.title, c.query);
+        else if ((cfg.config.hidden_areas ?? []).includes(c.kind)) continue; // a hidden area's ledger / habits tab stays closed
         else await openView(c.kind);
         if (i === active) at = cur;
       } catch { /* e.g. a bad query or a path outside the folders */ }
@@ -2973,11 +2975,13 @@
     { label: "Export: note and linked notes…", leader: "e a", run: exportLinked },
     { label: "Export: time report (HTML/PDF)…", leader: "e t", run: exportReport },
   ];
+  /** `cmds` without the areas hidden in Settings (`hidden_areas`): palette, keys and Space menu all use this. */
+  const shownCmds = $derived(visibleCmds(cmds, cfg?.config.hidden_areas ?? []));
 
   const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", i: "Insert", T: "Table", m: "Bookmarks", s: "Search", t: "Time tracking", e: "Export", v: "Go to & view", b: "Tabs", l: "Links" };
-  const leader: MenuNode[] = (() => {
+  const leader: MenuNode[] = $derived.by(() => {
     const root: MenuNode[] = Object.entries(GROUPS).map(([key, label]) => ({ key, label, children: [] }));
-    for (const c of cmds) {
+    for (const c of shownCmds) {
       if (!c.leader) continue;
       const [a, b] = c.leader.split(" ");
       const node = { key: b ?? a, label: c.label.replace(/^(Task|Time|Export|Bookmark): /, ""), run: () => act(c.run) };
@@ -2985,7 +2989,7 @@
       else root.unshift(node);
     }
     return root;
-  })();
+  });
 
   const pretty = (k: string) =>
     k.replace("ArrowRight", "→").replace("ArrowLeft", "←").replace("ArrowUp", "↑").replace("ArrowDown", "↓").replace("Ctrl", isMac ? "⌘" : "Ctrl");
@@ -2994,7 +2998,7 @@
     const recents = parseRecents(stored("palette-recent", "[]"));
     const c: Cmd | null = await pick({
       prompt: "Run a command",
-      items: sortByRecent(cmds, recents).map((c) => ({ label: c.label, detail: [recents.includes(c.label) && "recent", c.keys?.map(pretty).join(" / "), c.leader && `Space ${c.leader}`].filter(Boolean).join(" · "), value: c })),
+      items: sortByRecent(shownCmds, recents).map((c) => ({ label: c.label, detail: [recents.includes(c.label) && "recent", c.keys?.map(pretty).join(" / "), c.leader && `Space ${c.leader}`].filter(Boolean).join(" · "), value: c })),
     });
     if (c) { store("palette-recent", JSON.stringify(pushRecent(recents, c.label))); act(c.run); }
   }
@@ -3018,7 +3022,7 @@
     if (e.key === "Escape" && !inEditor && drawerOpen()) { closeDrawer(); e.preventDefault(); return; }
     const idle = inEditor && ed.vimIdle(view);
     const c = combo(e);
-    for (const cmd of cmds) {
+    for (const cmd of shownCmds) {
       if (!cmd.keys?.some((k) => k.toLowerCase() === c)) continue;
       if (cmd.ctx && !(inEditor && tab.kind === "file" && (cmd.ctx === "editor" || idle))) continue;
       const r = cmd.run();

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { CATEGORIES, changes, checkSnippets, checkTemplates, checkViews, GROUPS, needsMacPrompt, refresh, refreshRows, shows, toForm, type Field, type Form, type Row } from "$lib/settings";
+  import { CATEGORIES, changes, checkSnippets, checkTemplates, checkViews, GROUPS, hide, needsMacPrompt, refresh, refreshRows, shows, toForm, type Field, type Form, type Row } from "$lib/settings";
 
   type List = "views" | "templates" | "snippets";
   /** The config.toml settings as a form, saved per group; unsaved fields survive a reload of CONFIG. */
@@ -174,10 +174,13 @@
       <fieldset disabled={!!error}>
         <legend>{g.name}</legend>
         {#each shown as f (f.key)}
-          <label class:check={f.kind === "bool"}>
+          <svelte:element this={f.options ? "div" : "label"} class="field" class:check={f.kind === "bool"}>
             {#if f.kind === "bool"}
               <input type="checkbox" checked={form[f.key] as boolean} onchange={(e) => check(f, e.currentTarget)} />
               <span>{f.label}</span>
+            {:else if f.options}
+              <span>{f.label}</span>
+              <span class="opts">{#each f.options as o (o)}<label class="check"><input type="checkbox" checked={!String(form[f.key]).split("\n").includes(o)} onchange={(e) => (form[f.key] = hide(String(form[f.key]), o, !e.currentTarget.checked))} /><span>{o[0].toUpperCase() + o.slice(1)}</span></label>{/each}</span>
             {:else}
               <span>{f.label}</span>
               {#if f.kind === "list" || f.kind === "multiline"}
@@ -190,7 +193,7 @@
             {#if base[f.key] !== toForm(f, defaults[f.key])}
               <button type="button" class="link reset" title="Default: {String(toForm(f, defaults[f.key])).replaceAll("\n", ", ") || "empty"}" onclick={() => reset(g.name, f)}>Reset to default</button>
             {/if}
-          </label>
+          </svelte:element>
         {/each}
         {#if g.name === "Integrations" && base.activity_watcher && gnome && gnome !== "running"}
           {#if gnome === "missing"}
@@ -319,7 +322,9 @@
   form > fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
   .rules { border: 0; margin: 0; min-width: 0; }
   legend { color: var(--dim); font-size: var(--fs-sm); padding: 0 var(--s1); }
-  label { display: grid; gap: 2px; margin: var(--s2) 0; font-size: var(--fs-base); }
+  label, .field { display: grid; gap: 2px; margin: var(--s2) 0; font-size: var(--fs-base); }
+  .opts { display: flex; flex-wrap: wrap; column-gap: var(--s4); }
+  .opts label { margin: 0; }
   label.check { grid-template-columns: auto 1fr; align-items: center; column-gap: var(--s2); }
   label.check small { grid-column: 2; }
   small { color: var(--dim); font-size: var(--fs-sm); }

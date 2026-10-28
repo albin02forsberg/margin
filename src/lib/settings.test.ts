@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changes, checkSnippets, checkTemplates, checkViews, GROUPS, needsMacPrompt, refresh, refreshRows, shows, type Field } from "./settings.ts";
+import { changes, checkSnippets, checkTemplates, checkViews, GROUPS, hide, needsMacPrompt, refresh, refreshRows, shows, type Field } from "./settings.ts";
 
 const config = { notes_dir: "~/notes", expected_daily_hours: 8, profiles: ["Work", "Home"], reminders: true };
 const fields: Field[] = GROUPS.flatMap((g) => g.fields).filter((f) => f.key in config);
@@ -81,4 +81,12 @@ test("category chips and the filter narrow the settings shown", () => {
   assert.deepEqual(shown("All", "tasks"), ["inbox", "todo_keywords", "done_keywords", "stuck_next_keywords", "log_done", "calendar_file", "ai_source_tasks", "ai_exclude"]); // inbox and the AI ones by label or hint, Tasks by group name
   assert.deepEqual(shown("Time", "keywords"), []);
   assert.ok(shows("All", "view", "Saved views") && !shows("Time", "", "Saved views"));
+});
+
+test("hide adds or drops one area of a list field, keeping the others", () => {
+  assert.equal(hide("", "ledger", true), "ledger");
+  assert.equal(hide("ledger", "habits", true), "ledger\nhabits");
+  assert.equal(hide("ledger\nhabits", "ledger", false), "habits");
+  assert.equal(hide("habits", "habits", false), "");
+  assert.equal(hide("ledger", "ledger", true), "ledger"); // no duplicate
 });
