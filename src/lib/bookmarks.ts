@@ -22,6 +22,10 @@ export const addBookmark = (list: Bookmark[], b: Bookmark) => [...removeBookmark
 export const removeBookmark = (list: Bookmark[], name: string) => list.filter((b) => b.name !== name);
 /** LIST with bookmarks in FROM pointing at TO (a renamed or moved note). */
 export const moveBookmarks = (list: Bookmark[], from: string, to: string) => list.map((b) => (b.file === from ? { ...b, file: to } : b));
+/** LIST with bookmarks in FROM moved into TO, where FROM became the section TITLE at LINE (#847): those above
+ *  FROM's first heading anchor to the section, the rest keep their heading. */
+export const mergeBookmarks = (list: Bookmark[], from: string, to: string, title: string, line: number) =>
+  list.map((b) => (b.file !== from ? b : b.heading ? { ...b, file: to } : { ...b, file: to, heading: title, offset: 0, line }));
 /** LIST with bookmarks in FILE anchored to the heading titled OLD (normalised, as `retitlePlan` returns it) re-anchored to NEW. */
 export const retitleBookmarks = (list: Bookmark[], file: string, old: string, new_: string) =>
   list.map((b) => (b.file === file && b.heading != null && norm(b.heading) === old ? { ...b, heading: new_ } : b));

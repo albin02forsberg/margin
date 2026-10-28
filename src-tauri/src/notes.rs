@@ -302,6 +302,18 @@ fn move_to(files: &[Arc<OrgFile>], from: &Path, to: &Path) -> Result<(PathBuf, V
             edits.push((p.to_path_buf(), text, new));
         }
     }
+    apply_edits(&edits, || std::fs::rename(from, to).map_err(|e| e.to_string()))?;
+    // The moved note's own links now live at TO.
+    let changed = edits.into_iter().map(|(p, ..)| if p == from { to.to_path_buf() } else { p }).collect();
+    Ok((to.to_path_buf(), changed))
+}
+
+/// (path, old text, new text) of each note a rename, move or merge rewrites.
+type Edit = (PathBuf, String, String);
+
+/// Write every EDIT, then run FINISH. All or nothing: if a write or FINISH fails, the notes already
+/// rewritten are put back.
+fn apply_edits(edits: &[Edit], finish: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
     let mut done = 0;
     let res = edits
         .iter()
@@ -310,16 +322,164 @@ fn move_to(files: &[Arc<OrgFile>], from: &Path, to: &Path) -> Result<(PathBuf, V
             done += 1;
             Ok::<_, String>(())
         })
-        .and_then(|_| std::fs::rename(from, to).map_err(|e| e.to_string()));
-    if let Err(e) = res {
+        .and_then(|_| finish());
+    if res.is_err() {
         for (p, old, _) in &edits[..done] {
             let _ = crate::config::write_atomic(p, old);
         }
-        return Err(e);
     }
-    // The moved note's own links now live at TO.
-    let changed = edits.into_iter().map(|(p, ..)| if p == from { to.to_path_buf() } else { p }).collect();
-    Ok((to.to_path_buf(), changed))
+    res
+}
+
+static ID_LINE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^(\s*:ID:\s*)(\S+)\s*$").unwrap());
+
+/// A planned merge of one note into another (#847); `apply` carries it out.
+#[derive(Serialize, Debug)]
+pub struct Merge {
+    /// Title of the new top-level section in the target.
+    pub title: String,
+    /// `[[file:]]` links to the source, outside it, that now point at the target.
+    pub links: usize,
+    /// Notes rewritten, the target first.
+    pub changed: Vec<PathBuf>,
+    /// 0-based line of the section's heading in the target.
+    pub line: usize,
+    #[serde(skip)]
+    edits: Vec<Edit>,
+}
+
+/// TEXT, the note at NOTE, with its one-line `[[file:]]` links to FROM that have no `::search` given
+/// SEARCH (None: left as they are), and the number of its links to FROM.
+fn aim_links(text: &str, note: &Path, from: &Path, search: Option<&str>) -> (String, usize) {
+    let mut n = 0;
+    let out = crate::org::LINK.replace_all(text, |c: &regex::Captures| {
+        let (all, t) = (c.get(0).unwrap(), c.get(2).unwrap());
+        if &c[1] != "file" || all.as_str().contains('\n') || resolve(note, t.as_str()) != from {
+            return all.as_str().to_string();
+        }
+        n += 1;
+        match search.filter(|_| !t.as_str().contains("::")) {
+            Some(s) => format!("{}::{s}{}", &all.as_str()[..t.end() - all.start()], &all.as_str()[t.end() - all.start()..]),
+            None => all.as_str().to_string(),
+        }
+    });
+    (out.into_owned(), n)
+}
+
+/// SRC as a top-level section TITLE: its file properties drawer (`:ID:` included) on the heading, its
+/// preamble minus `#+title`/`#+filetags` below it, its headings one level down. An `:ID:` already in
+/// TAKEN is replaced by a fresh one. Also returns SRC's file tags.
+fn as_section(src: &str, title: &str, taken: &BTreeSet<String>) -> (Vec<String>, Vec<String>) {
+    let lines: Vec<&str> = src.lines().collect();
+    let first_head = lines.iter().position(|l| crate::org::heading_level(l).is_some()).unwrap_or(lines.len());
+    let mut i = lines.iter().position(|l| !l.trim().is_empty()).unwrap_or(lines.len()).min(first_head);
+    let mut out = vec![format!("* {title}")];
+    if lines.get(i).is_some_and(|l| l.trim().eq_ignore_ascii_case(":PROPERTIES:")) {
+        if let Some(end) = (i + 1..first_head).find(|&j| lines[j].trim().eq_ignore_ascii_case(":END:")) {
+            out.extend(lines[i..=end].iter().map(|l| l.to_string()));
+            i = end + 1;
+        }
+    }
+    let (mut tags, key) = (vec![], |l: &str, k: &str| l.trim_start().get(..k.len()).is_some_and(|p| p.eq_ignore_ascii_case(k)));
+    let pre: Vec<&str> = lines[i..first_head]
+        .iter()
+        .filter(|l| {
+            if key(l, "#+filetags:") {
+                tags.extend(l.trim_start()[11..].split(':').map(str::trim).filter(|t| !t.is_empty()).map(String::from));
+            }
+            !key(l, "#+title:") && !key(l, "#+filetags:")
+        })
+        .copied()
+        .collect();
+    let (s, e) = (pre.iter().position(|l| !l.trim().is_empty()).unwrap_or(pre.len()), pre.iter().rposition(|l| !l.trim().is_empty()).map_or(0, |e| e + 1));
+    out.extend(pre[s..e.max(s)].iter().map(|l| l.to_string()));
+    out.extend(lines[first_head..].iter().map(|l| if crate::org::heading_level(l).is_some() { format!("*{l}") } else { l.to_string() }));
+    while out.last().is_some_and(|l| l.trim().is_empty()) {
+        out.pop();
+    }
+    for l in out.iter_mut() {
+        if let Some(c) = ID_LINE.captures(l).filter(|c| taken.contains(&c[2])) {
+            *l = format!("{}{}", &c[1], gen_id());
+        }
+    }
+    (out, tags)
+}
+
+/// TEXT with TAGS added (any case, once) to its `#+filetags:` line, or a new one under its `#+title:`
+/// (else under its top drawer, else first).
+fn add_filetags(text: &str, tags: &[String]) -> String {
+    let mut lines: Vec<String> = text.lines().map(String::from).collect();
+    let head = lines.iter().position(|l| crate::org::heading_level(l).is_some()).unwrap_or(lines.len());
+    let key = |l: &str, k: &str| l.trim_start().get(..k.len()).is_some_and(|p| p.eq_ignore_ascii_case(k));
+    let at = lines[..head].iter().position(|l| key(l, "#+filetags:"));
+    let mut have: Vec<String> = at.map_or(vec![], |a| lines[a].trim_start()[11..].split(':').map(str::trim).filter(|t| !t.is_empty()).map(String::from).collect());
+    let n = have.len();
+    for t in tags {
+        if !have.iter().any(|h| h.eq_ignore_ascii_case(t)) {
+            have.push(t.clone());
+        }
+    }
+    if have.len() == n {
+        return text.to_string();
+    }
+    let line = format!(":{}:", have.join(":"));
+    match at {
+        Some(a) => {
+            let s = lines[a].trim_start();
+            lines[a] = format!("{}{} {line}", &lines[a][..lines[a].len() - s.len()], &s[..11]);
+        }
+        None => {
+            let after = lines[..head].iter().position(|l| key(l, "#+title:")).map(|t| t + 1).or_else(|| {
+                lines.first().filter(|l| l.trim().eq_ignore_ascii_case(":PROPERTIES:")).and_then(|_| lines[..head].iter().position(|l| l.trim().eq_ignore_ascii_case(":END:")).map(|e| e + 1))
+            });
+            lines.insert(after.unwrap_or(0), format!("#+filetags: {line}"));
+        }
+    }
+    let mut s = lines.join("\n");
+    if text.ends_with('\n') || text.is_empty() {
+        s.push('\n');
+    }
+    s
+}
+
+/// Plan merging note FROM into note INTO (#847): FROM becomes a top-level section of INTO titled
+/// with FROM's title (see `as_section`), INTO gets FROM's file tags, and `[[file:]]` links to FROM
+/// anywhere point at INTO (bare ones at the new section, `::*Title`). Reads both from disk; writes nothing.
+pub fn merge_plan(files: &[Arc<OrgFile>], from: &Path, into: &Path) -> Result<Merge, String> {
+    if from == into || same_file(from, into) {
+        return Err("Pick another note to merge into.".into());
+    }
+    let read = |p: &Path| std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()));
+    let (src, dst) = (read(from)?, read(into)?);
+    let stem = || from.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let title = files.iter().find(|f| f.path == from).map(|f| heading_bare(&f.title)).filter(|t| !t.is_empty()).unwrap_or_else(stem);
+    let search = (!title.contains(['[', ']'])).then(|| format!("*{title}"));
+    let taken: BTreeSet<String> = dst.lines().filter_map(|l| ID_LINE.captures(l).map(|c| c[2].to_string())).collect();
+    // FROM's own links are rewritten as seen from INTO, where its text ends up.
+    let (src, _) = aim_links(&src, from, from, search.as_deref());
+    let src = relink(&src, from, into, from, into).unwrap_or(src);
+    let (section, tags) = as_section(&src, &title, &taken);
+    let (dst_aimed, mut links) = aim_links(&dst, into, from, search.as_deref());
+    let mut new = add_filetags(&relink(&dst_aimed, into, into, from, into).unwrap_or(dst_aimed), &tags);
+    let new_lines = new.trim_end().lines().count();
+    let line = new_lines + usize::from(new_lines > 0);
+    new = format!("{}{}{}\n", new.trim_end(), if new_lines > 0 { "\n\n" } else { "" }, section.join("\n"));
+    let mut edits = vec![(into.to_path_buf(), dst, new)];
+    let linking = files.iter().filter(|f| f.path != from && f.path != into && f.links.iter().any(|l| l.file && resolve(&f.path, &l.target) == from));
+    for p in linking.map(|f| f.path.as_path()) {
+        let text = read(p)?;
+        let (aimed, n) = aim_links(&text, p, from, search.as_deref());
+        if let Some(out) = relink(&aimed, p, p, from, into) {
+            links += n;
+            edits.push((p.to_path_buf(), text, out));
+        }
+    }
+    Ok(Merge { title, links, changed: edits.iter().map(|e| e.0.clone()).collect(), line, edits })
+}
+
+/// Write the planned merge, then run TRASH (moving the source away). All or nothing (see `apply_edits`).
+pub fn merge_apply(m: &Merge, trash: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
+    apply_edits(&m.edits, trash)
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -1316,6 +1476,47 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&d).unwrap(), "self [[file:d.org::*H]]\n");
         assert_eq!(std::fs::read_to_string(&x).unwrap(), "[[file:d.org]] [[file:a.org]]\n");
         assert_eq!(std::fs::read_to_string(&y).unwrap(), "[[file:a.org]]\n");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn merges_notes() {
+        let dir = std::env::temp_dir().join(format!("margin-merge-{}", gen_id()));
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        let (a, b, c, d) = (dir.join("a.org"), dir.join("sub/b.org"), dir.join("c.org"), dir.join("d.org"));
+        let src = ":PROPERTIES:\n:ID:       fid\n:ROAM_ALIASES: Alpha\n:END:\n#+title: Alpha  Note\n#+filetags: :x:Y:\n\nIntro [[file:c.org][C]] [[file:a.org::*H]]\n\n* H\n:PROPERTIES:\n:ID: dup\n:END:\n** Sub\n\n";
+        let dst = "#+title: Beta\n#+FILETAGS: :y:\n* Old\n:PROPERTIES:\n:ID: dup\n:END:\nsee [[file:../a.org]]\n";
+        let docs = [(&a, src), (&b, dst), (&c, "[[file:a.org][A]] [[file:a.org::*H]] [[id:fid]]\n"), (&d, "[[file:c.org]]\n")];
+        for (p, t) in docs {
+            std::fs::write(p, t).unwrap();
+        }
+        let kw = Kw { todo: vec![], done: vec![] };
+        let fs: Vec<_> = docs.iter().map(|(p, t)| Arc::new(parse(p, t, &kw))).collect();
+        assert!(merge_plan(&fs, &a, &a).is_err());
+
+        let m = merge_plan(&fs, &a, &b).unwrap();
+        assert_eq!((m.title.as_str(), m.links, m.changed.clone(), m.line), ("Alpha Note", 3, vec![b.clone(), c.clone()], 8));
+        assert!(std::fs::read_to_string(&b).unwrap() == dst && a.exists(), "a plan writes nothing");
+
+        // A failing step puts every note back.
+        assert!(merge_apply(&m, || Err("no".into())).is_err());
+        for (p, t) in docs {
+            assert_eq!(std::fs::read_to_string(p).unwrap(), t);
+        }
+
+        merge_apply(&m, || std::fs::remove_file(&a).map_err(|e| e.to_string())).unwrap();
+        let out = std::fs::read_to_string(&b).unwrap();
+        let fresh = ID_LINE.captures(out.lines().nth(16).unwrap()).unwrap()[2].to_string();
+        assert_ne!(fresh, "dup");
+        assert_eq!(
+            out,
+            format!(
+                "#+title: Beta\n#+FILETAGS: :y:x:\n* Old\n:PROPERTIES:\n:ID: dup\n:END:\nsee [[file:b.org::*Alpha Note]]\n\n* Alpha Note\n:PROPERTIES:\n:ID:       fid\n:ROAM_ALIASES: Alpha\n:END:\nIntro [[file:../c.org][C]] [[file:b.org::*H]]\n** H\n:PROPERTIES:\n:ID: {fresh}\n:END:\n*** Sub\n"
+            )
+        );
+        assert_eq!(std::fs::read_to_string(&c).unwrap(), "[[file:sub/b.org::*Alpha Note][A]] [[file:sub/b.org::*H]] [[id:fid]]\n");
+        assert_eq!(std::fs::read_to_string(&d).unwrap(), "[[file:c.org]]\n");
+        assert_eq!(add_filetags(":PROPERTIES:\n:ID: x\n:END:\n* H\n", &["a".into()]), ":PROPERTIES:\n:ID: x\n:END:\n#+filetags: :a:\n* H\n");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
