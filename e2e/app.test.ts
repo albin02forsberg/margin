@@ -357,7 +357,11 @@ describe("Margin", () => {
 
   it("hides an area's palette commands when it is unticked in Settings, and brings them back", async () => {
     const cfg = join(cfgDir, "config.toml");
-    const box = () => browser.$(`//div[contains(@class, "settings")]//label[span[.="Ledger"]]/input`);
+    const box = async () => {
+      const el = await browser.$(`//div[contains(@class, "settings")]//label[span[.="Ledger"]]/input`);
+      await el.waitForClickable({ timeoutMsg: "Ledger checkbox not clickable" });
+      return el;
+    };
     const ledgerCmds = async () => {
       await browser.keys([Key.Ctrl, "k"]);
       await find(".picker label span", "Run a command");
@@ -374,12 +378,16 @@ describe("Margin", () => {
     await browser.waitUntil(ledgerTab, { timeoutMsg: "no Ledger tab" });
     await browser.keys([Key.Ctrl, ","]);
     await (await box()).click();
-    await (await find(".settings button", "Save areas")).click();
+    const save = await find(".settings button", "Save areas");
+    await save.waitForClickable();
+    await save.click();
     await fileMatches(cfg, (s) => /^hidden_areas = \["ledger"\]$/m.test(s), "hidden area not saved");
     await browser.waitUntil(async () => !(await ledgerTab()), { timeoutMsg: "Ledger tab still open after hiding the area" });
     assert.equal(await ledgerCmds(), 0, "Ledger command still in the palette");
     await (await box()).click();
-    await (await find(".settings button", "Save areas")).click();
+    const save2 = await find(".settings button", "Save areas");
+    await save2.waitForClickable();
+    await save2.click();
     await fileMatches(cfg, (s) => /^hidden_areas = \[\]$/m.test(s), "area not shown again");
     assert.equal(await ledgerCmds(), 1, "Ledger command not back in the palette");
   });
