@@ -1796,32 +1796,48 @@ struct TextReplace {
 /// One accepted hit of a text replace: (note, line, the line's text in the preview).
 type Accept = (PathBuf, usize, String);
 
-/// Replace literal FIND (any case unless CASE, whole words only if WORD) with REPLACE in every note: without ACCEPT, a preview of the
+/// How notes_replace matches: CASE-sensitive, whole WORDs only, LINKS = also in link targets and `:ID:` lines.
+#[derive(serde::Deserialize)]
+struct ReplaceOpts {
+    case: bool,
+    word: bool,
+    links: bool,
+}
+
+/// What a text replace swaps: matches of RE for REPL (see `notes::replace_hits` for LINKS).
+struct Rep<'a> {
+    re: &'a regex::Regex,
+    repl: &'a str,
+    links: bool,
+}
+
+/// Replace literal FIND (matched per OPTS) with REPLACE in every note: without ACCEPT, a preview of the
 /// lines it changes; with ACCEPT, writes those hits, each only if its line on disk still reads the same.
 /// Notes in SKIP (unsaved edits) are left alone and listed. The apply backs up and copies each changed note
 /// to a new `<notes>/.trash/tag-rename-<time>/` with an undo manifest of kind "text" (undone like a tag rename).
 #[tauri::command(async)]
-fn notes_replace(s: State<App>, find: String, replace: String, case: bool, word: bool, skip: Vec<PathBuf>, accept: Option<Vec<Accept>>) -> R<TextReplace> {
+fn notes_replace(s: State<App>, find: String, replace: String, opts: ReplaceOpts, skip: Vec<PathBuf>, accept: Option<Vec<Accept>>) -> R<TextReplace> {
     if find.is_empty() || find.contains('\n') {
         return Err("Type the text to replace (one line).".into());
     }
-    let (re, notes_dir) = (notes::literal(&find, case, word), s.cfg().notes());
-    let Some(accept) = accept else { return Ok(replace_preview(&s.files(), &re, &replace, &skip)) };
+    let (re, notes_dir) = (notes::literal(&find, opts.case, opts.word), s.cfg().notes());
+    let rep = Rep { re: &re, repl: &replace, links: opts.links };
+    let Some(accept) = accept else { return Ok(replace_preview(&s.files(), &rep, &skip)) };
     s.backup();
     let _lock = note_writes();
     let copies = unique_dir(&notes_dir.join(".trash").join(chrono::Local::now().format("tag-rename-%Y%m%d-%H%M%S").to_string())).map_err(|e| e.to_string())?;
-    let mut r = replace_files(&s.files(), &notes_dir, &re, &replace, &skip, &accept, &copies);
+    let mut r = replace_files(&s.files(), &notes_dir, &rep, &skip, &accept, &copies);
     let m = RenameManifest { kind: "text".into(), old: find, new: replace, files: std::mem::take(&mut r.written) };
     write_manifest(&copies, m, &mut r.errors);
     Ok(r)
 }
 
 /// notes_replace's preview over FILES, each re-read from disk.
-fn replace_preview(files: &[Arc<org::OrgFile>], re: &regex::Regex, repl: &str, skip: &[PathBuf]) -> TextReplace {
+fn replace_preview(files: &[Arc<org::OrgFile>], rep: &Rep, skip: &[PathBuf]) -> TextReplace {
     let mut r = TextReplace::default();
-    for f in files.iter().filter(|f| re.is_match(&f.text)) {
+    for f in files.iter().filter(|f| rep.re.is_match(&f.text)) {
         let Ok(text) = std::fs::read_to_string(&f.path) else { continue };
-        let hits = notes::replace_hits(&text, re, repl);
+        let hits = notes::replace_hits(&text, rep.re, rep.repl, rep.links);
         if !hits.is_empty() && skip.contains(&f.path) {
             r.skipped.push(f.path.clone());
             continue;
@@ -1833,7 +1849,7 @@ fn replace_preview(files: &[Arc<org::OrgFile>], re: &regex::Regex, repl: &str, s
 
 /// notes_replace's apply over FILES: writes the ACCEPT hits per note (re-read from disk), copying each
 /// changed note to COPIES first. Accepted notes no longer among FILES are reported stale.
-fn replace_files(files: &[Arc<org::OrgFile>], notes_dir: &Path, re: &regex::Regex, repl: &str, skip: &[PathBuf], accept: &[Accept], copies: &Path) -> TextReplace {
+fn replace_files(files: &[Arc<org::OrgFile>], notes_dir: &Path, rep: &Rep, skip: &[PathBuf], accept: &[Accept], copies: &Path) -> TextReplace {
     let mut r = TextReplace::default();
     let mut by: std::collections::BTreeMap<&Path, Vec<(usize, String)>> = Default::default();
     for (p, i, old) in accept {
@@ -1846,7 +1862,7 @@ fn replace_files(files: &[Arc<org::OrgFile>], notes_dir: &Path, re: &regex::Rege
             continue;
         }
         let res = std::fs::read_to_string(&f.path).and_then(|text| {
-            let (out, n, stale) = notes::replace_lines(&text, re, repl, &lines);
+            let (out, n, stale) = notes::replace_lines(&text, rep.re, rep.repl, &lines, rep.links);
             r.stale.extend(stale.iter().map(|i| format!("{}:{}", f.path.display(), i + 1)));
             if n == 0 {
                 return Ok(None);
@@ -3492,13 +3508,13 @@ mod tests {
         let files = [note("sub/a.org", a), note("b.org", "Call Acme\nAcme\n"), note("c.org", "Acme open\n"), note("d.org", "none\n")];
         let (re, read) = (notes::literal("acme", false, false), |p: &str| std::fs::read_to_string(root.join(p)).unwrap());
         let c = root.join("c.org");
-        let p = replace_preview(&files, &re, "Initech", std::slice::from_ref(&c));
+        let p = replace_preview(&files, &Rep { re: &re, repl: "Initech", links: true }, std::slice::from_ref(&c));
         assert_eq!((p.hits.len(), p.skipped.as_slice()), (4, std::slice::from_ref(&c)));
         // Accept all but b.org's line 2; b.org's line 1 is edited after the preview.
         let accept: Vec<Accept> = p.hits.iter().filter(|h| !(h.0.ends_with("b.org") && h.1 == 1)).map(|h| (h.0.clone(), h.1, h.2.clone())).collect();
         std::fs::write(root.join("b.org"), "Call Acme now\nAcme\n").unwrap();
         let copies = unique_dir(&root.join(".trash/tag-rename-1")).unwrap();
-        let mut r = replace_files(&files, &root, &re, "Initech", &[], &accept, &copies);
+        let mut r = replace_files(&files, &root, &Rep { re: &re, repl: "Initech", links: true }, &[], &accept, &copies);
         assert_eq!((r.lines, r.notes, r.stale.clone(), r.errors.len()), (2, 1, vec![format!("{}:1", root.join("b.org").display())], 0));
         assert_eq!((read("sub/a.org"), read("b.org")), ("Initech Corp\r\nInitech again\n".into(), "Call Acme now\nAcme\n".into()));
         assert_eq!(std::fs::read_to_string(copies.join("sub/a.org")).unwrap(), a);
