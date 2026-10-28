@@ -1342,6 +1342,31 @@ fn trash_note(s: State<App>, path: PathBuf) -> R<PathBuf> {
     trash_to(&s.cfg().notes(), &path)
 }
 
+/// Merge note FROM into note INTO (see notes::merge_plan); with APPLY, write it after a backup and move
+/// FROM to `.trash`, else only report what would change. Returns the plan and where FROM went.
+#[tauri::command(async)]
+fn merge_note(s: State<App>, from: PathBuf, into: PathBuf, apply: bool) -> R<(notes::Merge, Option<PathBuf>)> {
+    let notes = s.cfg().notes();
+    for p in [&from, &into] {
+        s.check(p)?;
+        in_notes(&notes, p)?;
+        if p.extension().and_then(|e| e.to_str()) != Some("org") || p.starts_with(notes.join(".trash")) {
+            return Err(format!("{} isn't a note", p.display()));
+        }
+    }
+    if apply {
+        s.backup();
+    }
+    let _lock = note_writes();
+    let m = notes::merge_plan(&s.files(), &from, &into)?;
+    if !apply {
+        return Ok((m, None));
+    }
+    let mut trashed = None;
+    notes::merge_apply(&m, || trash_to(&notes, &from).map(|p| trashed = Some(p))).map_err(|e| format!("Nothing merged: {e}"))?;
+    Ok((m, trashed))
+}
+
 /// The notes in `<notes>/.trash`, newest first, as (path, trashed unix seconds).
 #[tauri::command(async)]
 fn trashed_notes(s: State<App>) -> Vec<(PathBuf, u64)> {
@@ -2847,7 +2872,7 @@ pub fn run() {
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
-            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, tag_rename_undo, retag_queries, person_view, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
+            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, tag_rename_undo, retag_queries, person_view, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, babel::babel_run

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addBookmark, bookmarkAt, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, retitleBookmarks } from "./bookmarks.ts";
+import { addBookmark, bookmarkAt, mergeBookmarks, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, retitleBookmarks } from "./bookmarks.ts";
 
 const note = "#+title: Log\nintro\n* Projects\n** TODO [#A] Next steps [1/2] :work:\n- one\n- two\n* Log\n";
 
@@ -30,6 +30,11 @@ test("add replaces by name, remove and move", () => {
   assert.deepEqual(addBookmark([a, b], { ...a, line: 9 }), [b, { ...a, line: 9 }]);
   assert.deepEqual(removeBookmark([a, b], "a"), [b]);
   assert.deepEqual(moveBookmarks([a, b], "x.org", "z.org"), [{ ...a, file: "z.org" }, b]);
+});
+
+test("mergeBookmarks anchors bookmarks above the first heading to the merged section", () => {
+  const top = { name: "t", file: "x.org", offset: 0, line: 1 }, h = { name: "h", file: "x.org", heading: "H", offset: 2, line: 7 }, o = { name: "o", file: "y.org", offset: 0, line: 0 };
+  assert.deepEqual(mergeBookmarks([top, h, o], "x.org", "z.org", "X", 12), [{ ...top, file: "z.org", heading: "X", line: 12 }, { ...h, file: "z.org" }, o]);
 });
 
 test("parseBookmarks drops bad entries and falls back to []", () => {

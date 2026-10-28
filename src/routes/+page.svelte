@@ -56,7 +56,7 @@
   import { orderNotes, parsePins, togglePin } from "$lib/pins";
   import { peopleFrom, personName, personRows } from "$lib/people";
   import { waitingRows, type Waiting } from "$lib/waiting";
-  import { addBookmark, bookmarkAt, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, retitleBookmarks, type Bookmark } from "$lib/bookmarks";
+  import { addBookmark, bookmarkAt, mergeBookmarks, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, retitleBookmarks, type Bookmark } from "$lib/bookmarks";
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
   import { pushRecent, sortByRecent, parseRecents } from "$lib/recents";
 
@@ -1768,6 +1768,35 @@
     flash(`Moved to ${dir ? `${dir}/` : "the notes folder"}${n ?` — updated links in ${n} note${n > 1 ? "s" : ""}` : ""}`);
   }
 
+  /** Merge the open note into another one (#847): it becomes a top-level section there, links, pins and bookmarks follow, and it goes to .trash. */
+  async function mergeNote() {
+    if (!inFile() || !tab.path!.startsWith(cfg.notes)) return flash("Open a note first.");
+    const t = tab, from = t.path!, trash = join(cfg.notes, ".trash");
+    const { sorted, titles } = await noteItems();
+    const items = sorted.filter((p) => p !== from && !p.startsWith(trash)).map((p) => ({ label: titles.get(p) ?? niceName(p), detail: rel(p), value: p as unknown }));
+    const into = (await pick({ prompt: `Merge “${t.title}” into note`, items })) as string | null;
+    if (!into) return;
+    await saveAll(); // the merge reads both notes from disk
+    const target = tabs.find((x) => x.path === into);
+    if (refuseConflict(t) || (target && refuseConflict(target))) return;
+    type Merge = { title: string; links: number; changed: string[]; line: number };
+    const [m] = await call<[Merge, string | null]>("merge_note", { from, into, apply: false });
+    const links = m.links ? ` ${m.links} link${m.links > 1 ? "s" : ""} to it will point there.` : "";
+    const name = titles.get(into) ?? niceName(into);
+    const ok = await pick({ prompt: `Append “${t.title}” to “${name}” as the section “${m.title}”?${links} The note goes to .trash (Space n R restores it).`, items: [{ label: "Cancel", value: false }, { label: "Merge", value: true }] });
+    if (!ok) return;
+    const [r] = await call<[Merge, string | null]>("merge_note", { from, into, apply: true });
+    t.dirty = false; // trashed: closing must not recreate it
+    await closeTab(tabs.indexOf(t));
+    if (pinned.includes(from)) savePinned([...new Set(pinned.map((p) => (p === from ? into : p)))]);
+    if (bookmarks.some((b) => b.file === from)) saveBookmarks(mergeBookmarks(bookmarks, from, into, r.title, r.line));
+    pruneRecent((p) => p !== from);
+    syncFromDisk();
+    await syncChain; // reload the target and linking notes before showing the section
+    await openFile(into, r.line);
+    flash(`Merged into ${name}${r.links ? ` — updated ${r.links} link${r.links > 1 ? "s" : ""}` : ""}`);
+  }
+
   /** Save, run the rename/move OP on tab T's note, then re-key T, Recent and closed tabs to its new path; undefined on a conflict. */
   async function relocateNote(t: Tab, op: () => Promise<[string, string[]]>): Promise<[string, string[]] | undefined> {
     const from = t.path!;
@@ -2757,6 +2786,7 @@
     { label: "Rename note…", leader: "n r", run: renameNote },
     { label: "Note: duplicate…", leader: "n c", run: () => act(duplicateNote) },
     { label: "Move note to folder…", leader: "n m", run: moveNote },
+    { label: "Notes: merge into another note…", run: mergeNote },
     { label: "Delete note… (move to .trash)", leader: "n D", run: trashNote },
     { label: "Restore note from .trash…", leader: "n R", run: restoreNote },
     { label: "Note: show in file manager", leader: "n f", run: () => act(() => (inFile() ? revealItemInDir(tab.path!) : flash("Open a note first."))) },
