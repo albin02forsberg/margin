@@ -83,16 +83,23 @@ describe("Split view", () => {
     await find(".editor.split .cm-content", "Alpha text.");
     await width(800);
     await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: "split pane shown when narrow" });
+    await find(".status .file", "beta.org"); // the narrow effect moved focus to the left pane
     await (await find(".tabs .tab button", "alpha")).click();
     await find(".status .file", "alpha.org");
     await find(".pane .editor .cm-content", "Alpha text.");
+    // Space w v when narrow opens the note as a tab instead (#893)
+    await palette("Split view: open a note");
+    await answer("Open beside this note", "beta");
+    await find(".status .file", "beta.org");
+    await find(".pane .editor .cm-content", "Second line");
+    assert.ok(!(await shown(".editor.split")), "split opened in a narrow window");
     await width(1280);
     await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: "split came back" });
   });
 
   it("keeps each pane's vim mode when switching panes (#882)", async () => {
     await palette("Split view: open a note");
-    await answer("Open beside this note", "beta");
+    await answer("Open beside this note", "alpha"); // the previous test left beta in the left pane, and the picker hides it
     await find(".status .mode", "NORMAL");
     await type("i");
     await find(".status .mode", "INSERT");
