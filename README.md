@@ -89,7 +89,7 @@ views and open task-search tabs; typing an existing tag merges the two. It shows
 to `.trash/tag-rename-<time>/` before writing, and skips (and lists) notes with unsaved edits.
 `Space n S` replaces text in all notes: type the text (literal, one line) and its replacement, and a
 preview lists every line it changes (`[old → new]`, with the note and line), all ticked; `Enter` on a line
-unticks it, *Match case* toggles case sensitivity (on by default), *Whole word* skips matches inside longer words (off by default), and *Replace N lines* writes the ticked ones,
+unticks it, *Match case* toggles case sensitivity (on by default), *Whole word* skips matches inside longer words (off by default), *Link targets and IDs* is skipped by default (a link's `[[target` and `:ID:`/`:CUSTOM_ID:` lines stay as they are; link descriptions are replaced), and *Replace N lines* writes the ticked ones,
 the same way: old copies to `.trash/tag-rename-<time>/`, notes with unsaved edits skipped, and a line changed
 since the preview left alone (listed). Over 297 matching lines it asks for more specific text instead.
 *Tags: undo a rename or text replace (notes put back)…* puts those notes back, except ones edited since (listed, left alone); the

@@ -1818,13 +1818,13 @@
     if (repl == null) return;
     const skip = () => tabs.filter((t) => t.kind === "file" && t.dirty).map((t) => t.path!); // never overwrite unsaved edits
     const s = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-    const args = (caseOn: boolean, accept: [string, number, string][] | null) => ({ find, replace: repl, case: caseOn, word, skip: skip(), accept });
-    let caseOn = true, word = false, p: TextReplace | null = null, off = new Set<string>(), at = 0;
+    const args = (caseOn: boolean, accept: [string, number, string][] | null) => ({ find, replace: repl, opts: { case: caseOn, word, links }, skip: skip(), accept });
+    let caseOn = true, word = false, links = false, p: TextReplace | null = null, off = new Set<string>(), at = 0;
     for (;;) {
       p ??= await call<TextReplace>("notes_replace", args(caseOn, null)).catch((e) => (flash(`⚠ ${e}`), null));
       if (!p) return;
       const left = p.skipped.length ? `; skips ${p.skipped.map(rel).join(", ")} (unsaved edits: save them first)` : "";
-      if (!p.hits.length && !caseOn && !word) return flash(`No “${find}” in any note${left}`); // with case on or word on, a toggle is offered
+      if (!p.hits.length && !caseOn && !word && links) return flash(`No “${find}” in any note${left}`); // while a narrowing option is on, a toggle is offered
       if (p.hits.length > 297) return flash(`“${find}” is on ${p.hits.length} lines: too many to preview, make it more specific`);
       const n = p.hits.length - off.size, notes = new Set(p.hits.map((h) => h[0])).size;
       const r = await pick({ prompt: `Replace “${find}” with “${repl}”: ${s(n, "line")} of ${p.hits.length} in ${s(notes, "note")}${left}`,
@@ -1832,15 +1832,17 @@
           { label: `Replace ${s(n, "line")}`, value: "apply" },
           { label: `Match case: ${caseOn ? "on" : "off"}`, value: "case" },
           { label: `Whole word: ${word ? "on" : "off"}`, value: "word" },
+          { label: `Link targets and IDs: ${links ? "included" : "skipped"}`, value: "links" },
           { label: "Cancel", value: null },
           ...p.hits.map((h, i) => ({ label: `${off.has(hitKey(h)) ? "☐" : "☑"} ${changeLabel(h[2], h[3])}`, detail: `${rel(h[0])}:${h[1] + 1}`, dim: off.has(hitKey(h)), value: i })),
         ] });
       if (typeof r === "number") {
         const k = hitKey(p.hits[r]);
         if (!off.delete(k)) off.add(k);
-        at = r + 4;
+        at = r + 5;
       } else if (r === "case") [caseOn, p, off, at] = [!caseOn, null, new Set(), 1];
       else if (r === "word") [word, p, off, at] = [!word, null, new Set(), 2];
+      else if (r === "links") [links, p, off, at] = [!links, null, new Set(), 3];
       else if (r !== "apply") return;
       else if (!n) at = 0;
       else break;
