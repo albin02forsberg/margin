@@ -39,9 +39,10 @@ jobs:
           workspaces: src-tauri
       - if: steps.gate.outputs.run == 'true'
         name: System deps
+        timeout-minutes: 6
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf
       - if: steps.gate.outputs.run == 'true'
         run: npm ci
       - if: steps.gate.outputs.run == 'true'
@@ -88,9 +89,10 @@ jobs:
           workspaces: src-tauri
       - if: steps.gate.outputs.run == 'true'
         name: System deps
+        timeout-minutes: 6
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf webkit2gtk-driver xvfb
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf webkit2gtk-driver xvfb
       - if: steps.gate.outputs.run == 'true'
         run: cargo install tauri-driver --locked
       - if: steps.gate.outputs.run == 'true'
@@ -190,9 +192,10 @@ jobs:
           key: coverage # instrumented artifacts differ from the test job's
       - if: steps.gate.outputs.run == 'true'
         name: System deps
+        timeout-minutes: 6
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf
       - if: steps.gate.outputs.run == 'true'
         run: npm ci
       - if: steps.gate.outputs.run == 'true'
