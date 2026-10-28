@@ -14,7 +14,7 @@
   import * as ed from "$lib/editor";
   import { linkFor, asUrl, asWebUrl } from "$lib/weblink";
   import { srcAt, resultsChange } from "$lib/babel";
-  import { bareTitle, bracketRetitle, findTarget, linkHeadings, peekTarget, retitlePlan, splitTarget } from "$lib/links";
+  import { bareTitle, bracketRetitle, findTarget, linkHeadings, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
   import { type Goal, goalWhen, isoWeek, putReview, reviewBody, reviewEntry } from "$lib/review";
@@ -1434,6 +1434,17 @@
     if (!target) return flash("No link here.");
     const link = peekTarget(target);
     if (!link) return flash("Web links can't be peeked; Enter opens them.");
+    // A note open with unsaved edits peeks from its buffer, not the disk (#871).
+    if (!link.startsWith("id:")) {
+      const { file, search } = splitTarget(link);
+      const cur = tab.path ?? "", dir = cur.replace(/[\\/][^\\/]*$/, "");
+      const path = !file ? cur : /^([\\/]|[A-Za-z]:)/.test(file) ? file : resolvePath(dir, file, sep());
+      const t = tabs.find((t) => t.kind === "file" && t.dirty && t.path === path);
+      if (t) {
+        const b = peekBuffer(stateOf(t).doc.toString(), search, [...(kw().todo ?? []), ...(kw().done ?? [])]);
+        return b ? void (peek = { key: tab.key, path, ...b }) : flash(`No match for "${search}" in ${t.title}`);
+      }
+    }
     const r = await call<{ path: string; line: number; text: string }>("transclude_text", { link, props: null, from: tab.path });
     peek = { key: tab.key, ...r };
   }

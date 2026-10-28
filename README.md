@@ -78,7 +78,7 @@ push it a day, or `s` to schedule it. `Y` copies the shown list as Markdown chec
 
 **Links and backlinks** — `Space n b` shows the notes linking here, `Space n g` the local
 graph, and `Enter` on a link follows it. `Shift+Enter` (or `Space l p`) on a link peeks at its target instead:
-the linked note or heading shows read-only in a side panel, `Enter` there opens it, `Esc` closes it. `Space n O` lists notes with no links in or out
+the linked note or heading shows read-only in a side panel, `Enter` there opens it, `Esc` closes it (a note with unsaved edits peeks from its buffer, not the disk). `Space n O` lists notes with no links in or out
 (journal and inbox left out), most recently changed first. `Space n L` lists broken links: `[[id:]]` links to an
 unknown ID, `[[file:]]` links to a missing file or to a `::*Heading` / `::#custom-id` the file lacks,
 and same-file `[[*Heading]]` / `[[#custom-id]]` links; `Enter` opens the note at the link. `Space n T` browses notes by tag:

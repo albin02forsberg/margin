@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bareTitle, bracketRetitle, findTarget, linkHeadings, norm, peekTarget, retitlePlan, splitTarget } from "./links.ts";
+import { bareTitle, bracketRetitle, findTarget, linkHeadings, norm, peekBuffer, peekTarget, retitlePlan, splitTarget } from "./links.ts";
 
 const doc = "#+title: T\n* TODO [#A] Install :tag:\n:PROPERTIES:\n:CUSTOM_ID: setup\n:END:\nbody text\n** Usage\r\nmore\n";
 
@@ -83,4 +83,12 @@ test("peekTarget passes org targets, prefixes bare paths and refuses URLs", () =
   assert.equal(peekTarget("C:\\n\\a.org"), "file:C:\\n\\a.org");
   assert.equal(peekTarget("https://x.org"), null);
   assert.equal(peekTarget("mailto:a@b.c"), null);
+});
+
+test("peekBuffer reads the unsaved buffer", () => {
+  const buf = "#+title: T\n* A\nbody a\n** Sub\nsub\n* New name\nnew body\n";
+  assert.deepEqual(peekBuffer(buf, "*New name"), { line: 5, text: "new body" });
+  assert.deepEqual(peekBuffer(buf, "*A"), { line: 1, text: "body a\n** Sub\nsub" });
+  assert.equal(peekBuffer(buf, "*Old name"), null);
+  assert.deepEqual(peekBuffer(buf, ""), { line: 0, text: buf });
 });
