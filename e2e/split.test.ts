@@ -94,7 +94,9 @@ describe("Split view", () => {
     await find(".pane .editor .cm-content", "Second line");
     assert.ok(!(await shown(".editor.split")), "split opened in a narrow window");
     await width(1280);
-    await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: "split came back" });
+    // the narrow open was refused, so there is no right pane to come back
+    assert.ok(!(await shown(".editor.split")), "split came back after widening");
+    await find(".status .file", "beta.org");
   });
 
   it("keeps each pane's vim mode when switching panes (#882)", async () => {
