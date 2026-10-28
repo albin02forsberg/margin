@@ -14,7 +14,21 @@ export function peekTarget(t: string): string | null {
   return /^[a-z][\w+.-]+:/i.test(t) ? null : `file:${t}`;
 }
 
-const KW = "TODO|DONE|NEXT|WAIT\\w*|CANCEL\\w*";
+/** The peek of SEARCH (`*Heading`, `#id`, line; empty: whole note) in the unsaved buffer TEXT: the 0-based line to open and the
+ *  text shown (a heading's subtree without its headline, else the lines from there), or null when nothing matches (#871). */
+export function peekBuffer(text: string, search: string, keywords?: string[]): { line: number; text: string } | null {
+  const lines = text.split(/\r?\n/);
+  if (!search) return { line: 0, text };
+  const line = findTarget(text, search, keywords);
+  if (line == null) return null;
+  const level = /^(\*+)\s/.exec(lines[line])?.[1].length;
+  if (!level) return { line, text: lines.slice(line).join("\n") };
+  let end = line + 1;
+  while (end < lines.length && !((/^(\*+)\s/.exec(lines[end])?.[1].length ?? 99) <= level)) end++;
+  return { line, text: lines.slice(line + 1, end).join("\n").trimEnd() };
+}
+
+const KW ="TODO|DONE|NEXT|WAIT\\w*|CANCEL\\w*";
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** Heading regex capturing the title after an optional keyword (from KEYWORDS, else the defaults), priority and tags. */
 const head = (keywords?: string[]) => new RegExp(`^\\*+\\s+(?:(?:${keywords?.length ? keywords.map(esc).join("|") : KW})\\s+)?(?:\\[#[A-Z0-9]+\\]\\s+)?(.*?)(?:\\s+:[\\w@#%:]+:)?\\s*$`);
