@@ -6,6 +6,7 @@ import {
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
+import { acceptCompletion, autocompletion, closeCompletion, completionStatus, moveCompletionSelection, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
 import { codeFolding, foldService, foldAll, unfoldAll, toggleFold, foldedRanges, foldEffect, LanguageDescription, type Language } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { highlightTree, classHighlighter } from "@lezer/highlight";
@@ -18,6 +19,7 @@ import { EMPH, toggleEmphasis } from "./emphasis";
 import { FN, addFootnote, footnoteTarget } from "./footnote";
 import { headingAt, level, narrowField, subtreeEnd } from "./narrow";
 import { transclusion, transcludeTarget } from "./transclude";
+import { completionAt } from "./links";
 export { directive as transcludeLine } from "./transclude";
 import { block, expandSnippet, snippetAt, snippetPrompts, type Snippet } from "./snippet";
 export type { Snippet } from "./snippet";
@@ -36,6 +38,8 @@ export const hooks = {
   snippets: (): Snippet[] => [],
   /** Ask for a snippet's `%^{Name}` (null = cancelled). */
   ask: async (_name: string): Promise<string | null> => null,
+  /** Inline completion candidates (#899): notes and headings with the `[[…]]` LINK to insert, people (no `@`) and tags. */
+  completions: async (): Promise<{ links: { label: string; detail: string; link: string }[]; people: string[]; tags: string[] }> => ({ links: [], people: [], tags: [] }),
 };
 
 /** Ask every prompt of snippet TEXT in turn; null when one is cancelled. */
@@ -1065,6 +1069,45 @@ export function vimMode(v: EditorView): string {
   return !vs ? "normal" : vs.insertMode ? "insert" : vs.visualMode ? (vs.visualLine ? "visual linewise" : vs.visualBlock ? "visual blockwise" : "visual") : "normal";
 }
 
+// ---------------------------------------------------------------- completion
+
+/** `[[` notes and headings, `@` people, `:` tags on a heading line, as you type (#899). A link replaces the `[[` and a `]]` right after it. */
+async function complete(cx: CompletionContext): Promise<CompletionResult | null> {
+  const ln = cx.state.doc.lineAt(cx.pos), at = completionAt(cx.state.sliceDoc(ln.from, cx.pos), !!level(ln.text));
+  if (!at) return null;
+  const from = cx.pos - at.query.length, c = await hooks.completions();
+  if (cx.aborted) return null;
+  if (at.kind === "person") return { from, validFor: /^[\w.-]*$/, options: c.people.map((label) => ({ label })) };
+  if (at.kind === "tag") return { from, validFor: /^[\w@#%]*$/, options: c.tags.map((label) => ({ label, apply: `${label}:` })) };
+  return {
+    from, validFor: /^[^[\]]*$/,
+    options: c.links.map(({ label, detail, link }) => ({
+      label, detail,
+      apply: (v: EditorView, _: unknown, f: number, to: number) => {
+        const end = v.state.sliceDoc(to, to + 2) === "]]" ? to + 2 : to;
+        v.dispatch({ changes: { from: f - 2, to: end, insert: link }, selection: { anchor: f - 2 + link.length }, userEvent: "input.complete" });
+      },
+    })),
+  };
+}
+
+const completeKeys: Record<string, (v: EditorView) => boolean> = {
+  Enter: acceptCompletion, Tab: acceptCompletion, Escape: closeCompletion,
+  ArrowDown: moveCompletionSelection(true), ArrowUp: moveCompletionSelection(false), PageDown: moveCompletionSelection(true, "page"), PageUp: moveCompletionSelection(false, "page"),
+};
+/** The popup's keys while it is open. A plugin handles keydown before vim's plugin does, so Esc closes the popup and stays in insert mode. */
+const completion = [
+  autocompletion({ override: [complete], defaultKeymap: false, icons: false }),
+  Prec.highest(ViewPlugin.define(() => ({}), {
+    eventHandlers: {
+      keydown: (e, v) => {
+        const f = completionStatus(v.state) === "active" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && completeKeys[e.key];
+        return !!f && f(v);
+      },
+    },
+  })),
+];
+
 // ---------------------------------------------------------------- state
 
 const theme = EditorView.theme({
@@ -1073,6 +1116,10 @@ const theme = EditorView.theme({
   ".cm-content": { padding: "24px 0 40vh", maxWidth: "72ch", margin: "0 auto", caretColor: "var(--accent)" },
   ".cm-line": { padding: "0 36px" },
   ".cm-activeLine": { backgroundColor: "var(--active)" },
+  ".cm-tooltip.cm-tooltip-autocomplete": { background: "var(--panel)", color: "var(--fg)", border: "1px solid var(--border)", borderRadius: "var(--radius)", boxShadow: "var(--soft)", fontFamily: "var(--sans)", fontSize: "var(--fs-md)" },
+  ".cm-tooltip-autocomplete ul li[aria-selected]": { background: "var(--sel) !important", color: "var(--fg) !important" },
+  ".cm-completionDetail": { color: "var(--dim)", fontStyle: "normal", marginLeft: "1em" },
+  ".cm-completionMatchedText": { textDecoration: "none", color: "var(--accent)" },
   ".cm-foldPlaceholder": { background: "var(--active)", border: "none", color: "var(--dim)", padding: "0 6px", borderRadius: "var(--radius-sm)", margin: "0 4px" },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": { backgroundColor: "var(--sel) !important" },
   ".cm-fat-cursor": { background: "var(--accent) !important", color: "var(--bg) !important" },
@@ -1190,7 +1237,7 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
   ];
   if (opts.org) {
     ext.push(
-      spellConf.of(spellExt()), orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path }), orgStyle, orgFold, clicks, tableTools, narrowField, transclusion(opts.path, (t) => hooks.follow(t)),
+      spellConf.of(spellExt()), orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path }), orgStyle, orgFold, clicks, tableTools, narrowField, transclusion(opts.path, (t) => hooks.follow(t)), completion,
       Prec.high(keymap.of([{ key: "Tab", run: orgTab }, { key: "Shift-Tab", run: orgShiftTab }, { key: "Enter", run: smartEnter },
         // Insert mode only: in normal / visual mode Ctrl+B stays vim's page up.
         { key: "Mod-b", run: (v) => vimInsert(v) && emphasis(v, "*") }, { key: "Mod-i", run: (v) => vimInsert(v) && emphasis(v, "/") }])),

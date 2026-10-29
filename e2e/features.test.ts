@@ -1629,6 +1629,7 @@ describe("Note navigation", () => {
         writeFileSync(join(notes, "other", "target.org"), "#+title: Target Note\n\nTarget text.\n");
         writeFileSync(join(notes, "headed.org"), "#+title: Headed\n\n* One\nfirst\n\n* Two\nsecond\n\n* Three\nthird\n");
         writeFileSync(join(notes, "inbox.org"), "* TODO Sort the mail\n");
+        writeFileSync(join(notes, "people.org"), "#+title: People\n\n* Call :@ann:work:\n");
       },
     });
     await browser.$(".status").waitForDisplayed(); // a Ctrl+P before the page listens is lost
@@ -1682,6 +1683,35 @@ describe("Note navigation", () => {
     await type("gf");
     await find(".status .file", "headed.org");
     await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("* Two")), { timeoutMsg: "cursor not on the linked heading" });
+  });
+
+  it("[[, @ and :tag complete as you type; Esc closes the popup and stays in insert mode (#899)", async () => {
+    const popup = ".cm-tooltip-autocomplete li";
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Writer");
+    await find(".status .file", "writer.org");
+    await browser.keys(Key.Escape);
+    await type("Go");
+    await find(".status .mode", "INSERT");
+    await type("See [[Targ");
+    await find(popup, "Target Note");
+    await browser.keys(Key.Enter);
+    await type(" ask @an");
+    await find(popup, "ann");
+    await browser.keys(Key.Enter);
+    await type(" [[Targ");
+    await find(popup, "Target Note");
+    await browser.keys(Key.Escape);
+    await browser.waitUntil(async () => !(await texts(".cm-tooltip-autocomplete")).length, { timeoutMsg: "Esc did not close the popup" });
+    await find(".status .mode", "INSERT");
+    await type("x"); // still inserting: in normal mode x would delete a character
+    await browser.keys(Key.Enter);
+    await type("* Plan :wo");
+    await find(popup, "work");
+    await browser.keys(Key.Enter);
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "sub", "writer.org"), (s) => s.includes("See [[file:../other/target.org][Target Note]] ask @ann [[Targx\n* Plan :work:"), "completions not inserted");
   });
 
   it("Ctrl+Shift+O jumps to the picked heading", async () => {
