@@ -36,6 +36,8 @@ static INLINE: LazyLock<Regex> = LazyLock::new(|| {
 static HEADING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$").unwrap());
 static FENCE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\s*)(```+|~~~+)\s*([\w+#.-]*)").unwrap());
 static LIST: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\s*)(?:[*+-]|(\d+[.)]))\s+(?:\[([ xX])\]\s)?(.*)$").unwrap());
+static QUOTE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^ {0,3}>[> ]*").unwrap());
+static CALLOUT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\[!([\w-]+)\][+-]?\s*(.*)$").unwrap());
 static HR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^ {0,3}(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$").unwrap());
 
 fn has_scheme(u: &str) -> bool {
@@ -200,6 +202,7 @@ pub fn md_to_org(text: &str, stem: &str, resolve: &mut dyn FnMut(Ref) -> Option<
     let mut out = vec![format!("#+title: {title}")];
     out.extend(head);
     let mut fence: Option<(String, &str)> = None; // (closing marker, END line)
+    let mut quoting = false;
     for (i, l) in lines.iter().enumerate() {
         if let Some((marker, end)) = &fence {
             let t = l.trim();
@@ -215,10 +218,37 @@ pub fn md_to_org(text: &str, stem: &str, resolve: &mut dyn FnMut(Ref) -> Option<
             }
             continue;
         }
+        let q = QUOTE.find(l);
+        if quoting && q.is_none() {
+            out.push("#+END_QUOTE".into());
+            quoting = false;
+        }
         if skip == Some(i) {
             continue;
         }
-        if let Some(c) = FENCE.captures(l) {
+        if let Some(q) = q {
+            // quote (nested `>>` flattened); a `[!type] Title` first line becomes a bold header
+            let body = l[q.end()..].trim_end();
+            if !quoting {
+                out.push("#+BEGIN_QUOTE".into());
+                quoting = true;
+                if let Some(c) = CALLOUT.captures(body) {
+                    let (kind, t) = (c[1].to_lowercase(), inline(&c[2], resolve, &mut n));
+                    let mut kind = kind.chars();
+                    let kind: String = kind.next().map(|f| f.to_uppercase().chain(kind).collect()).unwrap_or_default();
+                    out.push(if t.is_empty() { format!("*{kind}*") } else { format!("*{kind}: {t}*") });
+                    continue;
+                }
+            }
+            let o = match LIST.captures(body) {
+                Some(c) => {
+                    let check = c.get(3).map_or(String::new(), |m| format!("[{}] ", if m.as_str() == " " { " " } else { "X" }));
+                    format!("{}{} {check}{}", &c[1], c.get(2).map_or("-", |m| m.as_str()), inline(&c[4], resolve, &mut n))
+                }
+                None => inline(body, resolve, &mut n),
+            };
+            out.push(if o.starts_with("* ") || o.starts_with("#+") { format!(",{o}") } else { o });
+        } else if let Some(c) = FENCE.captures(l) {
             let (ind, lang) = (&c[1], &c[3]);
             let (begin, end) = if lang.is_empty() { ("#+BEGIN_EXAMPLE".to_string(), "#+END_EXAMPLE") } else { (format!("#+BEGIN_SRC {lang}"), "#+END_SRC") };
             out.push(format!("{ind}{begin}"));
@@ -240,6 +270,9 @@ pub fn md_to_org(text: &str, stem: &str, resolve: &mut dyn FnMut(Ref) -> Option<
     }
     if let Some((_, end)) = fence {
         out.push(end.into());
+    }
+    if quoting {
+        out.push("#+END_QUOTE".into());
     }
     (out.join("\n") + "\n", n)
 }
@@ -430,6 +463,10 @@ mod tests {
             ("```rust\n* not a heading\n#+x\n**b**\n```\nafter", "#+BEGIN_SRC rust\n,* not a heading\n,#+x\n,**b**\n#+END_SRC\nafter"),
             ("~~~\nplain\n", "#+BEGIN_EXAMPLE\nplain\n#+END_EXAMPLE"),
             ("---\n***", "-----\n-----"),
+            ("> one *it*\n> two\nafter", "#+BEGIN_QUOTE\none /it/\ntwo\n#+END_QUOTE\nafter"),
+            ("> a\n>> b\n>\n> - [ ] t\n> * x\n> #+k", "#+BEGIN_QUOTE\na\nb\n\n- [ ] t\n- x\n,#+k\n#+END_QUOTE"),
+            ("> [!NOTE] Heads up\n> body", "#+BEGIN_QUOTE\n*Note: Heads up*\nbody\n#+END_QUOTE"),
+            ("> [!warning]-\n> careful\n\ntext", "#+BEGIN_QUOTE\n*Warning*\ncareful\n#+END_QUOTE\n\ntext"),
             ("| a | b |\n|:--|--:|\n| *x* | 1 |", "| a | b |\n|---+---|\n| /x/ | 1 |"),
         ] {
             assert_eq!(body(md), org, "{md}");
