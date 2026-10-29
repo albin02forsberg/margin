@@ -2225,6 +2225,41 @@ fn tc_activity(s: State<App>, year: i32) -> R<std::collections::BTreeMap<NaiveDa
     Ok(timeclock::daily(&timeclock::project_spans(&s.tc().events(), timeclock::now()), from, to))
 }
 
+type DayCounts = std::collections::BTreeMap<NaiveDate, u32>;
+
+/// Per-day counts for the activity calendar's other measures (#919), each FROM..=TO.
+#[derive(serde::Serialize, Default, Debug)]
+struct ActivityCounts { closed: DayCounts, notes: DayCounts, habits: DayCounts }
+
+/// Tally FILES (any under `.trash` skipped): CLOSED stamps, notes by last-modified date (MTIME; mtime only
+/// knows the last touch) and habit completions (once per habit per day).
+fn activity_tally(files: &[Arc<org::OrgFile>], mtime: impl Fn(&Path) -> Option<NaiveDate>, from: NaiveDate, to: NaiveDate) -> ActivityCounts {
+    let mut c = ActivityCounts::default();
+    let add = |m: &mut DayCounts, d: NaiveDate| if (from..=to).contains(&d) { *m.entry(d).or_default() += 1 };
+    for f in files.iter().filter(|f| !f.path.components().any(|c| c.as_os_str() == ".trash")) {
+        if let Some(d) = mtime(&f.path) { add(&mut c.notes, d) }
+        for h in &f.headlines {
+            if let Some(t) = h.closed { add(&mut c.closed, t.date()) }
+            if h.habit {
+                let mut ds = h.done_log.clone();
+                ds.sort();
+                ds.dedup();
+                for d in ds { add(&mut c.habits, d) }
+            }
+        }
+    }
+    c
+}
+
+/// Tasks closed, notes edited and habits done per date for the activity calendar (#919): YEAR and the one before.
+#[tauri::command(async)]
+fn activity_counts(s: State<App>, year: i32) -> R<ActivityCounts> {
+    let (from, to) = (NaiveDate::from_ymd_opt(year - 1, 1, 1), NaiveDate::from_ymd_opt(year, 12, 31));
+    let (Some(from), Some(to)) = (from, to) else { return Err(format!("bad year: {year}")) };
+    let mtime = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok().map(|t| chrono::DateTime::<chrono::Local>::from(t).date_naive());
+    Ok(activity_tally(&s.files(), mtime, from, to))
+}
+
 #[tauri::command]
 fn tc_sessions_on(s: State<App>, date_input: String) -> R<Vec<timeclock::Session>> {
     let d = date(&date_input)?;
@@ -3040,7 +3075,7 @@ pub fn run() {
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_rhythm, tc_activity, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, babel::babel_run
         ])
         .build(tauri::generate_context!())
@@ -3084,6 +3119,25 @@ mod tests {
         assert_eq!(t, ["Call @Anna", "Inherited"]);
         assert_eq!(notes.iter().map(|m| m.line).collect::<Vec<_>>(), [1, 6]);
         assert_eq!(person(&files, Path::new("/n"), &kw, "@").0.len(), 0);
+    }
+
+    #[test]
+    fn activity_tally_counts_closed_notes_and_habits() {
+        let kw = org::Kw { todo: vec!["TODO".into()], done: vec!["DONE".into()] };
+        let d = |s: &str| NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+        let doc = "* DONE A\nCLOSED: [2026-03-02 Mon 10:00]\n* DONE B\nCLOSED: [2026-03-02 Mon 18:00]\n* DONE C\nCLOSED: [2026-03-03 Tue]\n\
+                   * DONE Old\nCLOSED: [2024-12-31 Tue]\n\
+                   * TODO H\nSCHEDULED: <2026-03-04 Wed .+1d>\n:PROPERTIES:\n:STYLE: habit\n:END:\n:LOGBOOK:\n\
+                   - State \"DONE\"       from \"TODO\"       [2026-03-02 Mon 08:00]\n- State \"DONE\"       from \"TODO\"       [2026-03-02 Mon 20:00]\n\
+                   - State \"DONE\"       from \"TODO\"       [2026-03-03 Tue]\n:END:\n\
+                   * TODO Repeat\nSCHEDULED: <2026-03-04 Wed .+1d>\n:LOGBOOK:\n- State \"DONE\"       from \"TODO\"       [2026-03-02 Mon]\n:END:\n";
+        let files = [Arc::new(org::parse(Path::new("/n/a.org"), doc, &kw)), Arc::new(org::parse(Path::new("/n/b.org"), "x\n", &kw)),
+                     Arc::new(org::parse(Path::new("/n/.trash/t.org"), "* DONE T\nCLOSED: [2026-03-02 Mon]\n", &kw))];
+        let c = activity_tally(&files, |_| Some(d("2026-03-02")), d("2025-01-01"), d("2026-12-31"));
+        assert_eq!(c.closed, DayCounts::from([(d("2026-03-02"), 2), (d("2026-03-03"), 1)]));
+        assert_eq!(c.notes, DayCounts::from([(d("2026-03-02"), 2)]));
+        assert_eq!(c.habits, DayCounts::from([(d("2026-03-02"), 1), (d("2026-03-03"), 1)]));
+        assert!(activity_tally(&files, |_| None, d("2025-01-01"), d("2025-12-31")).closed.is_empty());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addDays, hours, levels, streaks, weeks } from "./activity.ts";
+import { addDays, hours, label, levels, streaks, unit, weeks } from "./activity.ts";
 
 test("levels: 0 for none, quartiles of the nonzero values, the largest always 4", () => {
   assert.deepEqual(levels([0, 1, 2, 3, 4, 5, 6, 7, 8]), [0, 1, 1, 2, 2, 3, 3, 4, 4]);
@@ -35,4 +35,15 @@ test("addDays and hours", () => {
   assert.equal(addDays("2024-02-28", 1), "2024-02-29");
   assert.equal(addDays("2026-01-01", -1), "2025-12-31");
   assert.deepEqual([hours(0), hours(20), hours(1500), hours(12600)], ["–", "1 min", "25 min", "3.5 h"]);
+});
+
+test("unit and label: hours keep the hours wording, counts pluralise", () => {
+  assert.equal(unit("hours", 5400), "1.5 h");
+  assert.equal(unit("hours", 0), "–");
+  assert.equal(unit("closed", 1), "1 task");
+  assert.equal(unit("closed", 3), "3 tasks");
+  assert.equal(unit("notes", 2), "2 notes");
+  assert.equal(unit("habits", 0), "–");
+  assert.deepEqual(label("hours"), ["clocked hours", "clocked"]);
+  assert.deepEqual(label("habits"), ["habits done", "done"]);
 });

@@ -92,7 +92,7 @@ SCHEDULED: ${ts(-1)}
 * TODO Review the release checklist :work:
 SCHEDULED: ${ts(0, "14:00")}
 * WAIT App store review for 3.2 :work:
-`);
+${[-1, -2, -2, -5, -8, -9, -9, -9, -15, -23, -30, -44].map((o, i) => `* DONE Release task ${i + 1} :work:\nCLOSED: ${its(o)}\n`).join("")}`);
 
   write(join(notes, "sync-design.org"), `
 :PROPERTIES:
@@ -286,10 +286,13 @@ async function pngs() {
   await size(900); // taller, so the Clock / Balance / More lane fits without its last button row clipped
   await shot("time");
   await size();
-  if (want("activity")) {
+  if (want("activity") || want("activity-closed")) {
     await command("Time: activity calendar");
     await browser.$(".activity").waitForDisplayed();
     await shot("activity");
+    await browser.keys("r"); // tasks closed (#919)
+    await browser.$(".activity header .dim*=tasks closed").waitForDisplayed();
+    await shot("activity-closed");
     await browser.keys(Key.Escape);
   }
 
