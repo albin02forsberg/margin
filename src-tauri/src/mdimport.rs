@@ -20,6 +20,7 @@ static INLINE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r#"(?x)
         `(?P<code>[^`]+)`
+        | \[\^(?P<fn>[^\]\s]+)\]
         | !\[\[(?P<emb>[^\]|]+)(?:\|[^\]]*)?\]\]
         | !\[(?P<alt>[^\]]*)\]\((?P<src>[^)\s]+)(?:\s+"[^"]*")?\)
         | \[\[(?P<wiki>[^\]|]+)(?:\|(?P<alias>[^\]]+))?\]\]
@@ -38,7 +39,23 @@ static FENCE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\s*)(```+|~~~+)\
 static LIST: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\s*)(?:[*+-]|(\d+[.)]))\s+(?:\[([ xX])\]\s)?(.*)$").unwrap());
 static QUOTE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^ {0,3}>[> ]*").unwrap());
 static CALLOUT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\[!([\w-]+)\][+-]?\s*(.*)$").unwrap());
+static FNDEF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\[\^([^\]\s]+)\]:\s*(.*)$").unwrap());
 static HR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^ {0,3}(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$").unwrap());
+
+/// Heading level (1 `===`, 2 `---`) when line I is a single-line paragraph with a setext underline.
+fn setext(lines: &[&str], i: usize) -> Option<usize> {
+    let (l, next) = (lines[i], lines.get(i + 1)?.trim_end());
+    let plain = !l.trim().is_empty() && !l.starts_with("    ") && !l.trim_start().starts_with('|');
+    if !plain || (i > 0 && !lines[i - 1].trim().is_empty()) || [&FENCE, &HEADING, &HR, &LIST, &QUOTE].iter().any(|r| r.is_match(l)) {
+        return None;
+    }
+    let u = next.trim_start_matches(' ');
+    match (next.len() - u.len() <= 3, u) {
+        (true, u) if !u.is_empty() && u.chars().all(|c| c == '=') => Some(1),
+        (true, u) if u.len() >= 2 && u.chars().all(|c| c == '-') => Some(2),
+        _ => None,
+    }
+}
 
 fn has_scheme(u: &str) -> bool {
     u.contains("://") || u.starts_with("mailto:")
@@ -69,6 +86,9 @@ fn inline(s: &str, r: &mut dyn FnMut(Ref) -> Option<String>, n: &mut usize) -> S
             let g = |k: &str| c.name(k).map(|m| m.as_str());
             if let Some(code) = g("code") {
                 return if code.contains('~') { format!("={code}=") } else { format!("~{code}~") };
+            }
+            if let Some(f) = g("fn") {
+                return format!("[fn:{f}]");
             }
             if let Some(e) = g("emb") {
                 let (name, search) = wiki_target(e);
@@ -188,13 +208,15 @@ pub fn md_to_org(text: &str, stem: &str, resolve: &mut dyn FnMut(Ref) -> Option<
             fenced = !fenced;
         } else if let Some(c) = HEADING.captures(l).filter(|_| !fenced) {
             levels.push((i, c[1].len()));
+        } else if let Some(lv) = setext(&lines, i).filter(|_| !fenced) {
+            levels.push((i, lv));
         }
     }
     let mut shift = 0;
     let mut skip = None;
     if title.is_none() && levels.first().is_some_and(|f| f.1 == 1) && levels.iter().filter(|l| l.1 == 1).count() == 1 {
         let i = levels[0].0;
-        title = Some(HEADING.captures(lines[i]).unwrap()[2].to_string());
+        title = Some(HEADING.captures(lines[i]).map_or(lines[i].trim(), |c| c.get(2).unwrap().as_str()).to_string());
         (shift, skip) = (1, Some(i));
     }
     let mut n = 0;
@@ -203,6 +225,7 @@ pub fn md_to_org(text: &str, stem: &str, resolve: &mut dyn FnMut(Ref) -> Option<
     out.extend(head);
     let mut fence: Option<(String, &str)> = None; // (closing marker, END line)
     let mut quoting = false;
+    let mut underline = false; // this line is the setext underline of the previous one
     for (i, l) in lines.iter().enumerate() {
         if let Some((marker, end)) = &fence {
             let t = l.trim();
@@ -223,7 +246,11 @@ pub fn md_to_org(text: &str, stem: &str, resolve: &mut dyn FnMut(Ref) -> Option<
             out.push("#+END_QUOTE".into());
             quoting = false;
         }
+        if std::mem::take(&mut underline) {
+            continue;
+        }
         if skip == Some(i) {
+            underline = setext(&lines, i).is_some();
             continue;
         }
         if let Some(q) = q {
@@ -253,6 +280,12 @@ pub fn md_to_org(text: &str, stem: &str, resolve: &mut dyn FnMut(Ref) -> Option<
             let (begin, end) = if lang.is_empty() { ("#+BEGIN_EXAMPLE".to_string(), "#+END_EXAMPLE") } else { (format!("#+BEGIN_SRC {lang}"), "#+END_SRC") };
             out.push(format!("{ind}{begin}"));
             fence = Some((c[2].to_string(), end));
+        } else if let Some(lv) = setext(&lines, i) {
+            let lv = if lv > shift { lv - shift } else { 1 };
+            out.push(format!("{} {}", "*".repeat(lv), inline(l.trim(), resolve, &mut n)));
+            underline = true;
+        } else if let Some(c) = FNDEF.captures(l) {
+            out.push(format!("[fn:{}] {}", &c[1], inline(&c[2], resolve, &mut n)));
         } else if let Some(c) = HEADING.captures(l) {
             out.push(format!("{} {}", "*".repeat(c[1].len().saturating_sub(shift).max(1)), inline(&c[2], resolve, &mut n)));
         } else if HR.is_match(l) {
@@ -463,6 +496,8 @@ mod tests {
             ("```rust\n* not a heading\n#+x\n**b**\n```\nafter", "#+BEGIN_SRC rust\n,* not a heading\n,#+x\n,**b**\n#+END_SRC\nafter"),
             ("~~~\nplain\n", "#+BEGIN_EXAMPLE\nplain\n#+END_EXAMPLE"),
             ("---\n***", "-----\n-----"),
+            ("# A\n\nTitle\n===\n\nSub\n---\ntext\n\n---\n\nTwo\n==", "* A\n\n* Title\n\n** Sub\ntext\n\n-----\n\n* Two"),
+            ("x[^1] and `y[^1]` [^note]\n\n[^1]: The *note*.", "x[fn:1] and ~y[^1]~ [fn:note]\n\n[fn:1] The /note/."),
             ("> one *it*\n> two\nafter", "#+BEGIN_QUOTE\none /it/\ntwo\n#+END_QUOTE\nafter"),
             ("> a\n>> b\n>\n> - [ ] t\n> * x\n> #+k", "#+BEGIN_QUOTE\na\nb\n\n- [ ] t\n- x\n,#+k\n#+END_QUOTE"),
             ("> [!NOTE] Heads up\n> body", "#+BEGIN_QUOTE\n*Note: Heads up*\nbody\n#+END_QUOTE"),
@@ -483,6 +518,7 @@ mod tests {
         let fm = "---\ntitle: \"From FM\"\ntags: [work, project/x]\naliases:\n  - one\n  - two\nempty:\n---\n# Heading\nbody";
         assert_eq!(conv(fm), "#+title: From FM\n#+FILETAGS: :work:project_x:\n#+aliases: one, two\n* Heading\nbody\n");
         assert!(conv("---\ntags:\n  - a\n  - b c\n---\nx").contains("#+FILETAGS: :a:b:c:\n"));
+        assert_eq!(conv("Big *Title*\n===\n\nSub\n---"), "#+title: Big /Title/\n\n* Sub\n");
         // an unclosed `---` is a rule, not front matter
         assert_eq!(conv("---\nx"), "#+title: stem\n-----\nx\n");
     }
