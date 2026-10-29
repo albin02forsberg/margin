@@ -1036,7 +1036,7 @@ as an org note under `imported/<folder name>/` in the notes folder, keeping the 
 note, such as `a.md` and `a.markdown`, become `a.org` and `a-2.org`; a failed import removes
 everything it wrote). The source is
 only read; hidden folders such as `.obsidian/` are skipped. Headings, lists and checkboxes,
-`**bold**`/`*italic*`/`~~strike~~`/`` `code` ``, fenced code (as `#+BEGIN_SRC lang`), block quotes (`#+BEGIN_QUOTE`; an Obsidian `> [!note] Title` callout gets a bold `*Note: Title*` first line), tables,
+`**bold**`/`*italic*`/`~~strike~~`/`` `code` ``, `Title`/`===` and `---` setext headings, `[^1]` footnotes (as `[fn:1]`), fenced code (as `#+BEGIN_SRC lang`), block quotes (`#+BEGIN_QUOTE`; an Obsidian `> [!note] Title` callout gets a bold `*Note: Title*` first line), tables,
 `[text](url)` links and front-matter `title:`/`tags:` (as `#+title:`/`#+FILETAGS:`) are
 converted; a lone leading `# Title` becomes the title. `[[Wiki links]]`, `[[Note|alias]]` and
 links to `.md` files point to the imported note when it's in the same import (a folder in
