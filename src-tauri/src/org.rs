@@ -160,6 +160,8 @@ pub struct OrgFile {
     pub tags: Vec<String>,
     /// The text it was parsed from, so searches needn't re-read the file.
     pub text: String,
+    /// Modification time when `scan` read it (None for parses made elsewhere).
+    pub mtime: Option<SystemTime>,
 }
 
 fn parse_ts(c: &regex::Captures) -> Option<Ts> {
@@ -365,7 +367,11 @@ pub fn scan(dir: &Path, kw: &Kw, cache: &Cache) -> Vec<Arc<OrgFile>> {
         let Ok(mtime) = std::fs::metadata(&p).and_then(|m| m.modified()) else { continue };
         let f = match map.remove(&p) {
             Some((t, f)) if t == mtime => f,
-            _ => Arc::new(parse(&p, &std::fs::read_to_string(&p).unwrap_or_default(), kw)),
+            _ => {
+                let mut f = parse(&p, &std::fs::read_to_string(&p).unwrap_or_default(), kw);
+                f.mtime = Some(mtime);
+                Arc::new(f)
+            }
         };
         fresh.insert(p, (mtime, f));
     }
@@ -2263,6 +2269,21 @@ mod tests {
     const DOC: &str = ":PROPERTIES:\n:ID: file-1\n:END:\n#+title: My Note\n#+category: Work\n\
 * TODO [#A] Write report :work:urgent:\nSCHEDULED: <2026-10-01 Thu> DEADLINE: <2026-10-05 Mon 10:00>\n:PROPERTIES:\n:ID: h-1\n:END:\nSee [[id:other][Other]] and [[file:b.org]].\n\
 ** NEXT Sub\n:PROPERTIES:\n:CATEGORY: Sub\n:END:\n*** DONE Deep\n* Meeting\n<2026-10-03 Sat 14:00>\n* TODO Water plants\nSCHEDULED: <2026-09-28 Mon +1w>\n";
+
+    #[test]
+    fn scan_records_mtime() {
+        let dir = std::env::temp_dir().join(format!("margin-scan-mtime-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("a.org");
+        std::fs::write(&p, "* a\n").unwrap();
+        let cache = Cache::default();
+        let m1 = std::fs::metadata(&p).unwrap().modified().unwrap();
+        assert_eq!(scan(&dir, &kw(), &cache)[0].mtime, Some(m1));
+        let m2 = m1 + std::time::Duration::from_secs(60);
+        std::fs::File::options().write(true).open(&p).unwrap().set_modified(m2).unwrap();
+        assert_eq!(scan(&dir, &kw(), &cache)[0].mtime, Some(m2));
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn goals_progress() {
