@@ -1080,7 +1080,7 @@ async function complete(cx: CompletionContext): Promise<CompletionResult | null>
   if (at.kind === "person") return { from, validFor: /^[\w.-]*$/, options: c.people.map((label) => ({ label })) };
   if (at.kind === "tag") return { from, validFor: /^[\w@#%]*$/, options: c.tags.map((label) => ({ label, apply: `${label}:` })) };
   return {
-    from, validFor: /^[^[\]]*$/,
+    from, validFor: /^[^[\]\n]*$/, // no newline: an unclosed `[[` must not keep its result alive on the next lines
     options: c.links.map(({ label, detail, link }) => ({
       label, detail,
       apply: (v: EditorView, _: unknown, f: number, to: number) => {
