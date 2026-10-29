@@ -91,7 +91,7 @@ to `.trash/tag-rename-<time>/` before writing, and skips (and lists) notes with 
 preview lists every line it changes (`[old → new]`, with the note and line), all ticked; `Enter` on a line
 unticks it, *Match case* toggles case sensitivity (on by default), *Whole word* skips matches inside longer words (off by default), *Link targets and IDs* is skipped by default (a link's `[[target` and `:ID:`/`:CUSTOM_ID:` lines stay as they are; link descriptions are replaced), and *Replace N lines* writes the ticked ones,
 the same way: old copies to `.trash/tag-rename-<time>/`, notes with unsaved edits skipped, and a line changed
-since the preview left alone (listed). Over 297 matching lines the preview lists the first 297 (read-only) and offers *Replace all N lines in M notes*, with the same undo copies.
+since the preview left alone (listed). Over 297 matching lines the preview lists the first 297 (read-only) and offers *Replace all N lines in M notes*, with the same undo copies; that applies to every matching line on disk at the time (still skipping notes with unsaved edits).
 *Tags: undo a rename or text replace (notes put back)…* puts those notes back, except ones edited since (listed, left alone); the
 renamed versions go to `.trash/tag-rename-undo-<time>/`, and saved views keep the new name. `Space n C` lists recently changed notes (journal included), newest
 first, with how long ago each changed. `Space n Z` lists notes untouched for a year (oldest first);
