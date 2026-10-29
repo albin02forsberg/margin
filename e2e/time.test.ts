@@ -256,4 +256,26 @@ describe("Time tracking", () => {
       writeFileSync(log, orig);
     }
   });
+
+  it("Space t Y shows the yearly activity calendar; h moves a week, Enter opens that day's timeline (#916)", async () => {
+    const orig = read(log), ago = (n: number) => { const t = new Date(); t.setDate(t.getDate() - n); return isoDay(t); };
+    const today = ago(0), wk = ago(7), wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date().getDay()];
+    try {
+      writeFileSync(log, `{"ev":"in","t":"${wk}T10:00:00","project":"Acme"}\n{"ev":"out","t":"${wk}T11:30:00","note":"x"}\n`);
+      await noPicker();
+      await palette("Time: activity calendar");
+      await find(".activity h3", `${wd} ${today} · nothing clocked`);
+      if (wk.slice(0, 4) === today.slice(0, 4)) { // early January: last week is in the other year
+        await find(".activity .summary", "1.5 h in total · 1 active day · longest streak 1 d · current streak 0 d");
+        await browser.keys("h");
+        await find(".activity h3", `${wd} ${wk} · 1.5 h clocked`);
+        await browser.keys(Key.Enter);
+        await find(".picker label span", `Timeline for ${wk}`);
+        await browser.keys(Key.Escape);
+      } else await browser.keys(Key.Escape);
+      await browser.waitUntil(async () => !(await texts(".activity")).length, { timeoutMsg: "calendar still open" });
+    } finally {
+      writeFileSync(log, orig);
+    }
+  });
 });

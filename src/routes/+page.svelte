@@ -39,6 +39,7 @@
   import Drill from "$lib/Drill.svelte";
   import Metrics from "$lib/Metrics.svelte";
   import Rhythm from "$lib/Rhythm.svelte";
+  import Activity from "$lib/Activity.svelte";
   import { due as drillDue, grade as drillGrade, propValue as drillProps, type Card } from "$lib/drill";
   import Projects from "$lib/Projects.svelte";
   import Ledger from "$lib/Ledger.svelte";
@@ -102,6 +103,7 @@
   let drill = $state<Drill>();
   let metrics = $state<Metrics>();
   let rhythm = $state<Rhythm>();
+  let activity = $state<Activity>();
   let mode = $state("normal");
   let words = $state("");
   /** Title of the heading the editor is narrowed to (Space v n), or "". */
@@ -2365,10 +2367,10 @@
   }
 
   /** One day's sessions, tasks closed and notes edited in time order (#694); Enter opens one, the first row copies Markdown. */
-  async function dayTimeline() {
-    const input = await pastDatePick("Timeline for");
+  async function dayTimeline(date?: string) {
+    const input = date ?? await pastDatePick("Timeline for");
     if (input == null) return;
-    const d = await call<string>("read_past_date", { input });
+    const d = date ?? await call<string>("read_past_date", { input });
     const [ss, st, closed, notes] = await Promise.all([
       call<Session[]>("tc_sessions_on", { dateInput: d }), call<any>("tc_status"),
       call<AgendaItem[]>("search_todos", { query: `closed:>=${d} closed:<=${d}` }), call<[string, string, number][]>("notes_recent", { limit: 100000 }),
@@ -2976,6 +2978,7 @@
     flex: async () => flash(await call("tc_report", { kind: "flex" })), leave: async () => flash(await call("tc_leave_time")), diary: () => openFile(cfg.diary_path),
     timeOff, logSession, estimates: () => estimateReport(),
     rhythm: async () => rhythm!.open((range, project) => call("tc_rhythm", { range, project }), Object.keys(await call<Record<string, unknown>>("tc_projects"))),
+    activity: () => activity!.open((year) => call("tc_activity", { year }), (d) => act(() => dayTimeline(d)), new Date().toLocaleDateString("sv-SE")),
   };
   const timeApi: TimeApi = { act, run: async (name, arg) => { await timeActions[name](arg); } };
   const agendaApi: AgendaApi = {
@@ -3223,6 +3226,7 @@
     { label: "Time: estimates vs actuals (how far off are my :EFFORT: guesses?)…", leader: "t A", run: () => act(estimateReport) },
     { label: "Time: day timeline (sessions, tasks closed, notes edited)…", leader: "t T", run: () => act(dayTimeline) },
     { label: "Time: when do I work? (weekday x hour heatmap)", leader: "t H", run: t("rhythm") },
+    { label: "Time: activity calendar (clocked hours per day over a year)", leader: "t Y", run: t("activity") },
     { label: "Time: import from Emacs…", leader: "t M", run: t("import") },
 
     { label: "Export: note as HTML", leader: "e h", run: () => exportNote("html") },
@@ -3274,7 +3278,7 @@
   const closeDrawer = () => { showGraph = showBacklinks = showChat = false; peek = null; };
 
   function onKey(e: KeyboardEvent) {
-    if (picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen() || tableDialog?.isOpen() || formulaDialog?.isOpen() || drill?.isOpen() || metrics?.isOpen() || rhythm?.isOpen()) return;
+    if (picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen() || tableDialog?.isOpen() || formulaDialog?.isOpen() || drill?.isOpen() || metrics?.isOpen() || rhythm?.isOpen() || activity?.isOpen()) return;
     const inEditor = isText(tab) && view.contentDOM.contains(e.target as Node);
     if (peek && (e.key === "Escape" || e.key === "Enter") && (e.target as Element).closest?.(".peek")) { e.preventDefault(); e.stopPropagation(); closePeek(e.key === "Enter"); return; }
     if (e.key === "Escape" && !inEditor && drawerOpen()) { closeDrawer(); e.preventDefault(); return; }
@@ -3734,6 +3738,7 @@
 <Drill bind:this={drill} />
 <Metrics bind:this={metrics} />
 <Rhythm bind:this={rhythm} />
+<Activity bind:this={activity} />
 
 <style>
   :global(html, body) { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: var(--fs-base) var(--sans); overflow: hidden; }

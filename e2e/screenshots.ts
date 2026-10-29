@@ -282,6 +282,12 @@ async function pngs() {
   await size(900); // taller, so the Clock / Balance / More lane fits without its last button row clipped
   await shot("time");
   await size();
+  if (want("activity")) {
+    await command("Time: activity calendar");
+    await browser.$(".activity").waitForDisplayed();
+    await shot("activity");
+    await browser.keys(Key.Escape);
+  }
 
   await browser.keys([Key.Ctrl, "1"]);
   await picker([Key.Ctrl, "k"], "Run a command");
