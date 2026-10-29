@@ -56,6 +56,7 @@
   import { wordCount, wordsLabel } from "$lib/words";
   import { windowTitle } from "$lib/wintitle";
   import { orderNotes, parsePins, togglePin } from "$lib/pins";
+  import * as nav from "$lib/navhistory";
   import { peopleFrom, personName, personRows } from "$lib/people";
   import { waitingRows, type Waiting } from "$lib/waiting";
   import { addBookmark, bookmarkAt, mergeBookmarks, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, retitleBookmarks, type Bookmark } from "$lib/bookmarks";
@@ -418,7 +419,27 @@
     view.dispatch({ selection: { anchor: pos }, effects: [...w, EditorView.scrollIntoView(pos, { y: "center" })] });
   }
 
+  // Back/forward over jumps (links, headings, ...): in memory only.
+  const navHist = nav.newHistory();
+  let navigating = false;
+  const navHere = (): nav.Pos | undefined => (tab?.kind === "file" && view ? { path: tab.path!, line: curLine0() } : undefined);
+  /** Remember where a jump to PATH/LINE leaves from, unless it is a nearby move in the same note. */
+  function navMark(path: string, line?: number) {
+    const h = navHere();
+    if (!navigating && h && (h.path !== path || (line != null && Math.abs(h.line - line) > 30))) nav.push(navHist, h);
+  }
+  async function navStep(dir: "back" | "forward") {
+    for (;;) {
+      const here = navHere() ?? { path: "", line: 0 };
+      const p = nav[dir](navHist, here);
+      if (!p) return flash(dir === "back" ? "Nothing to go back to" : "Nothing to go forward to");
+      navigating = true;
+      try { return await openFile(p.path, p.line); } catch { /* note gone: try the next */ } finally { navigating = false; }
+    }
+  }
+
   async function openFile(path: string, line?: number) {
+    navMark(path, line);
     let i = tabs.findIndex((t) => t.kind === "file" && t.path === path);
     if (i < 0) {
       const text: string = await call("read_file", { path });
@@ -641,6 +662,7 @@
   function pruneRecent(keep: (p: string) => boolean) {
     const r = recent.filter(keep);
     if (r.length < recent.length) store("recent", JSON.stringify((recent = r)));
+    nav.drop(navHist, keep);
     const pn = pinned.filter(keep);
     if (pn.length < pinned.length) savePinned(pn);
     for (let i = closed.length; i--; ) {
@@ -1564,6 +1586,7 @@
     if (!search) return;
     const line = findTarget(view.state.doc.toString(), search, [...(kw().todo ?? []), ...(kw().done ?? [])]);
     if (line == null) return flash(`No match for "${search}" in ${tab?.title ?? "note"}`);
+    if (!file) navMark(tab.path ?? "", line);
     const pos = view.state.doc.line(line + 1).from;
     jumpTo(pos);
   }
@@ -3092,6 +3115,8 @@
     { label: "Split view: close the split", leader: "w c", run: closeSplitSaved },
     { label: "Close other tabs", leader: "b o", run: () => closeOthers() },
     { label: "Close all tabs", leader: "b D", run: () => closeOthers(true) },
+    { label: "Navigate: back (to where the last jump left from)", leader: "b h", run: () => navStep("back") },
+    { label: "Navigate: forward", leader: "b l", run: () => navStep("forward") },
     { label: "Reopen closed tab", keys: ["Ctrl+Shift+T"], leader: "b u", run: reopenTab },
 
     { label: "Task: mark done / reopen", leader: "x x", run: () => atCursor("done") },
