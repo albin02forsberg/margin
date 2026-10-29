@@ -1841,17 +1841,19 @@
     if (repl == null) return;
     const skip = () => tabs.filter((t) => t.kind === "file" && t.dirty).map((t) => t.path!); // never overwrite unsaved edits
     const s = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-    const args = (caseOn: boolean, accept: [string, number, string][] | null) => ({ find, replace: repl, opts: { case: caseOn, word, links }, skip: skip(), accept });
+    // The preview lists 298 hits at most, with lines/notes counting all; past 297 the apply is "all" (#902).
+    const args = (caseOn: boolean, accept: [string, number, string][] | "all" | null) =>
+      ({ find, replace: repl, opts: { case: caseOn, word, links }, skip: skip(), accept, limit: 298 });
     let caseOn = true, word = false, links = false, p: TextReplace | null = null, off = new Set<string>(), at = 0;
     for (;;) {
       p ??= await call<TextReplace>("notes_replace", args(caseOn, null)).catch((e) => (flash(`⚠ ${e}`), null));
       if (!p) return;
       const left = p.skipped.length ? `; skips ${p.skipped.map(rel).join(", ")} (unsaved edits: save them first)` : "";
-      if (!p.hits.length && !caseOn && !word && links) return flash(`No “${find}” in any note${left}`); // while a narrowing option is on, a toggle is offered
-      const big = p.hits.length > 297; // the Picker lists 300: show a sample, apply to all
-      const n = p.hits.length - off.size, notes = new Set(p.hits.map((h) => h[0])).size;
-      const r = await pick({ prompt: `Replace “${find}” with “${repl}”: ${big ? `all ${s(n, "line")}` : `${s(n, "line")} of ${p.hits.length}`} in ${s(notes, "note")}${big ? "; only the first 297 are listed, so lines can't be unticked" : ""}${left}`,
-        hint: big ? "old copies go to .trash (undo: Tags: undo a rename or text replace)" : "↵ on a line ticks or unticks it; old copies go to .trash", at, items: [
+      if (!p.lines && !caseOn && !word && links) return flash(`No “${find}” in any note${left}`); // while a narrowing option is on, a toggle is offered
+      const big = p.lines > 297; // the Picker lists 300: show a sample, apply to all
+      const n = p.lines - off.size, notes = p.notes;
+      const r = await pick({ prompt: `Replace “${find}” with “${repl}”: ${big ? `all ${s(n, "line")}` : `${s(n, "line")} of ${p.lines}`} in ${s(notes, "note")}${big ? "; only the first 297 are listed, so lines can't be unticked" : ""}${left}`,
+        hint: big ? "applies to all matches on disk; old copies go to .trash (undo: Tags: undo a rename or text replace)" : "↵ on a line ticks or unticks it; old copies go to .trash", at, items: [
           { label: big ? `Replace all ${s(n, "line")} in ${s(notes, "note")}` : `Replace ${s(n, "line")}`, value: "apply" },
           { label: `Match case: ${caseOn ? "on" : "off"}`, value: "case" },
           { label: `Whole word: ${word ? "on" : "off"}`, value: "word" },
@@ -1870,7 +1872,7 @@
       else if (!n) at = 0;
       else break;
     }
-    const r = await call<TextReplace>("notes_replace", args(caseOn, accepted(p.hits, off))).catch((e) => (flash(`⚠ ${e}`), null));
+    const r = await call<TextReplace>("notes_replace", args(caseOn, p.lines > 297 ? "all" : accepted(p.hits, off))).catch((e) => (flash(`⚠ ${e}`), null));
     if (!r) return;
     syncFromDisk();
     const bad = [...r.skipped.map((x) => `skipped ${rel(x)} (unsaved edits)`), ...r.stale.map((x) => `changed since the preview: ${rel(x)}`), ...r.errors].join("; ");

@@ -1786,8 +1786,8 @@ fn org_blocked_at(s: State<App>, path: PathBuf, text: String, line: usize) -> Op
     org::blocked_at(&text, line, &files, &kw, &path)
 }
 
-/// A text replace across notes (#872): the preview's HITS as (note, line, old text, new text); the apply's
-/// LINES and NOTES written, accepted hits STALE (`path:line` changed since the preview), notes SKIPPED
+/// A text replace across notes (#872): the preview's HITS as (note, line, old text, new text), at most its
+/// limit, with LINES and NOTES counting all of them (#902); the apply's LINES and NOTES written, accepted hits STALE (`path:line` changed since the preview), notes SKIPPED
 /// (unsaved edits), ERRORS and the folder of the COPIES.
 #[derive(serde::Serialize, Default)]
 struct TextReplace {
@@ -1805,6 +1805,20 @@ struct TextReplace {
 /// One accepted hit of a text replace: (note, line, the line's text in the preview).
 type Accept = (PathBuf, usize, String);
 
+/// What a text replace writes: the accepted HITS, or `"all"` lines that match on disk (#902).
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum Apply {
+    Hits(Vec<Accept>),
+    All(AllLines),
+}
+
+#[derive(serde::Deserialize)]
+enum AllLines {
+    #[serde(rename = "all")]
+    All,
+}
+
 /// How notes_replace matches: CASE-sensitive, whole WORDs only, LINKS = also in link targets and `:ID:` lines.
 #[derive(serde::Deserialize)]
 struct ReplaceOpts {
@@ -1821,28 +1835,29 @@ struct Rep<'a> {
 }
 
 /// Replace literal FIND (matched per OPTS) with REPLACE in every note: without ACCEPT, a preview of the
-/// lines it changes; with ACCEPT, writes those hits, each only if its line on disk still reads the same.
+/// lines it changes (the first LIMIT listed); with ACCEPT hits, writes those, each only if its line on disk
+/// still reads the same; with ACCEPT `"all"`, writes every line that matches on disk (#902).
 /// Notes in SKIP (unsaved edits) are left alone and listed. The apply backs up and copies each changed note
 /// to a new `<notes>/.trash/tag-rename-<time>/` with an undo manifest of kind "text" (undone like a tag rename).
 #[tauri::command(async)]
-fn notes_replace(s: State<App>, find: String, replace: String, opts: ReplaceOpts, skip: Vec<PathBuf>, accept: Option<Vec<Accept>>) -> R<TextReplace> {
+fn notes_replace(s: State<App>, find: String, replace: String, opts: ReplaceOpts, skip: Vec<PathBuf>, accept: Option<Apply>, limit: Option<usize>) -> R<TextReplace> {
     if find.is_empty() || find.contains('\n') {
         return Err("Type the text to replace (one line).".into());
     }
     let (re, notes_dir) = (notes::literal(&find, opts.case, opts.word), s.cfg().notes());
     let rep = Rep { re: &re, repl: &replace, links: opts.links };
-    let Some(accept) = accept else { return Ok(replace_preview(&s.files(), &rep, &skip)) };
+    let Some(accept) = accept else { return Ok(replace_preview(&s.files(), &rep, &skip, limit.unwrap_or(usize::MAX))) };
     s.backup();
     let _lock = note_writes();
     let copies = unique_dir(&notes_dir.join(".trash").join(chrono::Local::now().format("tag-rename-%Y%m%d-%H%M%S").to_string())).map_err(|e| e.to_string())?;
-    let mut r = replace_files(&s.files(), &notes_dir, &rep, &skip, &accept, &copies);
+    let mut r = replace_files(&s.files(), &notes_dir, &rep, &skip, if let Apply::Hits(h) = &accept { Some(h) } else { None }, &copies);
     let m = RenameManifest { kind: "text".into(), old: find, new: replace, files: std::mem::take(&mut r.written) };
     write_manifest(&copies, m, &mut r.errors);
     Ok(r)
 }
 
-/// notes_replace's preview over FILES, each re-read from disk.
-fn replace_preview(files: &[Arc<org::OrgFile>], rep: &Rep, skip: &[PathBuf]) -> TextReplace {
+/// notes_replace's preview over FILES, each re-read from disk: the first LIMIT hits, LINES and NOTES all of them.
+fn replace_preview(files: &[Arc<org::OrgFile>], rep: &Rep, skip: &[PathBuf], limit: usize) -> TextReplace {
     let mut r = TextReplace::default();
     for f in files.iter().filter(|f| rep.re.is_match(&f.text)) {
         let Ok(text) = std::fs::read_to_string(&f.path) else { continue };
@@ -1851,27 +1866,41 @@ fn replace_preview(files: &[Arc<org::OrgFile>], rep: &Rep, skip: &[PathBuf]) -> 
             r.skipped.push(f.path.clone());
             continue;
         }
-        r.hits.extend(hits.into_iter().map(|(i, o, n)| (f.path.clone(), i, o, n)));
+        (r.lines, r.notes) = (r.lines + hits.len(), r.notes + usize::from(!hits.is_empty()));
+        let room = limit.saturating_sub(r.hits.len());
+        r.hits.extend(hits.into_iter().take(room).map(|(i, o, n)| (f.path.clone(), i, o, n)));
     }
     r
 }
 
-/// notes_replace's apply over FILES: writes the ACCEPT hits per note (re-read from disk), copying each
-/// changed note to COPIES first. Accepted notes no longer among FILES are reported stale.
-fn replace_files(files: &[Arc<org::OrgFile>], notes_dir: &Path, rep: &Rep, skip: &[PathBuf], accept: &[Accept], copies: &Path) -> TextReplace {
+/// notes_replace's apply over FILES: writes the ACCEPT hits per note, or without ACCEPT every changed line in
+/// the notes the preview looks at (re-read from disk), copying each changed note to COPIES first. Accepted
+/// notes no longer among FILES are reported stale.
+fn replace_files(files: &[Arc<org::OrgFile>], notes_dir: &Path, rep: &Rep, skip: &[PathBuf], accept: Option<&[Accept]>, copies: &Path) -> TextReplace {
     let mut r = TextReplace::default();
-    let mut by: std::collections::BTreeMap<&Path, Vec<(usize, String)>> = Default::default();
-    for (p, i, old) in accept {
-        by.entry(p.as_path()).or_default().push((*i, old.clone()));
+    let mut by: std::collections::BTreeMap<&Path, std::collections::HashMap<usize, &str>> = Default::default();
+    for (p, i, old) in accept.unwrap_or_default() {
+        by.entry(p.as_path()).or_default().insert(*i, old.as_str());
     }
     for f in files {
-        let Some(lines) = by.remove(f.path.as_path()) else { continue };
+        let lines = match accept {
+            Some(_) => match by.remove(f.path.as_path()) {
+                Some(l) => Some(l),
+                None => continue,
+            },
+            None if rep.re.is_match(&f.text) => None,
+            None => continue,
+        };
+        // Like the preview, "all" lists a note in SKIP only when it has hits on disk.
         if skip.contains(&f.path) {
-            r.skipped.push(f.path.clone());
+            let hit = || std::fs::read_to_string(&f.path).is_ok_and(|t| !notes::replace_hits(&t, rep.re, rep.repl, rep.links).is_empty());
+            if lines.is_some() || hit() {
+                r.skipped.push(f.path.clone());
+            }
             continue;
         }
         let res = std::fs::read_to_string(&f.path).and_then(|text| {
-            let (out, n, stale) = notes::replace_lines(&text, rep.re, rep.repl, &lines, rep.links);
+            let (out, n, stale) = notes::replace_lines(&text, rep.re, rep.repl, lines.as_ref(), rep.links);
             r.stale.extend(stale.iter().map(|i| format!("{}:{}", f.path.display(), i + 1)));
             if n == 0 {
                 return Ok(None);
@@ -3517,13 +3546,13 @@ mod tests {
         let files = [note("sub/a.org", a), note("b.org", "Call Acme\nAcme\n"), note("c.org", "Acme open\n"), note("d.org", "none\n")];
         let (re, read) = (notes::literal("acme", false, false), |p: &str| std::fs::read_to_string(root.join(p)).unwrap());
         let c = root.join("c.org");
-        let p = replace_preview(&files, &Rep { re: &re, repl: "Initech", links: true }, std::slice::from_ref(&c));
-        assert_eq!((p.hits.len(), p.skipped.as_slice()), (4, std::slice::from_ref(&c)));
+        let p = replace_preview(&files, &Rep { re: &re, repl: "Initech", links: true }, std::slice::from_ref(&c), usize::MAX);
+        assert_eq!((p.hits.len(), p.lines, p.notes, p.skipped.as_slice()), (4, 4, 2, std::slice::from_ref(&c)));
         // Accept all but b.org's line 2; b.org's line 1 is edited after the preview.
         let accept: Vec<Accept> = p.hits.iter().filter(|h| !(h.0.ends_with("b.org") && h.1 == 1)).map(|h| (h.0.clone(), h.1, h.2.clone())).collect();
         std::fs::write(root.join("b.org"), "Call Acme now\nAcme\n").unwrap();
         let copies = unique_dir(&root.join(".trash/tag-rename-1")).unwrap();
-        let mut r = replace_files(&files, &root, &Rep { re: &re, repl: "Initech", links: true }, &[], &accept, &copies);
+        let mut r = replace_files(&files, &root, &Rep { re: &re, repl: "Initech", links: true }, &[], Some(&accept), &copies);
         assert_eq!((r.lines, r.notes, r.stale.clone(), r.errors.len()), (2, 1, vec![format!("{}:1", root.join("b.org").display())], 0));
         assert_eq!((read("sub/a.org"), read("b.org")), ("Initech Corp\r\nInitech again\n".into(), "Call Acme now\nAcme\n".into()));
         assert_eq!(std::fs::read_to_string(copies.join("sub/a.org")).unwrap(), a);
@@ -3544,22 +3573,38 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         let kw = org::Kw { todo: vec![], done: vec![] };
-        let files: Vec<_> = (0..4)
+        let text = |i| if i == 5 { "none\n".to_string() } else { "cat\nnone\n".repeat(100) };
+        let files: Vec<_> = (0..6)
             .map(|i| {
-                let (p, text) = (root.join(format!("n{i}.org")), "cat\n".repeat(100));
-                std::fs::write(&p, &text).unwrap();
-                Arc::new(org::parse(&p, &text, &kw))
+                let p = root.join(format!("n{i}.org"));
+                std::fs::write(&p, text(i)).unwrap();
+                Arc::new(org::parse(&p, &text(i), &kw))
             })
             .collect();
         let re = notes::literal("cat", true, false);
         let rep = Rep { re: &re, repl: "dog", links: false };
-        let p = replace_preview(&files, &rep, &[]);
-        assert_eq!(p.hits.len(), 400);
+        // The full preview and an explicit apply of all of it (n0–n1), as before #902.
+        let p = replace_preview(&files[..2], &rep, &[], usize::MAX);
+        assert_eq!((p.hits.len(), p.lines, p.notes), (200, 200, 2));
         let accept: Vec<Accept> = p.hits.iter().map(|h| (h.0.clone(), h.1, h.2.clone())).collect();
         let copies = unique_dir(&root.join(".trash/tag-rename-1")).unwrap();
-        let r = replace_files(&files, &root, &rep, &[], &accept, &copies);
-        assert_eq!((r.lines, r.notes, r.stale.len(), r.errors.len()), (400, 4, 0, 0));
-        assert_eq!(std::fs::read_to_string(root.join("n3.org")).unwrap(), "dog\n".repeat(100));
+        let r = replace_files(&files[..2], &root, &rep, &[], Some(&accept), &copies);
+        assert_eq!((r.lines, r.notes, r.stale.len(), r.errors.len()), (200, 2, 0, 0));
+        // A limited preview over n2–n5 lists 150 hits but counts all 300 in 3 notes; n4 is skipped (unsaved).
+        let (rest, skip) = (&files[2..], [root.join("n4.org")]);
+        let p = replace_preview(rest, &rep, &skip, 150);
+        assert_eq!((p.hits.len(), p.lines, p.notes, p.skipped.as_slice()), (150, 200, 2, skip.as_slice()));
+        // "all" writes the same as the explicit list, honours SKIP and only touches notes with hits.
+        let copies = unique_dir(&root.join(".trash/tag-rename-2")).unwrap();
+        let r = replace_files(rest, &root, &rep, &skip, None, &copies);
+        assert_eq!((r.lines, r.notes, r.stale.len(), r.errors.len(), r.skipped.as_slice()), (200, 2, 0, 0, skip.as_slice()));
+        let read = |i| std::fs::read_to_string(root.join(format!("n{i}.org"))).unwrap();
+        assert_eq!([read(0), read(1), read(2)], [read(3), read(3), read(3)]);
+        assert_eq!((read(3), read(4), read(5)), ("dog\nnone\n".repeat(100), text(4), text(5)));
+        assert!(!copies.join("n5.org").exists() && copies.join("n3.org").exists());
+        let apply = |j| serde_json::from_str::<Apply>(j).ok();
+        assert!(matches!(apply(r#""all""#), Some(Apply::All(_))) && matches!(apply(r#"[["a.org",0,"x"]]"#), Some(Apply::Hits(h)) if h.len() == 1));
+        assert!(apply(r#""most""#).is_none());
         let _ = std::fs::remove_dir_all(&root);
     }
 

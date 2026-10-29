@@ -749,20 +749,22 @@ fn sub(l: &str, re: &Regex, repl: &str, links: bool) -> String {
 pub fn replace_hits(text: &str, re: &Regex, repl: &str, links: bool) -> Vec<(usize, String, String)> {
     text.lines()
         .enumerate()
+        .filter(|(_, l)| re.is_match(l))
         .filter_map(|(i, l)| Some((i, l.to_string(), sub(l, re, repl, links))).filter(|(_, o, n)| o != n))
         .collect()
 }
 
-/// TEXT with RE replaced by REPL on the ACCEPT lines (line, previewed text) that still read the same; line
-/// endings kept. Returns (new text, lines replaced, accepted lines changed since the preview).
-pub fn replace_lines(text: &str, re: &Regex, repl: &str, accept: &[(usize, String)], links: bool) -> (String, usize, Vec<usize>) {
+/// TEXT with RE replaced by REPL on the ACCEPT lines (line -> previewed text) that still read the same, or on
+/// every line without ACCEPT; line endings kept. Returns (new text, lines replaced, accepted lines changed
+/// since the preview).
+pub fn replace_lines(text: &str, re: &Regex, repl: &str, accept: Option<&HashMap<usize, &str>>, links: bool) -> (String, usize, Vec<usize>) {
     let (mut n, mut done) = (0, vec![]);
     let out = text
         .split_inclusive('\n')
         .enumerate()
         .map(|(i, l)| {
             let body = l.strip_suffix('\n').map_or(l, |b| b.strip_suffix('\r').unwrap_or(b));
-            if !accept.iter().any(|(a, old)| *a == i && old == body) {
+            if accept.is_some_and(|a| a.get(&i) != Some(&body)) || !re.is_match(body) {
                 return l.to_string();
             }
             let new = sub(body, re, repl, links);
@@ -773,7 +775,7 @@ pub fn replace_lines(text: &str, re: &Regex, repl: &str, accept: &[(usize, Strin
             format!("{new}{}", &l[body.len()..])
         })
         .collect();
-    let stale = accept.iter().map(|(a, _)| *a).filter(|a| !done.contains(a)).collect::<BTreeSet<_>>().into_iter().collect();
+    let stale = accept.into_iter().flat_map(|a| a.keys().copied()).filter(|a| !done.contains(a)).collect::<BTreeSet<_>>().into_iter().collect();
     (out, n, stale)
 }
 
@@ -1326,16 +1328,18 @@ mod tests {
         assert_eq!(hits.iter().map(|h| (h.0, h.2.as_str())).collect::<Vec<_>>(), [(0, "$1 and $1"), (2, "$1.co a+b"), (3, "$1")]);
         assert!(replace_hits("a+b", &literal("a+b", true, false), "a+b", true).is_empty(), "no-op hits are left out");
         // Line 2 is left out; line 3 changed since the preview; line 9 doesn't exist.
-        let accept = [(0, "Acme and acme".into()), (3, "acme!".into()), (9, "x".into())];
-        let (out, n, stale) = replace_lines(text, &ci, "Initech", &accept, true);
+        let accept = HashMap::from([(0, "Acme and acme"), (3, "acme!"), (9, "x")]);
+        let (out, n, stale) = replace_lines(text, &ci, "Initech", Some(&accept), true);
         assert_eq!((out.as_str(), n, stale), ("Initech and Initech\r\nnone\nACME.co a+b\nacme\n", 1, vec![3, 9]));
-        assert_eq!(replace_lines("acme", &cs, "x", &[(0, "acme".into())], true).0, "x", "last line without a newline");
+        assert_eq!(replace_lines("acme", &cs, "x", Some(&HashMap::from([(0, "acme")])), true).0, "x", "last line without a newline");
+        let (out, n, stale) = replace_lines(text, &ci, "Initech", None, true);
+        assert_eq!((out.as_str(), n, stale), ("Initech and Initech\r\nnone\nInitech.co a+b\nInitech\n", 3, vec![]), "no accept list: every line");
         let (ln, c) = (literal("cat", true, false), "[[file:cat.org][cat]] [[*cat heading][a cat]] [[#cat]]\n:ID: cat-1\nsee [[https://x/cat]] cat");
         let h = |links| replace_hits(c, &ln, "dog", links).into_iter().map(|h| h.2).collect::<Vec<_>>();
         assert_eq!(h(false), ["[[file:cat.org][dog]] [[*cat heading][a dog]] [[#cat]]", "see [[https://x/cat]] dog"]);
         assert_eq!(h(true), ["[[file:dog.org][dog]] [[*dog heading][a dog]] [[#dog]]", ":ID: dog-1", "see [[https://x/dog]] dog"]);
-        let acc = [(0, c.lines().next().unwrap().to_string())];
-        assert_eq!(replace_lines(c, &ln, "dog", &acc, false).0.lines().next().unwrap(), "[[file:cat.org][dog]] [[*cat heading][a dog]] [[#cat]]");
+        let acc = HashMap::from([(0, c.lines().next().unwrap())]);
+        assert_eq!(replace_lines(c, &ln, "dog", Some(&acc), false).0.lines().next().unwrap(), "[[file:cat.org][dog]] [[*cat heading][a dog]] [[#cat]]");
         let hit = |f, w, t: &str| literal(f, true, w).is_match(t);
         assert!(hit("cat", false, "category") && !hit("cat", true, "category") && hit("cat", true, "a cat."));
         assert!(hit("C++", true, "C++ code") && hit("@ann", true, "hi @ann") && !hit("@ann", true, "x@annex"));
