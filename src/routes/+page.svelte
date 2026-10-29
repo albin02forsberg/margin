@@ -3024,7 +3024,11 @@
     flex: async () => flash(await call("tc_report", { kind: "flex" })), leave: async () => flash(await call("tc_leave_time")), diary: () => openFile(cfg.diary_path),
     timeOff, logSession, estimates: () => estimateReport(),
     rhythm: async () => rhythm!.open((range, project) => call("tc_rhythm", { range, project }), Object.keys(await call<Record<string, unknown>>("tc_projects"))),
-    activity: () => activity!.open((year) => call("tc_activity", { year }), (d) => act(() => dayTimeline(d)), new Date().toLocaleDateString("sv-SE")),
+    activity: () => {
+      const counts = new Map<number, Promise<Record<string, Record<string, number>>>>(); // one activity_counts call per year while open
+      const of = (year: number) => counts.get(year) ?? counts.set(year, call("activity_counts", { year })).get(year)!;
+      return activity!.open((year, m) => (m === "hours" ? call("tc_activity", { year }) : of(year).then((c) => c[m])), (d) => act(() => dayTimeline(d)), new Date().toLocaleDateString("sv-SE"));
+    },
   };
   const timeApi: TimeApi = { act, run: async (name, arg) => { await timeActions[name](arg); } };
   const agendaApi: AgendaApi = {

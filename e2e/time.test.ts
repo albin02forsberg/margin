@@ -265,6 +265,13 @@ describe("Time tracking", () => {
       await noPicker();
       await palette("Time: activity calendar");
       await find(".activity h3", `${wd} ${today} · nothing clocked`);
+      await browser.keys("r"); // #919: r cycles the measure, back to hours after four
+      await find(".activity header .dim", "tasks closed");
+      await browser.keys("r");
+      await find(".activity header .dim", "notes edited");
+      await find(".activity footer", "a note counts on its last edit only");
+      await browser.keys(["r", "r"]);
+      await find(".activity header .dim", "clocked hours");
       if (wk.slice(0, 4) === today.slice(0, 4)) { // early January: last week is in the other year
         await find(".activity .summary", "1.5 h in total · 1 active day · longest streak 1 d · current streak 0 d");
         await browser.keys("h");

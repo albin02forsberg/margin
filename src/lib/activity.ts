@@ -47,3 +47,14 @@ export function streaks(days: Record<string, number>, year: number, today: strin
 
 /** "3.5 h", "25 min" or "–" for SECONDS. */
 export const hours = (s: number) => (s <= 0 ? "–" : s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : `${+(s / 3600).toFixed(1)} h`);
+
+/** What the calendar counts per day (#919): clocked seconds, tasks closed, notes edited or habits done. */
+export const MEASURES = ["hours", "closed", "notes", "habits"] as const;
+export type Measure = (typeof MEASURES)[number];
+const NOUN: Record<Exclude<Measure, "hours">, [string, string]> = { closed: ["task", "closed"], notes: ["note", "edited"], habits: ["habit", "done"] };
+
+/** Measure M's value N as text: hours() for hours, else "3 tasks", "1 note" ("–" for none). */
+export const unit = (m: Measure, n: number) => (m === "hours" ? hours(n) : n <= 0 ? "–" : `${n} ${NOUN[m][0]}${n === 1 ? "" : "s"}`);
+
+/** Header label and the verb for a day's value: "clocked hours"/"clocked", "tasks closed"/"closed", … */
+export const label = (m: Measure): [string, string] => (m === "hours" ? ["clocked hours", "clocked"] : [`${NOUN[m][0]}s ${NOUN[m][1]}`, NOUN[m][1]]);

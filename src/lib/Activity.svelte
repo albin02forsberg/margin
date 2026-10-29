@@ -1,17 +1,19 @@
 <script lang="ts">
-  // Activity calendar (#916): clocked hours per day over a year, GitHub-style; read-only, Enter opens a day's timeline.
+  // Activity calendar (#916): clocked hours (or tasks closed, notes edited, habits done, #919) per day over a year,
+  // GitHub-style; read-only, Enter opens a day's timeline.
   import { tick } from "svelte";
-  import { addDays, hours, levels, streaks, weeks } from "./activity";
+  import { addDays, label, levels, MEASURES, streaks, unit, weeks, type Measure } from "./activity";
 
   const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   let active = $state(false);
   let year = $state(0);
   let today = $state("");
   let days = $state<Record<string, number>>({});
+  let measure = $state<Measure>("hours");
   let sel = $state("");
   let box = $state<HTMLElement>();
   let prevFocus: HTMLElement | null = null;
-  let load: (year: number) => Promise<Record<string, number>> = async () => ({});
+  let load: (year: number, m: Measure) => Promise<Record<string, number>> = async () => ({});
   let onDay: (date: string) => unknown = () => {};
   const cols = $derived(weeks(year));
   const inYear = $derived(cols.flat().filter((d): d is string => !!d));
@@ -19,14 +21,15 @@
   const total = $derived(inYear.reduce((s, d) => s + (days[d] ?? 0), 0));
   const nActive = $derived(inYear.filter((d) => (days[d] ?? 0) > 0).length);
   const st = $derived(streaks(days, year, today));
+  const [what, verb] = $derived(label(measure));
   const longDay = (d: string) => `${DAYS[(new Date(`${d}T12:00`).getDay() + 6) % 7]} ${d}`;
 
   export const isOpen = () => active;
 
-  /** Show the calendar; LOAD fetches a year's seconds per date, ON_DAY opens a date's timeline. */
+  /** Show the calendar; LOAD fetches a year's values per date for a measure (seconds for hours), ON_DAY opens a date's timeline. */
   export async function open(l: typeof load, o: typeof onDay, now: string) {
     prevFocus = document.activeElement as HTMLElement | null;
-    [load, onDay, today] = [l, o, now];
+    [load, onDay, today, measure] = [l, o, now, "hours"];
     await show(+now.slice(0, 4), now);
     active = true;
     await tick();
@@ -34,7 +37,7 @@
   }
 
   async function show(y: number, at: string) {
-    days = await load(y);
+    days = await load(y, measure);
     [year, sel] = [y, at];
   }
 
@@ -49,6 +52,7 @@
     if (e.key === "Escape") close();
     else if (mv[e.key]) { const d = addDays(sel, mv[e.key]); if (d.startsWith(`${year}-`)) sel = d; }
     else if (e.key === "[" || e.key === "]") { const y = year + (e.key === "[" ? -1 : 1); await show(y, `${y}${sel.slice(4, 10) === "-02-29" ? "-02-28" : sel.slice(4)}`); }
+    else if (e.key === "r" || e.key === "m") { measure = MEASURES[(MEASURES.indexOf(measure) + 1) % MEASURES.length]; await show(year, sel); }
     else if (e.key === "Enter") { close(); onDay(sel); }
     else return;
     e.preventDefault();
@@ -58,9 +62,9 @@
 {#if active}
   <div class="backdrop" onmousedown={close} role="presentation"></div>
   <div class="dialog activity" bind:this={box} onkeydown={key} role="dialog" aria-label="Activity calendar" tabindex="-1">
-    <header><h2>Activity {year}</h2><span class="dim">clocked hours</span></header>
-    <p class="summary">{hours(total)} in total · {nActive} active day{nActive === 1 ? "" : "s"} · longest streak {st.longest} d{year === +today.slice(0, 4) ? ` · current streak ${st.current} d` : ""}</p>
-    <div class="grid" role="grid" aria-label="Clocked hours per day">
+    <header><h2>Activity {year}</h2><span class="dim">{what}</span></header>
+    <p class="summary">{unit(measure, total)} in total · {nActive} active day{nActive === 1 ? "" : "s"} · longest streak {st.longest} d{year === +today.slice(0, 4) ? ` · current streak ${st.current} d` : ""}</p>
+    <div class="grid" role="grid" aria-label="{what} per day">
       <span></span>
       {#each cols as c}{@const first = c.find((d) => d?.endsWith("-01"))}<span class="mm">{first ? MONTHS[+first.slice(5, 7) - 1] : ""}</span>{/each}
       {#each DAYS as day, r}
@@ -68,14 +72,14 @@
         {#each cols as c}
           {@const d = c[r]}
           {#if d}
-            <button type="button" class="cell s{shade[d] ?? 0}" class:future={d > today} class:sel={d === sel} title="{d}: {hours(days[d] ?? 0)}" aria-label="{d}: {hours(days[d] ?? 0)}" onclick={() => (sel = d)} ondblclick={() => (close(), onDay(d))}></button>
+            <button type="button" class="cell s{shade[d] ?? 0}" class:future={d > today} class:sel={d === sel} title="{d}: {unit(measure, days[d] ?? 0)}" aria-label="{d}: {unit(measure, days[d] ?? 0)}" onclick={() => (sel = d)} ondblclick={() => (close(), onDay(d))}></button>
           {:else}<i></i>{/if}
         {/each}
       {/each}
     </div>
     <div class="legend" aria-hidden="true">less {#each [0, 1, 2, 3, 4] as s}<i class="cell s{s}"></i>{/each} more</div>
-    <h3>{longDay(sel)} · {sel > today ? "in the future" : (days[sel] ?? 0) > 0 ? `${hours(days[sel])} clocked` : "nothing clocked"}</h3>
-    <footer>h/l week · j/k day · [ / ] year · Enter opens the day's timeline · Esc closes</footer>
+    <h3>{longDay(sel)} · {sel > today ? "in the future" : (days[sel] ?? 0) > 0 ? `${unit(measure, days[sel])} ${verb}` : `nothing ${verb}`}</h3>
+    <footer>h/l week · j/k day · [ / ] year · r measure · Enter opens the day's timeline · Esc closes{measure === "notes" ? " · a note counts on its last edit only" : ""}</footer>
   </div>
 {/if}
 

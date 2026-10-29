@@ -52,7 +52,9 @@ the editor has vim keys.
   quartile), with the total, active days, the longest streak and the current
   one (streaks carry over New Year). `h/l` move a week, `j/k` a day, `[`/`]`
   change year; the selected day's hours show below, and `Enter` opens that
-  day's timeline.
+  day's timeline. `r` (or `m`) switches what is counted: clocked hours, tasks
+  closed (their `CLOSED:` stamp), notes edited (by last-modified time, so a
+  note only counts on its latest edit) or habits done (once per habit a day).
 - **Window title** shows the active tab (`• note — Margin` when unsaved), so
   the taskbar and window switcher tell Margin windows apart.
 - **Stays in sync** with Emacs, git or any sync tool editing the same files,
