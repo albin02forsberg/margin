@@ -279,6 +279,7 @@ pub struct Summary {
 /// embedded files go where attachments go (`attach_in`). DRY only reports what would happen.
 pub fn import(src: &Path, notes: &Path, attachments: &str, images: &str, dry: bool) -> Result<Summary, String> {
     let all: Vec<PathBuf> = walkdir::WalkDir::new(src)
+        .sort_by_file_name()
         .into_iter()
         .filter_entry(|e| e.depth() == 0 || !e.file_name().to_string_lossy().starts_with('.'))
         .filter_map(|e| e.ok())
@@ -289,7 +290,22 @@ pub fn import(src: &Path, notes: &Path, attachments: &str, images: &str, dry: bo
     let name = src.file_name().map_or("markdown".into(), |n| n.to_string_lossy().into_owned());
     let base = notes.join("imported");
     let target = (1..).map(|i| base.join(if i == 1 { name.clone() } else { format!("{name}-{i}") })).find(|p| !p.exists()).unwrap();
-    let dest = |p: &Path| target.join(p.strip_prefix(src).unwrap()).with_extension("org");
+    let natural = |p: &Path| target.join(p.strip_prefix(src).unwrap()).with_extension("org");
+    // Destinations, deduplicated (`a.md` + `a.markdown` -> `a.org`, `a-2.org`; case-insensitive, never a name another source maps to).
+    let mut dests: HashMap<PathBuf, PathBuf> = HashMap::new();
+    let key = |p: &Path| p.to_string_lossy().to_lowercase();
+    let mut used: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let reserved: std::collections::HashSet<String> = all.iter().filter(|p| is_md(p)).map(|p| key(&natural(p))).collect();
+    for p in all.iter().filter(|p| is_md(p)) {
+        let (mut d, mut i) = (natural(p), 1);
+        while used.contains(&key(&d)) || (i > 1 && reserved.contains(&key(&d))) {
+            i += 1;
+            d = natural(p).with_file_name(format!("{}-{i}.org", natural(p).file_stem().unwrap().to_string_lossy()));
+        }
+        used.insert(key(&d));
+        dests.insert(p.clone(), d);
+    }
+    let dest = |p: &Path| dests[p].clone();
     let lower = |p: &Path, f: fn(&Path) -> Option<&std::ffi::OsStr>| f(p).map_or(String::new(), |s| s.to_string_lossy().to_lowercase());
     let (mut stems, mut others) = (HashMap::new(), HashMap::new());
     for p in &all {
@@ -301,6 +317,8 @@ pub fn import(src: &Path, notes: &Path, attachments: &str, images: &str, dry: bo
     }
     let mut s = Summary { target: target.clone(), ..Default::default() };
     let mut copied: HashMap<(PathBuf, PathBuf), String> = HashMap::new();
+    let created = std::cell::RefCell::new(Vec::<PathBuf>::new()); // attachments written by this run
+    let mut run = || -> Result<(), String> {
     for p in all.iter().filter(|p| is_md(p)) {
         let shown = p.strip_prefix(src).unwrap().to_string_lossy().into_owned();
         let Ok(text) = std::fs::read_to_string(p) else {
@@ -322,7 +340,7 @@ pub fn import(src: &Path, notes: &Path, attachments: &str, images: &str, dry: bo
                     return Some(l.clone());
                 }
                 files += 1;
-                let link = if dry { file } else { crate::attach_in(notes, attachments, images, &note, &file, |q| q.exists(), |d| std::fs::copy(&from, d).map(|_| ())).map_err(|e| err = Some(e)).ok()? };
+                let link = if dry { file } else { crate::attach_in(notes, attachments, images, &note, &file, |q| q.exists(), |d| std::fs::copy(&from, d).map(|_| created.borrow_mut().push(d.to_path_buf()))).map_err(|e| err = Some(e)).ok()? };
                 copied.insert(key, link.clone());
                 Some(link)
             }
@@ -338,6 +356,20 @@ pub fn import(src: &Path, notes: &Path, attachments: &str, images: &str, dry: bo
         s.links += links;
         s.files += files;
         s.notes.push(note.strip_prefix(&target).unwrap().to_string_lossy().into_owned());
+    }
+    Ok(())
+    };
+    if let Err(e) = run() {
+        // Undo this run: the target folder is new, and the attachments are files it created.
+        let mut gone = std::fs::remove_dir_all(&target).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) });
+        for f in created.borrow().iter() {
+            let _ = std::fs::remove_file(f);
+            let _ = std::fs::remove_dir(f.parent().unwrap()); // only if now empty
+        }
+        if let Err(r) = gone.as_mut() {
+            return Err(format!("{e} (and couldn't remove {}: {r})", target.display()));
+        }
+        return Err(e);
     }
     Ok(s)
 }
@@ -451,6 +483,41 @@ mod tests {
         let after: Vec<_> = walkdir::WalkDir::new(&src).into_iter().map(|e| e.unwrap().into_path()).collect();
         assert_eq!(before, after);
         assert_eq!(std::fs::read(src.join("Home.md")).unwrap(), b"# Home\nSee [[Deep]] and ![](img/logo.png) and ![[logo.png]]\n");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn colliding_names_get_a_suffix_and_a_failed_run_leaves_nothing() {
+        let root = std::env::temp_dir().join(format!("margin-mdcollide-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (src, notes) = (root.join("V"), root.join("notes"));
+        let w = |p: &str, b: &[u8]| std::fs::write(src.join(p), b).unwrap();
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::create_dir_all(&notes).unwrap();
+        w("a.md", b"first [[a]]");
+        w("a.markdown", b"second");
+        w("a-2.md", b"own");
+        let dry = import(&src, &notes, "att", "", true).unwrap();
+        let real = import(&src, &notes, "att", "", false).unwrap();
+        assert_eq!(dry.notes, real.notes);
+        let mut n = real.notes.clone();
+        n.sort();
+        assert_eq!(n, ["a-2.org", "a-3.org", "a.org"]);
+        assert_eq!(std::fs::read_to_string(real.target.join("a-2.org")).unwrap(), "#+title: a-2\nown\n");
+
+        // a failure on the second note removes the folder and the attachment copied for the first
+        let (src2, notes2) = (root.join("W"), root.join("notes2"));
+        std::fs::create_dir_all(&src2).unwrap();
+        std::fs::create_dir_all(notes2.join("att")).unwrap();
+        std::fs::write(src2.join("a.md"), "![[a.pdf]]").unwrap();
+        std::fs::write(src2.join("b.md"), "![[b.pdf]]").unwrap();
+        std::fs::write(src2.join("a.pdf"), "x").unwrap();
+        std::fs::write(src2.join("b.pdf"), "x").unwrap();
+        std::fs::write(notes2.join("att/b"), "blocker").unwrap();
+        assert!(import(&src2, &notes2, "att", "", false).is_err());
+        assert!(!notes2.join("imported/W").exists());
+        assert!(!notes2.join("att/a").exists());
+        assert!(notes2.join("att/b").is_file());
         std::fs::remove_dir_all(&root).unwrap();
     }
 }
