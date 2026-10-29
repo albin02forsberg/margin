@@ -225,6 +225,7 @@ pub fn md_to_org(text: &str, stem: &str, resolve: &mut dyn FnMut(Ref) -> Option<
     out.extend(head);
     let mut fence: Option<(String, &str)> = None; // (closing marker, END line)
     let mut quoting = false;
+    let mut qfence: Option<(String, &str)> = None; // a code fence inside a quote
     let mut underline = false; // this line is the setext underline of the previous one
     for (i, l) in lines.iter().enumerate() {
         if let Some((marker, end)) = &fence {
@@ -242,6 +243,22 @@ pub fn md_to_org(text: &str, stem: &str, resolve: &mut dyn FnMut(Ref) -> Option<
             continue;
         }
         let q = QUOTE.find(l);
+        if let Some((marker, end)) = &qfence {
+            if let Some(q) = q {
+                let body = l[q.end()..].trim_end();
+                let t = body.trim();
+                if t.starts_with(marker.as_str()) && t.trim_start_matches(&marker[..1]).is_empty() {
+                    out.push(end.to_string());
+                    qfence = None;
+                } else {
+                    let bare = body.trim_start().trim_start_matches(',');
+                    out.push(if bare.starts_with('*') || bare.starts_with("#+") { format!(",{body}") } else { body.to_string() });
+                }
+                continue;
+            }
+            out.push(end.to_string()); // the quote ended inside the fence
+            qfence = None;
+        }
         if quoting && q.is_none() {
             out.push("#+END_QUOTE".into());
             quoting = false;
@@ -267,14 +284,24 @@ pub fn md_to_org(text: &str, stem: &str, resolve: &mut dyn FnMut(Ref) -> Option<
                     continue;
                 }
             }
+            if let Some(c) = FENCE.captures(body) {
+                let (begin, end) = if c[3].is_empty() { ("#+BEGIN_EXAMPLE".to_string(), "#+END_EXAMPLE") } else { (format!("#+BEGIN_SRC {}", &c[3]), "#+END_SRC") };
+                out.push(begin);
+                qfence = Some((c[2].to_string(), end));
+                continue;
+            }
             let o = match LIST.captures(body) {
                 Some(c) => {
                     let check = c.get(3).map_or(String::new(), |m| format!("[{}] ", if m.as_str() == " " { " " } else { "X" }));
                     format!("{}{} {check}{}", &c[1], c.get(2).map_or("-", |m| m.as_str()), inline(&c[4], resolve, &mut n))
                 }
-                None => inline(body, resolve, &mut n),
+                None => match HEADING.captures(body) {
+                    Some(c) => format!("*{}*", inline(&c[2], resolve, &mut n)),
+                    None => inline(body, resolve, &mut n),
+                },
             };
-            out.push(if o.starts_with("* ") || o.starts_with("#+") { format!(",{o}") } else { o });
+            let hash = o.strip_prefix('#').is_some_and(|r| r.is_empty() || r.starts_with(char::is_whitespace));
+            out.push(if o.starts_with("* ") || o.starts_with("#+") || hash { format!(",{o}") } else { o });
         } else if let Some(c) = FENCE.captures(l) {
             let (ind, lang) = (&c[1], &c[3]);
             let (begin, end) = if lang.is_empty() { ("#+BEGIN_EXAMPLE".to_string(), "#+END_EXAMPLE") } else { (format!("#+BEGIN_SRC {lang}"), "#+END_SRC") };
@@ -302,6 +329,9 @@ pub fn md_to_org(text: &str, stem: &str, resolve: &mut dyn FnMut(Ref) -> Option<
         }
     }
     if let Some((_, end)) = fence {
+        out.push(end.into());
+    }
+    if let Some((_, end)) = qfence {
         out.push(end.into());
     }
     if quoting {
@@ -501,6 +531,10 @@ mod tests {
             ("> one *it*\n> two\nafter", "#+BEGIN_QUOTE\none /it/\ntwo\n#+END_QUOTE\nafter"),
             ("> a\n>> b\n>\n> - [ ] t\n> * x\n> #+k", "#+BEGIN_QUOTE\na\nb\n\n- [ ] t\n- x\n,#+k\n#+END_QUOTE"),
             ("> [!NOTE] Heads up\n> body", "#+BEGIN_QUOTE\n*Note: Heads up*\nbody\n#+END_QUOTE"),
+            ("> ## Key *points* ##\n> #\n> # x", "#+BEGIN_QUOTE\n*Key /points/*\n,#\n*x*\n#+END_QUOTE"),
+            ("> ```rs\n> let *a* = [[b]];\n> * x\n> ```\n> after __x__", "#+BEGIN_QUOTE\n#+BEGIN_SRC rs\nlet *a* = [[b]];\n,* x\n#+END_SRC\nafter *x*\n#+END_QUOTE"),
+            ("> ```\n> open\ntext", "#+BEGIN_QUOTE\n#+BEGIN_EXAMPLE\nopen\n#+END_EXAMPLE\n#+END_QUOTE\ntext"),
+            ("> ```\n> open", "#+BEGIN_QUOTE\n#+BEGIN_EXAMPLE\nopen\n#+END_EXAMPLE\n#+END_QUOTE"),
             ("> [!warning]-\n> careful\n\ntext", "#+BEGIN_QUOTE\n*Warning*\ncareful\n#+END_QUOTE\n\ntext"),
             ("| a | b |\n|:--|--:|\n| *x* | 1 |", "| a | b |\n|---+---|\n| /x/ | 1 |"),
         ] {
