@@ -308,6 +308,15 @@ async function pngs() {
   await browser.keys(Key.Escape);
 
   await open("Harbor app", "harbor.org");
+  await browser.keys(Key.Escape);
+  await type("Go"); // inline [[ completion (#899)
+  await type("Mobile side: [[Orch");
+  await find(".cm-tooltip-autocomplete li", "Orchard");
+  await shot("complete");
+  await browser.keys(Key.Escape); // closes the popup
+  await browser.keys(Key.Escape);
+  await type("u");
+
   await command("Split view: open a note");
   await type("Orchard platform");
   await pause(300);

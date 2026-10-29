@@ -1,4 +1,5 @@
 /** Org link targets: split `file:path::search` and resolve the search part to a line. */
+import { relativeTo } from "./paths.ts";
 
 /** `file:a.org::*Head` -> {file: "a.org", search: "*Head"}; `*Head` / `#id` alone -> {file: "", search} (current note). */
 export function splitTarget(t: string): { file: string; search: string } {
@@ -101,4 +102,22 @@ export function retitlePlan(before: string, after: string, line: number, keyword
   if (!bare || /[[\]]/.test(bare)) return NOT_A_LINK;
   if (a.some((x, i) => i !== line && x != null && norm(x) === norm(bare))) return "another heading has that title";
   return { old, new: bare };
+}
+
+/** Link target from note FROM to an `id:` node, a note PATH, or heading HEAD (bare title) of PATH, `*Head` alone in FROM
+ *  itself: what `insertLink` and the `[[` completion (#899) link to. Org resolves `file:` from the note's folder. */
+export function linkTarget(from: string, to: { id: string } | { path: string; head?: string }) {
+  if ("id" in to) return `id:${to.id}`;
+  if (to.head == null) return `file:${relativeTo(from, to.path)}`;
+  return `${to.path === from ? "" : `file:${relativeTo(from, to.path)}::`}*${to.head}`;
+}
+
+/** What to complete at the end of BEFORE, the line up to the cursor (#899): `[[` + text (a link), `@` + name after
+ *  whitespace (a person), or `:tag` after the title when HEADING (a heading line). QUERY is the part typed so far. */
+export function completionAt(before: string, heading: boolean): { kind: "link" | "person" | "tag"; query: string } | null {
+  let m = /\[\[([^[\]]*)$/.exec(before);
+  if (m) return { kind: "link", query: m[1] };
+  if ((m = /(?:^|\s)@([\w.-]*)$/.exec(before))) return { kind: "person", query: m[1] };
+  if (heading && (m = /\S\s+:(?:[\w@#%]+:)*([\w@#%]*)$/.exec(before))) return { kind: "tag", query: m[1] };
+  return null;
 }

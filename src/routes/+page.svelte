@@ -15,7 +15,7 @@
   import { linkFor, asUrl, asWebUrl } from "$lib/weblink";
   import { srcAt, resultsChange } from "$lib/babel";
   import { accepted, changeLabel, hitKey, type Hit as ReplaceHit } from "$lib/replace";
-  import { bareTitle, bracketRetitle, findTarget, linkHeadings, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
+  import { bareTitle, bracketRetitle, findTarget, linkHeadings, linkTarget, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
   import { type Goal, goalWhen, isoWeek, putReview, reviewBody, reviewEntry } from "$lib/review";
@@ -26,7 +26,7 @@
   import { pickStale } from "$lib/stale";
   import { visibleCmds } from "$lib/areas";
   import { lineDiff } from "$lib/linediff";
-  import { ago, changed, findNote, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath, weekJournals } from "$lib/paths";
+  import { ago, changed, findNote, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, resolvePath, weekJournals } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
@@ -2066,26 +2066,36 @@
     flash(`Restored ${rel(to)}`);
   }
 
+  /** What a link from note FROM can point at: notes with an ID, other notes, then headings without an :ID: (as `::*Title`). */
+  function linkTargets(from: string, { nodes, sorted, titles }: Awaited<ReturnType<typeof noteItems>>, targets: Target[]) {
+    const withId = new Set(nodes.filter((n) => n.line === 0).map((n) => n.path));
+    const heads = linkHeadings(targets, new Set(nodes.map((n) => `${n.path}:${n.line}`)));
+    return [
+      ...nodes.map((n) => ({ label: n.title, detail: rel(n.path), target: linkTarget(from, { id: n.id }) })),
+      ...sorted.filter((p) => !withId.has(p) && p !== from).map((p) => ({ label: titles.get(p) ?? niceName(p), detail: rel(p), target: linkTarget(from, { path: p }) })),
+      ...heads.map((h) => ({ label: h.bare, detail: h.label, target: linkTarget(from, { path: h.path, head: h.bare }) })),
+    ];
+  }
+
+  /** Candidates for the editor's inline completion (#899), fetched once per disk change (`syncFromDisk` drops them). */
+  let completionData: Promise<[Awaited<ReturnType<typeof noteItems>>, Target[], string[]]> | null = null;
+  async function completions() {
+    const from = tab?.path ?? "";
+    completionData ??= Promise.all([noteItems(), call<Target[]>("org_targets"), call<string[]>("org_tags")]).catch((e) => { completionData = null; throw e; });
+    const [items, targets, tags] = await completionData;
+    return { links: linkTargets(from, items, targets).map((c) => ({ label: c.label, detail: c.detail, link: linkFor(c.target, c.label) })), people: peopleFrom(tags), tags };
+  }
+
   async function insertLink() {
     if (!inFile()) return flash("Open a note first.");
     const loc = { path: tab.path!, pos: view.state.selection.main.head };
     const sel = ed.lineSelection(view); // a one-line selection becomes the link text and is replaced
-    const [{ nodes, sorted, titles }, targets] = await Promise.all([noteItems(), call<Target[]>("org_targets")]);
-    const withId = new Set(nodes.filter((n) => n.line === 0).map((n) => n.path));
-    const heads = linkHeadings(targets, new Set(nodes.map((n) => `${n.path}:${n.line}`))); // headings without an :ID: link as ::*Title
-    const items = [
-      ...nodes.map((n) => ({ label: n.title, detail: rel(n.path), value: n as unknown })),
-      ...sorted.filter((p) => !withId.has(p) && p !== loc.path).map((p) => ({ label: titles.get(p) ?? niceName(p), detail: rel(p), value: p as unknown })),
-      ...heads.map((h) => ({ label: h.bare, detail: h.label, value: { head: h } as unknown })),
-    ];
+    const [notes, targets] = await Promise.all([noteItems(), call<Target[]>("org_targets")]);
+    const items = linkTargets(loc.path, notes, targets).map((c) => ({ label: c.label, detail: c.detail, value: c as unknown }));
     const r = await pick({ prompt: "Link to note — or type a title to create one", items, allowCustom: true, hint: "Ctrl+↵ creates a new note" });
     if (r == null || r === "") return;
     let link: string;
-    if (typeof r === "object" && "head" in r) {
-      const h = r.head as (typeof heads)[number];
-      link = linkFor(`${h.path === loc.path ? "" : `file:${relativeTo(loc.path, h.path)}::`}*${h.bare}`, sel?.text ?? h.bare);
-    } else if (typeof r === "object") link = linkFor(`id:${r.id}`, sel?.text ?? r.title);
-    else if (sorted.includes(r)) link = linkFor(`file:${relativeTo(loc.path, r)}`, sel?.text ?? titles.get(r) ?? niceName(r)); // org resolves file: links from the note's folder
+    if (typeof r === "object") link = linkFor(r.target, sel?.text ?? r.label);
     else {
       const n: NoteNode = await call("notes_new", { title: r });
       link = linkFor(`id:${n.id}`, sel?.text ?? n.title);
@@ -2100,14 +2110,8 @@
   async function insertTransclusion() {
     if (!inFile()) return flash("Open a note first.");
     const from = tab.path!;
-    const [{ nodes, sorted, titles }, targets] = await Promise.all([noteItems(), call<Target[]>("org_targets")]);
-    const withId = new Set(nodes.filter((n) => n.line === 0).map((n) => n.path));
-    const heads = linkHeadings(targets, new Set(nodes.map((n) => `${n.path}:${n.line}`)));
-    const t = await pick({ prompt: "Transclude a heading or note", items: [
-      ...nodes.map((n) => ({ label: n.title, detail: rel(n.path), value: `id:${n.id}` })),
-      ...sorted.filter((p) => !withId.has(p) && p !== from).map((p) => ({ label: titles.get(p) ?? niceName(p), detail: rel(p), value: `file:${relativeTo(from, p)}` })),
-      ...heads.map((h) => ({ label: h.bare, detail: h.label, value: `${h.path === from ? "" : `file:${relativeTo(from, h.path)}::`}*${h.bare}` })),
-    ] });
+    const [notes, targets] = await Promise.all([noteItems(), call<Target[]>("org_targets")]);
+    const t = await pick({ prompt: "Transclude a heading or note", items: linkTargets(from, notes, targets).map((c) => ({ label: c.label, detail: c.detail, value: c.target })) });
     if (!t) return;
     const ln = view.state.doc.lineAt(view.state.selection.main.head), line = ed.transcludeLine(t);
     const [at, insert] = ln.text.trim() ? [ln.to, `\n${line}`] : [ln.from, line];
@@ -3403,6 +3407,7 @@
   /** Sync with the disk; PATHS (the watcher's changed paths) narrows it, none checks everything. */
   function syncFromDisk(paths?: string[], refresh?: string[]) {
     if (!cfg) return; // still starting up (focus/fs event before config loads); startup prunes anyway
+    completionData = null;
     if (syncQueued) return void ((syncPaths = mergeChanged(syncPaths, paths)), (syncRefresh = mergeChanged(syncRefresh, refresh)));
     syncQueued = true;
     syncPaths = paths;
@@ -3480,6 +3485,7 @@
       ed.hooks.tab = (d) => act(() => cycleTab(d));
       ed.hooks.snippets = () => cfg?.snippets ?? [];
       ed.hooks.ask = (name) => ask(name);
+      ed.hooks.completions = completions;
       await openView("agenda");
       requestAnimationFrame(() => (motion = true)); // nothing animates on first load
       await restoreSession();

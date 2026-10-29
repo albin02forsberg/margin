@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bareTitle, bracketRetitle, findTarget, linkHeadings, norm, peekBuffer, peekTarget, retitlePlan, splitTarget } from "./links.ts";
+import { bareTitle, bracketRetitle, completionAt, findTarget, linkHeadings, linkTarget, norm, peekBuffer, peekTarget, retitlePlan, splitTarget } from "./links.ts";
 
 const doc = "#+title: T\n* TODO [#A] Install :tag:\n:PROPERTIES:\n:CUSTOM_ID: setup\n:END:\nbody text\n** Usage\r\nmore\n";
 
@@ -91,4 +91,25 @@ test("peekBuffer reads the unsaved buffer", () => {
   assert.deepEqual(peekBuffer(buf, "*A"), { line: 1, text: "body a\n** Sub\nsub" });
   assert.equal(peekBuffer(buf, "*Old name"), null);
   assert.deepEqual(peekBuffer(buf, ""), { line: 0, text: buf });
+});
+
+test("linkTarget: id, file and heading links relative to the note (#899)", () => {
+  assert.equal(linkTarget("/n/a.org", { id: "x1" }), "id:x1");
+  assert.equal(linkTarget("/n/sub/a.org", { path: "/n/b.org" }), "file:../b.org");
+  assert.equal(linkTarget("/n/a.org", { path: "/n/sub/b.org", head: "Usage" }), "file:sub/b.org::*Usage");
+  assert.equal(linkTarget("/n/a.org", { path: "/n/a.org", head: "Usage" }), "*Usage");
+});
+
+test("completionAt: [[ links, @ people after whitespace, :tags only on heading lines (#899)", () => {
+  assert.deepEqual(completionAt("see [[Proj", false), { kind: "link", query: "Proj" });
+  assert.deepEqual(completionAt("[[", false), { kind: "link", query: "" });
+  assert.equal(completionAt("see [[a][b]] done", false), null);
+  assert.deepEqual(completionAt("ask @al", false), { kind: "person", query: "al" });
+  assert.deepEqual(completionAt("@", false), { kind: "person", query: "" });
+  assert.equal(completionAt("mail a@b", false), null);
+  assert.deepEqual(completionAt("* TODO Plan :wo", true), { kind: "tag", query: "wo" });
+  assert.deepEqual(completionAt("* Plan :work:", true), { kind: "tag", query: "" });
+  assert.equal(completionAt("note :wo", false), null);
+  assert.equal(completionAt("* Time: 10", true), null);
+  assert.equal(completionAt("plain text", false), null);
 });
