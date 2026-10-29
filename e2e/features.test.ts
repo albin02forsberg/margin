@@ -1707,6 +1707,8 @@ describe("Note navigation", () => {
     await type("x"); // still inserting: in normal mode x would delete a character
     await browser.keys(Key.Enter);
     await type("* Plan :wo");
+    await browser.pause(1500);
+    console.log("DIAG", JSON.stringify(await browser.execute(() => ({ doc: document.querySelector(".cm-content")?.textContent, tip: document.querySelector(".cm-tooltip")?.textContent, mode: document.querySelector(".status .mode")?.textContent }))));
     await find(popup, "work");
     await browser.keys(Key.Enter);
     await browser.keys(Key.Escape);
