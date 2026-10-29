@@ -1693,9 +1693,11 @@ describe("Note navigation", () => {
     await browser.keys(Key.Escape);
     await type("Go");
     await find(".status .mode", "INSERT");
+    await browser.execute(() => { const w = window as any; w.__errs = []; const o = console.error; console.error = (...a: unknown[]) => { w.__errs.push(a.map(String).join(" ")); o(...a); }; addEventListener("error", (e) => w.__errs.push(String(e.message))); });
     await type("See [[Targ");
     await find(popup, "Target Note");
     await browser.keys(Key.Enter);
+    console.log("DIAG1", JSON.stringify(await browser.execute(() => ({ doc: (document.querySelector(".cm-content") as HTMLElement)?.innerText, errs: (window as any).__errs }))));
     await type(" ask @an");
     await find(popup, "ann");
     await browser.keys(Key.Enter);
@@ -1708,7 +1710,7 @@ describe("Note navigation", () => {
     await browser.keys(Key.Enter);
     await type("* Plan :wo");
     await browser.pause(1500);
-    console.log("DIAG", JSON.stringify(await browser.execute(() => ({ doc: document.querySelector(".cm-content")?.textContent, tip: document.querySelector(".cm-tooltip")?.textContent, mode: document.querySelector(".status .mode")?.textContent }))));
+    console.log("DIAG", JSON.stringify(await browser.execute(() => ({ doc: document.querySelector(".cm-content")?.textContent, tip: document.querySelector(".cm-tooltip")?.textContent, errs: (window as any).__errs, doc2: (document.querySelector(".cm-content") as HTMLElement)?.innerText, mode: document.querySelector(".status .mode")?.textContent }))));
     await find(popup, "work");
     await browser.keys(Key.Enter);
     await browser.keys(Key.Escape);
