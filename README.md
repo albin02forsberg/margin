@@ -1031,7 +1031,9 @@ notes and links jumping to the right section. Overwriting the folder moves pages
 path, e.g. an Obsidian vault; not one inside or containing the notes, data or config folder),
 shows how many notes, links and files it would bring in, and on *Import* writes each `.md` file
 as an org note under `imported/<folder name>/` in the notes folder, keeping the subfolders
-(a second import goes to `imported/<name>-2/`, so nothing is ever overwritten). The source is
+(a second import goes to `imported/<name>-2/`, so nothing is ever overwritten; files that map to the same
+note, such as `a.md` and `a.markdown`, become `a.org` and `a-2.org`; a failed import removes
+everything it wrote). The source is
 only read; hidden folders such as `.obsidian/` are skipped. Headings, lists and checkboxes,
 `**bold**`/`*italic*`/`~~strike~~`/`` `code` ``, fenced code (as `#+BEGIN_SRC lang`), tables,
 `[text](url)` links and front-matter `title:`/`tags:` (as `#+title:`/`#+FILETAGS:`) are
