@@ -28,6 +28,11 @@ export function forward(h: NavHistory, cur: Pos): Pos | undefined {
   return p;
 }
 
+/** A note moved or was renamed: remap its entries. */
+export function rename(h: NavHistory, from: string, to: string) {
+  for (const p of [...h.back, ...h.fwd]) if (p.path === from) p.path = to;
+}
+
 /** Remove entries whose note fails KEEP (trashed or vanished). */
 export function drop(h: NavHistory, keep: (path: string) => boolean) {
   h.back = h.back.filter((p) => keep(p.path));

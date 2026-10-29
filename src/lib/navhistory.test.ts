@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { back, drop, forward, newHistory, push } from "./navhistory.ts";
+import { back, drop, forward, newHistory, push, rename } from "./navhistory.ts";
 
 const A = { path: "a", line: 1 }, B = { path: "b", line: 2 }, C = { path: "c", line: 3 };
 
@@ -25,6 +25,14 @@ test("push truncates forward, dedupes, caps", () => {
   for (let i = 0; i < 80; i++) push(h, { path: "x", line: i });
   assert.equal(h.back.length, 50);
   assert.equal(h.back[0].line, 30);
+});
+
+test("rename remaps both stacks", () => {
+  const h = newHistory();
+  push(h, A); push(h, B); back(h, C);
+  rename(h, "a", "z"); rename(h, "c", "y");
+  assert.deepEqual(h.back, [{ path: "z", line: 1 }]);
+  assert.deepEqual(h.fwd, [{ path: "y", line: 3 }]);
 });
 
 test("drop removes vanished notes", () => {

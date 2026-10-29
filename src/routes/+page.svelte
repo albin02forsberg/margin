@@ -458,6 +458,7 @@
       const here = navHere() ?? { path: "", line: 0 };
       const p = nav[dir](navHist, here);
       if (!p) return flash(dir === "back" ? "Nothing to go back to" : "Nothing to go forward to");
+      if (!tabs.some((t) => t.kind === "file" && t.path === p.path) && !(await call<boolean>("file_exists", { path: p.path }))) continue; // read_file gives "" for a missing note
       navigating = true;
       try { return await openFile(p.path, p.line); } catch { /* note gone: try the next */ } finally { navigating = false; }
     }
@@ -2073,6 +2074,7 @@
       mode = "normal";
       countWords(view.state);
     }
+    nav.rename(navHist, from, to);
     recent = recent.map((p) => (p === from ? to : p));
     store("recent", JSON.stringify(recent));
     if (pinned.includes(from)) savePinned(pinned.map((p) => (p === from ? to : p)));
@@ -3400,7 +3402,7 @@
 
   /** Drop notes that no longer exist from the recent and pinned lists and the closed tabs (other files are kept); with PATHS, only checks those. */
   async function pruneMissing(paths?: string[]) {
-    const ps = [...new Set([...recent, ...pinned, ...closed.flatMap((c) => ("path" in c ? [c.path] : []))])].filter((p) => p.startsWith(cfg.notes) && p.endsWith(".org") && p !== renaming && changed(p, paths));
+    const ps = [...new Set([...recent, ...pinned, ...closed.flatMap((c) => ("path" in c ? [c.path] : [])), ...navHist.back.map((h) => h.path), ...navHist.fwd.map((h) => h.path)])].filter((p) => p.startsWith(cfg.notes) && p.endsWith(".org") && p !== renaming && changed(p, paths));
     const have = await Promise.all(ps.map((p) => call<boolean>("file_exists", { path: p })));
     const gone = new Set(ps.filter((_, i) => !have[i]));
     if (gone.size) pruneRecent((p) => !gone.has(p));
