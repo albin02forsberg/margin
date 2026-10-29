@@ -16,7 +16,7 @@ fn clean(s: &str) -> String {
 }
 
 /// Files that go to the images folder (what Emacs org previews inline).
-fn is_image(name: &str) -> bool {
+pub fn is_image(name: &str) -> bool {
     let ext = name.rsplit_once('.').map_or("", |(_, e)| e).to_ascii_lowercase();
     ["png", "jpg", "jpeg", "gif", "webp", "svg"].contains(&ext.as_str())
 }
@@ -63,7 +63,7 @@ pub fn unused(notes: &[(&Path, &str)], files: &[PathBuf]) -> Vec<PathBuf> {
     files.iter().filter(|f| !used.contains(&normalize(f))).cloned().collect()
 }
 
-fn normalize(p: &Path) -> PathBuf {
+pub fn normalize(p: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for c in p.components() {
         match c {

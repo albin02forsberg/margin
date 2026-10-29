@@ -33,7 +33,14 @@ function write(path: string, text: string) {
 /** config.toml lines on top of setup.ts's. */
 const config = [`templates = []`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`];
 
-function fixtures({ notes, data }: Dirs) {
+/** A small Markdown vault outside the notes folder, for the import preview (#900). */
+let vault = "";
+
+function fixtures({ root, notes, data }: Dirs) {
+  vault = join(root, "Obsidian vault");
+  write(join(vault, "Garden.md"), "---\ntags: [home]\n---\n# Garden\n- [ ] Plant tulips, see [[Bulbs]]\n![](img/bed.png)\n");
+  write(join(vault, "plants/Bulbs.md"), "Order from the **spring** catalogue.\n");
+  write(join(vault, "Reading.md"), "## Next\n- *Braiding Sweetgrass*\n");
   write(join(notes, "orchard.org"), `
 :PROPERTIES:
 :ID: orchard
@@ -291,6 +298,13 @@ async function pngs() {
   await browser.keys(Key.Enter);
   await find(".picker label span", "Replace “Harbor” with “Harbour”");
   await shot("replace");
+  await browser.keys(Key.Escape);
+
+  await command("Notes: import a Markdown"); // the preview only: Esc writes nothing
+  await type(vault);
+  await browser.keys(Key.Enter);
+  await find(".picker label span", "Import 3 notes");
+  await shot("md-import");
   await browser.keys(Key.Escape);
 
   await open("Harbor app", "harbor.org");

@@ -8,6 +8,7 @@ mod export;
 mod ics;
 mod ledger;
 mod media;
+mod mdimport;
 #[cfg(desktop)]
 mod idle;
 #[cfg(target_os = "linux")]
@@ -534,6 +535,14 @@ fn attach_in(
             format!("{}: {e}", dst.display())
         });
     }
+}
+
+/// Import the Markdown/Obsidian folder DIR as org notes under `imported/<name>/` (#900); DRY only reports.
+#[tauri::command]
+fn md_import(s: State<App>, dir: String, dry: bool) -> R<mdimport::Summary> {
+    let (c, dir) = (s.cfg(), config::expand(dir.trim()));
+    mdimport::source_ok(&dir, &[c.notes(), c.data(), s.cfg_path.parent().unwrap().to_path_buf()])?;
+    mdimport::import(&dir, &c.notes(), &c.attachments_dir, &c.images_dir, dry)
 }
 
 /// Files under ROOT, skipping `.trash`.
@@ -2988,7 +2997,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             watcher::gnome_extension, watcher::screen_recording, remind::remind_snooze,
-            config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, unused_attachments, trash_attachments,
+            config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, md_import, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,

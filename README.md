@@ -1025,6 +1025,20 @@ notes and links jumping to the right section. Overwriting the folder moves pages
 (`.html` / `.md`) from an earlier export that are no longer included into its
 `old/` subfolder; other files in it stay.
 
+### Importing Markdown
+
+**Notes: import a Markdown/Obsidian folder (preview first)…** asks for a folder (an absolute
+path, e.g. an Obsidian vault; not one inside or containing the notes, data or config folder),
+shows how many notes, links and files it would bring in, and on *Import* writes each `.md` file
+as an org note under `imported/<folder name>/` in the notes folder, keeping the subfolders
+(a second import goes to `imported/<name>-2/`, so nothing is ever overwritten). The source is
+only read; hidden folders such as `.obsidian/` are skipped. Headings, lists and checkboxes,
+`**bold**`/`*italic*`/`~~strike~~`/`` `code` ``, fenced code (as `#+BEGIN_SRC lang`), tables,
+`[text](url)` links and front-matter `title:`/`tags:` (as `#+title:`/`#+FILETAGS:`) are
+converted; a lone leading `# Title` becomes the title. `[[Wiki links]]`, `[[Note|alias]]` and
+links to `.md` files point to the imported note when it's in the same import, else stay as
+`[[Wiki links]]`; images and `![[embeds]]` are copied where pasted attachments go.
+
 ## Reminders
 
 Timed entries (`SCHEDULED: <… 14:00>`, deadlines with a time, appointments)

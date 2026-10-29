@@ -2124,3 +2124,35 @@ describe("Replace text in all notes", () => {
     await fileMatches(join(d.notes, "a.org"), (s) => s === a, "undo didn't put the note back");
   });
 });
+
+describe("Import a Markdown folder", () => {
+  let d: Dirs, vault: string;
+  const home = "# Home\nSee [[Deep]] and **bold**\n";
+  before(async () => {
+    d = await launch({ files: ({ root }) => {
+      vault = join(root, "vault");
+      mkdirSync(join(vault, "sub"), { recursive: true });
+      writeFileSync(join(vault, "Home.md"), home);
+      writeFileSync(join(vault, "sub", "Deep.md"), "Back to [[Home]]\n");
+    } });
+    await find(".agenda h1", "Today");
+  });
+  after(close, { timeout: 30_000 });
+
+  it("previews, imports into imported/<name>/, leaves the source alone, and a re-run gets -2 (#900)", async () => {
+    for (const target of ["vault", "vault-2"]) {
+      await palette("Notes: import a Markdown/Obsidian folder");
+      await answer("Markdown folder to import", vault);
+      await find(".picker label span", "Import 2 notes");
+      assert.ok(!existsSync(join(d.notes, "imported", target)), "the preview wrote notes");
+      await answer("Import 2 notes", "Import");
+      await find(".picker label span", `2 notes imported into ${join(d.notes, "imported", target)}`);
+      await browser.keys(Key.Escape);
+      await noPicker();
+      await fileMatches(join(d.notes, "imported", target, "Home.org"), (s) => s === "#+title: Home\nSee [[file:sub/Deep.org][Deep]] and *bold*\n", "Home.md not converted");
+      await fileMatches(join(d.notes, "imported", target, "sub", "Deep.org"), (s) => s.includes("[[file:../Home.org][Home]]"), "wiki link not relative to the new note");
+    }
+    assert.equal(read(join(vault, "Home.md")), home, "the source changed");
+    assert.deepEqual(readdirSync(vault).sort(), ["Home.md", "sub"]);
+  });
+});
