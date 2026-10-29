@@ -612,6 +612,22 @@ pub fn rhythm(spans: &[(NaiveDateTime, NaiveDateTime, &str)], from: NaiveDate, t
     Rhythm { minutes, peak, evening: if all > 0.0 { late / all } else { 0.0 }, hours: all / 60.0, pieces }
 }
 
+/// Clocked seconds per local date over FROM..=TO (#916): SPANS (`project_spans`) clipped to the range
+/// and split at midnight; days without time are absent.
+pub fn daily(spans: &[(NaiveDateTime, NaiveDateTime, &str)], from: NaiveDate, to: NaiveDate) -> BTreeMap<NaiveDate, i64> {
+    let (lo, hi) = (from.and_time(NaiveTime::MIN), (to + Duration::days(1)).and_time(NaiveTime::MIN));
+    let mut out = BTreeMap::new();
+    for &(s, e, _) in spans {
+        let (mut t, end) = (s.max(lo), e.min(hi));
+        while t < end {
+            let next = (t.date() + Duration::days(1)).and_time(NaiveTime::MIN).min(end);
+            *out.entry(t.date()).or_insert(0) += (next - t).num_seconds();
+            t = next;
+        }
+    }
+    out
+}
+
 pub fn parse_events(text: &str) -> Vec<(usize, Event)> {
     text.lines().enumerate().filter_map(|(i, l)| serde_json::from_str(l).ok().map(|e| (i, e))).collect()
 }
@@ -2260,6 +2276,20 @@ mod tests {
         // Empty: no peak, no division by zero; a range with no Mondays averages Monday to 0.
         let none = rhythm(&[], d("2026-10-19"), d("2026-10-25"), None);
         assert_eq!((none.peak, none.evening, none.hours), (None, 0.0, 0.0));
+    }
+
+    #[test]
+    fn daily_splits_at_midnight_breaks_and_range() {
+        let i = |t: &str| Event::In { t: dt(t), project: "A".into(), task: String::new() };
+        let (o, b) = (|t: &str| Event::Out { t: dt(t), note: String::new() }, |t: &str| Event::Break { t: dt(t) });
+        // 09:00-12:00 with a 10:00-10:30 break; 23:00 to 01:00 over midnight into the new year; a running clock.
+        let ev: Vec<(usize, Event)> = [i("2025-12-30 09:00"), b("2025-12-30 10:00"), i("2025-12-30 10:30"), o("2025-12-30 12:00"), i("2025-12-31 23:00"), o("2026-01-01 01:00"), i("2026-01-02 08:00")].into_iter().enumerate().collect();
+        let sp = project_spans(&ev, dt("2026-01-02 08:45"));
+        let all = daily(&sp, d("2025-01-01"), d("2026-12-31"));
+        assert_eq!(all.into_iter().map(|(k, v)| (k.to_string(), v / 60)).collect::<Vec<_>>(), [("2025-12-30".into(), 150), ("2025-12-31".into(), 60), ("2026-01-01".into(), 60), ("2026-01-02".into(), 45)]);
+        // The range clips the midnight span to its new-year half.
+        assert_eq!(daily(&sp, d("2026-01-01"), d("2026-01-01")), BTreeMap::from([(d("2026-01-01"), 3600)]));
+        assert!(daily(&[], d("2026-01-01"), d("2026-12-31")).is_empty());
     }
 
     #[test]

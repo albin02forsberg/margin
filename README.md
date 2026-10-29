@@ -47,6 +47,12 @@ the editor has vim keys.
   clocked in that hour on that weekday (breaks left out, sessions over midnight
   split), with the peak hour, the share after 17:00 and the total. `h/j/k/l`
   move between cells, and the sessions behind the selected cell are listed below.
+  `Space t Y` (or *Activity calendar* in the Time view) is a year of clocked
+  hours as a GitHub-style grid (weeks as columns, Monday first; 5 shades by
+  quartile), with the total, active days, the longest streak and the current
+  one (streaks carry over New Year). `h/l` move a week, `j/k` a day, `[`/`]`
+  change year; the selected day's hours show below, and `Enter` opens that
+  day's timeline.
 - **Window title** shows the active tab (`• note — Margin` when unsaved), so
   the taskbar and window switcher tell Margin windows apart.
 - **Stays in sync** with Emacs, git or any sync tool editing the same files,
