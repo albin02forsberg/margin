@@ -1687,20 +1687,19 @@ describe("Note navigation", () => {
 
   it("[[, @ and :tag complete as you type; Esc closes the popup and stays in insert mode (#899)", async () => {
     const popup = ".cm-tooltip-autocomplete li";
+    const accept = async () => (await browser.pause(150), browser.keys(Key.Enter)); // CodeMirror ignores Enter for 75 ms after the popup opens
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "Writer");
     await find(".status .file", "writer.org");
     await browser.keys(Key.Escape);
     await type("Go");
     await find(".status .mode", "INSERT");
-    await browser.execute(() => { const w = window as any; w.__errs = []; const o = console.error; console.error = (...a: unknown[]) => { w.__errs.push(a.map(String).join(" ")); o(...a); }; addEventListener("error", (e) => w.__errs.push(String(e.message))); });
     await type("See [[Targ");
     await find(popup, "Target Note");
-    await browser.keys(Key.Enter);
-    console.log("DIAG1", JSON.stringify(await browser.execute(() => ({ doc: (document.querySelector(".cm-content") as HTMLElement)?.innerText, errs: (window as any).__errs }))));
+    await accept();
     await type(" ask @an");
     await find(popup, "ann");
-    await browser.keys(Key.Enter);
+    await accept();
     await type(" [[Targ");
     await find(popup, "Target Note");
     await browser.keys(Key.Escape);
@@ -1709,10 +1708,8 @@ describe("Note navigation", () => {
     await type("x"); // still inserting: in normal mode x would delete a character
     await browser.keys(Key.Enter);
     await type("* Plan :wo");
-    await browser.pause(1500);
-    console.log("DIAG", JSON.stringify(await browser.execute(() => ({ doc: document.querySelector(".cm-content")?.textContent, tip: document.querySelector(".cm-tooltip")?.textContent, errs: (window as any).__errs, doc2: (document.querySelector(".cm-content") as HTMLElement)?.innerText, mode: document.querySelector(".status .mode")?.textContent }))));
     await find(popup, "work");
-    await browser.keys(Key.Enter);
+    await accept();
     await browser.keys(Key.Escape);
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(join(d.notes, "sub", "writer.org"), (s) => s.includes("See [[file:../other/target.org][Target Note]] ask @ann [[Targx\n* Plan :work:"), "completions not inserted");
