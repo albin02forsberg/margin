@@ -1407,7 +1407,7 @@ fn not_a_note(c: &Config) -> impl Fn(&Path) -> bool {
 fn notes_orphans(s: State<App>) -> Vec<(PathBuf, String)> {
     let mut v: Vec<_> = notes::orphans(&s.files(), not_a_note(&s.cfg()))
         .into_iter()
-        .map(|f| (std::fs::metadata(&f.path).and_then(|m| m.modified()).ok(), f.path.clone(), f.title.clone()))
+        .map(|f| (f.mtime, f.path.clone(), f.title.clone()))
         .collect();
     v.sort_by_key(|a| std::cmp::Reverse(a.0));
     v.into_iter().map(|(_, p, t)| (p, t)).collect()
@@ -1432,7 +1432,7 @@ fn recent_by_mtime(items: Vec<(PathBuf, String, u64)>, root: &Path, limit: usize
 #[tauri::command(async)]
 fn notes_recent(s: State<App>, limit: Option<usize>) -> Vec<(PathBuf, String, u64)> {
     let items = s.files().iter().filter_map(|f| {
-        let t = std::fs::metadata(&f.path).and_then(|m| m.modified()).ok()?.duration_since(std::time::UNIX_EPOCH).ok()?;
+        let t = f.mtime?.duration_since(std::time::UNIX_EPOCH).ok()?;
         Some((f.path.clone(), f.title.clone(), t.as_secs()))
     }).collect();
     recent_by_mtime(items, &s.cfg().notes(), limit.unwrap_or(50))
@@ -1451,7 +1451,7 @@ fn stale_by_mtime(items: Vec<(PathBuf, String, u64)>, skip: impl Fn(&Path) -> bo
 #[tauri::command(async)]
 fn notes_stale(s: State<App>, min_age_days: u64, limit: Option<usize>) -> Vec<(PathBuf, String, u64)> {
     let items = s.files().iter().filter_map(|f| {
-        let t = std::fs::metadata(&f.path).and_then(|m| m.modified()).ok()?.duration_since(std::time::UNIX_EPOCH).ok()?;
+        let t = f.mtime?.duration_since(std::time::UNIX_EPOCH).ok()?;
         Some((f.path.clone(), f.title.clone(), t.as_secs()))
     }).collect();
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
@@ -2233,11 +2233,11 @@ struct ActivityCounts { closed: DayCounts, notes: DayCounts, habits: DayCounts }
 
 /// Tally FILES (any under `.trash` skipped): CLOSED stamps, notes by last-modified date (MTIME; mtime only
 /// knows the last touch) and habit completions (once per habit per day).
-fn activity_tally(files: &[Arc<org::OrgFile>], mtime: impl Fn(&Path) -> Option<NaiveDate>, from: NaiveDate, to: NaiveDate) -> ActivityCounts {
+fn activity_tally(files: &[Arc<org::OrgFile>], mtime: impl Fn(&org::OrgFile) -> Option<NaiveDate>, from: NaiveDate, to: NaiveDate) -> ActivityCounts {
     let mut c = ActivityCounts::default();
     let add = |m: &mut DayCounts, d: NaiveDate| if (from..=to).contains(&d) { *m.entry(d).or_default() += 1 };
     for f in files.iter().filter(|f| !f.path.components().any(|c| c.as_os_str() == ".trash")) {
-        if let Some(d) = mtime(&f.path) { add(&mut c.notes, d) }
+        if let Some(d) = mtime(f) { add(&mut c.notes, d) }
         for h in &f.headlines {
             if let Some(t) = h.closed { add(&mut c.closed, t.date()) }
             if h.habit {
@@ -2256,7 +2256,7 @@ fn activity_tally(files: &[Arc<org::OrgFile>], mtime: impl Fn(&Path) -> Option<N
 fn activity_counts(s: State<App>, year: i32) -> R<ActivityCounts> {
     let (from, to) = (NaiveDate::from_ymd_opt(year - 1, 1, 1), NaiveDate::from_ymd_opt(year, 12, 31));
     let (Some(from), Some(to)) = (from, to) else { return Err(format!("bad year: {year}")) };
-    let mtime = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok().map(|t| chrono::DateTime::<chrono::Local>::from(t).date_naive());
+    let mtime = |f: &org::OrgFile| f.mtime.map(|t| chrono::DateTime::<chrono::Local>::from(t).date_naive());
     Ok(activity_tally(&s.files(), mtime, from, to))
 }
 
