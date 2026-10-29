@@ -1038,7 +1038,9 @@ only read; hidden folders such as `.obsidian/` are skipped. Headings, lists and 
 `**bold**`/`*italic*`/`~~strike~~`/`` `code` ``, fenced code (as `#+BEGIN_SRC lang`), tables,
 `[text](url)` links and front-matter `title:`/`tags:` (as `#+title:`/`#+FILETAGS:`) are
 converted; a lone leading `# Title` becomes the title. `[[Wiki links]]`, `[[Note|alias]]` and
-links to `.md` files point to the imported note when it's in the same import, else stay as
+links to `.md` files point to the imported note when it's in the same import (a folder in
+the link, `[[work/Meeting]]`, picks that folder's note when several share the name; a bare
+name takes the first in sorted order), else stay as
 `[[Wiki links]]`; images and `![[embeds]]` are copied where pasted attachments go.
 
 ## Reminders

@@ -10,9 +10,9 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::LazyLock;
 
 /// What the converter asks the importer to resolve: a wiki/`.md` link target (a note name
-/// without `.md`) or an embedded file (as written, relative to the Markdown file).
+/// without `.md`, plus the folder part as written, e.g. `work`) or an embedded file (as written, relative to the Markdown file).
 pub enum Ref<'a> {
-    Wiki(&'a str),
+    Wiki(&'a str, &'a str),
     File(&'a str),
 }
 
@@ -55,6 +55,11 @@ fn wiki_target(t: &str) -> (&str, String) {
     (name.trim(), search)
 }
 
+/// The folder part of a link target `folder/Note.md#Heading` (`folder`, or "").
+fn wiki_dir(t: &str) -> &str {
+    t.split('#').next().unwrap_or(t).rsplit_once('/').map_or("", |x| x.0)
+}
+
 /// Inline Markdown (links, embeds, emphasis, code) as org; N counts the links rewritten.
 fn inline(s: &str, r: &mut dyn FnMut(Ref) -> Option<String>, n: &mut usize) -> String {
     INLINE
@@ -66,7 +71,7 @@ fn inline(s: &str, r: &mut dyn FnMut(Ref) -> Option<String>, n: &mut usize) -> S
             if let Some(e) = g("emb") {
                 let (name, search) = wiki_target(e);
                 let file = Path::new(name).extension().is_some_and(|x| !x.eq_ignore_ascii_case("md"));
-                let to = if file { r(Ref::File(e.trim())) } else { r(Ref::Wiki(name)).map(|t| format!("{t}{search}")) };
+                let to = if file { r(Ref::File(e.trim())) } else { r(Ref::Wiki(name, wiki_dir(e))).map(|t| format!("{t}{search}")) };
                 return match to {
                     Some(t) => {
                         *n += 1;
@@ -89,7 +94,7 @@ fn inline(s: &str, r: &mut dyn FnMut(Ref) -> Option<String>, n: &mut usize) -> S
                     *n += 1;
                     return format!("[[{}][{desc}]]", &search[2..]);
                 }
-                return match r(Ref::Wiki(name)) {
+                return match r(Ref::Wiki(name, wiki_dir(w))) {
                     Some(t) => {
                         *n += 1;
                         format!("[[file:{t}{search}][{desc}]]")
@@ -107,7 +112,7 @@ fn inline(s: &str, r: &mut dyn FnMut(Ref) -> Option<String>, n: &mut usize) -> S
                 let path = decode(url.split('#').next().unwrap_or(url));
                 let to = if path.to_ascii_lowercase().ends_with(".md") {
                     let (name, search) = wiki_target(&path); // `#slug` anchors don't name an org heading
-                    r(Ref::Wiki(name)).map(|t| format!("{t}{search}"))
+                    r(Ref::Wiki(name, wiki_dir(&path))).map(|t| format!("{t}{search}"))
                 } else {
                     r(Ref::File(&path))
                 };
@@ -254,6 +259,11 @@ pub fn source_ok(p: &Path, forbidden: &[PathBuf]) -> Result<(), String> {
     Ok(())
 }
 
+/// A source-relative path as a lowercase `/`-separated key without extension.
+fn path_key(p: &Path) -> String {
+    p.with_extension("").components().map(|c| c.as_os_str().to_string_lossy().to_lowercase()).collect::<Vec<_>>().join("/")
+}
+
 /// TO relative to the folder FROM, `/`-separated.
 fn rel(from: &Path, to: &Path) -> String {
     let (a, b): (Vec<_>, Vec<_>) = (from.components().collect(), to.components().collect());
@@ -315,6 +325,11 @@ pub fn import(src: &Path, notes: &Path, attachments: &str, images: &str, dry: bo
             others.entry(lower(p, Path::file_name)).or_insert_with(|| p.clone());
         }
     }
+    // Notes by lowercased source path without extension (sorted, first wins), for `[[work/Meeting]]`.
+    let mut by_path: Vec<(String, PathBuf)> = vec![];
+    for p in all.iter().filter(|p| is_md(p)) {
+        by_path.push((path_key(p.strip_prefix(src).unwrap()), dest(p)));
+    }
     let mut s = Summary { target: target.clone(), ..Default::default() };
     let mut copied: HashMap<(PathBuf, PathBuf), String> = HashMap::new();
     let created = std::cell::RefCell::new(Vec::<PathBuf>::new()); // attachments written by this run
@@ -330,7 +345,18 @@ pub fn import(src: &Path, notes: &Path, attachments: &str, images: &str, dry: bo
         let mut files = 0;
         let mut err = None;
         let (org, links) = md_to_org(&text, &p.file_stem().unwrap().to_string_lossy(), &mut |r| match r {
-            Ref::Wiki(n) => stems.get(&n.to_lowercase()).map(|t| rel(&dir, t)),
+            Ref::Wiki(n, d) => {
+                let nl = n.to_lowercase();
+                let by_folder = || {
+                    let d = d.trim_matches('/');
+                    // relative to the linking note, else a suffix of a source path (`work/Meeting` ~ `x/work/Meeting`)
+                    let near = crate::attach::normalize(&p.parent().unwrap().join(d).join(&nl));
+                    let near = near.strip_prefix(src).ok().map(path_key);
+                    let want = format!("{}/{nl}", d.to_lowercase());
+                    by_path.iter().find(|(k, _)| near.as_ref() == Some(k)).or_else(|| by_path.iter().find(|(k, _)| *k == want || k.ends_with(&format!("/{want}")))).map(|x| &x.1)
+                };
+                (if d.is_empty() { None } else { by_folder() }).or_else(|| stems.get(&nl)).map(|t| rel(&dir, t))
+            }
             Ref::File(f) => {
                 let near = crate::attach::normalize(&p.parent().unwrap().join(f));
                 let from = if near.starts_with(src) && near.is_file() { near } else { others.get(&f.rsplit('/').next().unwrap_or(f).to_lowercase())?.clone() };
@@ -381,7 +407,7 @@ mod tests {
     fn conv(md: &str) -> String {
         let known = ["Other", "deep note"];
         md_to_org(md, "stem", &mut |r| match r {
-            Ref::Wiki(n) => known.iter().find(|k| k.eq_ignore_ascii_case(n)).map(|k| format!("{k}.org")),
+            Ref::Wiki(n, _) => known.iter().find(|k| k.eq_ignore_ascii_case(n)).map(|k| format!("{k}.org")),
             Ref::File(f) => (f == "pic.png").then(|| "images/pic.png".into()),
         })
         .0
@@ -518,6 +544,30 @@ mod tests {
         assert!(!notes2.join("imported/W").exists());
         assert!(!notes2.join("att/a").exists());
         assert!(notes2.join("att/b").is_file());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn folder_qualified_links_pick_the_right_note() {
+        let root = std::env::temp_dir().join(format!("margin-mdfolder-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (src, notes) = (root.join("V"), root.join("notes"));
+        for (p, b) in [
+            ("work/Meeting.md", "w"),
+            ("home/Meeting.md", "h"),
+            ("x/index.md", "[[Work/meeting]] [[home/Meeting#Top]] [m](../home/Meeting.md) [[Meeting]]"),
+        ] {
+            std::fs::create_dir_all(src.join(p).parent().unwrap()).unwrap();
+            std::fs::write(src.join(p), b).unwrap();
+        }
+        std::fs::create_dir_all(&notes).unwrap();
+        let mut out = vec![];
+        for _ in 0..2 {
+            let s = import(&src, &notes, "att", "", false).unwrap();
+            out.push(std::fs::read_to_string(s.target.join("x/index.org")).unwrap());
+        }
+        assert_eq!(out[0], out[1]);
+        assert_eq!(out[0], "#+title: index\n[[file:../work/Meeting.org][Work/meeting]] [[file:../home/Meeting.org::*Top][home/Meeting#Top]] [[file:../home/Meeting.org][m]] [[file:../home/Meeting.org][Meeting]]\n");
         std::fs::remove_dir_all(&root).unwrap();
     }
 }
