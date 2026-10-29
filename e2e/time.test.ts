@@ -270,7 +270,9 @@ describe("Time tracking", () => {
       await browser.keys("r");
       await find(".activity header .dim", "notes edited");
       await find(".activity footer", "a note counts on its last edit only");
-      await browser.keys(["r", "r"]);
+      await browser.keys("r"); // one key per step: a burst of r's lost one in CI
+      await find(".activity header .dim", "habits done");
+      await browser.keys("r");
       await find(".activity header .dim", "clocked hours");
       if (wk.slice(0, 4) === today.slice(0, 4)) { // early January: last week is in the other year
         await find(".activity .summary", "1.5 h in total · 1 active day · longest streak 1 d · current streak 0 d");
