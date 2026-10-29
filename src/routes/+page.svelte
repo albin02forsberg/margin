@@ -2237,6 +2237,20 @@
     if (path) flash(await call("ledger_csv", { start, end, path }));
   }
 
+  /** A Markdown/Obsidian folder imported as org notes under `imported/<name>/` (#900): counts first, source only read. */
+  async function mdImport() {
+    const dir = await ask("Markdown folder to import", "", "absolute path to a folder of .md notes (e.g. an Obsidian vault)");
+    if (!dir?.trim()) return;
+    type Summary = { notes: string[]; links: number; files: number; skipped: string[]; target: string };
+    const p = await call<Summary>("md_import", { dir, dry: true });
+    if (!p.notes.length) return flash(`No Markdown notes in ${dir}.`);
+    const body = [...p.notes.slice(0, 30), p.notes.length > 30 ? "…" : "", ...(p.skipped.length ? ["", "Skipped (not text):", ...p.skipped] : [])].join("\n");
+    const go = await pick({ prompt: `Import ${p.notes.length} note${p.notes.length === 1 ? "" : "s"} into ${p.target}? (${p.links} links rewritten, ${p.files} files copied, ${p.skipped.length} skipped; the folder is only read)`, body, items: [{ label: "Import", value: "go" }] });
+    if (go !== "go") return;
+    const r = await call<Summary>("md_import", { dir, dry: false });
+    if ((await pick({ prompt: `✓ ${r.notes.length} notes imported into ${r.target}`, body: r.notes.join("\n"), items: [{ label: "Show in file manager", value: "show" }] })) === "show") revealItemInDir(r.target);
+  }
+
   /** A bank CSV's new rows proposed in the inbox as `* TODO Review ledger import` headings (#791), after a preview
    *  whose column mapping can be changed. */
   async function ledgerImport() {
@@ -3020,6 +3034,7 @@
     { label: "Notes: browse by tag…", leader: "n T", run: browseTags },
     { label: "Notes: rename or merge a tag (notes and saved views)…", run: () => renameTag() },
     { label: "Notes: replace text in all notes (preview first)…", leader: "n S", run: replaceInNotes },
+    { label: "Notes: import a Markdown/Obsidian folder (preview first)…", run: mdImport },
     { label: "Tags: undo a rename or text replace (notes put back)…", run: undoTagRename },
     { label: "People: a person's open tasks and mentions (@name)…", leader: "n @", run: personView },
     { label: "Flashcards: review due :drill: headings", leader: "n d", run: reviewDrill },
