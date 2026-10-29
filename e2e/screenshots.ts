@@ -273,6 +273,10 @@ async function pngs() {
   await shot("graph");
   await command("Show note graph"); // toggle off again
 
+  await command("View: toggle outline");
+  await shot("outline");
+  await command("View: toggle outline");
+
   await browser.keys([Key.Ctrl, "1"]);
   await browser.$(".agenda h1").waitForDisplayed();
   await shot("today");

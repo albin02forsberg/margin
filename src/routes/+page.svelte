@@ -45,6 +45,8 @@
   import Habits from "$lib/Habits.svelte";
   import Settings from "$lib/Settings.svelte";
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
+  import Outline from "$lib/Outline.svelte";
+  import { buildOutline, headingAt, type OutlineItem } from "$lib/outline";
   import { chatContext } from "$lib/chatctx";
   import { bugReportUrl, isError, osName } from "$lib/bugreport";
   import { notesText, notesTitle, notesToShow, type Notes } from "$lib/whatsnew";
@@ -220,6 +222,27 @@
     const r = s.selection.main;
     words = wordsLabel(docWords, r.empty ? undefined : wordCount(s.sliceDoc(r.from, r.to), org));
     narrowed = ed.narrowedTo(s);
+    syncOutline(s, docChanged);
+  }
+
+  /** Outline panel (#915): headings of the focused note, rebuilt 200 ms after an edit (at once for another tab); the cursor only moves the highlight. */
+  let showOutline = $state(stored("outline", "0") === "1" && !matchMedia("(max-width: 999px)").matches); // never a drawer over the note at start
+  let outline = $state.raw<OutlineItem[]>([]);
+  let outlineCursor = $state(-1);
+  let outlineKey: string | undefined;
+  let outlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const outlineActive = $derived(outline[headingAt(outline, outlineCursor)]?.line ?? -1);
+  function syncOutline(s: EditorState, docChanged = true) {
+    if (!showOutline) return;
+    outlineCursor = s.doc.lineAt(s.selection.main.head).number - 1;
+    const key = tabs[cur]?.key, build = () => (outline = buildOutline(s.doc.toString(), kw().todo ?? [], kw().done ?? []));
+    clearTimeout(outlineTimer);
+    if (key !== outlineKey) { outlineKey = key; build(); } else if (docChanged) outlineTimer = setTimeout(build, 200);
+  }
+  function toggleOutline() {
+    store("outline", (showOutline = !showOutline) ? "1" : "0");
+    outlineKey = undefined;
+    if (showOutline && isText(tab)) syncOutline(view.state);
   }
 
   function newState(key: string, text: string, path?: string, readOnly = false) {
@@ -3185,6 +3208,7 @@
       if (!ed.narrowToggle(view)) return flash("Put the cursor under a heading of an org note first.");
       countWords(view.state, false);
     } },
+    { label: "View: toggle outline (headings of this note)", leader: "v o", run: toggleOutline },
     { label: "View: zen mode (hide top bar and status bar)", leader: "v z", run: () => { zen = !zen; if (zen) closeDrawer(); } },
     { label: "Toggle monospace font for notes", leader: "v m", run: () => { monoFont = !monoFont; store("mono-font", monoFont ? "1" : "0"); } },
     { label: "View: reset zoom (Ctrl/Cmd+= / - / 0 zoom in / out / reset)", leader: "v 0", run: resetZoom },
@@ -3270,8 +3294,8 @@
   }
 
   /** Under 1000 px the graph / links panels are drawers over the pane (see the CSS); Esc outside the editor or a click on the pane closes them. */
-  const drawerOpen = () => (showGraph || showBacklinks || showChat || !!peek) && matchMedia("(max-width: 999px)").matches;
-  const closeDrawer = () => { showGraph = showBacklinks = showChat = false; peek = null; };
+  const drawerOpen = () => (showGraph || showBacklinks || showChat || showOutline || !!peek) && matchMedia("(max-width: 999px)").matches;
+  const closeDrawer = () => { showGraph = showBacklinks = showChat = showOutline = false; peek = null; };
 
   function onKey(e: KeyboardEvent) {
     if (picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen() || tableDialog?.isOpen() || formulaDialog?.isOpen() || drill?.isOpen() || metrics?.isOpen() || rhythm?.isOpen()) return;
@@ -3675,6 +3699,12 @@
       </div>
       <!-- split view (#874): the right pane's editor; hidden, not removed, so its view survives closing the split -->
       <div class="editor split" bind:this={splitEl} style:display={key2 != null ? "block" : "none"} onpointerdowncapture={() => act(() => focusPane(1, false))} onfocusin={() => act(() => focusPane(1, false))}></div>
+      {#if showOutline}
+        <aside class="links outline">
+          <h3>Outline <small>{tab?.kind === "file" ? outline.length : 0}</small></h3>
+          {#if tab?.kind === "file"}<Outline items={outline} active={outlineActive} jump={(l) => act(() => openFile(tab.path!, l))} />{:else}<p>Open a note to see its outline.</p>{/if}
+        </aside>
+      {/if}
       {#if showGraph}
         <aside class="links">
           <h3>Graph <small>{graph?.nodes.length ?? 0}</small></h3>
