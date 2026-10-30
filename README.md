@@ -980,9 +980,9 @@ note (the chat says so instead of offering it) or for its tasks.
 
 ### Claude and other MCP clients
 
-`margin --mcp` runs a small read-only [MCP](https://modelcontextprotocol.io) server on
+`margin --mcp` runs a small [MCP](https://modelcontextprotocol.io) server on
 stdin/stdout, so Claude Code or Claude Desktop can look things up in your notes. It doesn't start
-the app (or need it running) and never writes anything. **Settings → AI chat** shows the line to
+the app (or need it running) and is read-only unless you turn on editing (below). **Settings → AI chat** shows the line to
 register it with Claude Code, `claude mcp add margin -- "<path to Margin's binary>" --mcp`, with
 the path filled in (the AppImage itself on Linux) and a Copy button; for Claude Desktop add a server with that command and the argument
 `--mcp`. It works on Windows too, where Claude starts it with pipes. Tools:
@@ -995,6 +995,22 @@ the path filled in (the AppImage itself on Linux) and a Copy button; for Claude 
 
 It reads `config.toml` and the notes fresh on each call, skips the templates folder, and
 `ai_exclude` applies: excluded notes and their tasks are never listed, and reading one is refused.
+
+**Let Claude (MCP) edit notes** (`mcp_write`, Settings → AI chat, off by default) adds four tools
+that change notes the way the app does:
+
+- `create_note` (title, body, folder): a new org-roam note in the notes folder or a subfolder of it.
+- `append_to_note` (path or title, text, heading): org text at the end, or under the first heading
+  with that title (created if missing).
+- `add_task` (path or title, task, state, heading): a `TODO` (or STATE) heading, placed the same way.
+- `set_task_state` (path or title, heading or line, state): changes one heading's keyword, stamping
+  `CLOSED:` as the app does with `log_done`; a title that matches several headings is refused with
+  their lines.
+
+Each edit reads the file fresh and is refused if it changed in between (or since the text passed
+as `expect`), so it never overwrites an edit from the app; the app reloads the note, or offers its
+merge when it's open with unsaved changes. Excluded notes and paths outside the notes folder are
+never written. Clocking in and out isn't offered.
 
 ## Ledger
 

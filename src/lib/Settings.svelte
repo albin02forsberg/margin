@@ -213,7 +213,7 @@
           <div class="field mcp">
             <span>Claude (MCP)</span>
             <code>{mcp}</code>
-            <small>Lets Claude Code search and read your notes, tasks and time log (read-only; <code>ai_exclude</code> applies). Run this in a terminal; for Claude Desktop add a server with this command and the argument <code>--mcp</code>. <button type="button" class="link" onclick={() => navigator.clipboard.writeText(mcp)}>Copy</button></small>
+            <small>Lets Claude Code search and read your notes, tasks and time log (read-only unless <b>Let Claude (MCP) edit notes</b> is on; <code>ai_exclude</code> applies). Run this in a terminal; for Claude Desktop add a server with this command and the argument <code>--mcp</code>. <button type="button" class="link" onclick={() => navigator.clipboard.writeText(mcp)}>Copy</button></small>
           </div>
         {/if}
         {#if errors[g.name]}<p class="error">⚠ {errors[g.name]}</p>{/if}

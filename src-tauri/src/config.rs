@@ -92,6 +92,8 @@ pub struct Config {
     /// Notes the AI never sees (not retrieved, linked, sent as the open note, or read for tasks):
     /// case-insensitive substrings of their path below notes_dir.
     pub ai_exclude: Vec<String>,
+    /// Let `margin --mcp` create and edit notes and tasks (off: read-only).
+    pub mcp_write: bool,
     /// Reopen the last session's tabs on startup.
     pub restore_tabs: bool,
     /// Underline misspelled words in org notes (the webview's own spell checker).
@@ -248,6 +250,7 @@ impl Default for Config {
             ai_source_tasks: true,
             ai_source_time: true,
             ai_exclude: vec![],
+            mcp_write: false,
             restore_tabs: true,
             spellcheck: false,
             spellcheck_languages: vec![],
