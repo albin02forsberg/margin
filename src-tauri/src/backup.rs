@@ -222,6 +222,13 @@ fn prepare_repo(dir: &Path) {
 /// After a pull: put each profile's (`<data>/<profile>/timelog.jsonl`) unioned log back in
 /// time order and drop duplicate time off lines; returns the changed files (relative to DIR).
 /// Outside the backup lock, since a backup may run under the time-log lock.
+/// DIR's profile folders: the non-hidden ones holding a time log, leave log or projects file.
+fn profile_dirs(dir: &Path) -> Vec<PathBuf> {
+    let has = |p: &Path| ["timelog.jsonl", "leave.jsonl", "projects.toml"].iter().any(|f| p.join(f).is_file());
+    let visible = |p: &Path| !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.'));
+    std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir() && visible(p) && has(p)).collect()
+}
+
 fn normalize_logs(dir: &Path) -> Vec<String> {
     use crate::timeclock::Tc;
     let mut changed = vec![];
@@ -290,7 +297,7 @@ fn sync_repo(dir: &Path) -> Result<Option<String>, String> {
     if incoming != "0" {
         // Time-log lock first (as in `normalize_logs`), so no clock event lands between the commit
         // and the rebase; the fetch above and the push below stay outside both locks.
-        crate::timeclock::locked(|| -> Result<(), String> {
+        crate::timeclock::locked_dirs(&profile_dirs(dir), || -> Result<(), String> {
             let _lock = BACKUP.lock().unwrap_or_else(|e| e.into_inner());
             // Local changes go into a commit first (no autostash: a failed re-apply would leave
             // conflict markers in the tree), so a clash is an ordinary, abortable rebase conflict.
@@ -692,6 +699,27 @@ mod tests {
         });
         assert_eq!(res, Ok(Some("pulled 1 commit(s); push succeeded.".into())));
         assert_eq!(git(&b, &["show", "HEAD:work/timelog.jsonl"]).1, EVENT);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rebase_waits_for_a_profile_file_lock() {
+        let (root, a, b) = two_clones();
+        commit(&a, "a.txt", "from a\n");
+        assert!(git(&a, &["push"]).0);
+        std::fs::create_dir_all(b.join("work")).unwrap();
+        std::fs::write(b.join("work/timelog.jsonl"), "").unwrap();
+        assert_eq!(profile_dirs(&b), vec![b.join("work")]);
+        // A second process: hold the OS lock without the in-process mutex.
+        let held = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(b.join("work/.timelog.lock")).unwrap();
+        held.lock().unwrap();
+        std::thread::scope(|t| {
+            let h = t.spawn(|| sync_repo(&b));
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            assert!(!h.is_finished(), "the sync must wait for the profile's file lock");
+            drop(held);
+            assert!(h.join().unwrap().is_ok());
+        });
         let _ = std::fs::remove_dir_all(&root);
     }
 

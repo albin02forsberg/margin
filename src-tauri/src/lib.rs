@@ -2147,7 +2147,7 @@ fn tc_leave_codes(s: State<App>) -> R<timeclock::LeaveCodes> {
 
 #[tauri::command]
 fn tc_save_leave_code(s: State<App>, kind: String, code: String) -> R<()> {
-    s.tc().save_leave_code(&kind, &code)
+    s.tc().locked(|tc| tc.save_leave_code(&kind, &code))
 }
 
 #[tauri::command]
@@ -2177,10 +2177,11 @@ fn tc_save_project(s: State<App>, name: String, project: Project) -> R<()> {
     if project.rate.is_some_and(|r| !(r.is_finite() && r >= 0.0)) {
         return Err("The hourly rate must be a positive number".into());
     }
-    let tc = s.tc();
-    let mut p = tc.load_projects()?;
-    p.insert(name, project);
-    tc.save_projects(&p)
+    s.tc().locked(|tc| {
+        let mut p = tc.load_projects()?;
+        p.insert(name, project);
+        tc.save_projects(&p)
+    })
 }
 
 #[tauri::command]
