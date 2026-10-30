@@ -7,7 +7,7 @@
 #           ~/Library/LaunchAgents/ and `launchctl load` it.
 # Stop:     touch ~/.cache/margin-autopilot/STOP   (or kill the process)
 # Env:      AUTOPILOT_ARGS         (default "--hours 5")
-#           AUTOPILOT_MODEL        coordinator model (default haiku)
+#           AUTOPILOT_MODEL        coordinator model (default sonnet)
 #           AUTOPILOT_WEEKLY_CAP   pause new runs at this weekly utilization, 0-1 (default 0.95,
 #                                  leaves a little for your own sessions; 1 = use everything)
 #           AUTOPILOT_WEEKLY_TARGET pace runs so weekly usage reaches about this by the reset (default 0.9;
@@ -215,7 +215,7 @@ while [ ! -e "$dir/STOP" ]; do
       [ $(( $(date +%s) - $(stat -f %m "$hb" 2>/dev/null || echo 0) )) -gt "$stall" ] && { touch "$stalled"; pkill -f -- "$session"; exit; }
     done ) &
   wd=$!
-  caffeinate -i "$claude_bin" -p "$prompt" --session-id "$session" --model "${AUTOPILOT_MODEL:-haiku}" --permission-mode auto \
+  caffeinate -i "$claude_bin" -p "$prompt" --session-id "$session" --model "${AUTOPILOT_MODEL:-sonnet}" --permission-mode auto \
     --output-format stream-json --verbose 2>&1 | AUTOPILOT_LOG="$log" node scripts/autopilot-ui.mjs "$session"
   code=${PIPESTATUS[0]}
   kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
