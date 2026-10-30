@@ -1011,6 +1011,11 @@ that change notes the way the app does:
 - `set_task_state` (path or title, heading or line, state): changes one heading's keyword, stamping
   `CLOSED:` as the app does with `log_done`; a title that matches several headings is refused with
   their lines.
+- `set_task_properties` (path or title, heading or line, scheduled, deadline, priority, tags,
+  add_tags, effort): schedules a heading or sets its deadline, priority, tags or effort. Dates take
+  the same input as the app's date prompt (`2026-11-03 9:00`, `tomorrow`, `+3d`, `fri`, `+1w`
+  repeaters), and an existing repeater and warning are kept. `tags` replaces the tags, `add_tags`
+  adds to them, and `""` clears a field. Only the fields given change, and a bad value writes nothing.
 - `append_to_journal` (text, date, heading): org text in that day's journal file, placed like
   `append_to_note`; a missing day file is created first, with the `journal_template`, as the app does.
 

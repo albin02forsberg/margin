@@ -24,7 +24,7 @@ impl Ctx {
 }
 
 /// The tools that change notes or the time log; only listed and run with `mcp_write` on.
-const WRITE_TOOLS: [&str; 7] = ["create_note", "append_to_note", "add_task", "set_task_state", "append_to_journal", "clock_in", "clock_out"];
+const WRITE_TOOLS: [&str; 8] = ["create_note", "append_to_note", "add_task", "set_task_state", "set_task_properties", "append_to_journal", "clock_in", "clock_out"];
 
 /// config.toml, or the defaults when it doesn't load.
 fn load(ctx: &Ctx) -> Config {
@@ -77,7 +77,7 @@ pub fn handle(ctx: &Ctx, line: &str) -> Option<String> {
             "capabilities": { "tools": {} },
             "serverInfo": { "name": "margin", "version": env!("CARGO_PKG_VERSION") },
             "instructions": if load(ctx).mcp_write {
-                "Access to the user's Margin notes (org files), tasks and time log: read them, create notes, append to notes, add tasks, change task states, add to the journal and clock in and out."
+                "Access to the user's Margin notes (org files), tasks and time log: read them, create notes, append to notes, add tasks, change task states, schedule tasks and set their deadline, priority, tags and effort, add to the journal and clock in and out."
             } else {
                 "Read-only access to the user's Margin notes (org files), tasks and time log."
             },
@@ -137,6 +137,12 @@ fn tools(write: bool) -> Value {
             "inputSchema": target(json!({ "task": s("The task's title"), "state": s("Task keyword (default the first, e.g. TODO)"), "heading": s("Heading title to add it under") }), &["task"]) }));
         w.push(json!({ "name": "set_task_state", "description": "Change one heading's task keyword, e.g. to DONE, by its title or its line (as list_tasks gives it); stamps CLOSED like the app.",
             "inputSchema": target(json!({ "state": s("New task keyword, e.g. DONE"), "heading": s("The heading's title (must match exactly one, any case)"), "line": { "type": "integer", "description": "1-based line of the heading (instead of heading)" } }), &["state"]) }));
+        let date = |kind: &str| s(&format!("{kind} date as the app's date prompt reads it: YYYY-MM-DD, today, tomorrow, +3d, fri, optionally with HH:MM, a repeater (+1w) or warning (-3d); \"\" removes it"));
+        w.push(json!({ "name": "set_task_properties", "description": "Schedule a heading or set its deadline, priority, tags or effort, by its title or its line (as list_tasks gives it). Only the fields given change; \"\" clears one. An existing repeater and warning cookie are kept.",
+            "inputSchema": target(json!({ "heading": s("The heading's title (must match exactly one, any case)"), "line": { "type": "integer", "description": "1-based line of the heading (instead of heading)" },
+                "scheduled": date("SCHEDULED"), "deadline": date("DEADLINE"), "priority": s("A, B or C (\"\" removes it)"),
+                "tags": s("Tags replacing the current ones, separated by spaces or colons (\"\" removes all)"), "add_tags": s("Tags to add to the current ones"),
+                "effort": s("Estimated effort: 0:30, 2h, 45min (\"\" removes it)") }), &[]) }));
         w.push(json!({ "name": "append_to_journal", "description": "Append TEXT (org) to a day's journal entry (created with the journal template if missing): at its end, or under the first heading titled HEADING (created if missing).",
             "inputSchema": obj(json!({ "text": s("Org text to append"), "date": day, "heading": s("Heading title to append under") }), &["text"]) }));
         w.push(json!({ "name": "clock_in", "description": "Clock in on PROJECT (clocking out of a running clock first), in the active profile's time log.",
@@ -315,6 +321,48 @@ fn edit(c: &Config, root: &Path, all: &[Arc<org::OrgFile>], name: &str, args: &V
             let now = new.lines().nth(line).unwrap_or("").to_string();
             (new, format!("{} line {}: {now}", rel(&f.path), line + 1))
         }
+        "set_task_properties" => {
+            let line = heading_line(&read, &f.path, &kw, arg("heading"), args.get("line").and_then(Value::as_u64))?;
+            // A given field, "" included (it clears); trimmed.
+            let given = |k: &str| args.get(k).and_then(Value::as_str).map(str::trim);
+            let split = |t: &str| t.split([':', ' ', ',']).filter(|t| !t.is_empty()).map(String::from).collect::<Vec<_>>();
+            let fields = ["scheduled", "deadline", "priority", "tags", "add_tags", "effort"];
+            if !fields.iter().any(|k| given(k).is_some()) {
+                return Err(format!("give at least one of {}", fields.join(", ")));
+            }
+            let mut t = read.clone();
+            for (k, kind) in [("scheduled", "SCHEDULED"), ("deadline", "DEADLINE")] {
+                if let Some(v) = given(k) {
+                    t = crate::planning_at(&t, line, kind, if v.is_empty() { "rm" } else { v }, crate::today()).map_err(|e| format!("{k}: {e}: {v}"))?;
+                }
+            }
+            if let Some(p) = given("priority") {
+                if !p.is_empty() && !(p.len() == 1 && p.chars().all(|c| c.is_ascii_alphabetic())) {
+                    return Err(format!("priority must be a letter like A, B or C, not {p}"));
+                }
+                t = org::set_priority(&t, line, &kw, Some(p).filter(|p| !p.is_empty()));
+            }
+            if given("tags").is_some() || given("add_tags").is_some() {
+                let mut tags = match given("tags") {
+                    Some(v) => split(v),
+                    None => org::parse(&f.path, &t, &kw).headlines.into_iter().find(|h| h.line == line).map(|h| h.tags).unwrap_or_default(),
+                };
+                for a in split(given("add_tags").unwrap_or("")) {
+                    if !tags.contains(&a) {
+                        tags.push(a);
+                    }
+                }
+                t = org::set_tags(&t, line, &kw, tags);
+            }
+            if let Some(e) = given("effort") {
+                let m = Some(e).filter(|e| !e.is_empty()).map(|e| org::parse_effort(e).ok_or_else(|| format!("effort: not a duration: {e} (try 0:30, 2h or 45min)"))).transpose()?;
+                t = org::set_effort(&t, line, m);
+            }
+            // The heading and the planning line under it, as they read now.
+            let shown: Vec<_> = t.lines().skip(line).take(2).enumerate().filter(|(i, l)| *i == 0 || l.contains("SCHEDULED:") || l.contains("DEADLINE:")).map(|(_, l)| l).collect();
+            let done = format!("{} line {}: {}", rel(&f.path), line + 1, shown.join("\n"));
+            (t, done)
+        }
         n => return Err(format!("unknown tool {n}")),
     };
     // NOTE_WRITES only serialises writers in one process, so between this server and a running app the
@@ -492,6 +540,50 @@ mod tests {
         let (e, err) = tool(&ctx, "append_to_note", json!({ "path": "c.org", "text": "late", "expect": "#+title: Gamma\n" }));
         assert!(err && e.contains("changed since"), "{e}");
         assert!(!std::fs::read_to_string(n.join("c.org")).unwrap().contains("late"));
+    }
+
+    #[test]
+    fn task_properties_tool() {
+        let (d, ctx) = setup();
+        let n = d.join("notes");
+        let p = n.join("t.org");
+        let read = || std::fs::read_to_string(&p).unwrap();
+        std::fs::write(&p, "#+title: T\n* TODO Water plants :home:\nDEADLINE: <2026-03-01 Sun> SCHEDULED: <2026-01-05 Mon +1w -2d>\n* TODO Other\n").unwrap();
+        // Off by default: hidden and refused.
+        let (e, err) = tool(&ctx, "set_task_properties", json!({ "path": "t.org", "heading": "Other", "priority": "A" }));
+        assert!(err && e.contains("mcp_write"), "{e}");
+        let mut c = Config::load(&ctx.cfg_path).unwrap();
+        c.mcp_write = true;
+        std::fs::write(&ctx.cfg_path, toml::to_string(&c).unwrap()).unwrap();
+        assert!(rpc(&ctx, "tools/list", json!({}))["result"]["tools"].as_array().unwrap().iter().any(|t| t["name"] == "set_task_properties"));
+        assert!(rpc(&ctx, "initialize", json!({}))["result"]["instructions"].as_str().unwrap().contains("schedule"));
+
+        // A new date keeps the repeater and warning, the other planning entry stays; priority, tags and effort together.
+        let (r, err) = tool(&ctx, "set_task_properties", json!({ "path": "t.org", "heading": "water plants", "scheduled": "2026-02-02 9:00", "priority": "a", "add_tags": "garden home", "effort": "1h 30m" }));
+        assert!(!err, "{r}");
+        assert_eq!(r, "t.org line 2: * TODO [#A] Water plants :home:garden:\nDEADLINE: <2026-03-01 Sun> SCHEDULED: <2026-02-02 Mon 09:00 +1w -2d>");
+        assert_eq!(read(), "#+title: T\n* TODO [#A] Water plants :home:garden:\nDEADLINE: <2026-03-01 Sun> SCHEDULED: <2026-02-02 Mon 09:00 +1w -2d>\n:PROPERTIES:\n:EFFORT: 1:30\n:END:\n* TODO Other\n");
+        // "" clears; tags replace.
+        assert!(!tool(&ctx, "set_task_properties", json!({ "path": "t.org", "line": 2, "deadline": "", "priority": "", "tags": "x:y", "effort": "" })).1);
+        assert_eq!(read(), "#+title: T\n* TODO Water plants :x:y:\nSCHEDULED: <2026-02-02 Mon 09:00 +1w -2d>\n* TODO Other\n");
+        // Relative dates are read against today.
+        assert!(!tool(&ctx, "set_task_properties", json!({ "path": "t.org", "heading": "Other", "deadline": "+3d" })).1);
+        let due = (timeclock::now().date() + chrono::Duration::days(3)).format("%Y-%m-%d %a").to_string();
+        assert!(read().ends_with(&format!("* TODO Other\nDEADLINE: <{due}>\n")), "{}", read());
+
+        // Bad values, no fields and a stale EXPECT change nothing.
+        let before = read();
+        for (args, msg) in [
+            (json!({ "path": "t.org", "heading": "Other", "priority": "A", "scheduled": "someday" }), "scheduled"),
+            (json!({ "path": "t.org", "heading": "Other", "priority": "AA" }), "priority"),
+            (json!({ "path": "t.org", "heading": "Other", "tags": "a", "effort": "soon" }), "not a duration"),
+            (json!({ "path": "t.org", "heading": "Other" }), "at least one"),
+            (json!({ "path": "t.org", "heading": "Other", "priority": "B", "expect": "#+title: T\n" }), "changed since"),
+        ] {
+            let (e, err) = tool(&ctx, "set_task_properties", args);
+            assert!(err && e.contains(msg), "{e}");
+        }
+        assert_eq!(read(), before);
     }
 
     #[test]
