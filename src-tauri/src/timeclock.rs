@@ -147,6 +147,17 @@ pub fn locked<T>(f: impl FnOnce() -> T) -> T {
     f()
 }
 
+/// Like `locked`, plus `file_lock` on every DIR (sorted, so two processes can't deadlock on order).
+/// Used by the data-repo sync, which commits and rebases the files of all profiles.
+pub fn locked_dirs<T>(dirs: &[PathBuf], f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    locked(|| {
+        let mut dirs = dirs.to_vec();
+        dirs.sort();
+        let _held = dirs.iter().map(|d| file_lock(d)).collect::<Result<Vec<_>, _>>()?;
+        f()
+    })
+}
+
 /// How long `file_lock` waits for another process before giving up.
 const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 
@@ -1919,6 +1930,45 @@ mod tests {
             assert!(doctor(&tc.read_log(), now() + Duration::minutes(10)).is_empty());
             let _ = fs::remove_dir_all(&dir);
         }
+    }
+
+    #[test]
+    fn locked_dirs_waits_for_a_held_dir_lock() {
+        let dir = std::env::temp_dir().join(format!("tc-lockdirs-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let (a, b) = (dir.join("a"), dir.join("b"));
+        let held = file_lock(&b).unwrap();
+        std::thread::scope(|t| {
+            let h = t.spawn(|| locked_dirs(&[b.clone(), a.clone()], || Ok(1)));
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            assert!(!h.is_finished());
+            drop(held);
+            assert_eq!(h.join().unwrap(), Ok(1));
+        });
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_project_under_lock_keeps_a_concurrent_ensure_project() {
+        let dir = std::env::temp_dir().join(format!("tc-saveproj-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("d.org"), cal: w(8.0) };
+        std::thread::scope(|t| {
+            for i in 0..5 {
+                let tc = &tc;
+                t.spawn(move || tc.locked(|tc| tc.ensure_project(&format!("E{i}"), None)).unwrap());
+                t.spawn(move || {
+                    tc.locked(|tc| {
+                        let mut p = tc.load_projects()?;
+                        p.insert(format!("S{i}"), toml::from_str::<Project>("").unwrap());
+                        tc.save_projects(&p)
+                    })
+                    .unwrap()
+                });
+            }
+        });
+        assert_eq!(tc.load_projects().unwrap().len(), 10);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
