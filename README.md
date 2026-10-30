@@ -672,7 +672,10 @@ A `#+begin_src mermaid` block shows its [Mermaid](https://mermaid.js.org) diagra
 light or dark palette that matches the system. Folding the block (`Tab` on its first line) leaves just the diagram.
 A syntax error shows as a short message under the block instead. Mermaid is bundled (nothing is fetched)
 and loads only once a note has a diagram; mermaid blocks never run, and a Markdown import
-turns ```` ```mermaid ```` fences into such blocks. HTML export keeps the source as a code block.
+turns ```` ```mermaid ```` fences into such blocks. HTML and PDF export and rich-text copy (`Space e C`) embed
+the diagram as an SVG (light palette, on a white card); a diagram that doesn't render, or that comes from a
+`#+TRANSCLUDE:` or from another note reached by `Space e a` without appearing in the open note, keeps its source as
+a code block. Markdown export keeps the ```` ```mermaid ```` fence.
 
 ### Snippets
 
@@ -1068,7 +1071,8 @@ HTML page and opens it in your browser with the print dialog up — choose "Save
 PDF" there. Property drawers, planning lines, comments and `#+` keywords other
 than the title are left out; `id:` links become plain text. Images are embedded
 in the HTML, so the page works on its own; bare URLs become links, and
-`term :: text` lists and verse blocks keep their shape.
+`term :: text` lists and verse blocks keep their shape. Mermaid diagrams are embedded as SVG
+(Markdown keeps the fence).
 
 `e a` exports the note plus the notes it links to by `id:` (one hop, or two) as
 HTML or Markdown pages in a folder `export_dir/<note>/`, where links between them
