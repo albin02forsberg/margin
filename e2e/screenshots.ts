@@ -317,6 +317,14 @@ async function pngs() {
   await shot("palette");
   await browser.keys(Key.Escape);
 
+  if (want("search-regex")) { // #968
+    await command("Search in all notes");
+    await type('re:"harbou?r|orchard" -todo');
+    await pause(500);
+    await shot("search-regex");
+    await browser.keys(Key.Escape);
+  }
+
   await command("Notes: replace text in all notes"); // the preview only: Esc writes nothing
   await type("Harbor");
   await browser.keys(Key.Enter);

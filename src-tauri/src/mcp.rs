@@ -131,7 +131,7 @@ fn tools(write: bool) -> Value {
         obj(p, req)
     };
     let mut v = json!([
-        { "name": "search_notes", "description": "Lines of the notes containing every word of QUERY (any case; -word excludes, in:folder narrows).",
+        { "name": "search_notes", "description": "Lines of the notes containing every word of QUERY (any case; \"a phrase\", -word excludes, in:folder narrows, re:regex or re:\"regex with spaces\" must match, case:match makes it case-sensitive; a bad regex is an error).",
           "inputSchema": obj(json!({ "query": s("Search words"), "limit": { "type": "integer", "description": "Max hits (default 20, max 200)" } }), &["query"]) },
         { "name": "read_note", "description": "Full text of one note (org format), by path or title. Long notes are cut at 100 KB.", "inputSchema": note },
         { "name": "list_notes", "description": "Every note: path, title and tags.", "inputSchema": obj(json!({}), &[]) },
@@ -215,7 +215,7 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
     let out = match name {
         "search_notes" => {
             let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(20).clamp(1, 200) as usize;
-            let hits = notes::search(&files, &root, arg("query").ok_or("query is required")?, limit);
+            let hits = notes::search(&files, &root, arg("query").ok_or("query is required")?, limit)?;
             json!(hits.iter().map(|h| json!({ "path": rel(&h.path), "title": h.title, "line": h.line + 1, "text": h.text })).collect::<Vec<_>>())
         }
         "read_note" => {
@@ -579,6 +579,8 @@ mod tests {
         let (s, err) = tool(&ctx, "search_notes", json!({ "query": "apples" }));
         assert!(!err && s.contains("a.org") && s.contains("b.org") && !s.contains("Secret"), "{s}");
         assert!(!ctx.cache.is_empty());
+        let (s, err) = tool(&ctx, "search_notes", json!({ "query": "re:[a-" }));
+        assert!(err && s.starts_with("bad pattern"), "{s}");
         let (l, _) = tool(&ctx, "list_notes", json!({}));
         assert!(l.contains("Alpha") && !l.contains("Secret"), "{l}");
         let (r, err) = tool(&ctx, "read_note", json!({ "title": "beta" }));

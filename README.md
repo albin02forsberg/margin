@@ -296,7 +296,7 @@ profile clocks out first, and warns where old files stay (nothing is moved).
 | Ctrl+P | Open a note — or type a title to create one |
 | Ctrl+Shift+N | New note |
 | Space s o | Occur: list the lines of this note matching a search (same syntax, or `/regex/`) with their heading path; Enter jumps to one |
-| Ctrl+Shift+F | Search all notes as you type (lines with every word, in any order; `"quote"` a phrase, `-word` or `-"phrase"` to exclude, `in:folder` or `in:parent/child` to search one folder) |
+| Ctrl+Shift+F | Search all notes as you type (lines with every word, in any order; `"quote"` a phrase, `-word` or `-"phrase"` to exclude, `in:folder` or `in:parent/child` to search one folder, `re:ABC-\d+` or `re:"TODO\s+\w+"` for a regex that must match, `case:match` to make the whole query case-sensitive; a bad regex shows as the only row) |
 | Ctrl+L | Insert a link to another note or to any heading (a heading without an `:ID:` links as `[[file:note.org::*Heading]]`, or `[[*Heading]]` in the same note; a one-line selection becomes the link text; pasting a URL over a selection links it too) |
 | `[[` / `@` / `:` (insert mode) | Complete as you type: `[[` + part of a title offers notes and headings and inserts the same link as Ctrl+L, `@` after a space offers known people, and `:` after a heading's title offers existing tags. Enter or Tab accepts, arrows move, Esc closes the popup (and stays in insert mode). New notes are still created with Ctrl+L |
 | `Space m m` / `Space '` / `Space m d` | Bookmark the cursor under a name / jump to a bookmark / delete one. A bookmark remembers the heading above the cursor, so it still lands right after edits above it; when the heading is gone it falls back to the saved line and shows dimmed as stale (it is kept, also when the note is gone). Kept on this machine only, and follow a renamed or moved note or a renamed heading (undoing the rename puts the bookmark back) |
@@ -997,7 +997,7 @@ register it with Claude Code, `claude mcp add margin -- "<path to Margin's binar
 the path filled in (the AppImage itself on Linux) and a Copy button; for Claude Desktop add a server with that command and the argument
 `--mcp`. It works on Windows too, where Claude starts it with pipes. Tools:
 
-- `search_notes` (query, limit): lines containing every word (`-word` excludes, `in:folder` narrows).
+- `search_notes` (query, limit): lines containing every word (`-word` excludes, `in:folder` narrows, `re:pattern` must match, `case:match` is case-sensitive; a bad pattern is an error result).
 - `read_note` (path or title): a note's text, cut at 100 KB; paths outside the notes folder are refused.
 - `list_notes`, `neighbors` (notes linked to or from one, and the lines linking to it).
 - `list_tasks` (state, project): open tasks, or those in a state (`DONE` too); project matches a category or tag.

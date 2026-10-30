@@ -1953,7 +1953,7 @@ fn replace_files(files: &[Arc<org::OrgFile>], notes_dir: &Path, rep: &Rep, skip:
 }
 
 #[tauri::command(async)]
-fn notes_search(s: State<App>, query: String) -> Vec<notes::Hit> {
+fn notes_search(s: State<App>, query: String) -> Result<Vec<notes::Hit>, String> {
     notes::search(&s.files(), &s.cfg().notes(), &query, 300)
 }
 
