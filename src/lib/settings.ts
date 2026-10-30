@@ -73,6 +73,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "ai_source_tasks", label: "Send open tasks and the agenda", kind: "bool", hint: "when the question asks about tasks, today, the week, deadlines or meetings" },
     { key: "ai_source_time", label: "Send the time log", kind: "bool", hint: "the last 7 days, when the question asks about hours, time or projects" },
     { key: "ai_exclude", label: "Notes the AI never sees", kind: "list", hint: "one per line; a note whose path in the notes folder contains one (any case, e.g. private/ or diary) is never sent: not as a match, a linked note, the open note or for tasks" },
+    { key: "mcp_write", label: "Let Claude (MCP) edit notes", kind: "bool", hint: "margin --mcp may then create notes, append to them, add to-dos and change their state, through the same checks as the editor; excluded notes stay untouched. Off: read-only" },
   ] },
 ];
 
