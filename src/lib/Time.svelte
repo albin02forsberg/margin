@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type Suggestion = { start: string; end: string; apps: string[]; titles: string[]; project: string | null; task: string | null; meeting: string | null; editor: boolean };
+  export type Suggestion = { start: string; end: string; apps: string[]; titles: string[]; project: string | null; task: string | null; meeting: string | null; meeting_src: "calendar" | "rule" | "mic/camera" | null; editor: boolean };
   export type Session = { date: string; project: string; desc: string; hours: number; start: string; end: string; line: number | null };
   export type TimeApi = {
     act: (f: () => unknown) => void;
@@ -218,7 +218,7 @@
                   {#each sugg as s (s.start)}
                     <tr>
                       <td class="mono">{clock(s.start)}–{clock(s.end)}</td>
-                      <td>{#if s.meeting}<span class="badge">Meeting</span> {/if}{s.apps.join(", ")} <span class="dim">{s.titles.map((t) => `“${t}”`).join(" ")}</span>{#if s.project || s.task} → <strong>{[s.project, s.task].filter(Boolean).join(" / ")}</strong>?{/if}</td>
+                      <td>{#if s.meeting}<span class="badge" title={s.meeting_src === "mic/camera" ? "Meeting (mic/camera in use)" : s.meeting_src === "calendar" ? "Meeting (calendar event)" : "Meeting (matches a meeting rule)"}>Meeting</span> {/if}{s.apps.join(", ")} <span class="dim">{s.titles.map((t) => `“${t}”`).join(" ")}</span>{#if s.project || s.task} → <strong>{[s.project, s.task].filter(Boolean).join(" / ")}</strong>?{/if}</td>
                       <td class="num">{hm((Date.parse(s.end) - Date.parse(s.start)) / 3_600_000)}</td>
                       <td class="actions"><button onclick={() => accept(s)}>Accept</button><button class="icon" title="Change start and end, then accept" onclick={() => accept(s, "editSuggestion")}>✎</button><button class="icon" title="Dismiss" onclick={() => dismiss(s)}>✕</button></td>
                     </tr>
