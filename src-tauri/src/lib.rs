@@ -1156,18 +1156,31 @@ fn capture_path(s: State<App>, file: String, date_input: Option<String>, journal
     let p = capture_file(&s.cfg().notes(), &file, date_input.as_deref(), now)?;
     s.check(&p)?;
     if !p.exists() {
-        let title = p.file_stem().map(|x| x.to_string_lossy().to_string()).unwrap_or_default();
-        notes::write_note(&p, &title).map_err(|e| e.to_string())?;
-        let (notes, daily) = (s.cfg().notes(), s.cfg().daily_dir.clone());
-        if journal == Some(true) || is_daily_path(&notes, &daily, &p) {
-            let day = match date_input.as_deref() {
-                Some(i) => date_at(i, now.date())?,
-                None => now.date(),
-            };
-            append_journal_template(&p, &s.cfg().journal_template, day)?;
-        }
+        let c = s.cfg();
+        let journal = journal == Some(true) || is_daily_path(&c.notes(), &c.daily_dir, &p);
+        let day = match date_input.as_deref() {
+            Some(i) => date_at(i, now.date())?,
+            None => now.date(),
+        };
+        new_day_file(&p, if journal { &c.journal_template } else { "" }, day)?;
     }
     Ok(p)
+}
+
+/// Create P as an org-roam note titled after its name, with TEMPLATE expanded for DAY below it.
+fn new_day_file(p: &Path, template: &str, day: NaiveDate) -> R<()> {
+    let title = p.file_stem().map(|x| x.to_string_lossy().to_string()).unwrap_or_default();
+    notes::write_note(p, &title).map_err(|e| e.to_string())?;
+    append_journal_template(p, template, day)
+}
+
+/// The journal's day-file pattern in DAILY_DIR (the frontend's `journalFile`); an empty DAILY_DIR
+/// keeps it in the notes folder rather than at `/`.
+fn journal_file(daily_dir: &str) -> String {
+    match daily_dir.trim_matches('/') {
+        "" => "%Y-%m-%d.org".into(),
+        d => format!("{d}/%Y-%m-%d.org"),
+    }
 }
 
 /// Whether P is a direct child of the daily folder DAILY_DIR under NOTES.
