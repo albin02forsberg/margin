@@ -497,16 +497,15 @@ fn heading_line(text: &str, path: &Path, kw: &org::Kw, heading: Option<&str>, li
     }
 }
 
-/// The note at PATH (relative to ROOT, or absolute inside it), else the one titled TITLE (or with that alias).
+/// The note at PATH (relative to ROOT, or absolute inside it), else the one titled TITLE (or with that alias; see retrieve::by_title).
 fn find<'a>(files: &'a [Arc<org::OrgFile>], root: &Path, path: Option<&str>, title: Option<&str>) -> Result<&'a Arc<org::OrgFile>, String> {
     if let Some(p) = path {
         let p = root.join(p);
         check_in(&[root.to_path_buf()], &p).map_err(|_| format!("{} isn't in the notes folder", p.display()))?;
         return files.iter().find(|f| f.path == p).ok_or_else(|| format!("no note at {}", p.display()));
     }
-    let t = title.ok_or("give a path or a title")?.to_lowercase();
-    let named = |f: &&Arc<org::OrgFile>| f.title.to_lowercase() == t || f.aliases.iter().any(|a| a.to_lowercase() == t);
-    files.iter().find(named).ok_or_else(|| format!("no note titled {t}"))
+    let t = title.ok_or("give a path or a title")?;
+    retrieve::by_title(files, t).ok_or_else(|| format!("no note titled {}", t.to_lowercase()))
 }
 
 #[cfg(test)]

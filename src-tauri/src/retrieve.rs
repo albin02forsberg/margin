@@ -214,6 +214,55 @@ pub fn excluded(path: &Path, root: &Path, patterns: &[String]) -> bool {
     patterns.iter().map(|x| x.trim().replace('\\', "/").to_lowercase()).any(|x| !x.is_empty() && x != "/" && p.contains(&x))
 }
 
+/// The note of FILES titled TITLE (or with that alias), any case; of several, the first by path.
+pub fn by_title<'a>(files: &'a [Arc<OrgFile>], title: &str) -> Option<&'a Arc<OrgFile>> {
+    let t = title.trim().to_lowercase();
+    files.iter().filter(|f| f.title.to_lowercase() == t || f.aliases.iter().any(|a| a.to_lowercase() == t)).min_by(|a, b| a.path.cmp(&b.path))
+}
+
+/// Bytes one tool result may take, so a few calls fit in BUDGET (#469).
+pub const TOOL_RESULT: usize = 1500;
+
+/// The tools the chat model may call (Ollama's schema): read-only, by title, never by path (#469).
+#[allow(dead_code)] // wired into ai_chat with the ai_tools setting (#963)
+pub fn tools() -> serde_json::Value {
+    let tool = |name: &str, desc: &str, arg: &str, about: &str| {
+        serde_json::json!({ "type": "function", "function": { "name": name, "description": desc,
+            "parameters": { "type": "object", "properties": { arg: { "type": "string", "description": about } }, "required": [arg] } } })
+    };
+    serde_json::json!([
+        tool("search_notes", "Excerpts of the user's notes that best match QUERY, plus notes linked to them.", "query", "Search words"),
+        tool("open_note", "The text of one note, by its title.", "title", "The note's title, as search_notes labels it"),
+        tool("neighbors", "The titles of the notes linked to or from one note.", "title", "The note's title"),
+    ])
+}
+
+/// The result of tool NAME with ARGS over FILES (already without `ai_exclude`d notes), at most
+/// TOOL_RESULT bytes; errors are told to the model as text.
+#[allow(dead_code)] // wired into ai_chat with the ai_tools setting (#963)
+pub fn run_tool(files: &[Arc<OrgFile>], name: &str, args: &serde_json::Value) -> String {
+    let arg = |k: &str| args.get(k).and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).ok_or(format!("Error: {name} needs a {k}."));
+    let note = |t: &str| by_title(files, t).ok_or(format!("Error: no note titled {t}. Use search_notes to find titles."));
+    let out = match name {
+        "search_notes" => arg("query").map(|q| match pack(&retrieve(files, q, None, TOOL_RESULT)) {
+            p if p.is_empty() => format!("No note matches {q}."),
+            p => p,
+        }),
+        "open_note" => arg("title").and_then(note).map(|f| {
+            let text = f.text.lines().filter(|l| !meta(l)).collect::<Vec<_>>().join("\n");
+            let s = Source { kind: note_kind(), path: f.path.clone(), title: f.title.clone(), line: 0, text: text.trim().into() };
+            label(&s) + &s.text
+        }),
+        "neighbors" => arg("title").and_then(note).map(|f| {
+            let i = files.iter().position(|g| Arc::ptr_eq(g, f)).unwrap_or(0);
+            let near: Vec<String> = adjacency(files)[i].iter().map(|&j| format!("- {} ({})", files[j].title, file_name(&files[j].path))).collect();
+            if near.is_empty() { format!("No note links to or from {}.", f.title) } else { format!("Notes linked to or from {}:\n{}", f.title, near.join("\n")) }
+        }),
+        _ => Err(format!("Error: unknown tool {name}. Use search_notes, open_note or neighbors.")),
+    };
+    cut(&out.unwrap_or_else(|e| e), TOOL_RESULT).to_string()
+}
+
 /// Which of the open tasks, the agenda and the time log QUESTION asks about, by word prefixes.
 pub fn wants(question: &str) -> [bool; 3] {
     const KEYS: [&[&str]; 3] = [
@@ -419,5 +468,48 @@ mod tests {
         let kept: Vec<_> = files.iter().filter(|f| !excluded(&f.path, root, &["secret".to_string()])).cloned().collect();
         assert_eq!(names(&retrieve(&kept, "launch", None, BUDGET)), ["Plan"]);
         assert_eq!(names(&retrieve(&files, "launch", None, BUDGET)), ["Plan", "Secret"]);
+    }
+
+    #[test]
+    fn tools_over_filtered_notes() {
+        let files = [
+            note("plan", ":PROPERTIES:\n:ID: p\n:END:\n#+title: Plan\nlaunch soon, see [[file:secret.org][s]] and [[file:budget.org][b]]\n"),
+            note("budget", "#+title: Budget\n#+filetags: :money:\nWe spend 10k.\n"),
+            note("daily", "#+title: Daily\nsee [[id:p][Plan]]\n"),
+            note("secret", "#+title: Secret\nlaunch codes\n"),
+            note("big", &format!("#+title: Big\n{}", "ålpha ".repeat(2000))),
+        ];
+        let kept: Vec<_> = files.iter().filter(|f| !excluded(&f.path, Path::new("/n"), &["secret".to_string()])).cloned().collect();
+        let run = |name: &str, args: serde_json::Value| run_tool(&kept, name, &args);
+        let names: Vec<_> = tools().as_array().unwrap().iter().map(|t| t["function"]["name"].as_str().unwrap().to_string()).collect();
+        assert_eq!(names, ["search_notes", "open_note", "neighbors"]);
+        // search: the matching note, not the excluded one
+        let got = run("search_notes", serde_json::json!({ "query": "launch" }));
+        assert!(got.starts_with("[note: Plan | plan.org:1]\nlaunch soon") && !got.contains("codes"), "{got}");
+        assert_eq!(run("search_notes", serde_json::json!({ "query": "zebra" })), "No note matches zebra.");
+        // open: any case, without drawers or keywords; excluded and unknown titles aren't found
+        assert_eq!(run("open_note", serde_json::json!({ "title": "budget" })), "[note: Budget | budget.org:1]\nWe spend 10k.");
+        for t in ["Secret", "Nope"] {
+            assert!(run("open_note", serde_json::json!({ "title": t })).starts_with(&format!("Error: no note titled {t}.")));
+        }
+        // neighbors: outgoing (Budget) and backlinks (Daily), never the excluded note
+        assert_eq!(run("neighbors", serde_json::json!({ "title": "Plan" })), "Notes linked to or from Plan:\n- Budget (budget.org)\n- Daily (daily.org)");
+        assert_eq!(run("neighbors", serde_json::json!({ "title": "Big" })), "No note links to or from Big.");
+        // each result stays in TOOL_RESULT, cut on a char boundary
+        let big = run("open_note", serde_json::json!({ "title": "Big" }));
+        assert!(big.len() <= TOOL_RESULT && big.len() > TOOL_RESULT - 4 && big.starts_with("[note: Big"));
+        assert!(run("search_notes", serde_json::json!({ "query": "ålpha" })).len() <= TOOL_RESULT);
+        // bad calls are told to the model
+        assert_eq!(run("open_note", serde_json::json!({})), "Error: open_note needs a title.");
+        assert_eq!(run("open_note", serde_json::json!({ "title": 3 })), "Error: open_note needs a title.");
+        assert!(run("rm", serde_json::json!({})).starts_with("Error: unknown tool rm."));
+    }
+
+    #[test]
+    fn title_lookup_first_by_path() {
+        let files = [note("b", "#+title: Same\n"), note("a", ":PROPERTIES:\n:ROAM_ALIASES: same\n:END:\n#+title: Other\n"), note("c", "#+title: same\n")];
+        assert_eq!(by_title(&files, " SAME ").unwrap().path, Path::new("/n/a.org"));
+        assert_eq!(by_title(&files, "other").unwrap().path, Path::new("/n/a.org"));
+        assert!(by_title(&files, "none").is_none());
     }
 }
