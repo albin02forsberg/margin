@@ -844,20 +844,27 @@
   type Group = { texts: { path: string; text: string }[]; bookmarks: { name: string; heading?: string }[] };
   let recording: Group | null = null;
   const undoStack: Group[] = [];
+  /** The in-flight outer `recorded` call; `undo` waits for it so it never pops an older group mid-op. */
+  let pending: Promise<void> | null = null;
 
   /** Run F as one undo group; a nested call joins the outer group. */
   async function recorded(f: () => Promise<void>) {
     if (recording) return f();
-    recording = { texts: [], bookmarks: [] };
-    try {
-      await f();
-    } finally {
-      if (recording.texts.length || recording.bookmarks.length) undoStack.push(recording);
-      recording = null;
-    }
+    const group: Group = (recording = { texts: [], bookmarks: [] });
+    const run = (async () => {
+      try {
+        await f();
+      } finally {
+        if (group.texts.length || group.bookmarks.length) undoStack.push(group);
+        recording = null;
+      }
+    })();
+    pending = run.catch(() => {});
+    return run;
   }
 
   async function undo() {
+    await pending;
     const group = undoStack.pop();
     if (!group) return flash("Nothing to undo.");
     for (const r of group.texts.reverse()) await toFile(r.path, async () => r.text);
