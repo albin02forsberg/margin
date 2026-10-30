@@ -204,12 +204,14 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
     if notes_tool && !root.is_dir() {
         return Err(format!("the notes folder {} doesn't exist", root.display()));
     }
-    let all = if notes_tool { files_of(&c, &ctx.cache) } else { vec![] };
-    let excluded = |p: &Path| retrieve::excluded(p, &root, &c.ai_exclude);
-    let files: Vec<Arc<org::OrgFile>> = all.iter().filter(|f| !excluded(&f.path)).cloned().collect();
+    // The journal tools and create_note work on a path, not the scan: skip parsing the tree for them.
+    let scan = notes_tool && !matches!(name, "read_journal" | "append_to_journal" | "create_note");
+    let all = if scan { files_of(&c, &ctx.cache) } else { vec![] };
     if write {
         return edit(&c, &root, &all, name, args).map_err(|e| if e == "changed-on-disk" { "the note changed since it was read: read it again and retry".into() } else { e });
     }
+    let excluded = |p: &Path| retrieve::excluded(p, &root, &c.ai_exclude);
+    let files: Vec<Arc<org::OrgFile>> = all.iter().filter(|f| !excluded(&f.path)).cloned().collect();
     let out = match name {
         "search_notes" => {
             let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(20).clamp(1, 200) as usize;
@@ -573,8 +575,10 @@ mod tests {
     #[test]
     fn notes_tools() {
         let (_d, ctx) = setup();
+        assert!(ctx.cache.is_empty());
         let (s, err) = tool(&ctx, "search_notes", json!({ "query": "apples" }));
         assert!(!err && s.contains("a.org") && s.contains("b.org") && !s.contains("Secret"), "{s}");
+        assert!(!ctx.cache.is_empty());
         let (l, _) = tool(&ctx, "list_notes", json!({}));
         assert!(l.contains("Alpha") && !l.contains("Secret"), "{l}");
         let (r, err) = tool(&ctx, "read_note", json!({ "title": "beta" }));
@@ -616,6 +620,7 @@ mod tests {
         assert!(t.contains("#+title: Fresh idea") && t.ends_with("Body text.\n"), "{t}");
         assert!(tool(&ctx, "create_note", json!({ "title": "X", "folder": "../out" })).0.contains("isn't in the notes folder"));
         assert!(tool(&ctx, "create_note", json!({ "title": "X", "folder": "private" })).0.contains("ai_exclude"));
+        assert!(ctx.cache.is_empty(), "create_note doesn't scan the notes tree");
 
         // append_to_note and add_task, under a heading (created if missing).
         let (r, err) = tool(&ctx, "append_to_note", json!({ "path": "b.org", "text": "A new line.", "heading": "Log" }));
@@ -732,6 +737,8 @@ mod tests {
         std::fs::write(&ctx.cfg_path, toml::to_string(&c).unwrap()).unwrap();
         assert!(!tool(&ctx, "append_to_journal", json!({ "text": "x" })).1);
         assert!(n.join(format!("{today}.org")).exists());
+        // Neither journal tool parsed the notes tree.
+        assert!(ctx.cache.is_empty());
     }
 
     #[test]
