@@ -3131,7 +3131,7 @@
     { label: "Save", keys: ["Ctrl+S"], leader: "f s", run: () => saveTab(tab, true) },
     { label: "Reload from disk (discard unsaved changes)", leader: "f r", run: reloadFromDisk },
     { label: "Save all", leader: "f S", run: saveAll },
-    { label: "About Margin", run: async () => { await openView("settings"); await tick(); document.querySelector(".settings .about")?.scrollIntoView({ block: "nearest" }); } },
+    { label: "About Margin", run: async () => { await openView("settings"); await tick(); const go = () => document.querySelector(".settings .about")?.scrollIntoView({ block: "nearest" }); go(); setTimeout(go, 300); /* again once async Settings fields (MCP line) have shifted the layout */ } },
     { label: "Check for updates", leader: "f u", run: () => checkUpdate() },
     { label: "Show what's new (notes of the last update)", run: whatsNew },
     { label: "Report a bug (opens a prefilled GitHub issue)", run: () => openUrl(bugReportUrl({ version, os: osName(navigator.userAgent), nightly: !!cfg?.config?.nightly_updates, error: lastError })) },

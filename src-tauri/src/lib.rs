@@ -8,6 +8,7 @@ mod export;
 mod ics;
 mod ledger;
 mod media;
+mod mcp;
 mod mdimport;
 #[cfg(desktop)]
 mod idle;
@@ -56,22 +57,14 @@ impl App {
         self.cfg().data().join("active-profile.txt")
     }
     fn tc(&self) -> Tc {
-        let c = self.cfg();
-        let p = self.profile().to_lowercase();
-        Tc { dir: c.data().join(&p), diary: c.notes().join(format!("dagbok-{p}.org")), cal: timeclock::Calendar::new(c.expected_daily_hours, &c.weekday_hours).with_days(&c.public_holidays, &c.extra_days_off) }
+        tc_of(&self.cfg(), &self.profile())
     }
     fn kw(&self) -> org::Kw {
-        let c = self.cfg();
-        org::Kw { todo: c.todo_keywords, done: c.done_keywords }
+        kw_of(&self.cfg())
     }
     /// Parsed notes, minus the capture-template files.
     fn files(&self) -> Vec<Arc<org::OrgFile>> {
-        let c = self.cfg();
-        let mut v = org::scan(&c.notes(), &self.kw(), &self.cache);
-        if let Some(t) = c.templates_path() {
-            v.retain(|f| !f.path.starts_with(&t));
-        }
-        v
+        files_of(&self.cfg(), &self.cache)
     }
     fn backup(&self) {
         let c = self.cfg();
@@ -83,6 +76,31 @@ impl App {
         let c = self.cfg();
         check_in(&[c.notes(), c.data(), self.cfg_path.parent().unwrap().to_path_buf()], p)
     }
+}
+
+/// PROFILE's timeclock (App::tc; also `margin --mcp`, which has no App).
+fn tc_of(c: &Config, profile: &str) -> Tc {
+    let p = profile.to_lowercase();
+    Tc { dir: c.data().join(&p), diary: c.notes().join(format!("dagbok-{p}.org")), cal: timeclock::Calendar::new(c.expected_daily_hours, &c.weekday_hours).with_days(&c.public_holidays, &c.extra_days_off) }
+}
+
+fn kw_of(c: &Config) -> org::Kw {
+    org::Kw { todo: c.todo_keywords.clone(), done: c.done_keywords.clone() }
+}
+
+/// Parsed notes, minus the capture-template files.
+fn files_of(c: &Config, cache: &org::Cache) -> Vec<Arc<org::OrgFile>> {
+    let mut v = org::scan(&c.notes(), &kw_of(c), cache);
+    if let Some(t) = c.templates_path() {
+        v.retain(|f| !f.path.starts_with(&t));
+    }
+    v
+}
+
+/// The profile saved in `active-profile.txt`, else the first one.
+fn saved_profile(c: &Config) -> String {
+    let saved = std::fs::read_to_string(c.data().join("active-profile.txt")).unwrap_or_default();
+    c.profiles.iter().find(|p| **p == saved.trim()).or(c.profiles.first()).cloned().unwrap_or("Work".into())
 }
 
 /// App::check's rule: P has no `..` and lies under one of ROOTS (compared as written, never resolved).
@@ -2583,6 +2601,12 @@ fn month_range(picked: Option<NaiveDate>, today: NaiveDate) -> (NaiveDate, Naive
     (first, first.checked_add_months(chrono::Months::new(1)).unwrap() - Duration::days(1))
 }
 
+/// The weekly report's layout over FROM..=TO (the weekly and monthly reports, `margin --mcp`'s time_report).
+fn range_report(tc: &Tc, profile: &str, from: NaiveDate, to: NaiveDate) -> String {
+    let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
+    timeclock::weekly_report(&tc.sessions(), &tc.projects(), (&leave, &tc.leave_codes().unwrap_or_default()), &tc.cal, from, to, profile)
+}
+
 /// Org-formatted report text. KIND: daily | weekly | monthly | holidays | flex | doctor | backup.
 #[tauri::command]
 fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<String> {
@@ -2594,11 +2618,11 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
         "daily" => timeclock::daily_report(&tc.sessions(), &tc.projects(), (&leave, &codes), &tc.cal, date(date_input.as_deref().unwrap_or(""))?, &profile),
         "weekly" => {
             let (from, to) = week_range(date_input.as_deref().filter(|d| !d.trim().is_empty()).map(date).transpose()?, today());
-            timeclock::weekly_report(&tc.sessions(), &tc.projects(), (&leave, &codes), &tc.cal, from, to, &profile)
+            range_report(&tc, &profile, from, to)
         }
         "monthly" => {
             let (from, to) = month_range(date_input.as_deref().filter(|d| !d.trim().is_empty()).map(date).transpose()?, today());
-            timeclock::weekly_report(&tc.sessions(), &tc.projects(), (&leave, &codes), &tc.cal, from, to, &profile)
+            range_report(&tc, &profile, from, to)
         }
         "holidays" => timeclock::holidays_report(date(date_input.as_deref().unwrap_or(""))?.format("%Y").to_string().parse().unwrap(), &tc.cal),
         "flex" => {
@@ -2991,6 +3015,20 @@ fn capture(app: &AppHandle) {
     let _ = app.emit("capture", hidden);
 }
 
+/// `margin --mcp`: the read-only MCP server on stdin/stdout (#929), without starting the app.
+pub fn mcp() {
+    let Some(cfg) = mcp::config_path() else { return eprintln!("margin --mcp: can't find the config folder") };
+    mcp::serve(&mcp::Ctx::new(cfg));
+}
+
+/// The command that starts this binary as an MCP server, for the settings snippet (an AppImage
+/// itself, not its temporary mount).
+#[tauri::command]
+fn mcp_command() -> R<String> {
+    let exe = std::env::var_os("APPIMAGE").map(PathBuf::from).map_or_else(std::env::current_exe, Ok).map_err(|e| e.to_string())?;
+    Ok(format!("claude mcp add margin -- \"{}\" --mcp", exe.display()))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -3016,8 +3054,7 @@ pub fn run() {
                     (Config::default(), Some(e))
                 }
             };
-            let saved = std::fs::read_to_string(cfg.data().join("active-profile.txt")).unwrap_or_default();
-            let profile = cfg.profiles.iter().find(|p| **p == saved.trim()).or(cfg.profiles.first()).cloned().unwrap_or("Work".into());
+            let profile = saved_profile(&cfg);
             app.manage(App { cfg_path, cfg: Mutex::new(cfg), cfg_error: Mutex::new(cfg_error), profile: Mutex::new(profile), cache: Default::default(), watcher: Mutex::new(None) });
             watch(app.handle());
             {
@@ -3075,7 +3112,7 @@ pub fn run() {
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, babel::babel_run
         ])
         .build(tauri::generate_context!())

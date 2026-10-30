@@ -352,6 +352,11 @@ async function pngs() {
   await opened("orchard.org"); // the right pane has focus
   await browser.keys(Key.Escape);
   await shot("split");
+
+  await browser.keys([Key.Ctrl, ","]); // the MCP snippet (#929)
+  await (await find(".settings .chips button", "AI chat")).click();
+  await browser.$(".settings .mcp code").waitForDisplayed();
+  await shot("mcp");
 }
 
 // GIFs: each frame is a screenshot shown for a fixed time, so a clip doesn't depend on how fast

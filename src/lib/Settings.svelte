@@ -106,6 +106,9 @@
   /** macOS: whether Margin may read window titles (the Screen Recording permission); null elsewhere. */
   let granted = $state<boolean | null>(null);
   invoke<boolean | null>("screen_recording", { request: false }).then((g) => (granted = g), () => {});
+  /** The `claude mcp add …` line that registers this binary's read-only MCP server (#929). */
+  let mcp = $state("");
+  invoke<string>("mcp_command").then((c) => (mcp = c), () => {});
   let macDialog: HTMLDialogElement;
   const MAC_OK = "activity-watcher-macos-ok";
   function check(f: Field, box: HTMLInputElement) {
@@ -205,6 +208,13 @@
         {/if}
         {#if g.name === "Integrations" && base.activity_watcher && granted === false}
           <p class="dim">macOS hides window titles until Margin has the Screen Recording permission: System Settings → Privacy & Security → Screen & System Audio Recording, turn on Margin, then restart it.</p>
+        {/if}
+        {#if g.name === "AI chat" && mcp}
+          <div class="field mcp">
+            <span>Claude (MCP)</span>
+            <code>{mcp}</code>
+            <small>Lets Claude Code search and read your notes, tasks and time log (read-only; <code>ai_exclude</code> applies). Run this in a terminal; for Claude Desktop add a server with this command and the argument <code>--mcp</code>. <button type="button" class="link" onclick={() => navigator.clipboard.writeText(mcp)}>Copy</button></small>
+          </div>
         {/if}
         {#if errors[g.name]}<p class="error">⚠ {errors[g.name]}</p>{/if}
         <button type="submit" disabled={!dirty(g.fields)}>Save {g.name.toLowerCase()}</button>
@@ -344,6 +354,7 @@
   .rules .row { grid-template-columns: 1fr 1fr auto; }
   .rules code { font: var(--fs-md) var(--mono); overflow-wrap: anywhere; }
   .gone { color: var(--dim); }
+  .mcp > code { font: var(--fs-sm) var(--mono); overflow-wrap: anywhere; user-select: all; }
   .dim { color: var(--dim); font-size: var(--fs-md); }
   dialog { background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); max-width: 440px; font-size: var(--fs-base); }
   .error { color: var(--todo); }

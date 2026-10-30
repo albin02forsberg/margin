@@ -978,6 +978,24 @@ any note whose path in the notes folder contains one of these (any case, e.g.
 `private/`, `/private/` or `diary`; `\` works as `/` too) is never sent, not as a match, a linked note, the open
 note (the chat says so instead of offering it) or for its tasks.
 
+### Claude and other MCP clients
+
+`margin --mcp` runs a small read-only [MCP](https://modelcontextprotocol.io) server on
+stdin/stdout, so Claude Code or Claude Desktop can look things up in your notes. It doesn't start
+the app (or need it running) and never writes anything. **Settings → AI chat** shows the line to
+register it with Claude Code, `claude mcp add margin -- "<path to Margin's binary>" --mcp`, with
+the path filled in (the AppImage itself on Linux) and a Copy button; for Claude Desktop add a server with that command and the argument
+`--mcp`. It works on Windows too, where Claude starts it with pipes. Tools:
+
+- `search_notes` (query, limit): lines containing every word (`-word` excludes, `in:folder` narrows).
+- `read_note` (path or title): a note's text, cut at 100 KB; paths outside the notes folder are refused.
+- `list_notes`, `neighbors` (notes linked to or from one, and the lines linking to it).
+- `list_tasks` (state, project): open tasks, or those in a state (`DONE` too); project matches a category or tag.
+- `time_report` (from, to; default this week) and `list_projects` for the active profile's time log.
+
+It reads `config.toml` and the notes fresh on each call, skips the templates folder, and
+`ai_exclude` applies: excluded notes and their tasks are never listed, and reading one is refused.
+
 ## Ledger
 
 **Ledger: add an entry…** (`Space f l`) asks for one line, `[date] amount [currency] text`,
