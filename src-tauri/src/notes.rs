@@ -901,35 +901,61 @@ pub fn ensure_id(text: &str) -> (String, String) {
 
 /// Case-insensitive full-text search.
 // ponytail: linear scan of every file per query; add an inverted index if it gets slow past ~10k notes.
-/// A parsed search query: words/phrases that must match, `-word` ones that must not, `in:folder` filters.
+/// A parsed search query: words/phrases that must match, `-word` ones that must not, `in:folder` filters,
+/// `re:pattern` regexes that must match, and `case:match` for a case-sensitive query.
 #[derive(Default)]
 struct Query {
     include: Vec<String>,
     exclude: Vec<String>,
     folders: Vec<String>,
+    regexes: Vec<String>,
+    case: bool,
 }
 
-/// Lowercased query: whitespace-separated words, a `"quoted phrase"` kept whole (an unbalanced quote
-/// takes the rest), `-word` / `-"phrase"` to exclude, `in:folder` / `in:"my folder"` to restrict.
-/// A lone `-` is an ordinary word.
+impl Query {
+    /// Whether a line matches every term and pattern and no excluded term; errs on a bad pattern.
+    fn matcher(&self) -> Result<impl Fn(&str) -> bool + '_, String> {
+        let res = self.regexes.iter().map(|p| {
+            regex::RegexBuilder::new(p).case_insensitive(!self.case).size_limit(1 << 20).dfa_size_limit(1 << 20).build()
+                .map_err(|e| format!("bad pattern {p}: {}", e.to_string().lines().last().unwrap_or("").trim_start_matches("error: ")))
+        }).collect::<Result<Vec<_>, _>>()?;
+        Ok(move |l: &str| {
+            let low = if self.case { l.into() } else { l.to_lowercase() };
+            self.include.iter().all(|t| low.contains(t.as_str())) && !self.exclude.iter().any(|t| low.contains(t.as_str())) && res.iter().all(|r| r.is_match(l))
+        })
+    }
+
+    /// Has something that must match (a word, phrase or pattern).
+    fn positive(&self) -> bool {
+        !self.include.is_empty() || !self.regexes.is_empty()
+    }
+}
+
+/// Whitespace-separated words, a `"quoted phrase"` kept whole (an unbalanced quote takes the rest),
+/// `-word` / `-"phrase"` to exclude, `in:folder` / `in:"my folder"` to restrict, `re:pat` / `re:"a pat"`
+/// for a regex, `case:match` to keep case (words are lowercased otherwise). A lone `-` is an ordinary word.
 fn parse_query(query: &str) -> Query {
     let mut q = Query::default();
-    let low = query.to_lowercase();
-    let (mut chars, mut word) = (low.chars().peekable(), String::new());
-    // Files a finished token under its prefix: "-" exclude, "in:" folder, else include.
+    let (mut chars, mut word) = (query.chars().peekable(), String::new());
+    // Files a finished token under its prefix: "-" exclude, "in:" folder, "re:" regex, else include.
     let mut flush = |w: &mut String, quoted: bool| {
         let t = std::mem::take(w);
+        let pre = |p: &str| t.get(..p.len()).filter(|h| h.eq_ignore_ascii_case(p)).map(|_| t[p.len()..].to_string());
         if let Some(r) = t.strip_prefix('-').filter(|r| !r.is_empty() || quoted) {
             q.exclude.push(r.to_string());
-        } else if let Some(r) = t.strip_prefix("in:") {
-            q.folders.push(r.to_string());
+        } else if let Some(r) = pre("in:") {
+            q.folders.push(r.to_lowercase());
+        } else if let Some(r) = pre("re:") {
+            q.regexes.push(r);
+        } else if !quoted && t.eq_ignore_ascii_case("case:match") {
+            q.case = true;
         } else {
             q.include.push(t);
         }
     };
     while let Some(c) = chars.next() {
         if c == '"' {
-            // Quoted segment: whole phrase, glued to any "-" / "in:" typed right before it.
+            // Quoted segment: whole phrase, glued to any "-" / "in:" / "re:" typed right before it.
             let mut ph = String::new();
             for c in chars.by_ref() {
                 if c == '"' {
@@ -937,7 +963,7 @@ fn parse_query(query: &str) -> Query {
                 }
                 ph.push(c);
             }
-            if !matches!(word.as_str(), "" | "-" | "in:") {
+            if !matches!(word.to_lowercase().as_str(), "" | "-" | "in:" | "re:") {
                 flush(&mut word, false); // `foo"bar"`: the glued word stands alone
             }
             word.push_str(&ph);
@@ -953,20 +979,27 @@ fn parse_query(query: &str) -> Query {
     if !word.is_empty() {
         flush(&mut word, false);
     }
-    for v in [&mut q.include, &mut q.exclude, &mut q.folders] {
+    for v in [&mut q.include, &mut q.exclude, &mut q.folders, &mut q.regexes] {
         v.retain(|t| !t.trim().is_empty());
+    }
+    if !q.case {
+        for t in q.include.iter_mut().chain(q.exclude.iter_mut()) {
+            *t = t.to_lowercase();
+        }
     }
     q
 }
 
-/// Lines containing every term of `query` (case-insensitive, any order) and no `-excluded` one, only in
-/// notes under a folder named by `in:` (if any; under `root`); none without a positive term.
-pub fn search(files: &[Arc<OrgFile>], root: &Path, query: &str, limit: usize) -> Vec<Hit> {
+/// Lines matching every term and `re:` pattern of `query` (case-insensitive unless `case:match`, any order)
+/// and no `-excluded` one, only in notes under a folder named by `in:` (if any; under `root`); none without
+/// a positive term. Errs on a bad pattern.
+pub fn search(files: &[Arc<OrgFile>], root: &Path, query: &str, limit: usize) -> Result<Vec<Hit>, String> {
     let q = parse_query(query);
     let mut out = vec![];
-    if q.include.is_empty() {
-        return out;
+    if !q.positive() {
+        return Ok(out);
     }
+    let m = q.matcher()?;
     for f in files {
         if !q.folders.is_empty() {
             let Some(dirs) = f.path.strip_prefix(root).ok().and_then(Path::parent) else { continue };
@@ -982,16 +1015,15 @@ pub fn search(files: &[Arc<OrgFile>], root: &Path, query: &str, limit: usize) ->
             }
         }
         for (i, l) in f.text.lines().enumerate() {
-            let low = l.to_lowercase();
-            if q.include.iter().all(|t| low.contains(t.as_str())) && !q.exclude.iter().any(|t| low.contains(t.as_str())) {
+            if m(l) {
                 out.push(Hit { path: f.path.clone(), title: f.title.clone(), line: i, text: l.trim().to_string() });
                 if out.len() >= limit {
-                    return out;
+                    return Ok(out);
                 }
             }
         }
     }
-    out
+    Ok(out)
 }
 
 /// A matching line of one note (`Space s o`): 0-based line, its text and the heading path above it.
@@ -1013,9 +1045,10 @@ pub fn occur(f: &OrgFile, query: &str) -> Result<Vec<Occur>, String> {
         false => None,
     };
     let pq = parse_query(q);
-    if re.is_none() && pq.include.is_empty() {
+    if re.is_none() && !pq.positive() {
         return Ok(vec![]);
     }
+    let m = pq.matcher()?;
     let mut out = vec![];
     // Ancestor chain at the current line: headlines are in line order, so walk them forward once.
     let (mut stack, mut hi): (Vec<(usize, String)>, usize) = (vec![], 0);
@@ -1030,10 +1063,7 @@ pub fn occur(f: &OrgFile, query: &str) -> Result<Vec<Occur>, String> {
         }
         let hit = match &re {
             Some(re) => re.is_match(l),
-            None => {
-                let low = l.to_lowercase();
-                pq.include.iter().all(|t| low.contains(t.as_str())) && !pq.exclude.iter().any(|t| low.contains(t.as_str()))
-            }
+            None => m(l),
         };
         if hit {
             let path = stack.iter().map(|(_, t)| t.clone()).collect();
@@ -1252,7 +1282,7 @@ mod tests {
         let kw = Kw { todo: vec![], done: vec![] };
         let f = Arc::new(parse(Path::new("/n/a.org"), "#+title: A\nMeeting about Alpha\ndraft of the report\nreport draft\nalpha only\n", &kw));
         let files = [f];
-        let lines = |q: &str, limit| search(&files, Path::new("/n"), q, limit).iter().map(|h| h.line).collect::<Vec<_>>();
+        let lines = |q: &str, limit| search(&files, Path::new("/n"), q, limit).unwrap().iter().map(|h| h.line).collect::<Vec<_>>();
         assert_eq!(lines("alpha meeting", 10), vec![1]);
         assert_eq!(lines("ALPHA Meeting", 10), vec![1]);
         assert_eq!(lines("report draft", 10), vec![2, 3]);
@@ -1281,7 +1311,7 @@ mod tests {
         let kw = Kw { todo: vec![], done: vec![] };
         let mk = |p: &str| Arc::new(parse(Path::new(p), "meeting about stand up\nmeeting alone\n- a - b\n", &kw));
         let files = [mk("/n/projects.org"), mk("/n/Projects/alpha/x.org"), mk("/n/journal/j.org"), mk("/n/my folder/m.org"), mk("/other/o.org")];
-        let hits = |q: &str| search(&files, Path::new("/n"), q, 100).iter().map(|h| h.path.to_string_lossy().into_owned()).collect::<std::collections::BTreeSet<_>>().into_iter().collect::<Vec<_>>();
+        let hits = |q: &str| search(&files, Path::new("/n"), q, 100).unwrap().iter().map(|h| h.path.to_string_lossy().into_owned()).collect::<std::collections::BTreeSet<_>>().into_iter().collect::<Vec<_>>();
         assert_eq!(hits("meeting in:proj"), ["/n/Projects/alpha/x.org"]);
         assert_eq!(hits("meeting in:ALPHA"), ["/n/Projects/alpha/x.org"]);
         assert_eq!(hits("meeting in:journal in:alpha"), ["/n/Projects/alpha/x.org", "/n/journal/j.org"]);
@@ -1293,10 +1323,35 @@ mod tests {
         assert_eq!(hits("meeting in:\"my folder/x\""), Vec::<String>::new());
         assert_eq!(hits("meeting in:other"), Vec::<String>::new());
         assert_eq!(hits("meeting").len(), 5);
-        let lines = |q: &str| search(&files[..1], Path::new("/n"), q, 100).iter().map(|h| h.line).collect::<Vec<_>>();
+        let lines = |q: &str| search(&files[..1], Path::new("/n"), q, 100).unwrap().iter().map(|h| h.line).collect::<Vec<_>>();
         assert_eq!(lines("meeting -\"stand up\""), vec![1]);
         assert_eq!(lines("meeting -"), Vec::<usize>::new());
         assert_eq!(lines("a - b"), vec![2]);
+    }
+
+    #[test]
+    fn search_regex_and_case() {
+        let kw = Kw { todo: vec![], done: vec![] };
+        let mk = |p: &str| Arc::new(parse(Path::new(p), "fix ABC-12 now\nabc-x later\nUS office\nus too\nTODO  write tests\n", &kw));
+        let files = [mk("/n/a.org"), mk("/n/work/b.org")];
+        let lines = |q: &str| search(&files[..1], Path::new("/n"), q, 100).map(|h| h.iter().map(|h| h.line).collect::<Vec<_>>());
+        assert_eq!(lines(r"re:abc-\d+"), Ok(vec![0]));
+        assert_eq!(lines(r"re:ABC-\S+ -later"), Ok(vec![0]));
+        assert_eq!(lines(r#"re:"todo\s+write tests""#), Ok(vec![4]));
+        assert_eq!(lines(r#"RE:"TODO  WRITE""#), Ok(vec![4]));
+        assert_eq!(lines("us"), Ok(vec![2, 3]));
+        assert_eq!(lines("US case:match"), Ok(vec![2]));
+        assert_eq!(lines(r"case:match re:^us"), Ok(vec![3]));
+        assert_eq!(lines(r"case:match re:abc"), Ok(vec![1]));
+        assert_eq!(lines("case:match"), Ok(vec![]));
+        assert_eq!(lines("\"case:match\""), Ok(vec![]));
+        assert_eq!(lines("re:"), Ok(vec![]));
+        assert_eq!(lines("re:[a-"), Err("bad pattern [a-: unclosed character class".into()));
+        let n = search(&files, Path::new("/n"), r"re:\d in:work", 100).unwrap();
+        assert_eq!(n.iter().map(|h| h.path.to_string_lossy().into_owned()).collect::<Vec<_>>(), ["/n/work/b.org"]);
+        let f = &files[0];
+        assert_eq!(occur(f, "re:abc case:match").unwrap().iter().map(|o| o.line).collect::<Vec<_>>(), vec![1]);
+        assert!(occur(f, "re:(").is_err());
     }
 
     #[test]

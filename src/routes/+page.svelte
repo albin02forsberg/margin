@@ -2181,9 +2181,15 @@
   async function search() {
     const h: Hit | null = await pick({
       prompt: "Search all notes",
-      hint: '"phrase" · -exclude · in:folder',
-      source: async (q) =>
-        q.trim().length < 2 ? [] : (await call<Hit[]>("notes_search", { query: q })).map((h) => ({ label: h.text, detail: `${h.title} · line ${h.line + 1}`, value: h })),
+      hint: '"phrase" · -exclude · in:folder · re:regex · case:match',
+      source: async (q) => {
+        if (q.trim().length < 2) return [];
+        try {
+          return (await call<Hit[]>("notes_search", { query: q })).map((h) => ({ label: h.text, detail: `${h.title} · line ${h.line + 1}`, value: h as Hit | null }));
+        } catch (e) {
+          return [{ label: String(e), dim: true, value: null }]; // bad re: pattern: a row, not a flash per keystroke
+        }
+      },
     });
     if (h) await openFile(h.path, h.line);
   }
