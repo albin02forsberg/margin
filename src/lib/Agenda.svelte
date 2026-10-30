@@ -350,7 +350,7 @@
       case "-": op("priority-down"); break;
       case "Y": void copyList(); break;
       case "n": api.newTask(dayInput()); break;
-      case "u": api.act(async () => { await api.undo(); await refresh(); }); break;
+      case "u": if (!busy) api.act(async () => { await api.undo(); await refresh(); }); break;
       case "c": if (mode === "agenda") setLog(!logOn); break;
       case "W": if (selected?.blocked_by) { const { path, line } = selected.blocked_by; op("open", { ...selected, path, line }, undefined, false); } break;
       case "B": setBlocked(!blockedOn); break;

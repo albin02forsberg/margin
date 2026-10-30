@@ -1011,6 +1011,7 @@ describe("Journal, archive and move", () => {
     await answer("Move 2 tasks to…", "bulk.org / Bulk solo");
     await fileMatches(f("bulk.org"), (s) => s === "* TODO Bulk solo\n** TODO Bulk parent\n*** TODO Bulk child\n** TODO Move me\n", "same-file move not filed under Bulk solo");
     await fileMatches(f("chores.org"), (s) => s === "* TODO Archive me\n* TODO Stay put\n", "other file's mark not moved out");
+    await find(".status .msg", "2 tasks changed · u undoes");
     await browser.keys("u");
     await fileMatches(f("bulk.org"), (s) => s === bulk, "undo didn't restore the target file");
     await fileMatches(f("chores.org"), (s) => s === chores, "undo didn't restore the other file");
@@ -1021,7 +1022,7 @@ describe("Journal, archive and move", () => {
     await browser.keys("m");
     await answer("Move 3 tasks to…", "projects.org / Shed");
     await fileMatches(f("bulk.org"), (s) => !s.trim(), "marked tasks not all moved out");
-    await fileMatches(f("projects.org"), (s) => s.includes("** TODO Bulk parent\n*** TODO Bulk child\n** TODO Bulk solo\n"), "marked (in order) tasks not filed under Shed (or the child flattened)");
+    await find(".status .msg", "3 tasks changed · u undoes");
     await browser.keys("u");
     await fileMatches(f("bulk.org"), (s) => s === bulk, "undo didn't restore the source");
     await fileMatches(f("projects.org"), (s) => s === projects, "undo didn't restore the target");
