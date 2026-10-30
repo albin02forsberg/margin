@@ -24,19 +24,40 @@ before(async () => {
 });
 after(close, { timeout: 30_000 });
 
+/** Click the Clock-card button with TEXT, re-finding it if a re-render makes the handle stale. */
+async function press(text: string) {
+  await browser.waitUntil(async () => {
+    try { await (await find(".time .buttons button", text)).click(); return true; } catch { return false; }
+  }, { timeoutMsg: `could not click “${text}”` });
+}
+
+/** Wait until the Clock card shows what the log says (running / on a break / idle), so a still-loading view isn't read as idle. */
+async function settled() {
+  const want = () => { const e = events(read(log)).at(-1)?.ev; return e === "in" ? "on" : e === "break" ? "paused" : "idle"; };
+  await browser.waitUntil(async () => {
+    const [on, paused] = await browser.execute(() => ["on", "paused"].map((c) => !!document.querySelector(`.time .status.${c}`)));
+    return (on ? "on" : paused ? "paused" : "idle") === want();
+  }, { timeoutMsg: `Clock card doesn't match the log:\n${read(log)}` });
+  return want();
+}
+
 async function start(project: string, task: string) {
   await noPicker();
   await browser.keys([Key.Ctrl, "4"]);
-  // A failed earlier test may leave a timer running; stop it so one failure doesn't cascade.
-  if ((await texts(".time .buttons button")).some((t) => t.includes("Stop"))) {
-    await (await find(".time .buttons button", "Stop")).click();
+  // A failed earlier test may leave a timer running or a break open; end it so one failure doesn't cascade.
+  let state = await settled();
+  if (state === "paused") { await press("Resume"); state = "on"; }
+  if (state === "on") {
+    await press("Stop");
     await answer("What did you do?", "leftover");
     await fileMatches(log, (s) => events(s).at(-1)?.ev === "out", "leftover session not stopped");
+    await settled();
   }
-  await (await find(".time button", "Start tracking")).click();
+  await press("Start tracking");
   await answer("Track time on project", project);
   await answer("What are you working on?", task);
-  await find(".time .status h2", project);
+  await fileMatches(log, (s) => { const e = events(s).at(-1); return e?.ev === "in" && e.project === project; }, `not clocked in on ${project}`);
+  await find(".time .status.on h2", project);
 }
 
 describe("Time tracking", () => {
@@ -75,9 +96,9 @@ describe("Time tracking", () => {
     await palette("Time: take a break");
     await fileMatches(log, (s) => evs(s).endsWith("in:Acme break"), "no break in the log");
     await noPicker();
-    await (await find(".time .buttons button", "Resume")).click();
+    await press("Resume");
     await fileMatches(log, (s) => evs(s).endsWith("in:Acme break in:Acme"), "not resumed on Acme");
-    await (await find(".time .buttons button", "Stop")).click();
+    await press("Stop");
     await answer("What did you do?", "after the break");
     await fileMatches(log, (s) => evs(s) === "in:Acme out in:Acme break in:Acme out", "break/resume not logged in order");
   });
@@ -87,9 +108,9 @@ describe("Time tracking", () => {
     await palette("Time: switch project");
     await answer("What did you do on", "acme part");
     await answer("Switch to project", "Beta");
-    await find(".time .status h2", "Beta");
+    await find(".time .status.on h2", "Beta");
     await fileMatches(log, (s) => { const e = events(s); return evs(s).endsWith("in:Acme out in:Beta") && e.at(-2)?.note === "acme part"; }, "switch didn't close Acme and open Beta");
-    await (await find(".time .buttons button", "Stop")).click();
+    await press("Stop");
     await answer("What did you do?", "beta part");
     await fileMatches(log, (s) => evs(s).endsWith("in:Beta out"), "Beta not stopped");
   });
