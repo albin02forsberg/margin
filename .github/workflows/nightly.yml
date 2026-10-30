@@ -74,9 +74,10 @@ jobs:
           workspaces: src-tauri
       - name: System deps
         if: matrix.platform == 'ubuntu-22.04'
+        timeout-minutes: 6
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf
       - name: llama.cpp CPU features
         if: matrix.platform != 'macos-latest'
         shell: bash
