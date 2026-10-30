@@ -27,6 +27,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "idle_threshold_minutes", label: "Ask about idle time after (minutes)", kind: "number", step: 1, hint: "0 = never" },
     { key: "focus_minutes", label: "Nudge a break after (minutes)", kind: "number", step: 1, hint: "of one running session, since clocking in or resuming; the top-bar clock counts down; 0 = off" },
     { key: "focus_break_minutes", label: "Suggested break (minutes)", kind: "number", step: 1 },
+    { key: "max_session_hours", label: "Ask if still working after (hours)", kind: "number", step: "any", hint: "of one running session, since clocking in or resuming; notifies once and tints the top-bar clock; 0 = off" },
     { key: "profiles", label: "Profiles", kind: "list", hint: "one per line; each has its own time log" },
   ] },
   { name: "Reminders & desktop", fields: [

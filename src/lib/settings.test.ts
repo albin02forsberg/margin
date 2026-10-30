@@ -76,7 +76,7 @@ test("the macOS watcher dialog shows once, only when turning it on without the p
 test("category chips and the filter narrow the settings shown", () => {
   const shown = (cat: string, q: string) => GROUPS.flatMap((g) => g.fields.filter((f) => shows(cat, q, g.name, f.label, f.hint, f.key)).map((f) => f.key));
   assert.equal(shown("All", "").length, GROUPS.flatMap((g) => g.fields).length);
-  assert.deepEqual(shown("Time", ""), ["expected_daily_hours", "weekday_hours", "public_holidays", "extra_days_off", "idle_threshold_minutes", "focus_minutes", "focus_break_minutes", "profiles"]);
+  assert.deepEqual(shown("Time", ""), ["expected_daily_hours", "weekday_hours", "public_holidays", "extra_days_off", "idle_threshold_minutes", "focus_minutes", "focus_break_minutes", "max_session_hours", "profiles"]);
   assert.deepEqual(shown("All", "IDLE"), ["idle_threshold_minutes"]);
   assert.deepEqual(shown("All", "tasks"), ["inbox", "todo_keywords", "done_keywords", "stuck_next_keywords", "log_done", "calendar_file", "ai_source_tasks", "ai_exclude"]); // inbox and the AI ones by label or hint, Tasks by group name
   assert.deepEqual(shown("Time", "keywords"), []);

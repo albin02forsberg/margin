@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { worked, parseWhen, naive, dayTime, inactiveStamp, focusLeft } from "./clock.ts";
+import { worked, parseWhen, naive, dayTime, inactiveStamp, focusLeft, overLong } from "./clock.ts";
 
 test("focus countdown: minutes to the break, due once reached, empty when off", () => {
   const now = new Date(2026, 9, 13, 10, 0, 30);
@@ -44,4 +44,13 @@ test("dayTime: HH:MM or HHMM on a day, else null", () => {
 test("inactiveStamp: English weekday, zero-padded local time", () => {
   assert.equal(inactiveStamp(new Date(2026, 9, 12, 9, 5)), "[2026-10-12 Mon 09:05]");
   assert.equal(inactiveStamp(new Date(2026, 0, 4, 0, 0)), "[2026-01-04 Sun 00:00]");
+});
+
+test("overLong: the running session has passed max_session_hours", () => {
+  const now = new Date("2026-10-13T12:00:00");
+  assert.equal(overLong("2026-10-13T08:00:00", 4, now), true); // at
+  assert.equal(overLong("2026-10-13T08:01:00", 4, now), false);
+  assert.equal(overLong("2026-10-13T09:00:00", 2.5, now), true);
+  assert.equal(overLong("2026-10-13T08:00:00", 0, now), false); // off
+  assert.equal(overLong(null, 4, now), false);
 });

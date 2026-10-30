@@ -22,6 +22,10 @@ export function focusLeft(since: string | null | undefined, focus: number, now: 
   return left > 0 ? `break in ${hm(left / 60)}` : "break due";
 }
 
+/** Whether the session running since SINCE (naive ISO) has passed MAX hours at NOW; false when off. */
+export const overLong = (since: string | null | undefined, max: number, now: Date) =>
+  !!since && max > 0 && now.getTime() - new Date(since).getTime() >= max * 3600000;
+
 const p2 =(n: number) => String(n).padStart(2, "0");
 
 /** Org inactive timestamp "[2026-10-12 Mon 09:05]" for D, local time; English weekday regardless of locale. */

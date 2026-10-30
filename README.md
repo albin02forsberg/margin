@@ -833,6 +833,12 @@ after that long on one running session, a notification suggests a
 starts a new block, as do clocking in on another project and discarding idle
 time. It nudges once per block and works with `reminders` off.
 
+Forgotten timers: set `max_session_hours` (e.g. 4; 0 = off, the default) and,
+once one running session passes it, a notification asks "Still working on
+Acme? Clock has run 4h 12m" and the top-bar clock turns red. It never stops
+the clock. It notifies once per session (also across restarts) and works with
+`reminders` off; a pause and resume or switching project starts a new session.
+
 ### Suggested time from ActivityWatch
 
 If you run [ActivityWatch](https://activitywatch.net/), set

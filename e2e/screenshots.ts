@@ -357,6 +357,18 @@ async function pngs() {
   await (await find(".settings .chips button", "AI chat")).click();
   await browser.$(".settings .mcp code").waitForDisplayed();
   await shot("mcp");
+
+  if (want("long-session")) { // #970: the demo clock has run 2h 20m, past a 2 h limit; last, as it tints the chip
+    await (await find(".settings .chips button", "Time")).click();
+    await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Ask if still working after")]]/input`)).click();
+    await browser.keys([Key.Ctrl, "a"]);
+    await type("2");
+    await (await find(".settings button", "Save time")).click();
+    await find(".status .msg", "Settings saved");
+    await browser.keys([Key.Ctrl, "4"]);
+    await browser.$(".clockchip.long").waitForDisplayed();
+    await shot("long-session");
+  }
 }
 
 // GIFs: each frame is a screenshot shown for a fixed time, so a clip doesn't depend on how fast
