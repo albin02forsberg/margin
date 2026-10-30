@@ -141,9 +141,31 @@ static TC_WRITES: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// Run F holding the time-log write lock. The `tc_*` commands that write the log use it, so an
 /// append can't land between a rewrite's read and write (`adjust_start`, `edit_session`,
 /// `add_session`) and be lost. Taken in the commands, not in `Tc`, since `clock_in` calls `clock_out`.
+/// Time-log writes take it through `Tc::locked`, which adds the cross-process lock.
 pub fn locked<T>(f: impl FnOnce() -> T) -> T {
     let _g = TC_WRITES.lock().unwrap_or_else(|e| e.into_inner());
     f()
+}
+
+/// How long `file_lock` waits for another process before giving up.
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// An OS lock on DIR's `.timelog.lock`, held until the file is dropped, so another process
+/// (`margin --mcp`) can't write the log in between. A sidecar, not the log itself: rewrites
+/// rename a new file over the log. Gives up after LOCK_WAIT, and errs rather than hang.
+fn file_lock(dir: &Path) -> Result<fs::File, String> {
+    let err = |e: std::io::Error| format!("time-log lock in {}: {e}", dir.display());
+    fs::create_dir_all(dir).map_err(err)?;
+    let f = fs::OpenOptions::new().create(true).truncate(false).write(true).open(dir.join(".timelog.lock")).map_err(err)?;
+    let until = std::time::Instant::now() + LOCK_WAIT;
+    loop {
+        match f.try_lock() {
+            Ok(()) => return Ok(f),
+            Err(fs::TryLockError::WouldBlock) if std::time::Instant::now() < until => std::thread::sleep(std::time::Duration::from_millis(20)),
+            Err(fs::TryLockError::WouldBlock) => return Err(format!("the time log in {} is busy (another Margin is writing it); try again", dir.display())),
+            Err(fs::TryLockError::Error(e)) => return Err(err(e)),
+        }
+    }
 }
 
 type Stamp = (std::time::SystemTime, u64);
@@ -165,6 +187,15 @@ pub struct Tc {
 }
 
 impl Tc {
+    /// Run F on self holding both time-log locks: `locked` for this process and `file_lock` on
+    /// the profile dir for others. Every write to the log or leave file goes through it.
+    pub fn locked<T>(&self, f: impl FnOnce(&Tc) -> Result<T, String>) -> Result<T, String> {
+        locked(|| {
+            let _f = file_lock(&self.dir)?;
+            f(self)
+        })
+    }
+
     pub fn log_path(&self) -> PathBuf {
         self.dir.join("timelog.jsonl")
     }
@@ -1888,6 +1919,47 @@ mod tests {
             assert!(doctor(&tc.read_log(), now() + Duration::minutes(10)).is_empty());
             let _ = fs::remove_dir_all(&dir);
         }
+    }
+
+    #[test]
+    fn file_lock_serialises_writers_with_their_own_handles() {
+        // Each writer opens the lock file itself and skips the in-process mutex, as two processes would.
+        let dir = std::env::temp_dir().join(format!("tc-flock-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("d.org"), cal: w(8.0) };
+        tc.clock_in("Acme", "", None).unwrap();
+        let go = std::sync::Barrier::new(2);
+        let held = |f: &dyn Fn() -> Result<bool, String>| {
+            let _l = file_lock(&tc.dir).unwrap();
+            f().unwrap()
+        };
+        std::thread::scope(|t| {
+            t.spawn(|| {
+                go.wait();
+                for _ in 0..10 {
+                    held(&|| tc.adjust_start(1)); // read, then rewrite by rename
+                }
+            });
+            t.spawn(|| {
+                go.wait();
+                for _ in 0..10 {
+                    held(&|| tc.take_break().map(|_| true));
+                    held(&|| tc.resume().map(|_| true));
+                }
+            });
+        });
+        assert_eq!(tc.events().len(), 21); // in + 10 × (break, in)
+        // A held lock makes the next writer wait for it.
+        let l = file_lock(&tc.dir).unwrap();
+        let t0 = std::time::Instant::now();
+        std::thread::scope(|t| {
+            let h = t.spawn(|| file_lock(&tc.dir).map(|_| t0.elapsed()));
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            drop(l);
+            assert!(h.join().unwrap().unwrap() >= std::time::Duration::from_millis(200));
+        });
+        assert!(tc.locked(|tc| tc.clock_out("")).unwrap());
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

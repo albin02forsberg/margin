@@ -1001,7 +1001,7 @@ the path filled in (the AppImage itself on Linux) and a Copy button; for Claude 
 It reads `config.toml` and the notes fresh on each call, skips the templates folder, and
 `ai_exclude` applies: excluded notes and their tasks are never listed, and reading one is refused.
 
-**Let Claude (MCP) edit notes** (`mcp_write`, Settings → AI chat, off by default) adds five tools
+**Let Claude (MCP) edit notes** (`mcp_write`, Settings → AI chat, off by default) adds tools
 that change notes the way the app does:
 
 - `create_note` (title, body, folder): a new org-roam note in the notes folder or a subfolder of it.
@@ -1017,7 +1017,17 @@ that change notes the way the app does:
 Each edit reads the file fresh and is refused if it changed in between (or since the text passed
 as `expect`), so it never overwrites an edit from the app; the app reloads the note, or offers its
 merge when it's open with unsaved changes. Excluded notes and paths outside the notes folder are
-never written. Clocking in and out isn't offered.
+never written.
+
+It can also clock you in and out of the active profile's time log:
+
+- `clock_in` (project, task): clocks in, clocking out of a running clock first (as the app does);
+  a new project is added.
+- `clock_out` (note): clocks out, with the note as the session's task.
+
+Both take the same lock as the app (a `.timelog.lock` file in the profile's data folder, ignored by
+the backup), so a clock-in from Claude can't be lost while the app rewrites the log, and the app
+shows it right away. No backup runs for them; the app's next one includes the change.
 
 ## Ledger
 

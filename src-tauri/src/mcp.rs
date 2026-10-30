@@ -23,8 +23,8 @@ impl Ctx {
     }
 }
 
-/// The tools that change notes; only listed and run with `mcp_write` on.
-const WRITE_TOOLS: [&str; 5] = ["create_note", "append_to_note", "add_task", "set_task_state", "append_to_journal"];
+/// The tools that change notes or the time log; only listed and run with `mcp_write` on.
+const WRITE_TOOLS: [&str; 7] = ["create_note", "append_to_note", "add_task", "set_task_state", "append_to_journal", "clock_in", "clock_out"];
 
 /// config.toml, or the defaults when it doesn't load.
 fn load(ctx: &Ctx) -> Config {
@@ -77,7 +77,7 @@ pub fn handle(ctx: &Ctx, line: &str) -> Option<String> {
             "capabilities": { "tools": {} },
             "serverInfo": { "name": "margin", "version": env!("CARGO_PKG_VERSION") },
             "instructions": if load(ctx).mcp_write {
-                "Access to the user's Margin notes (org files), tasks and time log: read them, create notes, append to notes, add tasks, change task states and add to the journal."
+                "Access to the user's Margin notes (org files), tasks and time log: read them, create notes, append to notes, add tasks, change task states, add to the journal and clock in and out."
             } else {
                 "Read-only access to the user's Margin notes (org files), tasks and time log."
             },
@@ -139,6 +139,10 @@ fn tools(write: bool) -> Value {
             "inputSchema": target(json!({ "state": s("New task keyword, e.g. DONE"), "heading": s("The heading's title (must match exactly one, any case)"), "line": { "type": "integer", "description": "1-based line of the heading (instead of heading)" } }), &["state"]) }));
         w.push(json!({ "name": "append_to_journal", "description": "Append TEXT (org) to a day's journal entry (created with the journal template if missing): at its end, or under the first heading titled HEADING (created if missing).",
             "inputSchema": obj(json!({ "text": s("Org text to append"), "date": day, "heading": s("Heading title to append under") }), &["text"]) }));
+        w.push(json!({ "name": "clock_in", "description": "Clock in on PROJECT (clocking out of a running clock first), in the active profile's time log.",
+            "inputSchema": obj(json!({ "project": s("Project name (new ones are added)"), "task": s("What you're working on") }), &["project"]) }));
+        w.push(json!({ "name": "clock_out", "description": "Clock out of the running clock, with an optional NOTE on what was done.",
+            "inputSchema": obj(json!({ "note": s("What was done") }), &[]) }));
     }
     v
 }
@@ -150,8 +154,26 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
     if write && !c.mcp_write {
         return Err("editing is off: turn on “Let Claude (MCP) edit notes” in Margin's settings (mcp_write = true)".into());
     }
-    let root = c.notes();
     let arg = |k: &str| args.get(k).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
+    // The app's tc_in / tc_out under the same locks, minus its backup (the app's next one takes it).
+    let tc = || tc_of(&c, &saved_profile(&c));
+    match name {
+        "clock_in" => {
+            let project = arg("project").ok_or("project is required")?;
+            tc().locked(|tc| tc.clock_in(project, arg("task").unwrap_or(""), None))?;
+            return Ok(format!("⏱ Clocked in on: {project}"));
+        }
+        "clock_out" => {
+            let note = arg("note").unwrap_or("");
+            return Ok(match tc().locked(|tc| tc.clock_out(note))? {
+                false => "Not clocked in.".into(),
+                true if note.is_empty() => "⏱ Clocked out.".into(),
+                true => format!("⏱ Clocked out. Task: {note}"),
+            });
+        }
+        _ => {}
+    }
+    let root = c.notes();
     let rel = |p: &Path| p.strip_prefix(&root).unwrap_or(p).to_string_lossy().replace('\\', "/");
     let notes_tool = write || matches!(name, "search_notes" | "read_note" | "list_notes" | "list_tasks" | "neighbors" | "read_journal");
     if notes_tool && !root.is_dir() {
@@ -210,9 +232,9 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
             if to < from {
                 return Err(format!("to ({to}) is before from ({from})"));
             }
-            return Ok(range_report(&tc_of(&c, &saved_profile(&c)), &saved_profile(&c), from, to));
+            return Ok(range_report(&tc(), &saved_profile(&c), from, to));
         }
-        "list_projects" => json!(tc_of(&c, &saved_profile(&c)).load_projects()?),
+        "list_projects" => json!(tc().load_projects()?),
         "clock_status" => {
             let profile = saved_profile(&c);
             let (cur, on_break, today) = tc_of(&c, &profile).status();
@@ -512,6 +534,28 @@ mod tests {
         std::fs::write(&ctx.cfg_path, toml::to_string(&c).unwrap()).unwrap();
         assert!(!tool(&ctx, "append_to_journal", json!({ "text": "x" })).1);
         assert!(n.join(format!("{today}.org")).exists());
+    }
+
+    #[test]
+    fn clock_tools() {
+        let (d, ctx) = setup();
+        let log = d.join("data/work/timelog.jsonl");
+        // Off by default: hidden and refused, nothing written.
+        assert!(!rpc(&ctx, "tools/list", json!({}))["result"]["tools"].as_array().unwrap().iter().any(|t| t["name"] == "clock_in"));
+        let (e, err) = tool(&ctx, "clock_in", json!({ "project": "Margin" }));
+        assert!(err && e.contains("mcp_write") && !log.exists(), "{e}");
+        let mut c = Config::load(&ctx.cfg_path).unwrap();
+        c.mcp_write = true;
+        std::fs::write(&ctx.cfg_path, toml::to_string(&c).unwrap()).unwrap();
+        // Works without a notes folder, like the time tools.
+        std::fs::remove_dir_all(d.join("notes")).unwrap();
+        assert_eq!(tool(&ctx, "clock_out", json!({})), ("Not clocked in.".to_string(), false));
+        assert!(tool(&ctx, "clock_in", json!({})).1);
+        assert_eq!(tool(&ctx, "clock_in", json!({ "project": "Margin", "task": "MCP" })), ("⏱ Clocked in on: Margin".to_string(), false));
+        assert_eq!(tc_of(&load(&ctx), "Work").current().map(|c| (c.1, c.2)), Some(("Margin".into(), "MCP".into())));
+        assert_eq!(tool(&ctx, "clock_out", json!({ "note": "Wrote tools" })), ("⏱ Clocked out. Task: Wrote tools".to_string(), false));
+        assert_eq!(tc_of(&load(&ctx), "Work").current(), None);
+        assert!(d.join("data/work/.timelog.lock").exists());
     }
 
     #[test]
