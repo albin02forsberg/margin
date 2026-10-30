@@ -996,11 +996,12 @@ the path filled in (the AppImage itself on Linux) and a Copy button; for Claude 
 - `list_tasks` (state, project): open tasks, or those in a state (`DONE` too); project matches a category or tag.
 - `time_report` (from, to; default this week) and `list_projects` for the active profile's time log.
 - `clock_status`: whether you're clocked in, since when, the project, task and any break, and today's hours.
+- `read_journal` (date: `2026-10-01`, `-1`, …; default today): that day's file in the daily folder.
 
 It reads `config.toml` and the notes fresh on each call, skips the templates folder, and
 `ai_exclude` applies: excluded notes and their tasks are never listed, and reading one is refused.
 
-**Let Claude (MCP) edit notes** (`mcp_write`, Settings → AI chat, off by default) adds four tools
+**Let Claude (MCP) edit notes** (`mcp_write`, Settings → AI chat, off by default) adds five tools
 that change notes the way the app does:
 
 - `create_note` (title, body, folder): a new org-roam note in the notes folder or a subfolder of it.
@@ -1010,6 +1011,8 @@ that change notes the way the app does:
 - `set_task_state` (path or title, heading or line, state): changes one heading's keyword, stamping
   `CLOSED:` as the app does with `log_done`; a title that matches several headings is refused with
   their lines.
+- `append_to_journal` (text, date, heading): org text in that day's journal file, placed like
+  `append_to_note`; a missing day file is created first, with the `journal_template`, as the app does.
 
 Each edit reads the file fresh and is refused if it changed in between (or since the text passed
 as `expect`), so it never overwrites an edit from the app; the app reloads the note, or offers its

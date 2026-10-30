@@ -3,7 +3,7 @@
 // (#930). JSON-RPC 2.0, one message per line; stdout carries only responses, anything else goes to stderr.
 
 use crate::config::Config;
-use crate::{check_in, files_of, kw_of, notes, org, org_edit_op, range_report, retrieve, saved_profile, tc_of, timeclock, week_range, write_checked};
+use crate::{capture_file, check_in, files_of, journal_file, kw_of, new_day_file, notes, org, org_edit_op, range_report, retrieve, saved_profile, tc_of, timeclock, week_range, write_checked};
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -24,7 +24,7 @@ impl Ctx {
 }
 
 /// The tools that change notes; only listed and run with `mcp_write` on.
-const WRITE_TOOLS: [&str; 4] = ["create_note", "append_to_note", "add_task", "set_task_state"];
+const WRITE_TOOLS: [&str; 5] = ["create_note", "append_to_note", "add_task", "set_task_state", "append_to_journal"];
 
 /// config.toml, or the defaults when it doesn't load.
 fn load(ctx: &Ctx) -> Config {
@@ -77,7 +77,7 @@ pub fn handle(ctx: &Ctx, line: &str) -> Option<String> {
             "capabilities": { "tools": {} },
             "serverInfo": { "name": "margin", "version": env!("CARGO_PKG_VERSION") },
             "instructions": if load(ctx).mcp_write {
-                "Access to the user's Margin notes (org files), tasks and time log: read them, create notes, append to notes, add tasks and change task states."
+                "Access to the user's Margin notes (org files), tasks and time log: read them, create notes, append to notes, add tasks, change task states and add to the journal."
             } else {
                 "Read-only access to the user's Margin notes (org files), tasks and time log."
             },
@@ -105,6 +105,7 @@ fn tools(write: bool) -> Value {
     let obj = |props: Value, req: &[&str]| json!({ "type": "object", "properties": props, "required": req });
     let s = |d: &str| json!({ "type": "string", "description": d });
     let note = obj(json!({ "path": s("Path relative to the notes folder, as listed by the other tools"), "title": s("Note title (when no path is given)") }), &[]);
+    let day = s("The day: YYYY-MM-DD, or relative like -1 for yesterday (default today)");
     // A write tool's arguments: the target note, EXPECT, and PROPS.
     let target = |props: Value, req: &[&str]| {
         let mut p = json!({ "path": s("Path relative to the notes folder"), "title": s("Note title (when no path is given)"),
@@ -124,6 +125,7 @@ fn tools(write: bool) -> Value {
         { "name": "list_projects", "description": "Time-tracking projects and their settings (active, budget).", "inputSchema": obj(json!({}), &[]) },
         { "name": "clock_status", "description": "The running clock: whether you're clocked in, since when, on which project and task, any break, and today's hours.", "inputSchema": obj(json!({}), &[]) },
         { "name": "neighbors", "description": "Notes linked to or from one note, and the lines that link to it.", "inputSchema": note },
+        { "name": "read_journal", "description": "One day's journal entry (the daily folder's day file), by default today's.", "inputSchema": obj(json!({ "date": day.clone() }), &[]) },
     ]);
     if write {
         let w = v.as_array_mut().unwrap();
@@ -135,6 +137,8 @@ fn tools(write: bool) -> Value {
             "inputSchema": target(json!({ "task": s("The task's title"), "state": s("Task keyword (default the first, e.g. TODO)"), "heading": s("Heading title to add it under") }), &["task"]) }));
         w.push(json!({ "name": "set_task_state", "description": "Change one heading's task keyword, e.g. to DONE, by its title or its line (as list_tasks gives it); stamps CLOSED like the app.",
             "inputSchema": target(json!({ "state": s("New task keyword, e.g. DONE"), "heading": s("The heading's title (must match exactly one, any case)"), "line": { "type": "integer", "description": "1-based line of the heading (instead of heading)" } }), &["state"]) }));
+        w.push(json!({ "name": "append_to_journal", "description": "Append TEXT (org) to a day's journal entry (created with the journal template if missing): at its end, or under the first heading titled HEADING (created if missing).",
+            "inputSchema": obj(json!({ "text": s("Org text to append"), "date": day, "heading": s("Heading title to append under") }), &["text"]) }));
     }
     v
 }
@@ -149,7 +153,7 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
     let root = c.notes();
     let arg = |k: &str| args.get(k).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
     let rel = |p: &Path| p.strip_prefix(&root).unwrap_or(p).to_string_lossy().replace('\\', "/");
-    let notes_tool = write || matches!(name, "search_notes" | "read_note" | "list_notes" | "list_tasks" | "neighbors");
+    let notes_tool = write || matches!(name, "search_notes" | "read_note" | "list_notes" | "list_tasks" | "neighbors" | "read_journal");
     if notes_tool && !root.is_dir() {
         return Err(format!("the notes folder {} doesn't exist", root.display()));
     }
@@ -170,14 +174,18 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
             if excluded(&f.path) {
                 return Err(format!("{} is excluded from the AI (ai_exclude)", rel(&f.path)));
             }
-            let mut text = f.text.clone();
-            if text.len() > MAX_NOTE {
-                let cut = (0..=MAX_NOTE).rev().find(|&i| text.is_char_boundary(i)).unwrap_or(0);
-                let len = text.len();
-                text.truncate(cut);
-                text.push_str(&format!("\n\n[truncated: first {cut} of {len} bytes]"));
+            return Ok(format!("# {} ({})\n\n{}", f.title, rel(&f.path), cut(f.text.clone())));
+        }
+        "read_journal" => {
+            let (p, day) = journal_path(&c, &root, arg("date"))?;
+            if excluded(&p) {
+                return Err(format!("{} is excluded from the AI (ai_exclude)", rel(&p)));
             }
-            return Ok(format!("# {} ({})\n\n{text}", f.title, rel(&f.path)));
+            return match std::fs::read_to_string(&p) {
+                Ok(text) => Ok(format!("# Journal {day} ({})\n\n{}", rel(&p), cut(text))),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(format!("No journal entry for {day} ({} doesn't exist)", rel(&p))),
+                Err(e) => Err(e.to_string()),
+            };
         }
         "list_notes" => json!(files.iter().map(|f| json!({ "path": rel(&f.path), "title": f.title, "tags": f.tags })).collect::<Vec<_>>()),
         "list_tasks" => {
@@ -239,6 +247,21 @@ fn edit(c: &Config, root: &Path, all: &[Arc<org::OrgFile>], name: &str, args: &V
         let (p, id) = notes::new_note(&dir, title, args.get("body").and_then(Value::as_str).unwrap_or("")).map_err(|e| e.to_string())?;
         return Ok(format!("Created {} (:ID: {id})", rel(&p)));
     }
+    if name == "append_to_journal" {
+        let text = args.get("text").and_then(Value::as_str).filter(|t| !t.trim().is_empty()).ok_or("text is required")?;
+        let (p, day) = journal_path(c, root, arg("date"))?;
+        if excluded(&p) {
+            return Err(format!("{} is excluded from the AI (ai_exclude)", rel(&p)));
+        }
+        // A new day file isn't in the scan cache yet, so this works on the path itself, not find().
+        let created = !p.exists();
+        if created {
+            new_day_file(&p, &c.journal_template, day)?;
+        }
+        let read = std::fs::read_to_string(&p).map_err(|e| e.to_string())?.replace("\r\n", "\n").replace('\r', "\n");
+        write_checked(&p, org::capture_insert(&read, arg("heading"), text, &kw), Some(&read))?;
+        return Ok(format!("{} {}", if created { "Created and appended to" } else { "Appended to" }, rel(&p)));
+    }
     let f = find(all, root, arg("path"), arg("title"))?;
     if excluded(&f.path) {
         return Err(format!("{} is excluded from the AI (ai_exclude)", rel(&f.path)));
@@ -278,6 +301,26 @@ fn edit(c: &Config, root: &Path, all: &[Arc<org::OrgFile>], name: &str, args: &V
     // between write_checked's re-read and write_atomic's rename, where the last rename wins.
     write_checked(&f.path, new, Some(args.get("expect").and_then(Value::as_str).unwrap_or(&read)))?;
     Ok(done)
+}
+
+/// The journal's day file under ROOT for DATE (default today), checked to lie inside ROOT, and its day.
+fn journal_path(c: &Config, root: &Path, date: Option<&str>) -> Result<(PathBuf, chrono::NaiveDate), String> {
+    let now = timeclock::now();
+    let day = date.map(|d| crate::date_at(d, now.date())).transpose()?.unwrap_or(now.date());
+    let p = capture_file(root, &journal_file(&c.daily_dir), None, day.and_time(now.time()))?;
+    check_in(&[root.to_path_buf()], &p).map_err(|_| format!("{} isn't in the notes folder", p.display()))?;
+    Ok((p, day))
+}
+
+/// TEXT cut at MAX_NOTE bytes, with a note saying so.
+fn cut(mut text: String) -> String {
+    if text.len() > MAX_NOTE {
+        let cut = (0..=MAX_NOTE).rev().find(|&i| text.is_char_boundary(i)).unwrap_or(0);
+        let len = text.len();
+        text.truncate(cut);
+        text.push_str(&format!("\n\n[truncated: first {cut} of {len} bytes]"));
+    }
+    text
 }
 
 /// The 0-based line of the heading in TEXT at LINE (1-based), else of the one titled HEADING (any
@@ -343,7 +386,7 @@ mod tests {
         assert_eq!(r["result"]["protocolVersion"], "2025-03-26");
         assert_eq!(r["result"]["serverInfo"]["name"], "margin");
         let names: Vec<_> = rpc(&ctx, "tools/list", json!({}))["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect();
-        assert_eq!(names, ["search_notes", "read_note", "list_notes", "list_tasks", "time_report", "list_projects", "clock_status", "neighbors"]);
+        assert_eq!(names, ["search_notes", "read_note", "list_notes", "list_tasks", "time_report", "list_projects", "clock_status", "neighbors", "read_journal"]);
         assert_eq!(handle(&ctx, r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#), None);
         assert_eq!(rpc(&ctx, "nope", json!({}))["error"]["code"], -32601);
         let bad: Value = serde_json::from_str(&handle(&ctx, "{oops").unwrap()).unwrap();
@@ -427,6 +470,48 @@ mod tests {
         let (e, err) = tool(&ctx, "append_to_note", json!({ "path": "c.org", "text": "late", "expect": "#+title: Gamma\n" }));
         assert!(err && e.contains("changed since"), "{e}");
         assert!(!std::fs::read_to_string(n.join("c.org")).unwrap().contains("late"));
+    }
+
+    #[test]
+    fn journal_tools() {
+        let (d, ctx) = setup();
+        let n = d.join("notes");
+        let mut c = Config::load(&ctx.cfg_path).unwrap();
+        c.journal_template = "* Morning\n".into();
+        std::fs::write(&ctx.cfg_path, toml::to_string(&c).unwrap()).unwrap();
+        let today = timeclock::now().date().format("%Y-%m-%d").to_string();
+        let day = n.join(format!("daily/{today}.org"));
+        // Read-only: a missing day is no error; appending needs mcp_write.
+        let (r, err) = tool(&ctx, "read_journal", json!({}));
+        assert!(!err && r.starts_with(&format!("No journal entry for {today}")), "{r}");
+        let (e, err) = tool(&ctx, "append_to_journal", json!({ "text": "x" }));
+        assert!(err && e.contains("mcp_write") && !day.exists(), "{e}");
+        c.mcp_write = true;
+        std::fs::write(&ctx.cfg_path, toml::to_string(&c).unwrap()).unwrap();
+        assert!(rpc(&ctx, "tools/list", json!({}))["result"]["tools"].as_array().unwrap().iter().any(|t| t["name"] == "append_to_journal"));
+
+        // The day file is created with the template, then appended to under a heading.
+        let (r, err) = tool(&ctx, "append_to_journal", json!({ "text": "Coffee.", "heading": "Morning" }));
+        assert!(!err && r == format!("Created and appended to daily/{today}.org"), "{r}");
+        let (r, err) = tool(&ctx, "append_to_journal", json!({ "text": "Wrote code." }));
+        assert!(!err && r == format!("Appended to daily/{today}.org"), "{r}");
+        let t = std::fs::read_to_string(&day).unwrap();
+        assert!(t.contains(&format!("#+title: {today}\n")) && t.ends_with("* Morning\nCoffee.\nWrote code.\n"), "{t}");
+        let (r, err) = tool(&ctx, "read_journal", json!({ "date": today }));
+        assert!(!err && r.starts_with(&format!("# Journal {today} (daily/{today}.org)")) && r.contains("Coffee."), "{r}");
+        assert!(tool(&ctx, "read_journal", json!({ "date": "-1" })).0.starts_with("No journal entry"));
+        assert!(tool(&ctx, "read_journal", json!({ "date": "not a date" })).1);
+
+        // An excluded daily folder is refused, and no file is created; an empty daily_dir stays in the notes folder.
+        c.ai_exclude = vec!["/daily/".into()];
+        std::fs::write(&ctx.cfg_path, toml::to_string(&c).unwrap()).unwrap();
+        assert!(tool(&ctx, "read_journal", json!({})).0.contains("ai_exclude"));
+        let (e, err) = tool(&ctx, "append_to_journal", json!({ "text": "x", "date": "-1" }));
+        assert!(err && e.contains("ai_exclude") && std::fs::read_dir(n.join("daily")).unwrap().count() == 1, "{e}");
+        c.daily_dir = "/".into();
+        std::fs::write(&ctx.cfg_path, toml::to_string(&c).unwrap()).unwrap();
+        assert!(!tool(&ctx, "append_to_journal", json!({ "text": "x" })).1);
+        assert!(n.join(format!("{today}.org")).exists());
     }
 
     #[test]
