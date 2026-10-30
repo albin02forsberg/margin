@@ -142,6 +142,7 @@ describe("Features", () => {
         writeFileSync(join(notes, "fan.org"), "#+title: Fan\n\nSee [[id:doomed-id][the doomed note]].\n");
         writeFileSync(join(notes, "embed.org"), "#+title: Embed\n\n#+TRANSCLUDE: [[file:source.org::*Agenda]]\nAfter.\n");
         writeFileSync(join(notes, "source.org"), "#+title: Source\n\n* Agenda\n- reuse me\n");
+        writeFileSync(join(notes, "diagram.org"), "#+title: Diagram\n\n#+begin_src mermaid\ngraph TD\n  Plan --> Ship\n#+end_src\n\n#+begin_src mermaid\nnot a diagram ((\n#+end_src\n");
         writeFileSync(join(notes, "peeker.org"), "[[file:peeked.org::*Plan][the plan]] is over there.\n");
         writeFileSync(join(notes, "peeked.org"), "#+title: Peeked\n\n* Plan\n- peek at me\n* Other\n- not me\n");
       },
@@ -382,6 +383,15 @@ describe("Features", () => {
     assert.equal(read(join(d.notes, "embed.org")), "#+title: Embed\n\n#+TRANSCLUDE: [[file:source.org::*Agenda]]\nAfter.\n");
     await (await find(".cm-transclude", "changed on disk")).click();
     await find(".status .file", "source.org");
+  });
+
+  it("renders a #+begin_src mermaid block as a diagram under it, and a broken one as an error (#931)", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "diagram");
+    await find(".status .file", "diagram.org");
+    await browser.waitUntil(async () => (await browser.$$(".cm-diagram svg")).length === 1, { timeout: 20_000, timeoutMsg: "no diagram svg" });
+    await find(".cm-diagram svg", "Ship");
+    await find(".cm-diagram-error", "⚠");
   });
 
   it("peeks at a linked heading in a side panel; Esc closes it, Shift+Enter reopens it and Enter opens the note (#849)", async () => {

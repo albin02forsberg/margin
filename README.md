@@ -667,6 +667,13 @@ links to and moves the ones you pick to `attachments/.trash/` or `images/.trash/
 Code blocks (`#+begin_src python` …) are syntax highlighted for any language
 CodeMirror knows (python, rust, js/ts, sh, sql, go, java, c, html, css, yaml, …).
 
+A `#+begin_src mermaid` block shows its [Mermaid](https://mermaid.js.org) diagram
+(flowcharts, sequence diagrams, Gantt charts, …) under the block, live as you type, in the
+light or dark palette that matches the system. Folding the block (`Tab` on its first line) leaves just the diagram.
+A syntax error shows as a short message under the block instead. Mermaid is bundled (nothing is fetched)
+and loads only once a note has a diagram; mermaid blocks never run, and a Markdown import
+turns ```` ```mermaid ```` fences into such blocks. HTML export keeps the source as a code block.
+
 ### Snippets
 
 Boilerplate you type often (meeting notes, a bug report, a 1:1 agenda) can be a

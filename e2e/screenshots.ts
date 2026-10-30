@@ -102,6 +102,13 @@ ${[-1, -2, -2, -5, -8, -9, -9, -9, -15, -23, -30, -44].map((o, i) => `* DONE Rel
 
 Last-writer-wins per field, with a vector clock per record. See [[id:adr][ADR 7]].
 Server side lives in [[id:orchard][Orchard]].
+
+#+begin_src mermaid
+sequenceDiagram
+  Phone->>Server: push edits + vector clock
+  Server->>Server: merge per field
+  Server-->>Phone: merged record
+#+end_src
 `);
 
   write(join(notes, "adr.org"), `
@@ -268,6 +275,14 @@ async function pngs() {
   await browser.keys(Key.Escape);
   await browser.keys("}"); // cursor off the title line, so it renders
   await shot("note");
+
+  if (want("mermaid")) { // #931
+    await open("Offline sync", "sync-design.org");
+    await browser.keys(Key.Escape);
+    await browser.$(".cm-diagram svg").waitForDisplayed({ timeout: 20_000 });
+    await shot("mermaid");
+    await open("Orchard platform", "orchard.org");
+  }
 
   await command("Show note graph");
   await shot("graph");

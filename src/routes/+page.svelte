@@ -1216,6 +1216,7 @@
     if (!src) return false;
     return (async () => {
       const lang = src.lang.toLowerCase();
+      if (lang === "mermaid") return flash("Mermaid blocks don't run: the diagram shows under the block.");
       if (!((cfg.config.babel_languages ?? []) as string[]).some((l) => l.trim().toLowerCase() === lang))
         return flash(`${src.lang ? `${src.lang} blocks` : "Blocks without a language"} don't run: list ${lang || "sh"} under “Run code blocks” in Settings (Space f c).`);
       const path = tab.path!, key = `${path}\n${lang}\n${src.code}`;

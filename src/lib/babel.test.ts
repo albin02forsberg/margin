@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { srcAt, resultsChange } from "./babel.ts";
+import { srcAt, srcBlocks, resultsChange } from "./babel.ts";
 
 const apply = (text: string, c: { from: number; to: number; insert: string }) => text.slice(0, c.from) + c.insert + text.slice(c.to);
 const run = (text: string, pos: number, out: string) => apply(text, resultsChange(text, srcAt(text, pos)!, out));
@@ -9,7 +9,7 @@ const doc = "* H\n#+begin_src sh :results output\nls\n,* x\n,#+end_src\n#+end_sr
 
 test("srcAt finds the enclosing block, its begin and end lines included", () => {
   const s = srcAt(doc, doc.indexOf("ls"))!;
-  assert.deepEqual(s, { lang: "sh", code: "ls\n* x\n#+end_src", indent: "", end: doc.indexOf("\nafter") });
+  assert.deepEqual(s, { lang: "sh", code: "ls\n* x\n#+end_src", indent: "", from: 4, end: doc.indexOf("\nafter") });
   assert.equal(srcAt(doc, doc.indexOf("#+begin"))?.lang, "sh");
   assert.equal(srcAt(doc, doc.indexOf("\nafter"))?.lang, "sh", "end of the #+end_src line");
   assert.equal(srcAt(doc, 0), null);
@@ -17,6 +17,15 @@ test("srcAt finds the enclosing block, its begin and end lines included", () => 
   assert.equal(srcAt("#+begin_src sh\necho", 16), null, "unclosed");
   assert.equal(srcAt("#+BEGIN_SRC\n#+END_SRC", 0)?.code, "", "empty, no language");
   assert.equal(srcAt("#+begin_quote\nx\n#+end_quote", 15), null, "not a src block");
+});
+
+test("srcBlocks lists every closed block (a mermaid diagram among them) and stops at an unclosed one", () => {
+  const t = "#+BEGIN_SRC mermaid\ngraph TD\n  A --> B\n#+END_SRC\ntext\n  #+begin_src sh\nls\n  #+end_src\n#+begin_src mermaid\nopen";
+  assert.deepEqual(srcBlocks(t).map((s) => [s.lang, s.code, t.slice(s.from, s.end)]), [
+    ["mermaid", "graph TD\n  A --> B", "#+BEGIN_SRC mermaid\ngraph TD\n  A --> B\n#+END_SRC"],
+    ["sh", "ls", "  #+begin_src sh\nls\n  #+end_src"],
+  ]);
+  assert.deepEqual(srcBlocks("#+begin_quote\nx\n#+end_quote"), []);
 });
 
 test("resultsChange inserts #+RESULTS: after a blank line, as : lines", () => {

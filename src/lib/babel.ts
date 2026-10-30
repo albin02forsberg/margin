@@ -1,8 +1,8 @@
 // Code blocks run on demand (Ctrl+Enter / Space i r, like org-babel): find the block, write #+RESULTS: under it.
 
 /** A `#+begin_src LANG … #+end_src` block: its language, code (org's `,*` / `,#+` escapes undone),
- *  indentation and the offset of the end of its `#+end_src` line. */
-export type Src = { lang: string; code: string; indent: string; end: number };
+ *  indentation and the offsets of the start of its `#+begin_src` line and the end of its `#+end_src` line. */
+export type Src = { lang: string; code: string; indent: string; from: number; end: number };
 
 type Line = { text: string; from: number; to: number };
 function lines(text: string): Line[] {
@@ -14,23 +14,24 @@ function lines(text: string): Line[] {
 
 const BEGIN = /^(\s*)#\+begin_src(?:[ \t]+(\S+))?/i, END = /^\s*#\+end_src\b/i;
 
-/** The src block around offset POS (its begin and end lines count), else null. */
-export function srcAt(text: string, pos: number): Src | null {
-  const ls = lines(text);
+/** Every closed src block in TEXT, in order. */
+export function srcBlocks(text: string): Src[] {
+  const ls = lines(text), out: Src[] = [];
   for (let i = 0; i < ls.length; i++) {
     const b = BEGIN.exec(ls[i].text);
     if (!b) continue;
     let j = i + 1;
     while (j < ls.length && !END.test(ls[j].text)) j++;
-    if (j === ls.length) return null; // unclosed: nothing after it is a block either
-    if (pos >= ls[i].from && pos <= ls[j].to) {
-      const code = ls.slice(i + 1, j).map((l) => l.text.replace(/^(\s*),(?=\*|#\+)/, "$1")).join("\n");
-      return { lang: b[2] ?? "", code, indent: b[1], end: ls[j].to };
-    }
+    if (j === ls.length) break; // unclosed: nothing after it is a block either
+    const code = ls.slice(i + 1, j).map((l) => l.text.replace(/^(\s*),(?=\*|#\+)/, "$1")).join("\n");
+    out.push({ lang: b[2] ?? "", code, indent: b[1], from: ls[i].from, end: ls[j].to });
     i = j;
   }
-  return null;
+  return out;
 }
+
+/** The src block around offset POS (its begin and end lines count), else null. */
+export const srcAt = (text: string, pos: number): Src | null => srcBlocks(text).find((s) => pos >= s.from && pos <= s.end) ?? null;
 
 /** Index after the existing result starting at line J: `: ` lines, a begin/end block, a `:RESULTS:` drawer,
  *  `|` table lines or one file link. An unclosed block or drawer consumes nothing. */

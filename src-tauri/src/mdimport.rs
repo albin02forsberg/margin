@@ -525,6 +525,7 @@ mod tests {
             ("![a](pic.png) ![](https://x/y.png) ![[pic.png]] ![[gone.png]]", "[[file:images/pic.png]] [[https://x/y.png]] [[file:images/pic.png]] [[gone.png]]"),
             ("```rust\n* not a heading\n#+x\n**b**\n```\nafter", "#+BEGIN_SRC rust\n,* not a heading\n,#+x\n,**b**\n#+END_SRC\nafter"),
             ("~~~\nplain\n", "#+BEGIN_EXAMPLE\nplain\n#+END_EXAMPLE"),
+            ("```mermaid\ngraph TD\n  A --> B\n```", "#+BEGIN_SRC mermaid\ngraph TD\n  A --> B\n#+END_SRC"),
             ("---\n***", "-----\n-----"),
             ("# A\n\nTitle\n===\n\nSub\n---\ntext\n\n---\n\nTwo\n==", "* A\n\n* Title\n\n** Sub\ntext\n\n-----\n\n* Two"),
             ("x[^1] and `y[^1]` [^note]\n\n[^1]: The *note*.", "x[fn:1] and ~y[^1]~ [fn:note]\n\n[fn:1] The /note/."),
