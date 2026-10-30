@@ -26,6 +26,17 @@ impl Ctx {
 /// The tools that change notes or the time log; only listed and run with `mcp_write` on.
 const WRITE_TOOLS: [&str; 8] = ["create_note", "append_to_note", "add_task", "set_task_state", "set_task_properties", "append_to_journal", "clock_in", "clock_out"];
 
+/// Ready-made prompts (name, description, text) that clients offer as slash commands. The texts
+/// name tools that may be missing (older server, editing off), so each says what to do then.
+const PROMPTS: [(&str, &str, &str); 3] = [
+    ("daily_plan", "Plan today from the Margin agenda, the running clock and yesterday's journal",
+     "Help me plan my day in Margin.\n\n1. Call `agenda` for today (fall back to `list_tasks` if there is no agenda tool) to see overdue tasks, today's scheduled and deadline tasks and events.\n2. Call `clock_status` to see whether I'm clocked in and how many hours I've logged today.\n3. Call `read_journal` with date -1 for yesterday's entry: what I did and anything I left open.\n\nThen propose a realistic plan for today: the few tasks that matter most first, with times where the agenda has them, what to reschedule, and anything blocked. Keep it short. Don't change anything unless I ask; if I do and the write tools (`set_task_properties`, `set_task_state`, `append_to_journal`) aren't available, tell me editing is off in Margin's settings."),
+    ("weekly_review", "Review the week: time spent, tasks done, tasks stuck, and a journal summary",
+     "Run a weekly review of my Margin notes.\n\n1. Call `time_report` (default: this week) for the hours per day and project.\n2. Call `list_tasks` with state DONE for what got done, and `list_tasks` without a state for what is still open.\n3. From the open tasks, point out the ones that look stuck: old, with no date, or parents whose subtasks have no next step.\n4. Call `agenda` for the next 7 days (if the tool exists) to see what's coming.\n\nSummarise the week in a few bullets (time, done, stuck, next week). Then offer to append the summary to today's journal with `append_to_journal` under a heading \"Weekly review\"; if that tool isn't available, editing is off in Margin's settings, so give me the text to paste instead."),
+    ("inbox_triage", "Triage open tasks: suggest states, dates, priorities and tags",
+     "Help me triage my Margin tasks.\n\n1. Call `list_tasks` for the open tasks (its `project` argument narrows to a category or tag, e.g. inbox, if I named one).\n2. For each task without a date, priority or tags, suggest what to do with it: a state (e.g. NEXT, WAITING, or DONE/CANCELLED if it's obsolete), a scheduled date or deadline, a priority, tags and an effort.\n\nShow the suggestions as a short list and ask before changing anything. When I agree, apply them with `set_task_state` and `set_task_properties` (by path and line, as `list_tasks` gives them); if those tools aren't available, editing is off in Margin's settings, so list the changes for me to make by hand."),
+];
+
 /// config.toml, or the defaults when it doesn't load.
 fn load(ctx: &Ctx) -> Config {
     Config::load(&ctx.cfg_path).unwrap_or_else(|e| {
@@ -74,7 +85,7 @@ pub fn handle(ctx: &Ctx, line: &str) -> Option<String> {
     let result = match msg["method"].as_str().unwrap_or("") {
         "initialize" => json!({
             "protocolVersion": params["protocolVersion"].as_str().unwrap_or("2025-06-18"),
-            "capabilities": { "tools": {} },
+            "capabilities": { "tools": {}, "prompts": {} },
             "serverInfo": { "name": "margin", "version": env!("CARGO_PKG_VERSION") },
             "instructions": if load(ctx).mcp_write {
                 "Access to the user's Margin notes (org files), tasks and time log: read them, create notes, append to notes, add tasks, change task states, schedule tasks and set their deadline, priority, tags and effort, add to the journal and clock in and out."
@@ -84,6 +95,12 @@ pub fn handle(ctx: &Ctx, line: &str) -> Option<String> {
         }),
         "ping" => json!({}),
         "tools/list" => json!({ "tools": tools(load(ctx).mcp_write) }),
+        "prompts/list" => json!({ "prompts": PROMPTS.iter().map(|(name, desc, _)| json!({ "name": name, "description": desc })).collect::<Vec<_>>() }),
+        "prompts/get" => {
+            let name = params["name"].as_str().unwrap_or("");
+            let Some((_, desc, text)) = PROMPTS.iter().find(|p| p.0 == name) else { return Some(error(id, -32602, &format!("unknown prompt: {name}"))) };
+            json!({ "description": desc, "messages": [{ "role": "user", "content": { "type": "text", "text": text } }] })
+        }
         "tools/call" => {
             let (text, err) = match call(ctx, params["name"].as_str().unwrap_or(""), &params["arguments"]) {
                 Ok(t) => (t, false),
@@ -531,6 +548,26 @@ mod tests {
         let bad: Value = serde_json::from_str(&handle(&ctx, "{oops").unwrap()).unwrap();
         assert_eq!(bad["error"]["code"], -32700);
         assert!(tool(&ctx, "nope", json!({})).1);
+    }
+
+    #[test]
+    fn prompts() {
+        let (_d, ctx) = setup();
+        assert_eq!(rpc(&ctx, "initialize", json!({}))["result"]["capabilities"]["prompts"], json!({}));
+        // Listed with mcp_write off, beside the tools.
+        assert!(!rpc(&ctx, "tools/list", json!({}))["result"]["tools"].as_array().unwrap().is_empty());
+        let list = rpc(&ctx, "prompts/list", json!({}))["result"]["prompts"].as_array().unwrap().clone();
+        assert_eq!(list.len(), 3);
+        for p in list {
+            assert!(!p["description"].as_str().unwrap().is_empty(), "{p}");
+            let r = rpc(&ctx, "prompts/get", json!({ "name": p["name"] }))["result"].clone();
+            assert_eq!((r["description"].clone(), r["messages"].as_array().unwrap().len()), (p["description"].clone(), 1), "{r}");
+            let m = &r["messages"][0];
+            assert_eq!((&m["role"], &m["content"]["type"]), (&json!("user"), &json!("text")), "{m}");
+            assert!(m["content"]["text"].as_str().unwrap().len() > 100, "{m}");
+        }
+        assert_eq!(rpc(&ctx, "prompts/get", json!({ "name": "nope" }))["error"]["code"], -32602);
+        assert_eq!(rpc(&ctx, "prompts/get", json!({}))["error"]["code"], -32602);
     }
 
     #[test]

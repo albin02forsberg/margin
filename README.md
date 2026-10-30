@@ -1001,6 +1001,12 @@ the path filled in (the AppImage itself on Linux) and a Copy button; for Claude 
   tasks first, then per day the scheduled and deadline tasks, events and habits, with time, state,
   priority, effort, project, whether a task is blocked, and its `path:line`. Done tasks are left out.
 
+It also offers three prompts, which Claude clients show as ready-made commands: `daily_plan` (agenda,
+clock status and yesterday's journal, then a plan for today), `weekly_review` (time report, done,
+open and stuck tasks, then a summary to append to the journal) and `inbox_triage` (suggested
+states, dates, priorities and tags for open tasks, applied only after you agree). They only change
+notes through the write tools below, so with editing off they suggest the changes instead.
+
 It reads `config.toml` and the notes fresh on each call, skips the templates folder, and
 `ai_exclude` applies: excluded notes and their tasks are never listed, and reading one is refused.
 
