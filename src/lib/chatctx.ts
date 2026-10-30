@@ -8,6 +8,17 @@ const level = (l: string) => /^(\*+) /.exec(l)?.[1].length ?? 0;
 export const cleanChat = (s: string) =>
   s.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/<think>[\s\S]*$/, "").trim().replace(/^\s*\*+ /gm, "- ");
 
+/** What ai_chat's ON_TOOL channel sends (#963): a tool call the model made, or that the model can't use tools. */
+export type ToolEvent = { name: string; args: Record<string, unknown> } | { no_tools: true };
+
+/** EVENT as one line under the question: "searched notes: foo", or the hint that the model can't use tools. */
+export function toolLine(e: ToolEvent): string {
+  if ("no_tools" in e) return "This model can't use tools, so it answered from the matching notes only.";
+  const arg = (k: string) => String(e.args?.[k] ?? "").trim();
+  const what = ({ search_notes: ["searched notes:", "query"], open_note: ["opened", "title"], neighbors: ["looked up links of", "title"] } as Record<string, string[]>)[e.name];
+  return what ? `${what[0]} ${arg(what[1])}`.trim() : `called ${e.name}`;
+}
+
 /**
  * The part of DOC to send, for a selection FROM..TO and cursor HEAD (character offsets), with a LABEL for the UI:
  * a non-empty selection wins; else the whole note if it fits; else the largest section around the cursor that

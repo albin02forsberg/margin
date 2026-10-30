@@ -224,7 +224,6 @@ pub fn by_title<'a>(files: &'a [Arc<OrgFile>], title: &str) -> Option<&'a Arc<Or
 pub const TOOL_RESULT: usize = 1500;
 
 /// The tools the chat model may call (Ollama's schema): read-only, by title, never by path (#469).
-#[allow(dead_code)] // wired into ai_chat with the ai_tools setting (#963)
 pub fn tools() -> serde_json::Value {
     let tool = |name: &str, desc: &str, arg: &str, about: &str| {
         serde_json::json!({ "type": "function", "function": { "name": name, "description": desc,
@@ -239,7 +238,6 @@ pub fn tools() -> serde_json::Value {
 
 /// The result of tool NAME with ARGS over FILES (already without `ai_exclude`d notes), at most
 /// TOOL_RESULT bytes; errors are told to the model as text.
-#[allow(dead_code)] // wired into ai_chat with the ai_tools setting (#963)
 pub fn run_tool(files: &[Arc<OrgFile>], name: &str, args: &serde_json::Value) -> String {
     let arg = |k: &str| args.get(k).and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).ok_or(format!("Error: {name} needs a {k}."));
     let note = |t: &str| by_title(files, t).ok_or(format!("Error: no note titled {t}. Use search_notes to find titles."));

@@ -1,7 +1,7 @@
 // Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chatContext, cleanChat } from "./chatctx.ts";
+import { chatContext, cleanChat, toolLine } from "./chatctx.ts";
 
 const doc = "intro\n* A\na1\na2\n** A1\nx\n* B\nb1\n";
 
@@ -39,4 +39,12 @@ test("limit counts UTF-8 bytes", () => {
   const t = "ååå\nåå\n";
   assert.equal(chatContext(t, 0, 0, 0, "N", 9).label, "text around the cursor");
   assert.equal(chatContext(t, 0, 0, 0, "N", 20).label, "N");
+});
+test("tool calls read as one line each, and unknown tools by name (#963)", () => {
+  assert.equal(toolLine({ name: "search_notes", args: { query: " rollout " } }), "searched notes: rollout");
+  assert.equal(toolLine({ name: "open_note", args: { title: "Launch" } }), "opened Launch");
+  assert.equal(toolLine({ name: "neighbors", args: { title: "Plans" } }), "looked up links of Plans");
+  assert.equal(toolLine({ name: "open_note", args: {} }), "opened");
+  assert.equal(toolLine({ name: "rm", args: { path: "/" } }), "called rm");
+  assert.match(toolLine({ no_tools: true }), /can't use tools/);
 });

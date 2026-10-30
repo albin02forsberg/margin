@@ -365,6 +365,10 @@ async function pngs() {
   await (await find(".settings .chips button", "AI chat")).click();
   await browser.$(".settings .mcp code").waitForDisplayed();
   await shot("mcp");
+  if (want("ai-tools")) { // #963: the switch, shown as the backend is Ollama (the default)
+    await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Let the model search notes itself")]]`)).scrollIntoView({ block: "center" });
+    await shot("ai-tools");
+  }
 
   if (want("long-session")) { // #970: the demo clock has run 2h 20m, past a 2 h limit; last, as it tints the chip
     await (await find(".settings .chips button", "Time")).click();

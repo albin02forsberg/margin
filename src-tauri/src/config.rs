@@ -92,6 +92,8 @@ pub struct Config {
     pub ai_source_notes: bool,
     pub ai_source_tasks: bool,
     pub ai_source_time: bool,
+    /// Let an Ollama model search and open notes itself (tool calls) while "Use my notes" is on (#469).
+    pub ai_tools: bool,
     /// Notes the AI never sees (not retrieved, linked, sent as the open note, or read for tasks):
     /// case-insensitive substrings of their path below notes_dir.
     pub ai_exclude: Vec<String>,
@@ -262,6 +264,7 @@ impl Default for Config {
             ai_source_notes: true,
             ai_source_tasks: true,
             ai_source_time: true,
+            ai_tools: false,
             ai_exclude: vec![],
             mcp_write: false,
             restore_tabs: true,

@@ -2482,9 +2482,12 @@ fn ai_retrieve(s: State<App>, question: String, open: Option<PathBuf>) -> Vec<re
 
 /// The model's answer to the chat MESSAGES, about the open NOTE (name, text; left out when the note
 /// at OPEN is excluded) and the SOURCES from ai_retrieve if given; the raw answer streams to
-/// ON_PIECE as it comes, and the cleaned one is returned.
+/// ON_PIECE as it comes, and the cleaned one is returned. With `ai_tools` (Ollama, SOURCES given)
+/// the model may also search and open notes itself; each call goes to ON_TOOL as {name, args}, and
+/// {no_tools: true} when the model can't, before it answers from SOURCES alone (#469).
 #[tauri::command(async)]
-fn ai_chat(app: AppHandle, s: State<App>, messages: Vec<ai::Msg>, note: Option<(String, String)>, open: Option<PathBuf>, mut sources: Option<Vec<retrieve::Source>>, on_piece: tauri::ipc::Channel<String>) -> R<String> {
+#[allow(clippy::too_many_arguments)]
+fn ai_chat(app: AppHandle, s: State<App>, messages: Vec<ai::Msg>, note: Option<(String, String)>, open: Option<PathBuf>, mut sources: Option<Vec<retrieve::Source>>, on_piece: tauri::ipc::Channel<String>, on_tool: tauri::ipc::Channel<serde_json::Value>) -> R<String> {
     let c = s.cfg();
     if c.ai_model.trim().is_empty() {
         return Err("Pick a model with AI drafts: choose model… (Space f a) to chat with a local model.".into());
@@ -2496,9 +2499,23 @@ fn ai_chat(app: AppHandle, s: State<App>, messages: Vec<ai::Msg>, note: Option<(
         v.retain(|s| s.kind != "note" || !ex(s.path.as_path()));
     }
     let msgs = ai::chat_messages(note.as_ref().map(|(n, t)| (n.as_str(), t.as_str())), sources.as_deref(), &messages)?;
-    ai::chat(c.ai_backend, &c.ai_url, &models_dir(&app)?, c.ai_model.trim(), &msgs, &mut |p| {
+    let mut piece = |p: &str| {
         let _ = on_piece.send(p.into());
-    })
+    };
+    if c.ai_tools && c.ai_source_notes && c.ai_backend == ai::Backend::Ollama && sources.is_some() {
+        let files: Vec<_> = s.files().into_iter().filter(|f| !ex(&f.path)).collect();
+        let mut with = msgs.clone();
+        with[0].content += "\n\nIf the notes above don't answer it, use the tools to search and read more of the user's notes.";
+        let mut run = |name: &str, args: &serde_json::Value| {
+            let _ = on_tool.send(json!({ "name": name, "args": args }));
+            retrieve::run_tool(&files, name, args)
+        };
+        if let Some(answer) = ai::chat_with_tools(&c.ai_url, c.ai_model.trim(), &with, &retrieve::tools(), &mut run, &mut piece)? {
+            return Ok(answer);
+        }
+        let _ = on_tool.send(json!({ "no_tools": true }));
+    }
+    ai::chat(c.ai_backend, &c.ai_url, &models_dir(&app)?, c.ai_model.trim(), &msgs, &mut piece)
 }
 
 /// Stop the built-in model's running draft or a chat answer; it returns an error.

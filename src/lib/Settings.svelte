@@ -129,7 +129,7 @@
   let cat = $state("All");
   let q = $state("");
   let filterInput = $state<HTMLInputElement>();
-  const fieldsOf = (g: (typeof GROUPS)[number]) => g.fields.filter((f) => shows(cat, q, g.name, f.label, f.hint, f.key));
+  const fieldsOf = (g: (typeof GROUPS)[number]) => g.fields.filter((f) => (!f.when || f.when(config)) && shows(cat, q, g.name, f.label, f.hint, f.key));
   const VIEWS = "task searches query", TPLS = "capture key file heading body", SNIPS = "editor tab key text insert";
   const showRules = $derived(!!(rules.length || errors.rules) && shows(cat, q, "Integrations", "Learned activity rules"));
   const none = $derived(!GROUPS.some((g) => fieldsOf(g).length) && !shows(cat, q, "Saved views", VIEWS) && !shows(cat, q, "Capture templates", TPLS) && !shows(cat, q, "Snippets", SNIPS) && !showRules);
