@@ -126,6 +126,8 @@ fn tools(write: bool) -> Value {
         { "name": "clock_status", "description": "The running clock: whether you're clocked in, since when, on which project and task, any break, and today's hours.", "inputSchema": obj(json!({}), &[]) },
         { "name": "neighbors", "description": "Notes linked to or from one note, and the lines that link to it.", "inputSchema": note },
         { "name": "read_journal", "description": "One day's journal entry (the daily folder's day file), by default today's.", "inputSchema": obj(json!({ "date": day.clone() }), &[]) },
+        { "name": "agenda", "description": "What's on the agenda over FROM..TO (default today and the next 7 days, at most 62): overdue tasks first (when today is in the window), then per day the SCHEDULED and DEADLINE tasks, timestamped events and habits, with time, state, priority, effort, project, a blocked flag and path:line. Done tasks are left out.",
+          "inputSchema": obj(json!({ "from": s("Start day: YYYY-MM-DD, or relative like -1 or +3 (default today)"), "to": s("End day, same forms (default FROM + 7 days)") }), &[]) },
     ]);
     if write {
         let w = v.as_array_mut().unwrap();
@@ -175,7 +177,7 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
     }
     let root = c.notes();
     let rel = |p: &Path| p.strip_prefix(&root).unwrap_or(p).to_string_lossy().replace('\\', "/");
-    let notes_tool = write || matches!(name, "search_notes" | "read_note" | "list_notes" | "list_tasks" | "neighbors" | "read_journal");
+    let notes_tool = write || matches!(name, "search_notes" | "read_note" | "list_notes" | "list_tasks" | "neighbors" | "read_journal" | "agenda");
     if notes_tool && !root.is_dir() {
         return Err(format!("the notes folder {} doesn't exist", root.display()));
     }
@@ -234,6 +236,7 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
             }
             return Ok(range_report(&tc(), &saved_profile(&c), from, to));
         }
+        "agenda" => return agenda(&c, &files, &rel, arg("from"), arg("to")),
         "list_projects" => json!(tc().load_projects()?),
         "clock_status" => {
             let profile = saved_profile(&c);
@@ -325,6 +328,72 @@ fn edit(c: &Config, root: &Path, all: &[Arc<org::OrgFile>], name: &str, args: &V
     Ok(done)
 }
 
+/// Longest agenda window, in days.
+const MAX_AGENDA_DAYS: i64 = 62;
+
+/// The agenda of FILES over FROM..TO (default today..today+7) as org-like text: an Overdue section (when
+/// today is in the window), then one section per day with entries. Done tasks are left out.
+fn agenda(c: &Config, files: &[Arc<org::OrgFile>], rel: &dyn Fn(&Path) -> String, from: Option<&str>, to: Option<&str>) -> Result<String, String> {
+    let today = crate::today();
+    let from = from.map(|d| crate::date_at(d, today)).transpose()?.unwrap_or(today);
+    let to = to.map(|d| crate::date_at(d, today)).transpose()?.unwrap_or(from + chrono::Duration::days(7));
+    if to < from {
+        return Err(format!("to ({to}) is before from ({from})"));
+    }
+    let days = (to - from).num_days() + 1;
+    if days > MAX_AGENDA_DAYS {
+        return Err(format!("{from}..{to} is {days} days; at most {MAX_AGENDA_DAYS}"));
+    }
+    let kw = kw_of(c);
+    let items: Vec<org::Item> = org::agenda(files, &kw, from, days, today).into_iter().filter(|i| !i.keyword.as_deref().is_some_and(|k| kw.is_done(k))).collect();
+    let line = |i: &org::Item| {
+        let mut s = String::from("-");
+        let mut add = |p: &str| {
+            s.push(' ');
+            s.push_str(p);
+        };
+        i.time.as_deref().into_iter().chain(i.keyword.as_deref()).for_each(&mut add);
+        if let Some(p) = &i.priority {
+            add(&format!("[#{p}]"));
+        }
+        add(&i.title);
+        if !i.label.is_empty() {
+            add(&format!("({})", i.label));
+        }
+        if i.kind == "timestamp" {
+            add("[event]");
+        }
+        if i.habit.is_some() {
+            add("[habit]");
+        }
+        if !i.tags.is_empty() {
+            add(&format!(":{}:", i.tags.join(":")));
+        }
+        if let Some(m) = i.effort {
+            add(&format!("effort {}:{:02}", m / 60, m % 60));
+        }
+        if !i.category.is_empty() {
+            add(&format!("project {}", i.category));
+        }
+        if let Some(b) = &i.blocked_by {
+            add(&format!("[blocked by \"{}\"]", b.title));
+        }
+        format!("{s} ({}:{})\n", rel(&i.path), i.line + 1)
+    };
+    // Overdue items sit on today: "Overdue Nd" deadlines and "Scheduled Nd ago" tasks.
+    let (late, rest): (Vec<_>, Vec<_>) = items.iter().partition(|i| i.kind == "overdue" || (i.kind == "scheduled" && !i.label.is_empty()));
+    let mut out = String::new();
+    if !late.is_empty() {
+        out.push_str("* Overdue\n");
+        late.iter().for_each(|i| out.push_str(&line(i)));
+    }
+    for day in rest.chunk_by(|a, b| a.date == b.date) {
+        out.push_str(&format!("* {}\n", day[0].date.format("%Y-%m-%d %A")));
+        day.iter().for_each(|i| out.push_str(&line(i)));
+    }
+    Ok(if out.is_empty() { format!("Nothing on the agenda from {from} to {to}.") } else { out })
+}
+
 /// The journal's day file under ROOT for DATE (default today), checked to lie inside ROOT, and its day.
 fn journal_path(c: &Config, root: &Path, date: Option<&str>) -> Result<(PathBuf, chrono::NaiveDate), String> {
     let now = timeclock::now();
@@ -408,7 +477,7 @@ mod tests {
         assert_eq!(r["result"]["protocolVersion"], "2025-03-26");
         assert_eq!(r["result"]["serverInfo"]["name"], "margin");
         let names: Vec<_> = rpc(&ctx, "tools/list", json!({}))["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect();
-        assert_eq!(names, ["search_notes", "read_note", "list_notes", "list_tasks", "time_report", "list_projects", "clock_status", "neighbors", "read_journal"]);
+        assert_eq!(names, ["search_notes", "read_note", "list_notes", "list_tasks", "time_report", "list_projects", "clock_status", "neighbors", "read_journal", "agenda"]);
         assert_eq!(handle(&ctx, r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#), None);
         assert_eq!(rpc(&ctx, "nope", json!({}))["error"]["code"], -32601);
         let bad: Value = serde_json::from_str(&handle(&ctx, "{oops").unwrap()).unwrap();
@@ -556,6 +625,33 @@ mod tests {
         assert_eq!(tool(&ctx, "clock_out", json!({ "note": "Wrote tools" })), ("⏱ Clocked out. Task: Wrote tools".to_string(), false));
         assert_eq!(tc_of(&load(&ctx), "Work").current(), None);
         assert!(d.join("data/work/.timelog.lock").exists());
+    }
+
+    #[test]
+    fn agenda_tool() {
+        let (d, ctx) = setup();
+        let n = d.join("notes");
+        let day = |k: i64| timeclock::now().date() + chrono::Duration::days(k);
+        let ts = |k: i64| day(k).format("%Y-%m-%d %a").to_string();
+        std::fs::write(n.join("plan.org"), format!(
+            "#+title: Plan\n* TODO Late report\nSCHEDULED: <{}>\n* NEXT [#A] Pay rent\nDEADLINE: <{}>\n:PROPERTIES:\n:EFFORT: 0:30\n:END:\n* TODO Standup :work:\nSCHEDULED: <{} 09:00>\n* Dentist\n<{} 14:00>\n* DONE Old thing\nSCHEDULED: <{}>\n",
+            ts(-3), ts(-1), ts(0), ts(2), ts(1))).unwrap();
+        std::fs::write(n.join("private/p.org"), format!("#+title: P\n* TODO Secret plan\nSCHEDULED: <{}>\n", ts(0))).unwrap();
+        let (r, err) = tool(&ctx, "agenda", json!({}));
+        assert!(!err, "{r}");
+        let today = day(0).format("%Y-%m-%d %A").to_string();
+        assert!(r.starts_with(&format!("* Overdue\n- NEXT [#A] Pay rent (Overdue 1d) effort 0:30 project plan (plan.org:4)\n- TODO Late report (Scheduled 3d ago) project plan (plan.org:2)\n* {today}\n- 09:00 TODO Standup :work: project plan (plan.org:9)\n")), "{r}");
+        assert!(r.contains(&format!("* {}\n- 14:00 Dentist [event] project plan (plan.org:11)\n", day(2).format("%Y-%m-%d %A"))), "{r}");
+        // Each overdue task once, no done tasks, no excluded notes.
+        assert_eq!((r.matches("Late report").count(), r.matches("Pay rent").count()), (1, 1), "{r}");
+        assert!(!r.contains("Old thing") && !r.contains("Secret"), "{r}");
+        // A past window has no Overdue section; relative days work; bad ranges are refused.
+        let (r, err) = tool(&ctx, "agenda", json!({ "from": "-3", "to": "-1" }));
+        assert!(!err && r.starts_with(&format!("* {}\n- TODO Late report project plan", day(-3).format("%Y-%m-%d %A"))) && !r.contains("Overdue"), "{r}");
+        assert_eq!(tool(&ctx, "agenda", json!({ "from": "+10", "to": "+11" })).0, format!("Nothing on the agenda from {} to {}.", day(10), day(11)));
+        assert!(tool(&ctx, "agenda", json!({ "from": "+2", "to": "+1" })).0.contains("before"));
+        assert!(tool(&ctx, "agenda", json!({ "to": "+100" })).0.contains("at most 62"));
+        assert!(tool(&ctx, "agenda", json!({ "from": "someday" })).1);
     }
 
     #[test]
