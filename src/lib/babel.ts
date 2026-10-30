@@ -30,6 +30,10 @@ export function srcBlocks(text: string): Src[] {
   return out;
 }
 
+/** A diagram's code as the key of its exported SVG (#942), the same as `export::diagram_key` in Rust: each line
+ *  trimmed and its `,*` / `,#+` escape undone, blank lines dropped, so indentation and trailing newlines don't matter. */
+export const diagramKey = (code: string) => code.split("\n").map((l) => l.trim().replace(/^,(?=\*|#\+)/, "")).filter(Boolean).join("\n");
+
 /** The src block around offset POS (its begin and end lines count), else null. */
 export const srcAt = (text: string, pos: number): Src | null => srcBlocks(text).find((s) => pos >= s.from && pos <= s.end) ?? null;
 

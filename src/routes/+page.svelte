@@ -14,6 +14,7 @@
   import * as ed from "$lib/editor";
   import { linkFor, asUrl, asWebUrl } from "$lib/weblink";
   import { srcAt, resultsChange } from "$lib/babel";
+  import { svgs } from "$lib/diagram";
   import { accepted, changeLabel, hitKey, type Hit as ReplaceHit } from "$lib/replace";
   import { bareTitle, bracketRetitle, findTarget, linkHeadings, linkTarget, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
@@ -2780,7 +2781,8 @@
   /** Export the open note to the export folder; PDF opens the HTML in the browser to print from. */
   async function exportNote(format: "html" | "md" | "pdf") {
     if (!inFile()) return flash("Open a note first.");
-    const path = await exportTo("export_note", { path: tab.path, text: view.state.doc.toString(), format });
+    const text = view.state.doc.toString(), diagrams = format === "md" ? null : await svgs(text);
+    const path = await exportTo("export_note", { path: tab.path, text, format, diagrams });
     if (path) await exported(path, format === "pdf");
   }
 
@@ -2801,7 +2803,7 @@
     const r = view.state.selection.main, text = r.empty ? view.state.doc.toString() : view.state.sliceDoc(r.from, r.to);
     if (!text.trim()) return flash("Nothing to copy.");
     try {
-      const [html, md] = await Promise.all([invoke<string>("export_html_fragment", { path: tab.path, text }), invoke<string>("export_markdown", { path: tab.path, text })]);
+      const [html, md] = await Promise.all([invoke<string>("export_html_fragment", { path: tab.path, text, diagrams: await svgs(text) }), invoke<string>("export_markdown", { path: tab.path, text })]);
       try {
         await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([md], { type: "text/plain" }) })]);
       } catch {
@@ -2829,7 +2831,8 @@
       items: [{ label: "HTML", detail: "a page per note", value: "html" }, { label: "Markdown", detail: "a page per note", value: "md" }, { label: "PDF", detail: "one document, print from the browser", value: "pdf" }],
     });
     if (!format) return;
-    const path = await exportTo("export_linked", { path: tab.path, text: view.state.doc.toString(), depth, format });
+    const text = view.state.doc.toString(), diagrams = format === "md" ? null : await svgs(text);
+    const path = await exportTo("export_linked", { path: tab.path, text, depth, format, diagrams });
     if (path) await exported(path, format === "pdf");
   }
 

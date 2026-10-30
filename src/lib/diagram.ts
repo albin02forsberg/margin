@@ -3,7 +3,7 @@
 // first diagram; it is bundled (no CDN) and runs with securityLevel strict. Folding the block keeps the diagram.
 import { StateEffect, StateField, type EditorState, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet } from "@codemirror/view";
-import { srcBlocks } from "./babel";
+import { diagramKey, srcBlocks } from "./babel";
 
 /** Characters of diagram source rendered at most. */
 const MAX = 20_000;
@@ -31,6 +31,18 @@ function render(code: string, theme: string): Promise<Out> {
     if (cache.size > 64) cache.delete(cache.keys().next().value!);
     return r;
   });
+}
+
+/** TEXT's mermaid diagrams as light-theme SVGs by `diagramKey`, for HTML/PDF export (#942); failed ones are left out. */
+export async function svgs(text: string): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  if (!/#\+begin_src[ \t]+mermaid\b/i.test(text)) return out;
+  for (const b of srcBlocks(text)) {
+    if (b.lang.toLowerCase() !== "mermaid" || !b.code.trim() || b.code.length > MAX) continue;
+    const r = await render(b.code, "default");
+    if ("svg" in r) out[diagramKey(b.code)] = r.svg;
+  }
+  return out;
 }
 
 class Diagram extends WidgetType {

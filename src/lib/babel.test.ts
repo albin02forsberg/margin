@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { srcAt, srcBlocks, resultsChange } from "./babel.ts";
+import { srcAt, srcBlocks, resultsChange, diagramKey } from "./babel.ts";
+
+test("diagramKey ignores indentation, escapes and blank lines (same fixture as export.rs)", () => {
+  const [b] = srcBlocks("  #+begin_src mermaid\n    graph TD  \n\n      A --> B\n    ,* x\n  #+end_src\n");
+  assert.equal(diagramKey(b.code), "graph TD\nA --> B\n* x");
+});
 
 const apply = (text: string, c: { from: number; to: number; insert: string }) => text.slice(0, c.from) + c.insert + text.slice(c.to);
 const run = (text: string, pos: number, out: string) => apply(text, resultsChange(text, srcAt(text, pos)!, out));

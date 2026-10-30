@@ -12,6 +12,8 @@ static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\[\[([^\]]+)\](?:\
 static ITEM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\s*)([-+*]|\d+[.)])\s+(?:\[([ Xx-])\]\s+)?(.*)$").unwrap());
 static BLOCK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^\s*#\+begin_(\w+)\s*(\S*)").unwrap());
 static DRAWER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*:[A-Za-z_]+:\s*$").unwrap());
+/// Script, event-handler attribute or javascript: URL: an SVG with one is never embedded.
+static UNSAFE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)<script|javascript:|<[^>]*\son[a-z]+\s*=").unwrap());
 
 #[derive(Debug, PartialEq)]
 pub struct Heading {
@@ -51,6 +53,20 @@ pub struct Doc {
     pub title: Option<String>,
     subtitle: Option<String>,
     blocks: Vec<Block>,
+    /// Rendered mermaid SVGs by `diagram_key` (#942), embedded by the HTML export; empty from `parse`.
+    diagrams: HashMap<String, String>,
+}
+
+impl Doc {
+    pub fn with_diagrams(self, diagrams: HashMap<String, String>) -> Doc {
+        Doc { diagrams, ..self }
+    }
+}
+
+/// A diagram's code as its SVG's key, the same as `diagramKey` in babel.ts: each line trimmed and its
+/// `,*` / `,#+` escape undone, blank lines dropped.
+pub fn diagram_key(code: &str) -> String {
+    code.lines().map(|l| l.trim()).map(|l| if l.starts_with(",*") || l.starts_with(",#+") { &l[1..] } else { l }).filter(|l| !l.is_empty()).collect::<Vec<_>>().join("\n")
 }
 
 fn indent(l: &str) -> usize {
@@ -59,7 +75,7 @@ fn indent(l: &str) -> usize {
 
 pub fn parse(text: &str, kw: &Kw) -> Doc {
     let lines: Vec<&str> = text.lines().collect();
-    let mut d = Doc { title: None, subtitle: None, blocks: vec![] };
+    let mut d = Doc { title: None, subtitle: None, blocks: vec![], diagrams: HashMap::new() };
     let b = blocks(&lines, kw, &mut d);
     d.blocks = b;
     d
@@ -332,7 +348,7 @@ fn html_spans(s: &[Span], base: &Path, ids: &Ids) -> String {
         .collect()
 }
 
-fn html_blocks(bs: &[Block], base: &Path, ids: &Ids) -> String {
+fn html_blocks(bs: &[Block], base: &Path, ids: &Ids, dg: &HashMap<String, String>) -> String {
     let inl = |s: &str| html_spans(&spans(s), base, ids);
     let mut o = String::new();
     for b in bs {
@@ -356,7 +372,7 @@ fn html_blocks(bs: &[Block], base: &Path, ids: &Ids) -> String {
             Block::List(_, items) if items.iter().all(|it| it.term.is_some()) => {
                 o += "<dl>\n";
                 for it in items {
-                    o += &format!("<dt>{}</dt><dd>{}{}</dd>\n", inl(it.term.as_deref().unwrap_or("")), inl(&it.text), html_blocks(&it.children, base, ids));
+                    o += &format!("<dt>{}</dt><dd>{}{}</dd>\n", inl(it.term.as_deref().unwrap_or("")), inl(&it.text), html_blocks(&it.children, base, ids, dg));
                 }
                 o += "</dl>\n";
             }
@@ -365,7 +381,7 @@ fn html_blocks(bs: &[Block], base: &Path, ids: &Ids) -> String {
                 o += &format!("<{tag}>\n");
                 for it in items {
                     let cb = it.check.map_or(String::new(), |c| format!("<input type=\"checkbox\" disabled{}> ", if c == 'X' || c == 'x' { " checked" } else { "" }));
-                    o += &format!("<li>{cb}{}{}</li>\n", inl(&it.text), html_blocks(&it.children, base, ids));
+                    o += &format!("<li>{cb}{}{}</li>\n", inl(&it.text), html_blocks(&it.children, base, ids, dg));
                 }
                 o += &format!("</{tag}>\n");
             }
@@ -383,11 +399,14 @@ fn html_blocks(bs: &[Block], base: &Path, ids: &Ids) -> String {
                 o += "</table>\n";
             }
             Block::Pre(kind, _, body) if kind == "verse" => o += &format!("<p class=\"verse\">{}</p>\n", body.lines().map(inl).collect::<Vec<_>>().join("<br>\n")),
+            Block::Pre(kind, lang, body) if kind == "src" && lang.eq_ignore_ascii_case("mermaid") && dg.get(&diagram_key(body)).is_some_and(|s| !UNSAFE.is_match(s)) => {
+                o += &format!("<figure class=\"diagram\">{}</figure>\n", dg[&diagram_key(body)]);
+            }
             Block::Pre(kind, lang, body) => {
                 let lang = if lang.is_empty() { String::new() } else { format!(" data-lang=\"{}\"", esc(lang)) };
                 o += &format!("<pre class=\"{}\"{lang}><code>{}</code></pre>\n", esc(kind), esc(body));
             }
-            Block::Quote(inner) => o += &format!("<blockquote>\n{}</blockquote>\n", html_blocks(inner, base, ids)),
+            Block::Quote(inner) => o += &format!("<blockquote>\n{}</blockquote>\n", html_blocks(inner, base, ids, dg)),
             Block::Rule => o += "<hr>\n",
         }
     }
@@ -412,6 +431,8 @@ table { border-collapse: collapse; margin: 1em 0; }
 th, td { border: 1px solid var(--line); padding: .3em .7em; text-align: left; }
 tbody + tbody { border-top: 2px solid var(--dim); }
 img { max-width: 100%; }
+figure.diagram { margin: 1em 0; padding: .5em; text-align: center; overflow-x: auto; background: #fff; border-radius: 4px; }
+figure.diagram svg { max-width: 100%; height: auto; }
 hr { border: 0; border-top: 1px solid var(--line); }
 .kw { font: 600 .75em ui-monospace, monospace; } .kw.todo { color: var(--todo); } .kw.done { color: var(--done); }
 .prio { color: var(--dim); font-weight: 400; font-size: .8em; }
@@ -433,7 +454,7 @@ pub fn html_body(d: &Doc, fallback_title: &str, base: &Path, ids: &Ids) -> Strin
     if let Some(s) = &d.subtitle {
         o += &format!("<p class=\"subtitle\">{}</p>\n", html_spans(&spans(s), base, ids));
     }
-    o + &html_blocks(&d.blocks, base, ids)
+    o + &html_blocks(&d.blocks, base, ids, &d.diagrams)
 }
 
 fn page(title: &str, body: &str, print: bool) -> String {
@@ -445,10 +466,10 @@ fn page(title: &str, body: &str, print: bool) -> String {
 }
 
 /// PAGES (from `bundle`) as one print page: a `<section id="p-N">` per note, each on a new
-/// sheet, with IDS pointing at the sections instead of the page files.
-pub fn combined(pages: &[(&OrgFile, String)], texts: &[String], ids: &Ids, kw: &Kw) -> String {
+/// sheet, with IDS pointing at the sections instead of the page files and DIAGRAMS embedded in every note.
+pub fn combined(pages: &[(&OrgFile, String)], texts: &[String], ids: &Ids, kw: &Kw, diagrams: &HashMap<String, String>) -> String {
     let ids: Ids = ids.iter().filter_map(|(id, name)| Some((id.clone(), format!("#p-{}", pages.iter().position(|(_, n)| n == name)?)))).collect();
-    let docs: Vec<(Doc, String)> = pages.iter().zip(texts).map(|((f, _), t)| (parse(t, kw), f.path.file_stem().map_or("note".into(), |s| s.to_string_lossy().to_string()))).collect();
+    let docs: Vec<(Doc, String)> = pages.iter().zip(texts).map(|((f, _), t)| (parse(t, kw).with_diagrams(diagrams.clone()), f.path.file_stem().map_or("note".into(), |s| s.to_string_lossy().to_string()))).collect();
     let body: String = docs.iter().zip(pages).enumerate().map(|(i, ((d, stem), (f, _)))| format!("<section id=\"p-{i}\">\n{}</section>\n", html_body(d, stem, f.path.parent().unwrap_or(Path::new("")), &ids))).collect();
     page(docs[0].0.title.as_deref().unwrap_or(&docs[0].1), &body, true)
 }
@@ -609,6 +630,26 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
     }
 
     #[test]
+    fn mermaid_diagrams() {
+        // Same fixture as babel.test.ts's diagramKey test, so both sides key a block alike.
+        let src = "  #+begin_src mermaid\n    graph TD  \n\n      A --> B\n    ,* x\n  #+end_src\n";
+        let Block::Pre(_, _, body) = &parse(src, &kw()).blocks[0] else { panic!() };
+        assert_eq!(diagram_key(body), "graph TD\nA --> B\n* x");
+        let text = format!("{src}- item\n  #+begin_src mermaid\n  graph LR\n  #+end_src\n#+begin_src mermaid\nbroken\n#+end_src\n");
+        let dg = |svg: &str| HashMap::from([("graph TD\nA --> B\n* x".to_string(), "<svg id=\"a\">A</svg>".to_string()), ("graph LR".to_string(), svg.to_string())]);
+        let h = html_body(&Doc { diagrams: dg("<svg>LR</svg>"), ..parse(&text, &kw()) }, "x", Path::new(""), &Ids::new());
+        assert!(h.contains("<figure class=\"diagram\"><svg id=\"a\">A</svg></figure>") && h.contains("<li>item<figure class=\"diagram\"><svg>LR</svg></figure>"));
+        assert!(h.contains("<pre class=\"src\" data-lang=\"mermaid\"><code>broken</code></pre>"), "unmatched keeps its source");
+        for bad in ["<svg><script>x()</script></svg>", "<svg onload=\"x()\"></svg>", "<svg><a href=\"javascript:x()\">l</a></svg>"] {
+            let h = html_body(&Doc { diagrams: dg(bad), ..parse(&text, &kw()) }, "x", Path::new(""), &Ids::new());
+            assert!(h.contains("<code>graph LR</code>") && !h.contains(bad), "{bad}");
+        }
+        let ok = html_body(&Doc { diagrams: dg("<svg><text>one = two</text></svg>"), ..parse(&text, &kw()) }, "x", Path::new(""), &Ids::new());
+        assert!(ok.contains("<figure class=\"diagram\"><svg><text>one = two</text>"));
+        assert!(!markdown(&Doc { diagrams: dg("<svg/>"), ..parse(&text, &kw()) }, "x", Path::new(""), &Ids::new()).contains("<svg"));
+    }
+
+    #[test]
     fn to_html() {
         let h = html(&parse(NOTE, &kw()), "x", Path::new("/notes"), &Ids::new(), false);
         for want in [
@@ -712,7 +753,7 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
         assert!(markdown(&parse(&c.text, &kw()), "b", Path::new("/n/sub"), &ids).contains("Back to [A](a.md)."));
 
         let texts: Vec<String> = pages.iter().map(|(f, _)| f.text.clone()).collect();
-        let p = combined(&pages, &texts, &ids, &kw());
+        let p = combined(&pages, &texts, &ids, &kw(), &HashMap::new());
         assert_eq!(p.matches("<section id=").count(), 3);
         assert_eq!(p.matches("print()").count(), 1);
         for want in ["<title>a</title>", "<section id=\"p-0\">\n<h1>a</h1>", "To <a href=\"#p-1\">B&#39;s heading</a>, lost, <a href=\"#p-0\">me</a>.", "On to <a href=\"#p-2\">", "<section id=\"p-2\">\n<h1>b</h1>"] {
