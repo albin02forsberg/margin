@@ -992,6 +992,7 @@ the path filled in (the AppImage itself on Linux) and a Copy button; for Claude 
 - `list_notes`, `neighbors` (notes linked to or from one, and the lines linking to it).
 - `list_tasks` (state, project): open tasks, or those in a state (`DONE` too); project matches a category or tag.
 - `time_report` (from, to; default this week) and `list_projects` for the active profile's time log.
+- `clock_status`: whether you're clocked in, since when, the project, task and any break, and today's hours.
 
 It reads `config.toml` and the notes fresh on each call, skips the templates folder, and
 `ai_exclude` applies: excluded notes and their tasks are never listed, and reading one is refused.
