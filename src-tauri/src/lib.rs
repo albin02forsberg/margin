@@ -4,6 +4,7 @@ mod attach;
 mod babel;
 mod backup;
 mod config;
+mod embed;
 mod export;
 mod ics;
 mod ledger;

@@ -58,7 +58,7 @@ fn terms(question: &str) -> Vec<String> {
 }
 
 /// Property drawers and `#+keyword:` lines say nothing to the model.
-fn meta(l: &str) -> bool {
+pub fn meta(l: &str) -> bool {
     let t = l.trim_start();
     t.starts_with("#+") || (t.starts_with(':') && t[1..].find(':').is_some_and(|i| i > 0 && t[1..=i].chars().all(|c| c.is_alphanumeric() || "_-".contains(c))))
 }
