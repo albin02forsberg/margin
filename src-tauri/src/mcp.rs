@@ -122,6 +122,7 @@ fn tools(write: bool) -> Value {
         { "name": "time_report", "description": "Clocked time per day and project over FROM..TO (default this week), as an org report.",
           "inputSchema": obj(json!({ "from": s("Start date, YYYY-MM-DD"), "to": s("End date, YYYY-MM-DD (default FROM's week end)") }), &[]) },
         { "name": "list_projects", "description": "Time-tracking projects and their settings (active, budget).", "inputSchema": obj(json!({}), &[]) },
+        { "name": "clock_status", "description": "The running clock: whether you're clocked in, since when, on which project and task, any break, and today's hours.", "inputSchema": obj(json!({}), &[]) },
         { "name": "neighbors", "description": "Notes linked to or from one note, and the lines that link to it.", "inputSchema": note },
     ]);
     if write {
@@ -204,6 +205,12 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
             return Ok(range_report(&tc_of(&c, &saved_profile(&c)), &saved_profile(&c), from, to));
         }
         "list_projects" => json!(tc_of(&c, &saved_profile(&c)).load_projects()?),
+        "clock_status" => {
+            let profile = saved_profile(&c);
+            let (cur, on_break, today) = tc_of(&c, &profile).status();
+            json!({ "profile": profile, "clocked_in": cur.is_some(), "since": cur.as_ref().map(|c| c.0), "project": cur.as_ref().map(|c| &c.1),
+                "task": cur.as_ref().map(|c| &c.2).filter(|t| !t.is_empty()), "on_break": on_break, "today_hours": (today * 100.0).round() / 100.0 })
+        }
         "neighbors" => {
             let f = find(&files, &root, arg("path"), arg("title"))?;
             let linked: Vec<_> = notes::graph(&files, &f.path, 1).nodes.into_iter().filter(|n| n.hops == 1).map(|n| json!({ "path": rel(&n.path), "title": n.title })).collect();
@@ -336,7 +343,7 @@ mod tests {
         assert_eq!(r["result"]["protocolVersion"], "2025-03-26");
         assert_eq!(r["result"]["serverInfo"]["name"], "margin");
         let names: Vec<_> = rpc(&ctx, "tools/list", json!({}))["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect();
-        assert_eq!(names, ["search_notes", "read_note", "list_notes", "list_tasks", "time_report", "list_projects", "neighbors"]);
+        assert_eq!(names, ["search_notes", "read_note", "list_notes", "list_tasks", "time_report", "list_projects", "clock_status", "neighbors"]);
         assert_eq!(handle(&ctx, r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#), None);
         assert_eq!(rpc(&ctx, "nope", json!({}))["error"]["code"], -32601);
         let bad: Value = serde_json::from_str(&handle(&ctx, "{oops").unwrap()).unwrap();
@@ -434,6 +441,13 @@ mod tests {
         assert!(!err && r.contains("2026-01-05"), "{r}");
         assert!(tool(&ctx, "time_report", json!({ "from": "2026-01-05", "to": "2026-01-01" })).1);
         assert_eq!(tool(&ctx, "list_projects", json!({})), ("{}".to_string(), false));
+        let status = |ctx: &Ctx| serde_json::from_str::<Value>(&tool(ctx, "clock_status", json!({})).0).unwrap();
+        let s = status(&ctx);
+        assert_eq!((&s["profile"], &s["clocked_in"], &s["project"], &s["today_hours"]), (&json!("Work"), &json!(false), &Value::Null, &json!(0.0)));
+        tc_of(&load(&ctx), "Work").clock_in("Margin", "MCP", None).unwrap();
+        let s = status(&ctx);
+        assert_eq!((&s["clocked_in"], &s["project"], &s["task"]), (&json!(true), &json!("Margin"), &json!("MCP")), "{s}");
+        assert!(s["since"].is_string(), "{s}");
         std::fs::remove_dir_all(d.join("notes")).unwrap();
         let (e, err) = tool(&ctx, "list_notes", json!({}));
         assert!(err && e.contains("doesn't exist"), "{e}");
