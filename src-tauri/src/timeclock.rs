@@ -1068,6 +1068,11 @@ pub fn focus_due(since: NaiveDateTime, now: NaiveDateTime, focus_min: i64, last_
     focus_min > 0 && now - since >= Duration::minutes(focus_min) && last_notified != Some(since)
 }
 
+/// Whether the session running SINCE has passed MAX_HOURS at NOW and was not NOTIFIED yet (0 = off).
+pub fn long_session_due(since: NaiveDateTime, now: NaiveDateTime, max_hours: f64, notified: Option<NaiveDateTime>) -> bool {
+    max_hours > 0.0 && (now - since).num_seconds() as f64 >= max_hours * 3600.0 && notified != Some(since)
+}
+
 /// When to leave today, flex ignored: what is left of NOW's expected hours (CAL, less LEAVE) after
 /// WORKED, rounded up to whole minutes; with the clock RUNNING, the time it runs out.
 pub fn leave_time(now: NaiveDateTime, worked: f64, cal: &Calendar, leave: &[Leave], running: bool, on_break: bool) -> String {
@@ -1652,6 +1657,17 @@ mod tests {
         assert!(focus_due(dt("2026-10-13 00:30"), dt("2026-10-13 01:20"), 50, Some(since))); // a resume starts a new block
         assert!(!focus_due(since, dt("2026-10-13 05:00"), 0, None)); // off
         assert_eq!(format!("{since:?}").parse::<NaiveDateTime>(), Ok(since)); // how remind::focus stores it
+    }
+
+    #[test]
+    fn long_session_due_once_per_session() {
+        let since = dt("2026-10-12 22:00");
+        assert!(!long_session_due(since, dt("2026-10-13 01:59"), 4.0, None));
+        assert!(long_session_due(since, dt("2026-10-13 02:00"), 4.0, None)); // at, past midnight
+        assert!(long_session_due(since, dt("2026-10-13 02:30"), 4.5, None));
+        assert!(!long_session_due(since, dt("2026-10-13 09:00"), 4.0, Some(since))); // no repeat
+        assert!(long_session_due(dt("2026-10-13 03:00"), dt("2026-10-13 07:00"), 4.0, Some(since))); // a new session
+        assert!(!long_session_due(since, dt("2026-10-14 09:00"), 0.0, None)); // off
     }
 
     #[test]

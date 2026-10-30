@@ -52,7 +52,7 @@
   import { chatContext } from "$lib/chatctx";
   import { bugReportUrl, isError, osName } from "$lib/bugreport";
   import { notesText, notesTitle, notesToShow, type Notes } from "$lib/whatsnew";
-  import { dayTime, focusLeft, inactiveStamp, naive, parseWhen, worked, type WeekDay } from "$lib/clock";
+  import { dayTime, focusLeft, inactiveStamp, naive, overLong, parseWhen, worked, type WeekDay } from "$lib/clock";
   import { shutdownKeys, shutdownTasks, summarise, type ShutdownAction } from "$lib/shutdown";
   import { morningKeys, planCandidates, planSummary, type MorningAction } from "$lib/morning";
   import { parseSession, type Entry } from "$lib/session";
@@ -3687,7 +3687,7 @@
       <span class="grow"></span>
       <button class="cmdk" title="Search or run a command ({pretty('Ctrl')}+K)" onclick={() => act(palette)}><span class="ico">⌕</span><span class="lbl">Search or run a command…</span><kbd>{pretty("Ctrl")} K</kbd></button>
       <button class="set" class:on={tab?.kind === "settings"} title="Settings ({pretty('Ctrl')}+,)" onclick={() => act(() => openView("settings"))}><span class="ico">⚙</span></button>
-      <div class="clockchip" class:on={tc.project != null}>
+      <div class="clockchip" class:on={tc.project != null} class:long={tc.project != null && overLong(tc.since, cfg.config.max_session_hours, new Date())}>
         <button class="what" title="Time tracking ({pretty('Ctrl')}+4)" onclick={() => act(() => openView("time"))}>
           <span class="dot"></span>
           <b>{tc.project != null ? tc.project || "No project" : tc.on_break != null ? `Break · ${tc.on_break}` : "Not tracking"}</b>
@@ -3851,6 +3851,8 @@
   .clockchip.on .today { color: var(--done); }
   .clockchip .focus { color: var(--dim); white-space: nowrap; }
   .clockchip .focus.due { color: var(--todo); }
+  .clockchip.long .today { color: var(--todo); }
+  .clockchip.long .dot { background: var(--todo); }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; }
   .clockchip.on .dot { background: var(--done); }
   .warn { color: var(--todo); font-size: var(--fs-xs); padding-right: var(--s2); white-space: nowrap; }

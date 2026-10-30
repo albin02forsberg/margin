@@ -43,6 +43,9 @@ pub struct Config {
     pub focus_minutes: i64,
     /// The break length that nudge suggests.
     pub focus_break_minutes: i64,
+    /// Notify once when one running session passes this many hours (a forgotten timer); 0 = off.
+    #[serde(deserialize_with = "max_session_hours")]
+    pub max_session_hours: f64,
     /// Desktop notifications for timed entries and upcoming deadlines.
     pub reminders: bool,
     pub remind_before_minutes: i64,
@@ -179,6 +182,15 @@ fn weekday_hours<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<f64>, D::
     Ok(v)
 }
 
+/// `max_session_hours`: 0 (off) or more hours.
+fn max_session_hours<'de, D: serde::Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
+    let h = f64::deserialize(d)?;
+    if !(h.is_finite() && h >= 0.0) {
+        return Err(serde::de::Error::custom("max_session_hours must be 0 (off) or more hours"));
+    }
+    Ok(h)
+}
+
 /// `public_holidays`: "se" or "none".
 fn public_holidays<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
     let v = String::deserialize(d)?.trim().to_lowercase();
@@ -222,6 +234,7 @@ impl Default for Config {
             idle_threshold_minutes: 10,
             focus_minutes: 0,
             focus_break_minutes: 5,
+            max_session_hours: 0.0,
             reminders: true,
             remind_before_minutes: 10,
             deadline_warning_days: 1,
@@ -645,6 +658,11 @@ mod tests {
         assert_eq!((c.expected_daily_hours, c.reminders, c.views.len()), (7.5, false, 1));
         assert_eq!(save(mine, t("idle_threshold_minutes = 5"), &[]).unwrap().1.idle_threshold_minutes, 5);
         assert!(save(mine, t("idle_threshold_minutes = 1.5"), &[]).is_err()); // wrong type
+        assert_eq!(save(mine, t("max_session_hours = 4"), &[]).unwrap().1.max_session_hours, 4.0);
+        for bad in ["-1", "nan", "inf"] {
+            assert!(save(mine, t(&format!("max_session_hours = {bad}")), &[]).is_err(), "{bad}");
+            assert!(toml::from_str::<Config>(&format!("max_session_hours = {bad}")).unwrap_err().to_string().contains("0 (off) or more"), "{bad}"); // on load too
+        }
         assert!(save(mine, t("nope = 1"), &[]).is_err() && save(mine, t("views = []"), &[]).is_err());
         assert!(save(mine, t("profiles = []"), &[]).is_err()); // keep at least one profile
         assert_eq!(save(mine, t("weekday_hours = [8, 8, 8, 8.5, 0, 0, 0]"), &[]).unwrap().1.weekday_hours, [8.0, 8.0, 8.0, 8.5, 0.0, 0.0, 0.0]);

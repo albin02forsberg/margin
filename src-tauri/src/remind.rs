@@ -72,6 +72,7 @@ fn tick(app: &AppHandle) {
     let now = crate::timeclock::now();
     let today = now.date();
     focus(app, &s, c.focus_minutes, c.focus_break_minutes, now);
+    long_session(app, &s, c.max_session_hours, now);
     if !c.reminders {
         return;
     }
@@ -127,6 +128,32 @@ fn focus_nudge(last: &mut Option<NaiveDateTime>, file: &Path, since: NaiveDateTi
     let _ = std::fs::write(file, format!("{since:?}")); // ISO 8601, what parse() reads
     let what = if project.is_empty() { String::new() } else { format!(" on {project}") };
     Some(format!("{}{what}. Take {rest} min? Pause is in the top-bar clock.", crate::timeclock::format_hm((now - since).num_seconds() as f64 / 3600.0)))
+}
+
+/// Ask once per session when the running clock passes MAX hours (timeclock::long_session_due), like
+/// focus(): the notified session start is kept in memory and in long-sent.txt (a restart).
+fn long_session(app: &AppHandle, s: &App, max: f64, now: NaiveDateTime) {
+    static LAST: std::sync::Mutex<Option<NaiveDateTime>> = std::sync::Mutex::new(None);
+    let Some((since, project, _)) = s.tc().current().filter(|_| max > 0.0) else { return };
+    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(body) = long_nudge(&mut last, &s.cfg().data().join("long-sent.txt"), since, &project, now, max) {
+        let _ = app.notification().builder().title("Margin").body(body).show();
+    }
+}
+
+/// The long-session notification's body when the session starting SINCE is due and not yet notified
+/// (LAST, else FILE); records it in both.
+fn long_nudge(last: &mut Option<NaiveDateTime>, file: &Path, since: NaiveDateTime, project: &str, now: NaiveDateTime, max: f64) -> Option<String> {
+    if last.is_none() {
+        *last = std::fs::read_to_string(file).ok().and_then(|t| t.trim().parse().ok());
+    }
+    if !crate::timeclock::long_session_due(since, now, max, *last) {
+        return None;
+    }
+    *last = Some(since);
+    let _ = std::fs::write(file, format!("{since:?}"));
+    let what = if project.is_empty() { String::new() } else { format!(" on {project}") };
+    Some(format!("Still working{what}? Clock has run {}", crate::timeclock::format_hm((now - since).num_seconds() as f64 / 3600.0)))
 }
 
 /// Sent reminder keys from FILE, without those dated before TODAY; and whether any were dropped.
@@ -250,6 +277,24 @@ mod tests {
         assert_eq!(fresh, Some(since));
         let later = day.and_hms_opt(11, 0, 0).unwrap();
         assert_eq!(focus_nudge(&mut fresh, &file, later, "", day.and_hms_opt(12, 30, 0).unwrap(), 45, 5).as_deref(), Some("1h 30m. Take 5 min? Pause is in the top-bar clock."));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn long_session_notifies_once_across_restarts() {
+        let dir = std::env::temp_dir().join(format!("margin-long-{}", crate::notes::gen_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("long-sent.txt");
+        let day: chrono::NaiveDate = "2026-10-02".parse().unwrap();
+        let (since, now) = (day.and_hms_opt(8, 0, 0).unwrap(), day.and_hms_opt(12, 12, 0).unwrap());
+        let mut last = None;
+        assert_eq!(long_nudge(&mut last, &file, since, "Acme", day.and_hms_opt(11, 0, 0).unwrap(), 4.0), None);
+        assert_eq!(long_nudge(&mut last, &file, since, "Acme", now, 4.0).as_deref(), Some("Still working on Acme? Clock has run 4h 12m"));
+        assert_eq!(long_nudge(&mut last, &file, since, "Acme", now, 4.0), None);
+        let mut fresh = None; // a restart reads it back
+        assert_eq!(long_nudge(&mut fresh, &file, since, "Acme", now, 4.0), None);
+        let later = day.and_hms_opt(13, 0, 0).unwrap(); // resumed or switched: a new session
+        assert_eq!(long_nudge(&mut fresh, &file, later, "", day.and_hms_opt(17, 0, 0).unwrap(), 4.0).as_deref(), Some("Still working? Clock has run 4h 00m"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
