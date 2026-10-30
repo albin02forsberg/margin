@@ -9,7 +9,7 @@ use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
-use std::time::SystemTime;
+use std::time::{Instant, SystemTime};
 
 static TS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"<(\d{4}-\d{2}-\d{2})(?:\s+[^\s>\d+\-.][^\s>\d]*)?(?:\s+(\d{1,2}:\d{2})(?:-(\d{1,2}:\d{2}))?)?(?:\s+(\.\+|\+\+|\+)(\d+)([hdwmy])(?:/(\d+)([hdwmy]))?)?(?:\s+--?(\d+)([dwmy]))?[^>]*>").unwrap()
@@ -44,7 +44,7 @@ pub fn parse_effort(s: &str) -> Option<u32> {
     Some(n(1)? * 60 + n(2)? + n(3)? * 60 + n(4)?)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Kw {
     pub todo: Vec<String>,
     pub done: Vec<String>,
@@ -341,11 +341,18 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
 // ---------------------------------------------------------------- scanning
 
 #[derive(Default)]
-pub struct Cache(Mutex<HashMap<PathBuf, (SystemTime, Arc<OrgFile>)>>);
+pub struct Cache(Mutex<Inner>);
+
+#[derive(Default)]
+struct Inner {
+    map: HashMap<PathBuf, (SystemTime, Arc<OrgFile>)>,
+    /// The latest scan: when it started, its dir and keywords, and the result.
+    last: Option<(Instant, PathBuf, Kw, Vec<Arc<OrgFile>>)>,
+}
 
 impl Cache {
     pub fn clear(&self) {
-        self.0.lock().unwrap().clear();
+        *self.0.lock().unwrap() = Inner::default();
     }
 }
 
@@ -360,8 +367,17 @@ pub fn org_paths(dir: &Path) -> Vec<PathBuf> {
 }
 
 /// Parse every .org file under DIR, reusing cached parses whose mtime is unchanged.
+/// Concurrent callers queued on the lock share a scan that started after they asked.
 pub fn scan(dir: &Path, kw: &Kw, cache: &Cache) -> Vec<Arc<OrgFile>> {
-    let mut map = cache.0.lock().unwrap();
+    let asked = Instant::now();
+    let mut inner = cache.0.lock().unwrap();
+    if let Some((t, d, k, v)) = &inner.last {
+        if *t >= asked && d == dir && k == kw {
+            return v.clone();
+        }
+    }
+    let started = Instant::now();
+    let map = &mut inner.map;
     let mut fresh = HashMap::new();
     for p in org_paths(dir) {
         let Ok(mtime) = std::fs::metadata(&p).and_then(|m| m.modified()) else { continue };
@@ -378,6 +394,7 @@ pub fn scan(dir: &Path, kw: &Kw, cache: &Cache) -> Vec<Arc<OrgFile>> {
     *map = fresh;
     let mut v: Vec<_> = map.values().map(|(_, f)| f.clone()).collect();
     v.sort_by(|a, b| a.path.cmp(&b.path));
+    inner.last = Some((started, dir.to_path_buf(), kw.clone(), v.clone()));
     v
 }
 
@@ -2282,6 +2299,32 @@ mod tests {
         let m2 = m1 + std::time::Duration::from_secs(60);
         std::fs::File::options().write(true).open(&p).unwrap().set_modified(m2).unwrap();
         assert_eq!(scan(&dir, &kw(), &cache)[0].mtime, Some(m2));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn scan_shares_concurrent_and_sees_writes() {
+        let dir = std::env::temp_dir().join(format!("margin-scan-share-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("a.org");
+        std::fs::write(&p, "* TODO a\n").unwrap();
+        let cache = Cache::default();
+        let k = kw();
+        let titles = |v: Vec<Arc<OrgFile>>| v.iter().flat_map(|f| f.headlines.iter().map(|h| h.title.clone())).collect::<Vec<_>>();
+        std::thread::scope(|s| {
+            let hs: Vec<_> = (0..8).map(|_| s.spawn(|| titles(scan(&dir, &k, &cache)))).collect();
+            for h in hs {
+                assert_eq!(h.join().unwrap(), ["a"]);
+            }
+        });
+        // A write between scans is seen, even with a different size and the same-second mtime.
+        std::fs::write(&p, "* TODO a\n* TODO b\n").unwrap();
+        std::fs::File::options().write(true).open(&p).unwrap().set_modified(SystemTime::now() + std::time::Duration::from_secs(5)).unwrap();
+        assert_eq!(titles(scan(&dir, &k, &cache)), ["a", "b"]);
+        // A different dir never reuses the last result.
+        let other = dir.join("sub");
+        std::fs::create_dir_all(&other).unwrap();
+        assert!(scan(&other, &k, &cache).is_empty());
         std::fs::remove_dir_all(&dir).ok();
     }
 
