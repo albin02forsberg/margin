@@ -354,6 +354,11 @@ impl Cache {
     pub fn clear(&self) {
         *self.0.lock().unwrap() = Inner::default();
     }
+    #[cfg(test)]
+    pub fn is_empty(&self) -> bool {
+        let i = self.0.lock().unwrap();
+        i.map.is_empty() && i.last.is_none()
+    }
 }
 
 pub fn org_paths(dir: &Path) -> Vec<PathBuf> {
