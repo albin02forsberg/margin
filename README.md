@@ -988,6 +988,15 @@ any note whose path in the notes folder contains one of these (any case, e.g.
 `private/`, `/private/` or `diary`; `\` works as `/` too) is never sent, not as a match, a linked note, the open
 note (the chat says so instead of offering it) or for its tasks.
 
+With Ollama, **Let the model search notes itself** (`ai_tools`, off by default; shown
+when the backend is Ollama) also gives the model three read-only tools while *Use my
+notes* and *Send matching notes* are on: search the notes, open one by title, and list
+the notes linked to or from one. It may call them a few times before it answers, and
+each call shows as a line above the answer (*searched notes: rollout*, *opened
+Launch*). Excluded notes stay out of reach. The model has to support tool calls
+(e.g. `llama3.2` or `qwen3`); if it doesn't, the chat says so in one line and answers
+from the matching notes as usual.
+
 ### Claude and other MCP clients
 
 `margin --mcp` runs a small [MCP](https://modelcontextprotocol.io) server on

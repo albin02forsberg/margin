@@ -2,16 +2,16 @@
   /** An excerpt the answer drew on ("Use my notes", #304): of a note (LINE is 0-based), or of the open tasks, agenda or time log (#468). */
   export type Source = { kind: "note" | "tasks" | "agenda" | "time"; path: string; title: string; line: number; text: string };
   const KINDS = { tasks: "Tasks", agenda: "Agenda", time: "Time log" };
-  /** SOURCES: what an answer was given, [] when no note matched (the backend ignores the field). */
-  export type ChatMsg = { role: "user" | "assistant"; content: string; sources?: Source[] };
+  /** SOURCES: what an answer was given, [] when no note matched; TOOLS: a line per tool call the model made for it (#963). The backend ignores both. */
+  export type ChatMsg = { role: "user" | "assistant"; content: string; sources?: Source[]; tools?: string[] };
 </script>
 
 <script lang="ts">
   import { tick } from "svelte";
-  import { cleanChat } from "./chatctx";
+  import { cleanChat, toolLine, type ToolEvent } from "./chatctx";
 
   /** Chat with the local model (#205). History lives here, in memory only; ASK sends it, with the open NOTE (its name) when ticked and the matching notes when USE_NOTES; it returns the answer and the notes it was given. INSERT (when a note is open) puts an answer at the cursor; OPEN shows a source. EXCLUDED: the open note is in ai_exclude, so it isn't offered. */
-  let { ask, note, noteLabel, insert, open, excluded = false }: { ask: (msgs: ChatMsg[], withNote: boolean, useNotes: boolean, onPiece: (piece: string) => void) => Promise<{ answer: string; sources?: Source[] }>; note: string | null; noteLabel?: () => string; insert?: (text: string) => void; open: (path: string, line: number) => void; excluded?: boolean } = $props();
+  let { ask, note, noteLabel, insert, open, excluded = false }: { ask: (msgs: ChatMsg[], withNote: boolean, useNotes: boolean, onPiece: (piece: string) => void, onTool: (e: ToolEvent) => void) => Promise<{ answer: string; sources?: Source[] }>; note: string | null; noteLabel?: () => string; insert?: (text: string) => void; open: (path: string, line: number) => void; excluded?: boolean } = $props();
   let msgs = $state<ChatMsg[]>([]);
   let text = $state("");
   let withNote = $state(true);
@@ -19,6 +19,8 @@
   let busy = $state(false);
   /** The answer so far, while it streams in (#210). */
   let partial = $state("");
+  /** Its tool calls so far, as lines (#963). */
+  let calls = $state<string[]>([]);
   const shown = $derived(cleanChat(partial));
   let error = $state("");
   let list = $state<HTMLElement>();
@@ -36,15 +38,15 @@
     const q = text.trim();
     if (!q || busy) return;
     msgs.push({ role: "user", content: q });
-    [text, busy, error, partial] = ["", true, "", ""];
+    [text, busy, error, partial, calls] = ["", true, "", "", []];
     await scroll();
     try {
-      const { answer, sources } = await ask($state.snapshot(msgs), withNote && !!note && !excluded, useNotes, (p) => { partial += p; scroll(); });
-      msgs.push({ role: "assistant", content: answer, sources });
+      const { answer, sources } = await ask($state.snapshot(msgs), withNote && !!note && !excluded, useNotes, (p) => { partial += p; scroll(); }, (e) => { calls.push(toolLine(e)); scroll(); });
+      msgs.push({ role: "assistant", content: answer, sources, tools: calls.length ? [...calls] : undefined });
     } catch (e) {
       // Cancelled or failed midway: keep what came. Unanswered: back into the box, so the history stays question, answer, …
       const kept = cleanChat(partial);
-      if (kept) msgs.push({ role: "assistant", content: kept });
+      if (kept) msgs.push({ role: "assistant", content: kept, tools: calls.length ? [...calls] : undefined });
       else { msgs.pop(); text = q; }
       error = String(e);
     } finally {
@@ -62,6 +64,7 @@
   <h3>AI chat <button disabled={busy || !msgs.length} onclick={() => { msgs = []; error = ""; }}>Clear</button></h3>
   <div class="msgs" bind:this={list}>
     {#each msgs as m}
+      {#each m.tools ?? [] as t}<div class="tool" title={t}>{t}</div>{/each}
       <p class={m.role}>{m.content}</p>
       {#if m.sources}
         <div class="srcs">
@@ -77,7 +80,7 @@
     {:else}
       <p class="dim">Ask the local model anything{note ? ", say about the open note" : ""}. Nothing leaves this machine, and the chat isn't saved.</p>
     {/each}
-    {#if busy}<p class={shown ? "assistant" : "dim"}>{shown || "Thinking…"}</p>{/if}
+    {#if busy}{#each calls as t}<div class="tool" title={t}>{t}</div>{/each}<p class={shown ? "assistant" : "dim"}>{shown || "Thinking…"}</p>{/if}
     {#if error}<p class="err">⚠ {error}</p>{/if}
   </div>
   {#if note && excluded}<p class="dim">{note} is excluded from AI (AI chat settings).</p>{:else if note}<label><input type="checkbox" bind:checked={withNote} /> Include {label || note}</label>{/if}
@@ -99,6 +102,7 @@
   .acts button:disabled { color: var(--dim); cursor: default; }
   .srcs { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s2); margin: calc(-1 * var(--s1)) var(--s5) var(--s2) 0; color: var(--dim); font-size: var(--fs-sm); }
   .srcs button { background: none; border: 0; color: var(--link); font-size: var(--fs-sm); cursor: pointer; padding: 0; }
+  .tool { margin: 0 var(--s5) var(--s1) 0; padding: 0 var(--s2); color: var(--dim); font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dim { color: var(--dim); font-size: var(--fs-sm); }
   .err { color: var(--todo); font-size: var(--fs-sm); }
   label { color: var(--dim); font-size: var(--fs-sm); display: flex; gap: var(--s1); align-items: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

@@ -19,7 +19,16 @@ describe("AI chat", () => {
         asked.push({ path: req.url!, body });
         // Streamed in pieces (#210); a question with "Stall" never finishes, so only Cancel ends it.
         const line = (content: string, done = false) => JSON.stringify({ message: { role: "assistant", content }, done }) + "\n";
+        // With tools (#963): "Notool" is a model that can't use them; else one search, then the answer.
+        const q = body.messages.findLast((m: any) => m.role === "user")?.content ?? "";
+        if (body.tools && q.includes("Notool")) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          return void res.end(JSON.stringify({ error: "registry.ollama.ai/library/m does not support tools" }));
+        }
         res.writeHead(200, { "Content-Type": "application/x-ndjson" });
+        if (body.tools && body.messages.at(-1).role !== "tool") {
+          return void res.end(JSON.stringify({ message: { role: "assistant", content: "", tool_calls: [{ function: { name: "search_notes", arguments: { query: "rollout" } } }] }, done: true }) + "\n");
+        }
         if (body.messages.at(-1).content.includes("Stall")) return void res.write(line("Partial"));
         res.write(line("Answer "));
         res.end(line(String(asked.length), true));
@@ -108,5 +117,31 @@ describe("AI chat", () => {
     sys = asked.at(-1)!.body.messages[0].content;
     assert.ok(!sys.includes("[tasks: open tasks]"), sys);
     assert.equal((await texts(".chat .srcs span")).length, 1, "only the first answer lists Tasks");
+  });
+
+  it("lets the model search notes with tools, and says when it can't (#963)", async () => {
+    await browser.keys([Key.Ctrl, ","]);
+    await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Let the model search notes itself")]]/input`)).click();
+    await (await find(".settings button", "Save ai chat")).click();
+    await fileMatches(join(d.cfgDir, "config.toml"), (s) => /^ai_tools = true$/m.test(s), "switch not saved");
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Plans");
+    await find(".status .file", "plans.org");
+    await (await find(".chat textarea", "")).click();
+    let n = asked.length;
+    await type("When is the rollout?");
+    await browser.keys(Key.Enter);
+    await find(".chat .tool", "searched notes: rollout");
+    await find(".chat p.assistant", `Answer ${n + 2}`);
+    const [call, result] = asked.slice(n);
+    assert.ok(Array.isArray(call.body.tools) && call.body.tools.some((t: any) => t.function.name === "search_notes"), JSON.stringify(call.body));
+    const tool = result.body.messages.at(-1);
+    assert.ok(tool.role === "tool" && tool.content.includes("The rollout happens on May 3."), JSON.stringify(tool));
+    n = asked.length;
+    await type("Notool: when is the rollout?");
+    await browser.keys(Key.Enter);
+    await find(".chat .tool", "can't use tools");
+    await find(".chat p.assistant", `Answer ${n + 2}`);
+    assert.ok(!asked.at(-1)!.body.tools, "the fallback sends no tools");
   });
 });

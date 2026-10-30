@@ -1,8 +1,8 @@
 import { AREAS } from "./areas.ts";
 
 /** A config.toml setting on the settings page. KIND defaults to text; lists are edited one item per line,
- *  numbers (a list of them) on one line. */
-export type Field = { key: string; label: string; kind?: "text" | "number" | "numbers" | "bool" | "list" | "multiline"; hint?: string; step?: number | "any"; options?: string[] };
+ *  numbers (a list of them) on one line. WHEN: shown only while it holds for the saved config. */
+export type Field = { key: string; label: string; kind?: "text" | "number" | "numbers" | "bool" | "list" | "multiline"; hint?: string; step?: number | "any"; options?: string[]; when?: (config: Record<string, unknown>) => boolean };
 export type Form = Record<string, string | boolean>;
 
 const rel = "relative to the notes folder";
@@ -73,6 +73,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "ai_source_notes", label: "Send matching notes", kind: "bool", hint: "these switches apply while “Use my notes” is ticked in the chat; excerpts of the notes that match the question and of the notes linked to them" },
     { key: "ai_source_tasks", label: "Send open tasks and the agenda", kind: "bool", hint: "when the question asks about tasks, today, the week, deadlines or meetings" },
     { key: "ai_source_time", label: "Send the time log", kind: "bool", hint: "the last 7 days, when the question asks about hours, time or projects" },
+    { key: "ai_tools", label: "Let the model search notes itself", kind: "bool", when: (c) => c.ai_backend === "ollama", hint: "Ollama only, while “Use my notes” and Send matching notes are on: the model may search notes, open one by title and look up its links (read-only) before it answers; needs a model that can use tools, e.g. llama3.2 or qwen3, and the chat says when it can't" },
     { key: "ai_exclude", label: "Notes the AI never sees", kind: "list", hint: "one per line; a note whose path in the notes folder contains one (any case, e.g. private/ or diary) is never sent: not as a match, a linked note, the open note or for tasks" },
     { key: "mcp_write", label: "Let Claude (MCP) edit notes", kind: "bool", hint: "margin --mcp may then create notes, append to them, add to-dos and change their state, through the same checks as the editor; excluded notes stay untouched. Off: read-only" },
   ] },

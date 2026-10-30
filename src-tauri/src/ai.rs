@@ -305,7 +305,6 @@ const TOOL_ROUNDS: usize = 4;
 /// Like `chat` (Ollama only) with TOOLS (Ollama's JSON schemas) the model may call, each through
 /// RUN_TOOL(name, arguments), for up to TOOL_ROUNDS rounds; results share retrieve::BUDGET bytes.
 /// Then the answer goes to ON_PIECE. None when the model can't use tools: fall back to plain retrieval.
-#[allow(dead_code)] // wired into ai_chat with the tools themselves (#469)
 pub fn chat_with_tools(url: &str, model: &str, msgs: &[Msg], tools: &serde_json::Value, run_tool: &mut dyn FnMut(&str, &serde_json::Value) -> String, on_piece: &mut dyn FnMut(&str)) -> Result<Option<String>, String> {
     let opts = serde_json::json!({ "num_ctx": 4096, "num_predict": 512 });
     let (mut msgs, mut left) = (msgs.to_vec(), retrieve::BUDGET);
