@@ -997,6 +997,9 @@ the path filled in (the AppImage itself on Linux) and a Copy button; for Claude 
 - `time_report` (from, to; default this week) and `list_projects` for the active profile's time log.
 - `clock_status`: whether you're clocked in, since when, the project, task and any break, and today's hours.
 - `read_journal` (date: `2026-10-01`, `-1`, …; default today): that day's file in the daily folder.
+- `agenda` (from, to: dates or `-1`, `+3`, …; default today and the next 7 days, at most 62): overdue
+  tasks first, then per day the scheduled and deadline tasks, events and habits, with time, state,
+  priority, effort, project, whether a task is blocked, and its `path:line`. Done tasks are left out.
 
 It reads `config.toml` and the notes fresh on each call, skips the templates folder, and
 `ai_exclude` applies: excluded notes and their tasks are never listed, and reading one is refused.
