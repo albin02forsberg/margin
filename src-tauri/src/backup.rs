@@ -206,10 +206,10 @@ fn ensure_attributes(dir: &Path) {
     ensure_lines(&dir.join(".gitattributes"), &lines);
 }
 
-/// The active profile is per machine: ignored, and dropped from the index if an older build
+/// The active profile (and the profiles' `.timelog.lock`) is per machine: ignored, and dropped from the index if an older build
 /// committed it (`sync_repo` keeps the local file when a pull removes it).
 fn untrack_local_state(dir: &Path) {
-    ensure_lines(&dir.join(".gitignore"), &["active-profile.txt"]);
+    ensure_lines(&dir.join(".gitignore"), &["active-profile.txt", ".timelog.lock"]);
     git(dir, &["rm", "--cached", "-f", "-q", "--ignore-unmatch", "active-profile.txt"]);
 }
 
@@ -230,7 +230,7 @@ fn normalize_logs(dir: &Path) -> Vec<String> {
         type Fix = fn(&Tc) -> Result<bool, String>;
         let fixes: [(&str, Fix); 2] = [("timelog.jsonl", Tc::normalize_log), ("leave.jsonl", Tc::dedupe_leave)];
         for (file, fix) in fixes.into_iter().filter(|(f, _)| e.path().join(f).is_file()) {
-            match crate::timeclock::locked(|| fix(&tc)) {
+            match tc.locked(fix) {
                 Ok(true) => changed.push(format!("{}/{file}", e.file_name().to_string_lossy())),
                 Ok(false) => {}
                 Err(e) => log(format!("FAILED: {}: tidying {file}: {e}", tc.dir.display())), // the sync's result stays the warning
