@@ -42,6 +42,8 @@ pub struct Suggestion {
     pub task: Option<String>,
     /// Set when the block is mostly a meeting: the top matching title (or app).
     pub meeting: Option<String>,
+    /// What named the meeting: "calendar", "rule" or "mic/camera" (in that precedence).
+    pub meeting_src: Option<&'static str>,
     /// The top title is an editor's `repo · file` label (learned as its repo).
     pub editor: bool,
 }
@@ -379,13 +381,14 @@ pub fn suggest(window: &[Span], afk: &[Span], tracked: &[(NaiveDateTime, NaiveDa
             let all = |_: &Span| true;
             let meeting = (2 * b.iter().filter(|p| call(p)).map(secs).sum::<i64>() >= b.iter().map(secs).sum::<i64>())
                 .then(|| top(|p| &p.title, &call).into_iter().chain(top(|p| &p.app, &call)).next())
-                .flatten();
+                .flatten()
+                .map(|m| (m, "rule"));
             let on_call = media.iter().map(|&(s, e)| (e.min(end) - s.max(start)).num_seconds().max(0)).sum::<i64>();
-            let meeting = meeting.or_else(|| (2 * on_call >= (end - start).num_seconds()).then(|| "Call".to_string()));
-            let meeting = event.map(|e| e.summary.clone()).or(meeting);
+            let meeting = meeting.or_else(|| (2 * on_call >= (end - start).num_seconds()).then(|| ("Call".to_string(), "mic/camera")));
+            let (meeting, meeting_src) = event.map(|e| (e.summary.clone(), "calendar")).or(meeting).unzip();
             let titles = top(|p| &p.title, &all);
             let editor = titles.first().is_some_and(|t| b.iter().any(|p| p.editor && p.title == *t));
-            Suggestion { start, end, apps: top(|p| &p.app, &all), titles, project, task: task.map(|t| t.0.clone()), meeting, editor }
+            Suggestion { start, end, apps: top(|p| &p.app, &all), titles, project, task: task.map(|t| t.0.clone()), meeting, meeting_src, editor }
         })
         .collect()
 }
@@ -644,12 +647,13 @@ mod tests {
         assert_eq!(cal(&planning[1..], &[]), [(None, None)], "under half isn't");
         // A mic or camera in use for half the block makes it a call; a rule or event still names it.
         let on = |a: &str, b: &str| (dt(&format!("2026-10-01 {a}")), dt(&format!("2026-10-01 {b}")));
-        let call = |w: &[Span], m: &[(NaiveDateTime, NaiveDateTime)], c: &[Event]| suggest(w, &[], &[], &[], Known { meetings: &rules, media: m, calendar: c, ..Default::default() }, "2026-10-01".parse().unwrap()).into_iter().map(|s| s.meeting).collect::<Vec<_>>();
+        let call = |w: &[Span], m: &[(NaiveDateTime, NaiveDateTime)], c: &[Event]| suggest(w, &[], &[], &[], Known { meetings: &rules, media: m, calendar: c, ..Default::default() }, "2026-10-01".parse().unwrap()).into_iter().map(|s| (s.meeting, s.meeting_src)).collect::<Vec<_>>();
         let home = [sp("09:00", "09:40", "firefox", "Home")];
-        assert_eq!(call(&home, &[on("08:30", "09:05"), on("09:10", "09:25")], &[]), [Some("Call".into())]);
-        assert_eq!(call(&home, &[on("09:00", "09:19")], &[]), [None], "under half isn't");
-        assert_eq!(call(&zoom, &[on("09:00", "10:15")], &[]), [Some("Zoom Meeting".into())]);
-        assert_eq!(call(&home, &[on("09:00", "09:40")], &planning), [Some("Planning".into())]);
+        assert_eq!(call(&home, &[on("08:30", "09:05"), on("09:10", "09:25")], &[]), [(Some("Call".into()), Some("mic/camera"))]);
+        assert_eq!(call(&home, &[on("09:00", "09:19")], &[]), [(None, None)], "under half isn't");
+        assert_eq!(call(&zoom, &[on("09:00", "10:15")], &[]), [(Some("Zoom Meeting".into()), Some("rule"))]);
+        assert_eq!(call(&home, &[on("09:00", "09:40")], &planning), [(Some("Planning".into()), Some("calendar"))]);
+        assert_eq!(call(&zoom, &[], &[ev("09:00", "10:15", "Sync")]), [(Some("Sync".into()), Some("calendar"))], "calendar beats a rule");
     }
 
     #[test]
@@ -710,7 +714,7 @@ mod tests {
         d = dismiss(d, dt("2026-10-03 09:10"), dt("2026-10-03 11:20"), today);
         let d: Dismissed = serde_json::from_str(&serde_json::to_string(&d).unwrap()).unwrap();
         assert_eq!(d.keys().map(|k| k.to_string()).collect::<Vec<_>>(), ["2026-09-03", "2026-10-03"]);
-        let sg = |a: &str, b: &str| Suggestion { start: dt(a), end: dt(b), apps: vec![], titles: vec![], project: None, task: None, meeting: None, editor: false };
+        let sg = |a: &str, b: &str| Suggestion { start: dt(a), end: dt(b), apps: vec![], titles: vec![], project: None, task: None, meeting: None, meeting_src: None, editor: false };
         // The dismissed block has grown a little since; a later one is untouched.
         let left = undismissed(vec![sg("2026-10-03 09:05", "2026-10-03 11:25"), sg("2026-10-03 11:30", "2026-10-03 12:00")], &d);
         assert_eq!(left, vec![sg("2026-10-03 11:30", "2026-10-03 12:00")]);

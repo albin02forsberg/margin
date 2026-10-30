@@ -861,7 +861,8 @@ default; macOS for now, the microphone part on macOS 14+): every 5 seconds Margi
 notes only *whether* a microphone or camera is in use, never audio, video or which
 app, in `activity/media/` next to the activity log (same retention), and a block
 at least half spent with one in use is marked **Meeting** (`Meeting: Call` unless a
-meeting pattern or calendar event names it). It works with ActivityWatch or the
+meeting pattern or calendar event names it). Hovering the **Meeting** badge
+says what marked it: a calendar event, a meeting rule, or the mic/camera. It works with ActivityWatch or the
 built-in watcher; it only marks blocks found from window activity (time away
 from the keyboard still isn't suggested), and a mic or camera in use for 8 hours
 or more (a virtual camera) is ignored. Set
