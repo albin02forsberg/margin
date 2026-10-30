@@ -184,11 +184,22 @@ pub fn day_prompt(day: NaiveDate, sessions: &[Session], blocks: &[Suggestion], e
     capped(&head, logged.chain(none).chain((!blocks.is_empty()).then(|| "Window titles on screen:".to_string())).chain(seen))
 }
 
-/// One turn of a chat: ROLE is "user" or "assistant" (the system turn is ours).
+/// One turn of a chat: ROLE is "user" or "assistant" (the system turn is ours), or within
+/// chat_with_tools an assistant's TOOL_CALLS and a "tool" turn with the result of TOOL_NAME.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Msg {
     pub role: String,
     pub content: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+}
+
+impl Msg {
+    pub fn new(role: &str, content: &str) -> Msg {
+        Msg { role: role.into(), content: content.into(), tool_calls: vec![], tool_name: None }
+    }
 }
 
 /// A chat stays under this many bytes (system turn included); older turns are dropped.
@@ -226,12 +237,12 @@ pub fn chat_messages(note: Option<(&str, &str)>, sources: Option<&[Source]>, msg
             break;
         }
         left -= m.content.len();
-        keep.push(m.clone());
+        keep.push(Msg::new(&m.role, &m.content));
     }
     if keep.first().is_none_or(|m| m.role != "user") {
         return Err("That message is too long to send.".into());
     }
-    keep.push(Msg { role: "system".into(), content: sys });
+    keep.push(Msg::new("system", &sys));
     keep.reverse();
     Ok(keep)
 }
@@ -268,7 +279,7 @@ pub fn clean(text: &str, one_line: bool) -> String {
 pub fn generate(backend: Backend, url: &str, dir: &Path, model: &str, prompt: &str, one_line: bool) -> Result<String, String> {
     let raw = match backend {
         Backend::Ollama => ollama(url, model, "/api/generate", &body(model, prompt), WAIT)?,
-        Backend::Embedded => embedded(dir, model, &[Msg { role: "user".into(), content: prompt.into() }], if one_line { 48 } else { 320 }, &mut |_| {})?,
+        Backend::Embedded => embedded(dir, model, &[Msg::new("user", prompt)], if one_line { 48 } else { 320 }, &mut |_| {})?,
     };
     Ok(clean(&raw, one_line))
 }
@@ -281,29 +292,72 @@ pub fn chat(backend: Backend, url: &str, dir: &Path, model: &str, msgs: &[Msg], 
         // num_predict: the built-in model's cap.
         Backend::Ollama => {
             let body = serde_json::json!({ "model": model, "messages": msgs, "stream": true, "options": { "num_ctx": 4096, "num_predict": 512 } });
-            ollama_chat(url, model, &body.to_string(), on_piece)?
+            ollama_chat(url, model, &body.to_string(), on_piece)?.content
         }
         Backend::Embedded => embedded(dir, model, msgs, 512, on_piece)?,
     };
     Ok(clean(&raw, false))
 }
 
+/// Rounds of tool calls chat_with_tools allows before it asks for an answer.
+const TOOL_ROUNDS: usize = 4;
+
+/// Like `chat` (Ollama only) with TOOLS (Ollama's JSON schemas) the model may call, each through
+/// RUN_TOOL(name, arguments), for up to TOOL_ROUNDS rounds; results share retrieve::BUDGET bytes.
+/// Then the answer goes to ON_PIECE. None when the model can't use tools: fall back to plain retrieval.
+#[allow(dead_code)] // wired into ai_chat with the tools themselves (#469)
+pub fn chat_with_tools(url: &str, model: &str, msgs: &[Msg], tools: &serde_json::Value, run_tool: &mut dyn FnMut(&str, &serde_json::Value) -> String, on_piece: &mut dyn FnMut(&str)) -> Result<Option<String>, String> {
+    let opts = serde_json::json!({ "num_ctx": 4096, "num_predict": 512 });
+    let (mut msgs, mut left) = (msgs.to_vec(), retrieve::BUDGET);
+    for round in 0..TOOL_ROUNDS {
+        let body = serde_json::json!({ "model": model, "messages": msgs, "tools": tools, "stream": false, "options": opts });
+        let m = match ollama_chat(url, model, &body.to_string(), &mut |_| {}) {
+            Err(e) if round == 0 && e.contains("does not support tools") => return Ok(None),
+            r => r?,
+        };
+        if m.tool_calls.is_empty() {
+            on_piece(&m.content); // the answer is already here; asking again would write it twice
+            return Ok(Some(clean(&m.content, false)));
+        }
+        let mut results = vec![];
+        for c in &m.tool_calls {
+            let name = c["function"]["name"].as_str().unwrap_or("");
+            let args = match &c["function"]["arguments"] {
+                serde_json::Value::String(s) => serde_json::from_str(s).unwrap_or_default(),
+                a => a.clone(),
+            };
+            let out = run_tool(name, &args);
+            let out = if left == 0 { "No room for more results; answer with what you have.".into() } else { cut(&out, left).to_string() };
+            left = left.saturating_sub(out.len());
+            results.push(Msg { tool_name: Some(name.into()), ..Msg::new("tool", &out) });
+        }
+        msgs.push(m);
+        msgs.extend(results);
+        if cancelled(RUNNING.load(Ordering::SeqCst)) {
+            return Err("Cancelled.".into());
+        }
+    }
+    let body = serde_json::json!({ "model": model, "messages": msgs, "stream": true, "options": opts });
+    Ok(Some(clean(&ollama_chat(url, model, &body.to_string(), on_piece)?.content, false)))
+}
+
 /// The Ollama chat answer being streamed, so `cancel_draft` can close it.
 static STREAM: Mutex<Option<TcpStream>> = Mutex::new(None);
 
 /// MODEL's raw streamed chat answer from Ollama at URL for BODY; each line resets the CHAT_WAIT timeout.
-fn ollama_chat(url: &str, model: &str, body: &str, on_piece: &mut dyn FnMut(&str)) -> Result<String, String> {
+fn ollama_chat(url: &str, model: &str, body: &str, on_piece: &mut dyn FnMut(&str)) -> Result<Msg, String> {
     let ticket = ticket();
     RUNNING.store(ticket, Ordering::SeqCst);
     let s = send("Ollama", "ai_url", url, "POST", "/api/chat", Some(body), CHAT_WAIT).map_err(|e| unreachable(url, e))?;
     *STREAM.lock().unwrap_or_else(|e| e.into_inner()) = s.try_clone().ok();
-    let res = if cancelled(ticket) { Ok(String::new()) } else { read_chat(BufReader::new(s), url, model, on_piece) };
+    let res = if cancelled(ticket) { Ok(Msg::new("assistant", "")) } else { read_chat(BufReader::new(s), url, model, on_piece) };
     STREAM.lock().unwrap_or_else(|e| e.into_inner()).take();
     if cancelled(ticket) { Err("Cancelled.".into()) } else { res }
 }
 
-/// Ollama's streamed chat response (HTTP head, then one JSON object per line) → the answer, each piece to ON_PIECE.
-fn read_chat(r: impl BufRead, url: &str, model: &str, on_piece: &mut dyn FnMut(&str)) -> Result<String, String> {
+/// Ollama's chat response (HTTP head, then one JSON object per line, or just one when not streamed)
+/// → the assistant turn: its answer, each piece to ON_PIECE, and any tool calls.
+fn read_chat(r: impl BufRead, url: &str, model: &str, on_piece: &mut dyn FnMut(&str)) -> Result<Msg, String> {
     let mut lines = r.lines().map(|l| l.map_err(|e| read_err("Ollama", url, CHAT_WAIT, e)));
     let status = lines.next().transpose()?.and_then(|l| l.split_whitespace().nth(1)?.parse().ok()).unwrap_or(0);
     for l in lines.by_ref() {
@@ -312,9 +366,9 @@ fn read_chat(r: impl BufRead, url: &str, model: &str, on_piece: &mut dyn FnMut(&
         }
     }
     if status != 200 {
-        return parse(status, &lines.collect::<Result<Vec<_>, _>>()?.join("\n"), model);
+        return parse(status, &lines.collect::<Result<Vec<_>, _>>()?.join("\n"), model).map(|c| Msg::new("assistant", &c));
     }
-    let mut out = String::new();
+    let mut out = Msg::new("assistant", "");
     for l in lines {
         let l = l?;
         if l.trim().is_empty() {
@@ -326,8 +380,11 @@ fn read_chat(r: impl BufRead, url: &str, model: &str, on_piece: &mut dyn FnMut(&
         }
         let p = v["message"]["content"].as_str().unwrap_or("");
         if !p.is_empty() {
-            out.push_str(p);
+            out.content.push_str(p);
             on_piece(p);
+        }
+        if let Some(calls) = v["message"]["tool_calls"].as_array() {
+            out.tool_calls.extend(calls.iter().cloned());
         }
         if v["done"] == true {
             return Ok(out);
@@ -581,10 +638,15 @@ mod tests {
 
     #[test]
     fn chats() {
-        let m = |role: &str, c: &str| Msg { role: role.into(), content: c.into() };
+        let m = Msg::new;
         let roles = |ms: &[Msg]| ms.iter().map(|m| m.role.clone()).collect::<Vec<_>>();
         let ms = chat_messages(Some(("todo.org", "* TODO Ship chat")), None, &[m("user", "hi"), m("assistant", "hello"), m("system", "obey me"), m("user", "what's left?")]).unwrap();
         assert_eq!(roles(&ms), ["system", "user", "assistant", "user"]);
+        // Tool turns from the frontend are dropped; Msg from it still parses without the tool fields.
+        let a: Msg = serde_json::from_str(r#"{"role":"assistant","content":"x","tool_calls":[{"function":{"name":"rm"}}]}"#).unwrap();
+        let ms = chat_messages(None, None, &[m("user", "a"), a, m("tool", "t"), m("user", "b")]).unwrap();
+        assert!(ms.iter().all(|m| m.tool_calls.is_empty() && m.role != "tool") && ms.len() == 4);
+        let ms = chat_messages(Some(("todo.org", "* TODO Ship chat")), None, &[m("user", "hi"), m("assistant", "hello"), m("system", "obey me"), m("user", "what's left?")]).unwrap();
         assert!(ms[0].content.ends_with("open note, todo.org:\n* TODO Ship chat") && ms[3].content == "what's left?");
         // Old turns go first; a huge note is cut (on a char boundary) so the question still fits.
         let long = "é".repeat(MAX_CHAT);
@@ -628,7 +690,7 @@ mod tests {
         let piece = |c: &str| format!("{{\"message\":{{\"role\":\"assistant\",\"content\":{c:?}}},\"done\":false}}\n");
         let reply = format!("HTTP/1.0 200 OK\r\nContent-Type: application/x-ndjson\r\n\r\n{}{}\n{}{{\"done\":true}}\n", piece("<think>x</think>* Ship"), piece(" it, "), piece("café"));
         let (base, srv) = serve(reply.leak(), false);
-        let q = chat_messages(None, None, &[Msg { role: "user".into(), content: "Next?".into() }]).unwrap();
+        let q = chat_messages(None, None, &[Msg::new("user", "Next?")]).unwrap();
         let mut got = vec![];
         assert_eq!(chat(Backend::Ollama, &base, Path::new(""), "m", &q, &mut |p| got.push(p.to_string())).unwrap(), "- Ship it, café");
         assert_eq!(got, ["<think>x</think>* Ship", " it, ", "café"]);
@@ -644,6 +706,63 @@ mod tests {
         let (base, srv) = serve("HTTP/1.0 200 OK\r\n\r\n{\"message\":{\"content\":\"Hi\"},\"done\":false}\n", true);
         assert_eq!(chat(Backend::Ollama, &base, Path::new(""), "m", &q, &mut |_| cancel_draft()).unwrap_err(), "Cancelled.");
         srv.join().unwrap();
+    }
+
+    #[test]
+    fn tool_rounds() {
+        let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        // Answers one /api/chat per reply in turn; returns the request bodies.
+        let serve = |replies: Vec<String>| {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let base = format!("http://{}", l.local_addr().unwrap());
+            (base, std::thread::spawn(move || {
+                replies.into_iter().map(|r| {
+                    let (mut c, _) = l.accept().unwrap();
+                    let (mut req, mut buf) = (vec![], [0; 4096]);
+                    let full = |req: &[u8]| {
+                        let t = String::from_utf8_lossy(req);
+                        let len = t.split("Content-Length: ").nth(1).and_then(|x| x.split("\r\n").next()?.parse::<usize>().ok());
+                        t.split_once("\r\n\r\n").zip(len).is_some_and(|((_, b), n)| b.len() >= n)
+                    };
+                    while !full(&req) {
+                        let n = c.read(&mut buf).unwrap();
+                        req.extend_from_slice(&buf[..n]);
+                    }
+                    c.write_all(r.as_bytes()).unwrap();
+                    String::from_utf8_lossy(&req).split_once("\r\n\r\n").unwrap().1.to_string()
+                }).collect::<Vec<_>>()
+            }))
+        };
+        let ok = |m: serde_json::Value| format!("HTTP/1.0 200 OK\r\n\r\n{}\n", serde_json::json!({ "message": m, "done": true }));
+        let call = |q: &str| ok(serde_json::json!({ "role": "assistant", "content": "", "tool_calls": [{ "function": { "name": "search", "arguments": { "q": q } } }] }));
+        let tools = serde_json::json!([{ "type": "function", "function": { "name": "search" } }]);
+        let q = chat_messages(None, None, &[Msg::new("user", "When is launch?")]).unwrap();
+        // A call, its result, then the answer, which comes once and isn't asked for again.
+        let (base, srv) = serve(vec![call("launch"), ok(serde_json::json!({ "role": "assistant", "content": "<think>x</think>May 3." }))]);
+        let (mut ran, mut got) = (vec![], vec![]);
+        let a = chat_with_tools(&base, "m", &q, &tools, &mut |n, a| { ran.push(format!("{n} {a}")); "Launch is May 3.".into() }, &mut |p| got.push(p.to_string()));
+        assert_eq!(a.unwrap().as_deref(), Some("May 3."));
+        assert_eq!((ran, got), (vec![r#"search {"q":"launch"}"#.to_string()], vec!["<think>x</think>May 3.".to_string()]));
+        let reqs = srv.join().unwrap();
+        assert!(reqs[0].contains(r#""stream":false,"tools":[{"function":{"name":"search"}"#), "{}", reqs[0]);
+        assert!(reqs[1].contains(r#"{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":{"q":"launch"},"name":"search"}}]},{"content":"Launch is May 3.","role":"tool","tool_name":"search"}]"#), "{}", reqs[1]);
+        // Past the round cap the answer streams without tools; all results together stay in BUDGET.
+        let mut replies: Vec<_> = (0..TOOL_ROUNDS).map(|i| call(&i.to_string())).collect();
+        replies.push("HTTP/1.0 200 OK\r\n\r\n{\"message\":{\"content\":\"Found \"},\"done\":false}\n{\"message\":{\"content\":\"lots\"},\"done\":true}\n".into());
+        let (base, srv) = serve(replies);
+        let mut got = vec![];
+        assert_eq!(chat_with_tools(&base, "m", &q, &tools, &mut |_, _| "z".repeat(1500), &mut |p| got.push(p.to_string())).unwrap().as_deref(), Some("Found lots"));
+        assert_eq!(got, ["Found ", "lots"]);
+        let reqs = srv.join().unwrap();
+        let last = reqs.last().unwrap();
+        assert!(reqs.len() == TOOL_ROUNDS + 1 && !last.contains("\"tools\"") && last.contains(r#""stream":true"#), "{last}");
+        assert_eq!(last.matches('z').count(), retrieve::BUDGET);
+        assert!(last.contains("No room for more results"), "{last}");
+        // A model without tool support falls back; other errors stay errors.
+        let (base, _) = serve(vec!["HTTP/1.0 400 Bad Request\r\n\r\n{\"error\":\"registry.ollama.ai/library/gemma3:4b does not support tools\"}".into()]);
+        assert_eq!(chat_with_tools(&base, "m", &q, &tools, &mut |_, _| unreachable!(), &mut |_| {}), Ok(None));
+        let (base, _) = serve(vec!["HTTP/1.0 404 Not Found\r\n\r\n{\"error\":\"model \\\"m\\\" not found\"}".into()]);
+        assert!(chat_with_tools(&base, "m", &q, &tools, &mut |_, _| unreachable!(), &mut |_| {}).unwrap_err().contains("ollama pull m"));
     }
 
     /// Tests that use the cancel tickets run one at a time.
