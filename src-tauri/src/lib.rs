@@ -2507,8 +2507,9 @@ fn ai_chat(app: AppHandle, s: State<App>, messages: Vec<ai::Msg>, note: Option<(
         let mut with = msgs.clone();
         with[0].content += "\n\nIf the notes above don't answer it, use the tools to search and read more of the user's notes.";
         let mut run = |name: &str, args: &serde_json::Value| {
-            let _ = on_tool.send(json!({ "name": name, "args": args }));
-            retrieve::run_tool(&files, name, args)
+            let (out, used) = retrieve::tool_sources(&files, name, args);
+            let _ = on_tool.send(json!({ "name": name, "args": args, "sources": used }));
+            out
         };
         if let Some(answer) = ai::chat_with_tools(&c.ai_url, c.ai_model.trim(), &with, &retrieve::tools(), &mut run, &mut piece)? {
             return Ok(answer);

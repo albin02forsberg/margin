@@ -238,18 +238,25 @@ pub fn tools() -> serde_json::Value {
 
 /// The result of tool NAME with ARGS over FILES (already without `ai_exclude`d notes), at most
 /// TOOL_RESULT bytes; errors are told to the model as text.
-pub fn run_tool(files: &[Arc<OrgFile>], name: &str, args: &serde_json::Value) -> String {
+/// Also the notes it used (open_note's, search_notes' hits, texts emptied) for the chat's source list.
+pub fn tool_sources(files: &[Arc<OrgFile>], name: &str, args: &serde_json::Value) -> (String, Vec<Source>) {
+    let mut used = vec![];
     let arg = |k: &str| args.get(k).and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).ok_or(format!("Error: {name} needs a {k}."));
     let note = |t: &str| by_title(files, t).ok_or(format!("Error: no note titled {t}. Use search_notes to find titles."));
     let out = match name {
-        "search_notes" => arg("query").map(|q| match pack(&retrieve(files, q, None, TOOL_RESULT)) {
-            p if p.is_empty() => format!("No note matches {q}."),
-            p => p,
+        "search_notes" => arg("query").map(|q| {
+            used = retrieve(files, q, None, TOOL_RESULT);
+            match pack(&used) {
+                p if p.is_empty() => format!("No note matches {q}."),
+                p => p,
+            }
         }),
         "open_note" => arg("title").and_then(note).map(|f| {
             let text = f.text.lines().filter(|l| !meta(l)).collect::<Vec<_>>().join("\n");
             let s = Source { kind: note_kind(), path: f.path.clone(), title: f.title.clone(), line: 0, text: text.trim().into() };
-            label(&s) + &s.text
+            let out = label(&s) + &s.text;
+            used = vec![Source { text: String::new(), ..s }];
+            out
         }),
         "neighbors" => arg("title").and_then(note).map(|f| {
             let i = files.iter().position(|g| Arc::ptr_eq(g, f)).unwrap_or(0);
@@ -258,7 +265,10 @@ pub fn run_tool(files: &[Arc<OrgFile>], name: &str, args: &serde_json::Value) ->
         }),
         _ => Err(format!("Error: unknown tool {name}. Use search_notes, open_note or neighbors.")),
     };
-    cut(&out.unwrap_or_else(|e| e), TOOL_RESULT).to_string()
+    for u in &mut used {
+        u.text.clear(); // the list only needs where to jump
+    }
+    (cut(&out.unwrap_or_else(|e| e), TOOL_RESULT).to_string(), used)
 }
 
 /// Which of the open tasks, the agenda and the time log QUESTION asks about, by word prefixes.
@@ -478,7 +488,7 @@ mod tests {
             note("big", &format!("#+title: Big\n{}", "ålpha ".repeat(2000))),
         ];
         let kept: Vec<_> = files.iter().filter(|f| !excluded(&f.path, Path::new("/n"), &["secret".to_string()])).cloned().collect();
-        let run = |name: &str, args: serde_json::Value| run_tool(&kept, name, &args);
+        let run = |name: &str, args: serde_json::Value| tool_sources(&kept, name, &args).0;
         let names: Vec<_> = tools().as_array().unwrap().iter().map(|t| t["function"]["name"].as_str().unwrap().to_string()).collect();
         assert_eq!(names, ["search_notes", "open_note", "neighbors"]);
         // search: the matching note, not the excluded one
@@ -497,6 +507,13 @@ mod tests {
         let big = run("open_note", serde_json::json!({ "title": "Big" }));
         assert!(big.len() <= TOOL_RESULT && big.len() > TOOL_RESULT - 4 && big.starts_with("[note: Big"));
         assert!(run("search_notes", serde_json::json!({ "query": "ålpha" })).len() <= TOOL_RESULT);
+        // the notes a call used, for the source list
+        let used = |name: &str, args: serde_json::Value| tool_sources(&kept, name, &args).1.iter().map(|s| (s.title.clone(), s.text.is_empty())).collect::<Vec<_>>();
+        assert_eq!(used("open_note", serde_json::json!({ "title": "Big" })), [("Big".to_string(), true)]);
+        assert!(used("open_note", serde_json::json!({ "title": "Nope" })).is_empty());
+        assert!(used("neighbors", serde_json::json!({ "title": "Big" })).is_empty());
+        assert!(used("search_notes", serde_json::json!({ "query": "nothingmatchesthis" })).is_empty());
+        assert!(!used("search_notes", serde_json::json!({ "query": "launch" })).is_empty());
         // bad calls are told to the model
         assert_eq!(run("open_note", serde_json::json!({})), "Error: open_note needs a title.");
         assert_eq!(run("open_note", serde_json::json!({ "title": 3 })), "Error: open_note needs a title.");

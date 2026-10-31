@@ -49,7 +49,7 @@
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
   import Outline from "$lib/Outline.svelte";
   import { buildOutline, headingAt, type OutlineItem } from "$lib/outline";
-  import { chatContext, type ToolEvent } from "$lib/chatctx";
+  import { chatContext, mergeSources, type ToolEvent } from "$lib/chatctx";
   import { bugReportUrl, isError, osName } from "$lib/bugreport";
   import { notesText, notesTitle, notesToShow, type Notes } from "$lib/whatsnew";
   import { dayTime, focusLeft, inactiveStamp, naive, overLong, parseWhen, worked, type WeekDay } from "$lib/clock";
@@ -2513,14 +2513,18 @@
   /** The chat panel's answer to MESSAGES, about the open note's chatPart when WITH_NOTE (unsaved edits included) and the notes matching the question when USE_NOTES (#304); ON_TOOL gets the model's tool calls (`ai_tools`, #963). */
   async function chatAsk(messages: ChatMsg[], withNote: boolean, useNotes: boolean, onPiece: (piece: string) => void, onTool: (e: ToolEvent) => void) {
     const ch = new Channel<string>(onPiece);
-    const tools = new Channel<ToolEvent>(onTool);
+    let found: Source[] = [];
+    const tools = new Channel<ToolEvent>((e) => {
+      if ("sources" in e && e.sources) found = mergeSources(found, e.sources as Source[]);
+      onTool(e);
+    });
     drafting++;
     chatting = true;
     try {
       const open = tab?.kind === "file" ? tab.path : null;
       const sources = useNotes ? await call<Source[]>("ai_retrieve", { question: messages[messages.length - 1].content, open }) : undefined;
       const answer = await call<string>("ai_chat", { messages, note: withNote && tab?.kind === "file" ? chatNote() : null, open, sources: sources ?? null, onPiece: ch, onTool: tools });
-      return { answer, sources };
+      return { answer, sources: useNotes ? mergeSources(sources, found) : undefined };
     } finally {
       drafting--;
       chatting = false;
