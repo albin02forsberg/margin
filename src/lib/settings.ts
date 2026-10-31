@@ -80,7 +80,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
 ];
 
 /** The settings page's category chips: all, each field group, then the list cards. */
-export const CATEGORIES = ["All", ...GROUPS.map((g) => g.name), "Saved views", "Capture templates", "Snippets"];
+export const CATEGORIES = ["All", ...GROUPS.map((g) => g.name), "Saved views", "Capture templates", "Snippets", "Feeds"];
 /** Whether a card or field of group NAME shows under category CAT and filter Q: Q (any case) is
  *  in the group name or one of TEXT (a field's label, hint and key). */
 export function shows(cat: string, q: string, name: string, ...text: (string | undefined)[]) {
@@ -137,7 +137,7 @@ export function refresh(form: Form, base: Form, config: Record<string, unknown>)
   return [kept, next, clash];
 }
 
-/** A `[[views]]`/`[[templates]]`/`[[snippets]]` entry on the settings page. */
+/** A `[[views]]`/`[[templates]]`/`[[snippets]]`/`[[feeds]]` entry on the settings page. */
 export type Row = Record<string, string>;
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -179,6 +179,20 @@ export function checkSnippets(snips: Row[]): Row[] {
     if (!/^[\w-]+$/.test(r.key)) throw new Error(`Snippet ${i + 1} needs a key of letters, digits, _ or -`);
     const other = snips.findIndex((u) => key(u) === r.key);
     if (other < i) throw new Error(`Snippets ${other + 1} and ${i + 1} have the same key`);
+    return r;
+  });
+}
+
+/** FEEDS trimmed for save_config (empty file and heading left out: the inbox, under Reading); throws unless
+ *  each has an http(s) URL of its own. */
+export function checkFeeds(feeds: Row[]): Row[] {
+  const url = (f: Row) => (f.url ?? "").trim();
+  return feeds.map((f, i) => {
+    const r: Row = { name: (f.name ?? "").trim(), url: url(f) };
+    for (const k of ["file", "heading"]) if ((f[k] ?? "").trim()) r[k] = f[k].trim();
+    if (!/^https?:\/\/\S+$/i.test(r.url)) throw new Error(`Feed ${i + 1} needs an http(s) URL`);
+    const other = feeds.findIndex((g) => url(g) === r.url);
+    if (other < i) throw new Error(`Feeds ${other + 1} and ${i + 1} have the same URL`);
     return r;
   });
 }

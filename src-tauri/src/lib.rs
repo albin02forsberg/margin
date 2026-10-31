@@ -6,6 +6,7 @@ mod backup;
 mod config;
 mod embed;
 mod export;
+mod feeds;
 mod ics;
 mod ledger;
 mod media;
@@ -296,12 +297,13 @@ fn setup(app: AppHandle, s: State<App>, notes_dir: String, data_dir: String, pro
 }
 
 /// The settings page's changed VALUES, RESET keys (see config::save), saved VIEWS and capture
-/// TEMPLATES and editor SNIPPETS (see config::set_tables), saved like setup's answers.
+/// TEMPLATES, editor SNIPPETS and FEEDS (see config::set_tables), saved like setup's answers.
 #[tauri::command]
-fn save_config(app: AppHandle, s: State<App>, values: toml::Table, reset: Option<Vec<String>>, views: Option<Vec<toml::Table>>, templates: Option<Vec<toml::Table>>, snippets: Option<Vec<toml::Table>>) -> R<String> {
+#[allow(clippy::too_many_arguments)]
+fn save_config(app: AppHandle, s: State<App>, values: toml::Table, reset: Option<Vec<String>>, views: Option<Vec<toml::Table>>, templates: Option<Vec<toml::Table>>, snippets: Option<Vec<toml::Table>>, feeds: Option<Vec<toml::Table>>) -> R<String> {
     let text = std::fs::read_to_string(&s.cfg_path).map_err(|e| e.to_string())?;
     let (mut text, mut c) = config::save(&text, values, &reset.unwrap_or_default())?;
-    for (key, items) in [("views", views), ("templates", templates), ("snippets", snippets)] {
+    for (key, items) in [("views", views), ("templates", templates), ("snippets", snippets), ("feeds", feeds)] {
         if let Some(v) = items {
             (text, c) = config::set_tables(&text, key, v)?;
         }
@@ -2402,6 +2404,20 @@ fn activity_dismiss(s: State<App>, start: NaiveDateTime, end: NaiveDateTime) -> 
     config::write_atomic(&tc.dir.join("activity_dismissed.json"), serde_json::to_string(&d).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 
+/// The new items of the `[[feeds]]` as org entries to file, and the guids to pass to `mark_feeds_seen` once they are (feeds::pick).
+#[tauri::command]
+async fn fetch_feeds(s: State<'_, App>) -> R<feeds::Fetched> {
+    let c = s.cfg();
+    let seen = feeds::load(&c.data())?;
+    Ok(feeds::fetch(&c.feeds, &seen, &c.inbox, timeclock::now()).await)
+}
+
+/// Remember SEEN (feed URL → guids) in data_dir's feeds_seen.json, so those items are never filed again.
+#[tauri::command]
+fn mark_feeds_seen(s: State<App>, seen: feeds::Seen) -> R<()> {
+    feeds::save(&s.cfg().data(), seen)
+}
+
 /// Remember that blocks titled TITLE (an EDITOR label) go to PROJECT (the user picked another project than the guess).
 #[tauri::command]
 fn activity_learn(s: State<App>, title: String, project: String, editor: bool) -> R<()> {
@@ -3146,7 +3162,7 @@ pub fn run() {
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
-            export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, babel::babel_run
+            export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, fetch_feeds, mark_feeds_seen, babel::babel_run
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

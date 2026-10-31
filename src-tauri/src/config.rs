@@ -59,6 +59,8 @@ pub struct Config {
     pub templates: Vec<Template>,
     /// More templates, one per .org file, relative to notes_dir; empty to disable.
     pub templates_dir: String,
+    /// RSS/Atom feeds whose new items `Fetch feeds` files as reading-list TODOs: `[[feeds]] name url file heading`.
+    pub feeds: Vec<Feed>,
     /// Editor snippets: `<key` + Tab inserts text (`[[snippets]] key text`, %t/%U dates, %? cursor).
     pub snippets: Vec<Snippet>,
     /// Dropped and pasted files go to <attachments_dir>/<note name>/, relative to notes_dir.
@@ -129,6 +131,23 @@ pub struct View {
 pub struct Snippet {
     pub key: String,
     pub text: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Feed {
+    #[serde(default)]
+    pub name: String,
+    pub url: String,
+    /// Note its items go to (strftime pattern relative to notes_dir); empty means the inbox.
+    #[serde(default)]
+    pub file: String,
+    /// Heading they go under (created if missing).
+    #[serde(default = "reading")]
+    pub heading: String,
+}
+
+fn reading() -> String {
+    "Reading".into()
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -248,6 +267,7 @@ impl Default for Config {
                 Template { key: "r".into(), name: "Reading list".into(), file: String::new(), heading: Some("Reading".into()), body: "* TODO Read %^{clip-link} :read:\n%U\n%?".into() },
             ],
             templates_dir: "templates".into(),
+            feeds: vec![],
             snippets: vec![],
             attachments_dir: "attachments".into(),
             images_dir: "images".into(),
@@ -516,7 +536,7 @@ pub fn save(text: &str, values: toml::Table, reset: &[String]) -> Result<(String
 }
 
 /// The lists of tables the settings page edits whole (set_tables), not via save.
-pub const TABLES: [&str; 3] = ["views", "templates", "snippets"];
+pub const TABLES: [&str; 4] = ["views", "templates", "snippets", "feeds"];
 
 /// TEXT with the `[[KEY]]` tables (one of TABLES) replaced by ITEMS, appended at the end;
 /// other lines stay as written, comments inside the old tables are dropped. An empty list is

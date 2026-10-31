@@ -14,7 +14,7 @@ pub fn extract_title(html: &str) -> Option<String> {
 }
 
 /// HTML entities in S: the common named ones and `&#N;` / `&#xH;`; anything else is kept as written.
-fn decode(s: &str) -> String {
+pub fn decode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
     while let Some(i) = rest.find('&') {
@@ -38,7 +38,7 @@ fn decode(s: &str) -> String {
 }
 
 /// Only http(s) pages are fetched.
-fn check_url(url: &str) -> Result<(), String> {
+pub fn check_url(url: &str) -> Result<(), String> {
     let l = url.to_ascii_lowercase();
     if l.starts_with("http://") || l.starts_with("https://") { Ok(()) } else { Err("only http(s) links have a title to fetch".into()) }
 }
@@ -52,26 +52,33 @@ fn is_html(ct: Option<&str>) -> bool {
 #[tauri::command]
 pub async fn fetch_title(url: String) -> Result<String, String> {
     check_url(&url)?;
+    let body = get(&url, MAX, 5, is_html, "not an HTML page").await?;
+    extract_title(&body).ok_or_else(|| "the page has no title".into())
+}
+
+/// The first MAX bytes of URL (SECS timeout, redirects followed) as text, if OK passes its content type
+/// (else the error NOT). Errors leave the URL out.
+pub async fn get(url: &str, max: usize, secs: u64, ok: fn(Option<&str>) -> bool, not: &str) -> Result<String, String> {
     if rustls::crypto::CryptoProvider::get_default().is_none() {
         let _ = rustls::crypto::ring::default_provider().install_default();
     }
     let e = |e: reqwest::Error| e.without_url().to_string();
-    let mut resp = reqwest::Client::builder().user_agent("Margin").timeout(std::time::Duration::from_secs(5)).build().map_err(e)?.get(url).send().await.map_err(e)?;
+    let mut resp = reqwest::Client::builder().user_agent("Margin").timeout(std::time::Duration::from_secs(secs)).build().map_err(e)?.get(url).send().await.map_err(e)?;
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status().as_u16()));
     }
-    if !is_html(resp.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok())) {
-        return Err("not an HTML page".into());
+    if !ok(resp.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok())) {
+        return Err(not.into());
     }
     let mut body = Vec::new();
-    while body.len() < MAX {
+    while body.len() < max {
         match resp.chunk().await.map_err(e)? {
             Some(c) => body.extend_from_slice(&c),
             None => break,
         }
     }
-    body.truncate(MAX);
-    extract_title(&String::from_utf8_lossy(&body)).ok_or_else(|| "the page has no title".into())
+    body.truncate(max);
+    Ok(String::from_utf8_lossy(&body).into_owned())
 }
 
 #[cfg(test)]
