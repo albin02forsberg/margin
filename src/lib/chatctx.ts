@@ -22,6 +22,10 @@ export function mergeSources<T extends { path: string; line: number }>(base: T[]
 export function toolLine(e: ToolEvent): string {
   if ("no_tools" in e) return "This model can't use tools, so it answered from the matching notes only.";
   const arg = (k: string) => String(e.args?.[k] ?? "").trim();
+  const range = () => [arg("from"), arg("to")].filter(Boolean).join("..");
+  if (e.name === "list_tasks") return `listed ${[arg("state"), arg("project")].filter(Boolean).join(" ") || "open"} tasks`;
+  if (e.name === "agenda") return `read the agenda ${range()}`.trim();
+  if (e.name === "time_report") return `read the time log ${range()}`.trim();
   const what = ({ search_notes: ["searched notes:", "query"], open_note: ["opened", "title"], neighbors: ["looked up links of", "title"] } as Record<string, string[]>)[e.name];
   return what ? `${what[0]} ${arg(what[1])}`.trim() : `called ${e.name}`;
 }
