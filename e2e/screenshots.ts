@@ -366,7 +366,7 @@ async function pngs() {
   await browser.$(".settings .mcp code").waitForDisplayed();
   await shot("mcp");
   if (want("ai-tools")) { // #963: the switch, shown as the backend is Ollama (the default)
-    await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Let the model search notes itself")]]`)).scrollIntoView({ block: "center" });
+    await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Let the model look things up itself")]]`)).scrollIntoView({ block: "center" });
     await shot("ai-tools");
   }
 

@@ -1029,12 +1029,16 @@ any note whose path in the notes folder contains one of these (any case, e.g.
 `private/`, `/private/` or `diary`; `\` works as `/` too) is never sent, not as a match, a linked note, the open
 note (the chat says so instead of offering it) or for its tasks.
 
-With Ollama, **Let the model search notes itself** (`ai_tools`, off by default; shown
-when the backend is Ollama) also gives the model three read-only tools while *Use my
-notes* and *Send matching notes* are on: search the notes, open one by title, and list
-the notes linked to or from one. It may call them a few times before it answers, and
-each call shows as a line above the answer (*searched notes: rollout*, *opened
-Launch*). Excluded notes stay out of reach. The model has to support tool calls
+With Ollama, **Let the model look things up itself** (`ai_tools`, off by default; shown
+when the backend is Ollama) also gives the model read-only tools while *Use my notes*
+is on: with *Send matching notes*, search the notes, open one by title, and list the
+notes linked to or from one; with *Send open tasks and the agenda*, list the tasks (by
+state or project tag) and read the agenda for any range of days; with *Send the time
+log*, read the time tracked over any range with per-project totals. So "What's due
+Friday?" works even when no keyword gives it away. It may call them a few times before
+it answers, and each call shows as a line above the answer (*searched notes: rollout*,
+*opened Launch*, *listed open tasks*, *read the agenda 2026-11-02..2026-11-08*).
+Excluded notes stay out of reach, their tasks included. The model has to support tool calls
 (e.g. `llama3.2` or `qwen3`); if it doesn't, the chat says so in one line and answers
 from the matching notes as usual.
 
