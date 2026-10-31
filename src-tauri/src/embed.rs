@@ -14,7 +14,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// A section longer than this is split on line boundaries.
 const CHUNK: usize = 1500;
 const MAGIC: &[u8; 8] = b"MRGNEMB\0";
-const VERSION: u32 = 1;
+/// 2: nomic models embed with `search_document: ` / `search_query: ` prefixes (see `prefixed`).
+const VERSION: u32 = 2;
+
+/// TEXT as MODEL wants it embedded: the nomic-embed models are trained with a task prefix on
+/// documents (QUERY false) and questions (QUERY true); other models take the text as is.
+pub fn prefixed(model: &str, query: bool, text: &str) -> String {
+    match (model.contains("nomic-embed"), query) {
+        (false, _) => text.into(),
+        (true, true) => format!("search_query: {text}"),
+        (true, false) => format!("search_document: {text}"),
+    }
+}
 
 /// A piece of a note to embed: LINE (0-based) is where it starts; TEXT is the note's title and
 /// the section's non-meta lines.
@@ -268,6 +279,13 @@ impl Index {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn nomic_prefixes() {
+        assert_eq!(prefixed("nomic-embed-text:latest", true, "q"), "search_query: q");
+        assert_eq!(prefixed("nomic-embed-text", false, "d"), "search_document: d");
+        assert_eq!(prefixed("mxbai-embed-large", true, "q"), "q");
+    }
+
     use super::*;
     use crate::org::{parse, Kw};
     use std::cell::RefCell;
