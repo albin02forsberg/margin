@@ -2499,7 +2499,8 @@ fn ai_retrieve(s: State<App>, question: String, open: Option<PathBuf>) -> Vec<re
 /// The model's answer to the chat MESSAGES, about the open NOTE (name, text; left out when the note
 /// at OPEN is excluded) and the SOURCES from ai_retrieve if given; the raw answer streams to
 /// ON_PIECE as it comes, and the cleaned one is returned. With `ai_tools` (Ollama, SOURCES given)
-/// the model may also search and open notes itself; each call goes to ON_TOOL as {name, args}, and
+/// the model may also search and open notes, list tasks and read the agenda and time log itself,
+/// as `ai_source_*` allow (#990); each call goes to ON_TOOL as {name, args}, and
 /// {no_tools: true} when the model can't, before it answers from SOURCES alone (#469).
 #[tauri::command(async)]
 #[allow(clippy::too_many_arguments)]
@@ -2518,16 +2519,17 @@ fn ai_chat(app: AppHandle, s: State<App>, messages: Vec<ai::Msg>, note: Option<(
     let mut piece = |p: &str| {
         let _ = on_piece.send(p.into());
     };
-    if c.ai_tools && c.ai_source_notes && c.ai_backend == ai::Backend::Ollama && sources.is_some() {
+    if c.ai_tools && (c.ai_source_notes || c.ai_source_tasks || c.ai_source_time) && c.ai_backend == ai::Backend::Ollama && sources.is_some() {
         let files: Vec<_> = s.files().into_iter().filter(|f| !ex(&f.path)).collect();
+        let ctx = retrieve::ToolCtx { kw: s.kw(), today: today(), notes: c.ai_source_notes, tasks: c.ai_source_tasks, sessions: c.ai_source_time.then(|| s.tc().sessions()) };
         let mut with = msgs.clone();
-        with[0].content += "\n\nIf the notes above don't answer it, use the tools to search and read more of the user's notes.";
+        with[0].content += &format!("\n\n{}", retrieve::tool_note(&ctx));
         let mut run = |name: &str, args: &serde_json::Value| {
-            let (out, used) = retrieve::tool_sources(&files, name, args);
+            let (out, used) = retrieve::tool_sources(&files, &ctx, name, args);
             let _ = on_tool.send(json!({ "name": name, "args": args, "sources": used }));
             out
         };
-        if let Some(answer) = ai::chat_with_tools(&c.ai_url, c.ai_model.trim(), &with, &retrieve::tools(), &mut run, &mut piece)? {
+        if let Some(answer) = ai::chat_with_tools(&c.ai_url, c.ai_model.trim(), &with, &retrieve::tools(&ctx), &mut run, &mut piece)? {
             return Ok(answer);
         }
         let _ = on_tool.send(json!({ "no_tools": true }));

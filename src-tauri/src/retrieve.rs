@@ -3,7 +3,7 @@
 // the agenda and the time log when the question asks about them (#468).
 
 use crate::notes::adjacency;
-use crate::org::{Item, OrgFile};
+use crate::org::{Item, Kw, OrgFile};
 use crate::timeclock::{format_hm, Session};
 use chrono::{Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
@@ -222,28 +222,92 @@ pub fn by_title<'a>(files: &'a [Arc<OrgFile>], title: &str) -> Option<&'a Arc<Or
 
 /// Bytes one tool result may take, so a few calls fit in BUDGET (#469).
 pub const TOOL_RESULT: usize = 1500;
+/// The longest range the agenda and time tools read.
+const MAX_DAYS: i64 = 62;
 
-/// The tools the chat model may call (Ollama's schema): read-only, by title, never by path (#469).
-pub fn tools() -> serde_json::Value {
-    let tool = |name: &str, desc: &str, arg: &str, about: &str| {
-        serde_json::json!({ "type": "function", "function": { "name": name, "description": desc,
-            "parameters": { "type": "object", "properties": { arg: { "type": "string", "description": about } }, "required": [arg] } } })
-    };
-    serde_json::json!([
-        tool("search_notes", "Excerpts of the user's notes that best match QUERY, plus notes linked to them.", "query", "Search words"),
-        tool("open_note", "The text of one note, by its title.", "title", "The note's title, as search_notes labels it"),
-        tool("neighbors", "The titles of the notes linked to or from one note.", "title", "The note's title"),
-    ])
+/// What the chat's tools may read besides the `ai_exclude`-filtered notes (#990): the switches
+/// (`ai_source_notes`, `ai_source_tasks`) and the time log when `ai_source_time` is on.
+pub struct ToolCtx {
+    pub kw: Kw,
+    pub today: NaiveDate,
+    pub notes: bool,
+    pub tasks: bool,
+    pub sessions: Option<Vec<Session>>,
 }
 
-/// The result of tool NAME with ARGS over FILES (already without `ai_exclude`d notes), at most
-/// TOOL_RESULT bytes; errors are told to the model as text.
+/// The tools the chat model may call (Ollama's schema), as CTX switches them on: read-only, notes
+/// by title, never by path (#469); tasks, the agenda and the time log (#990).
+pub fn tools(ctx: &ToolCtx) -> serde_json::Value {
+    let tool = |name: &str, desc: &str, args: &[(&str, &str)], required: bool| {
+        let props: serde_json::Map<String, serde_json::Value> = args.iter().map(|(a, about)| (a.to_string(), serde_json::json!({ "type": "string", "description": about }))).collect();
+        let req: Vec<&str> = if required { args.iter().map(|a| a.0).collect() } else { vec![] };
+        serde_json::json!({ "type": "function", "function": { "name": name, "description": desc, "parameters": { "type": "object", "properties": props, "required": req } } })
+    };
+    let (from, to) = (("from", "First day, e.g. 2026-11-02, today, mon or -7d"), ("to", "Last day, same forms"));
+    let mut out = vec![];
+    if ctx.notes {
+        out.push(tool("search_notes", "Excerpts of the user's notes that best match QUERY, plus notes linked to them.", &[("query", "Search words")], true));
+        out.push(tool("open_note", "The text of one note, by its title.", &[("title", "The note's title, as search_notes labels it")], true));
+        out.push(tool("neighbors", "The titles of the notes linked to or from one note.", &[("title", "The note's title")], true));
+    }
+    if ctx.tasks {
+        out.push(tool("list_tasks", "The user's open tasks (state, priority, title, tags, file, date), most urgent first.", &[("state", "Only this state, e.g. TODO, NEXT or DONE"), ("project", "Only tasks with this tag or category")], false));
+        out.push(tool("agenda", "What is scheduled or due from FROM to TO (default: the next 7 days).", &[from, to], false));
+    }
+    if ctx.sessions.is_some() {
+        out.push(tool("time_report", "The time tracked from FROM to TO (default: the last 7 days): per-project totals, then each session.", &[from, to], false));
+    }
+    serde_json::Value::Array(out)
+}
+
+/// The system prompt's hint at the tools CTX offers, with today's date for the date ones.
+pub fn tool_note(ctx: &ToolCtx) -> String {
+    let mut can = vec![];
+    if ctx.notes {
+        can.push("search and read more of the user's notes");
+    }
+    if ctx.tasks {
+        can.push("list their tasks or read their agenda");
+    }
+    if ctx.sessions.is_some() {
+        can.push("read their time log");
+    }
+    let day = if ctx.tasks || ctx.sessions.is_some() { format!(" Today is {}.", ctx.today.format("%A %Y-%m-%d")) } else { String::new() };
+    format!("If the context above doesn't answer it, use the tools to {}.{day}", can.join(", or "))
+}
+
+/// FROM..TO of ARGS relative to TODAY: one side alone gives 7 days; missing or unreadable dates
+/// give DEFAULT, a reversed TO 7 days from FROM; at most MAX_DAYS long.
+fn range(args: &serde_json::Value, today: NaiveDate, default: (NaiveDate, NaiveDate)) -> (NaiveDate, NaiveDate) {
+    let d = |k: &str| args.get(k).and_then(|v| v.as_str()).and_then(|s| crate::org::read_date(s, today)).map(|w| w.0);
+    let (from, to) = match (d("from"), d("to")) {
+        (Some(f), Some(t)) if t >= f => (f, t),
+        (Some(f), _) => (f, f + Duration::days(6)),
+        (None, Some(t)) => (t - Duration::days(6), t),
+        (None, None) => default,
+    };
+    (from, to.min(from + Duration::days(MAX_DAYS - 1)))
+}
+
+/// LINES as a tool result of KIND: labelled, whole lines up to TOOL_RESULT bytes; EMPTY when none.
+fn listing(kind: &str, title: &str, lines: impl Iterator<Item = String>, empty: &str) -> String {
+    let l = label(&Source { kind: kind.into(), path: PathBuf::new(), title: title.into(), line: 0, text: String::new() });
+    let text = whole_lines(lines, TOOL_RESULT - l.len());
+    l + if text.is_empty() { empty } else { &text }
+}
+
+/// The result of tool NAME with ARGS over FILES (already without `ai_exclude`d notes), if CTX
+/// offers it, at most TOOL_RESULT bytes; errors are told to the model as text.
 /// Also the notes it used (open_note's, search_notes' hits, texts emptied) for the chat's source list.
-pub fn tool_sources(files: &[Arc<OrgFile>], name: &str, args: &serde_json::Value) -> (String, Vec<Source>) {
+pub fn tool_sources(files: &[Arc<OrgFile>], ctx: &ToolCtx, name: &str, args: &serde_json::Value) -> (String, Vec<Source>) {
     let mut used = vec![];
-    let arg = |k: &str| args.get(k).and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).ok_or(format!("Error: {name} needs a {k}."));
+    let opt = |k: &str| args.get(k).and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty());
+    let arg = |k: &str| opt(k).ok_or(format!("Error: {name} needs a {k}."));
     let note = |t: &str| by_title(files, t).ok_or(format!("Error: no note titled {t}. Use search_notes to find titles."));
+    let offered: Vec<String> = tools(ctx).as_array().into_iter().flatten().filter_map(|t| t["function"]["name"].as_str().map(String::from)).collect();
+    let day = ctx.today;
     let out = match name {
+        _ if !offered.iter().any(|n| n == name) => Err(format!("Error: unknown tool {name}. Use {}.", offered.join(", "))),
         "search_notes" => arg("query").map(|q| {
             used = retrieve(files, q, None, TOOL_RESULT);
             match pack(&used) {
@@ -263,7 +327,26 @@ pub fn tool_sources(files: &[Arc<OrgFile>], name: &str, args: &serde_json::Value
             let near: Vec<String> = adjacency(files)[i].iter().map(|&j| format!("- {} ({})", files[j].title, file_name(&files[j].path))).collect();
             if near.is_empty() { format!("No note links to or from {}.", f.title) } else { format!("Notes linked to or from {}:\n{}", f.title, near.join("\n")) }
         }),
-        _ => Err(format!("Error: unknown tool {name}. Use search_notes, open_note or neighbors.")),
+        "list_tasks" => {
+            let state = opt("state").map(str::to_uppercase);
+            let project = opt("project").map(str::to_lowercase);
+            let done = state.as_deref().is_some_and(|s| ctx.kw.is_done(s));
+            let items = crate::org::todos(files, &ctx.kw, done, |_, h| state.as_ref().is_none_or(|s| h.keyword.as_deref().is_some_and(|k| k.eq_ignore_ascii_case(s))), day);
+            let has = |i: &&Item| project.as_ref().is_none_or(|p| std::iter::once(&i.category).chain(&i.tags).chain(&i.inherited).any(|t| t.to_lowercase() == *p));
+            let title = format!("{} tasks{}", state.as_deref().unwrap_or("open"), project.as_ref().map(|p| format!(", project {p}")).unwrap_or_default());
+            Ok(listing("tasks", &title, items.iter().filter(has).map(task_line), "No matching tasks."))
+        }
+        "agenda" => {
+            let (from, to) = range(args, day, (day, day + Duration::days(6)));
+            let items = crate::org::agenda(files, &ctx.kw, from, (to - from).num_days() + 1, day);
+            Ok(listing("agenda", &format!("{from}..{to}"), items.iter().map(agenda_line), "Nothing scheduled then."))
+        }
+        "time_report" => {
+            let (from, to) = range(args, day, (day - Duration::days(6), day));
+            let lines = time_lines(ctx.sessions.as_deref().unwrap_or_default(), from, to);
+            Ok(listing("time", &format!("{from}..{to}"), lines.into_iter(), "Nothing tracked then."))
+        }
+        _ => Err(format!("Error: unknown tool {name}.")),
     };
     for u in &mut used {
         u.text.clear(); // the list only needs where to jump
@@ -283,17 +366,23 @@ pub fn wants(question: &str) -> [bool; 3] {
     KEYS.map(|keys| words.iter().any(|w| keys.iter().any(|k| w.starts_with(k))))
 }
 
-/// LINES as one source of KIND, whole lines up to APP bytes; EMPTY when there are none.
-fn app_source(kind: &str, title: &str, lines: impl Iterator<Item = String>, empty: &str) -> Source {
+/// LINES joined while they fit in MAX bytes, whole lines only.
+fn whole_lines(lines: impl Iterator<Item = String>, max: usize) -> String {
     let mut text = String::new();
     for l in lines {
-        if text.len() + l.len() + 1 > APP {
+        if text.len() + l.len() + 1 > max {
             break;
         }
         text += &l;
         text.push('\n');
     }
-    let text = if text.is_empty() { empty.to_string() } else { text.trim_end().to_string() };
+    text.trim_end().to_string()
+}
+
+/// LINES as one source of KIND, whole lines up to APP bytes; EMPTY when there are none.
+fn app_source(kind: &str, title: &str, lines: impl Iterator<Item = String>, empty: &str) -> Source {
+    let text = whole_lines(lines, APP);
+    let text = if text.is_empty() { empty.to_string() } else { text };
     Source { kind: kind.into(), path: PathBuf::new(), title: title.into(), line: 0, text }
 }
 
@@ -301,47 +390,57 @@ fn file_name(p: &Path) -> String {
     p.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned())
 }
 
+/// A task or agenda entry: state, priority, title, tags and file.
+fn head(i: &Item) -> String {
+    let k = i.keyword.as_deref().map(|k| format!("{k} ")).unwrap_or_default();
+    let p = i.priority.as_deref().map(|p| format!("[#{p}] ")).unwrap_or_default();
+    let tags = if i.tags.is_empty() { String::new() } else { format!(" :{}:", i.tags.join(":")) };
+    format!("{k}{p}{}{tags} ({})", i.title, file_name(&i.path))
+}
+
+fn task_line(i: &Item) -> String {
+    let date = if i.date == NaiveDate::MAX { String::new() } else { format!(", dated {}", i.date) };
+    format!("- {}{date}", head(i))
+}
+
+fn agenda_line(i: &Item) -> String {
+    let what = if !i.label.is_empty() { i.label.clone() } else if i.kind == "timestamp" { "Event".into() } else { i.kind.to_string() };
+    let time = i.time.as_deref().map(|t| format!(" {t}")).unwrap_or_default();
+    format!("- {}{time} {what}: {}", i.date.format("%Y-%m-%d %a"), head(i))
+}
+
+/// The SESSIONS from FROM to TO: a line of per-project totals (most first), then one per session,
+/// newest first; none when nothing was tracked.
+fn time_lines(sessions: &[Session], from: NaiveDate, to: NaiveDate) -> Vec<String> {
+    let week: Vec<&Session> = sessions.iter().filter(|s| s.date >= from && s.date <= to).collect();
+    let mut totals: Vec<(&str, f64)> = vec![];
+    for s in &week {
+        match totals.iter_mut().find(|(p, _)| *p == s.project) {
+            Some(t) => t.1 += s.hours,
+            None => totals.push((s.project.as_str(), s.hours)),
+        }
+    }
+    totals.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let total = (!totals.is_empty()).then(|| format!("Totals: {}", totals.iter().map(|(p, h)| format!("{p} {}", format_hm(*h))).collect::<Vec<_>>().join(", ")));
+    let lines = week.iter().rev().map(|s| {
+        let desc = if s.desc.is_empty() { String::new() } else { format!(" ({})", s.desc) };
+        format!("- {} {}–{} {}{desc}: {}", s.date.format("%Y-%m-%d %a"), s.start.format("%H:%M"), s.end.format("%H:%M"), s.project, format_hm(s.hours))
+    });
+    total.into_iter().chain(lines).collect()
+}
+
 /// The open TASKS, the AGENDA (both from org) and SESSIONS of the 7 days up to TODAY as sources,
 /// one line per entry, at most APP bytes each; None is left out (switched off or not asked about).
 pub fn app_sources(tasks: Option<&[Item]>, agenda: Option<&[Item]>, sessions: Option<&[Session]>, today: NaiveDate) -> Vec<Source> {
-    let head = |i: &Item| {
-        let k = i.keyword.as_deref().map(|k| format!("{k} ")).unwrap_or_default();
-        let p = i.priority.as_deref().map(|p| format!("[#{p}] ")).unwrap_or_default();
-        let tags = if i.tags.is_empty() { String::new() } else { format!(" :{}:", i.tags.join(":")) };
-        format!("{k}{p}{}{tags} ({})", i.title, file_name(&i.path))
-    };
     let mut out = vec![];
     if let Some(t) = tasks {
-        let lines = t.iter().map(|i| {
-            let date = if i.date == NaiveDate::MAX { String::new() } else { format!(", dated {}", i.date) };
-            format!("- {}{date}", head(i))
-        });
-        out.push(app_source("tasks", "open tasks", lines, "No open tasks."));
+        out.push(app_source("tasks", "open tasks", t.iter().map(task_line), "No open tasks."));
     }
     if let Some(a) = agenda {
-        let lines = a.iter().map(|i| {
-            let what = if !i.label.is_empty() { i.label.clone() } else if i.kind == "timestamp" { "Event".into() } else { i.kind.to_string() };
-            let time = i.time.as_deref().map(|t| format!(" {t}")).unwrap_or_default();
-            format!("- {}{time} {what}: {}", i.date.format("%Y-%m-%d %a"), head(i))
-        });
-        out.push(app_source("agenda", "next 7 days", lines, "Nothing scheduled in the next 7 days."));
+        out.push(app_source("agenda", "next 7 days", a.iter().map(agenda_line), "Nothing scheduled in the next 7 days."));
     }
     if let Some(s) = sessions {
-        let week: Vec<&Session> = s.iter().filter(|s| s.date > today - Duration::days(7) && s.date <= today).collect();
-        let mut totals: Vec<(&str, f64)> = vec![];
-        for s in &week {
-            match totals.iter_mut().find(|(p, _)| *p == s.project) {
-                Some(t) => t.1 += s.hours,
-                None => totals.push((s.project.as_str(), s.hours)),
-            }
-        }
-        totals.sort_by(|a, b| b.1.total_cmp(&a.1));
-        let total = (!totals.is_empty()).then(|| format!("Totals: {}", totals.iter().map(|(p, h)| format!("{p} {}", format_hm(*h))).collect::<Vec<_>>().join(", ")));
-        let lines = week.iter().rev().map(|s| {
-            let desc = if s.desc.is_empty() { String::new() } else { format!(" ({})", s.desc) };
-            format!("- {} {}–{} {}{desc}: {}", s.date.format("%Y-%m-%d %a"), s.start.format("%H:%M"), s.end.format("%H:%M"), s.project, format_hm(s.hours))
-        });
-        out.push(app_source("time", "last 7 days", total.into_iter().chain(lines), "Nothing tracked in the last 7 days."));
+        out.push(app_source("time", "last 7 days", time_lines(s, today - Duration::days(6), today).into_iter(), "Nothing tracked in the last 7 days."));
     }
     out
 }
@@ -488,9 +587,10 @@ mod tests {
             note("big", &format!("#+title: Big\n{}", "ålpha ".repeat(2000))),
         ];
         let kept: Vec<_> = files.iter().filter(|f| !excluded(&f.path, Path::new("/n"), &["secret".to_string()])).cloned().collect();
-        let run = |name: &str, args: serde_json::Value| tool_sources(&kept, name, &args).0;
-        let names: Vec<_> = tools().as_array().unwrap().iter().map(|t| t["function"]["name"].as_str().unwrap().to_string()).collect();
-        assert_eq!(names, ["search_notes", "open_note", "neighbors"]);
+        let ctx = ToolCtx { kw: Kw { todo: vec![], done: vec![] }, today: NaiveDate::from_ymd_opt(2026, 10, 18).unwrap(), notes: true, tasks: false, sessions: None };
+        let run = |name: &str, args: serde_json::Value| tool_sources(&kept, &ctx, name, &args).0;
+        assert_eq!(tool_names(&ctx), ["search_notes", "open_note", "neighbors"]);
+        assert_eq!(tool_note(&ctx), "If the context above doesn't answer it, use the tools to search and read more of the user's notes.");
         // search: the matching note, not the excluded one
         let got = run("search_notes", serde_json::json!({ "query": "launch" }));
         assert!(got.starts_with("[note: Plan | plan.org:1]\nlaunch soon") && !got.contains("codes"), "{got}");
@@ -508,7 +608,7 @@ mod tests {
         assert!(big.len() <= TOOL_RESULT && big.len() > TOOL_RESULT - 4 && big.starts_with("[note: Big"));
         assert!(run("search_notes", serde_json::json!({ "query": "ålpha" })).len() <= TOOL_RESULT);
         // the notes a call used, for the source list
-        let used = |name: &str, args: serde_json::Value| tool_sources(&kept, name, &args).1.iter().map(|s| (s.title.clone(), s.text.is_empty())).collect::<Vec<_>>();
+        let used = |name: &str, args: serde_json::Value| tool_sources(&kept, &ctx, name, &args).1.iter().map(|s| (s.title.clone(), s.text.is_empty())).collect::<Vec<_>>();
         assert_eq!(used("open_note", serde_json::json!({ "title": "Big" })), [("Big".to_string(), true)]);
         assert!(used("open_note", serde_json::json!({ "title": "Nope" })).is_empty());
         assert!(used("neighbors", serde_json::json!({ "title": "Big" })).is_empty());
@@ -517,7 +617,63 @@ mod tests {
         // bad calls are told to the model
         assert_eq!(run("open_note", serde_json::json!({})), "Error: open_note needs a title.");
         assert_eq!(run("open_note", serde_json::json!({ "title": 3 })), "Error: open_note needs a title.");
-        assert!(run("rm", serde_json::json!({})).starts_with("Error: unknown tool rm."));
+        assert_eq!(run("rm", serde_json::json!({})), "Error: unknown tool rm. Use search_notes, open_note, neighbors.");
+        // switched off: not offered, and not run
+        assert!(run("list_tasks", serde_json::json!({})).starts_with("Error: unknown tool list_tasks."));
+    }
+
+    fn tool_names(ctx: &ToolCtx) -> Vec<String> {
+        tools(ctx).as_array().unwrap().iter().map(|t| t["function"]["name"].as_str().unwrap().to_string()).collect()
+    }
+
+    #[test]
+    fn task_agenda_and_time_tools() {
+        let kw = Kw { todo: vec!["TODO".into(), "NEXT".into()], done: vec!["DONE".into()] };
+        let day = NaiveDate::from_ymd_opt(2026, 10, 18).unwrap(); // a Sunday
+        let file = |name: &str, text: &str| Arc::new(parse(Path::new(&format!("/n/{name}.org")), text, &kw));
+        let files = [
+            file("work", "* TODO [#A] Ship it :acme:\nDEADLINE: <2026-10-20 Tue>\n* NEXT Call Bob\nSCHEDULED: <2026-11-02 Mon>\n* DONE Invoice :acme:\n"),
+            file("secret", "* TODO Hidden plan\nSCHEDULED: <2026-10-19 Mon>\n"),
+        ];
+        let kept: Vec<_> = files.iter().filter(|f| !excluded(&f.path, Path::new("/n"), &["secret".to_string()])).cloned().collect();
+        let t = |d: u32, p: &str| Session {
+            date: NaiveDate::from_ymd_opt(2026, 10, d).unwrap(),
+            project: p.into(),
+            desc: String::new(),
+            hours: 1.5,
+            start: chrono::NaiveTime::from_hms_opt(9, 0, 0).unwrap(),
+            end: chrono::NaiveTime::from_hms_opt(10, 30, 0).unwrap(),
+            line: None,
+        };
+        let ctx = ToolCtx { kw: kw.clone(), today: day, notes: false, tasks: true, sessions: Some(vec![t(5, "Old"), t(16, "Acme"), t(18, "Acme")]) };
+        let run = |name: &str, args: serde_json::Value| tool_sources(&kept, &ctx, name, &args).0;
+        // notes off: only the task, agenda and time tools; tasks off and no time log: none of them
+        assert_eq!(tool_names(&ctx), ["list_tasks", "agenda", "time_report"]);
+        assert!(run("search_notes", serde_json::json!({ "query": "ship" })).starts_with("Error: unknown tool search_notes."));
+        assert!(tool_names(&ToolCtx { kw: kw.clone(), today: day, notes: false, tasks: false, sessions: None }).is_empty());
+        assert_eq!(tool_note(&ctx), "If the context above doesn't answer it, use the tools to list their tasks or read their agenda, or read their time log. Today is Sunday 2026-10-18.");
+        // the optional args aren't required
+        assert_eq!(tools(&ctx)[0]["function"]["parameters"]["required"], serde_json::json!([]));
+        // tasks: open ones by default, by state (done too) and project; never from an excluded note
+        assert_eq!(run("list_tasks", serde_json::json!({})), "[tasks: open tasks]\n- TODO [#A] Ship it :acme: (work.org), dated 2026-10-20\n- NEXT Call Bob (work.org), dated 2026-11-02");
+        assert_eq!(run("list_tasks", serde_json::json!({ "state": "done" })), "[tasks: DONE tasks]\n- DONE Invoice :acme: (work.org)");
+        assert_eq!(run("list_tasks", serde_json::json!({ "project": "ACME" })), "[tasks: open tasks, project acme]\n- TODO [#A] Ship it :acme: (work.org), dated 2026-10-20");
+        assert_eq!(run("list_tasks", serde_json::json!({ "project": "nope" })), "[tasks: open tasks, project nope]\nNo matching tasks.");
+        // agenda: the next 7 days by default, or the range asked for; bad dates fall back
+        let next = run("agenda", serde_json::json!({}));
+        assert!(next.starts_with("[agenda: 2026-10-18..2026-10-24]\n") && next.contains("Ship it") && !next.contains("Call Bob") && !next.contains("Hidden"), "{next}");
+        assert_eq!(run("agenda", serde_json::json!({ "from": "2026-11-02", "to": "2026-11-02" })), "[agenda: 2026-11-02..2026-11-02]\n- 2026-11-02 Mon scheduled: NEXT Call Bob (work.org)");
+        assert!(run("agenda", serde_json::json!({ "from": "whenever", "to": 3 })).starts_with("[agenda: 2026-10-18..2026-10-24]"));
+        assert!(run("agenda", serde_json::json!({ "from": "2026-12-01", "to": "2026-11-01" })).starts_with("[agenda: 2026-12-01..2026-12-07]\nNothing scheduled then."));
+        assert!(run("agenda", serde_json::json!({ "from": "2026-01-01", "to": "2026-12-31" })).starts_with("[agenda: 2026-01-01..2026-03-03]"));
+        // time: the last 7 days by default, totals first; a range with nothing says so
+        assert_eq!(run("time_report", serde_json::json!({})), "[time: 2026-10-12..2026-10-18]\nTotals: Acme 3h 00m\n- 2026-10-18 Sun 09:00–10:30 Acme: 1h 30m\n- 2026-10-16 Fri 09:00–10:30 Acme: 1h 30m");
+        assert_eq!(run("time_report", serde_json::json!({ "from": "2026-10-05", "to": "2026-10-05" })), "[time: 2026-10-05..2026-10-05]\nTotals: Old 1h 30m\n- 2026-10-05 Mon 09:00–10:30 Old: 1h 30m");
+        assert_eq!(run("time_report", serde_json::json!({ "to": "2026-10-01" })), "[time: 2026-09-25..2026-10-01]\nNothing tracked then.");
+        // a long result stays in TOOL_RESULT, on whole lines; these tools use no notes
+        let many = ToolCtx { sessions: Some((0..200).map(|_| t(18, "Acme")).collect()), ..ctx };
+        let (big, used) = tool_sources(&kept, &many, "time_report", &serde_json::json!({}));
+        assert!(big.len() <= TOOL_RESULT && big.ends_with(": 1h 30m") && used.is_empty());
     }
 
     #[test]
