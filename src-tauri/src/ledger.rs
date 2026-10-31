@@ -157,7 +157,7 @@ pub fn summarize(text: &str, month: &str, currency: &str) -> (Vec<Total>, Vec<Ro
 }
 
 /// TEXT's entries that KEEP accepts, oldest first.
-fn rows(text: &str, keep: impl Fn(&Entry) -> bool) -> Vec<Row> {
+pub fn rows(text: &str, keep: impl Fn(&Entry) -> bool) -> Vec<Row> {
     let mut rows: Vec<Row> = text.lines().enumerate().filter_map(|(line, l)| {
         let e = parse_entry(l).filter(&keep)?;
         let (category, payee) = (e.category().map(str::to_string), e.payee().map(str::to_string));

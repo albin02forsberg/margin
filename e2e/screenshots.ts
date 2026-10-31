@@ -92,7 +92,13 @@ SCHEDULED: ${ts(-1)}
 * TODO Review the release checklist :work:
 SCHEDULED: ${ts(0, "14:00")}
 * WAIT App store review for 3.2 :work:
-${[-1, -2, -2, -5, -8, -9, -9, -9, -15, -23, -30, -44].map((o, i) => `* DONE Release task ${i + 1} :work:\nCLOSED: ${its(o)}\n`).join("")}`);
+${[-1, -2, -2, -5, -8, -9, -9, -9, -15, -23, -30, -44].map((o, i) => `* DONE Release task ${i + 1} :work:\nCLOSED: ${its(o)}\n`).join("")}\
+* DONE Pair on the offline queue :work:@lena:
+CLOSED: ${its(-41)}
+* DONE Send the store screenshots :work:@omar:
+CLOSED: ${its(-9)}
+* Field crew feedback :@priya:
+`);
 
   write(join(notes, "sync-design.org"), `
 :PROPERTIES:
@@ -322,6 +328,13 @@ async function pngs() {
     await type('re:"harbou?r|orchard" -todo');
     await pause(500);
     await shot("search-regex");
+    await browser.keys(Key.Escape);
+  }
+
+  if (want("people-last")) { // #969: people longest out of touch first
+    await command("People: a person's open tasks and mentions");
+    await find(".picker li small", "41 d ago");
+    await shot("people-last");
     await browser.keys(Key.Escape);
   }
 

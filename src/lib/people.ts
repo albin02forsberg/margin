@@ -11,6 +11,32 @@ export function peopleFrom(tags: string[]): string[] {
   return [...seen.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 }
 
+/** Last contact (#969) per lowercased name: `[date, source]` (journal, note, task or ledger), as `people_last` returns it. */
+export type LastContact = Record<string, [string, string]>;
+
+const days = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
+
+/** "41 d ago" from DATE (YYYY-MM-DD) to TODAY; "today" for today or later, "never dated" without a date. */
+export function contactAge(date: string | undefined, today: string): string {
+  if (!date) return "never dated";
+  const n = days(date, today);
+  return n <= 0 ? "today" : `${n} d ago`;
+}
+
+/** Picker items for PEOPLE, longest out of touch first (never dated first, then by name), the age as detail. */
+export function byLastContact(people: string[], last: LastContact, today: string) {
+  const at = (n: string) => last[n.toLowerCase()]?.[0] ?? "";
+  return [...people].sort((a, b) => at(a).localeCompare(at(b)) || a.localeCompare(b, undefined, { sensitivity: "base" }))
+    .map((n) => ({ label: `@${n}`, detail: contactAge(at(n) || undefined, today), value: n as unknown }));
+}
+
+/** The person view's first line: "Last mentioned 41 days ago (journal 2026-09-19)". */
+export function lastLine(last: { date: string; source: string } | null | undefined, today: string): string {
+  if (!last) return "Never mentioned with a date";
+  const n = days(last.date, today);
+  return `Last mentioned ${n <= 0 ? "today" : `${n} day${n === 1 ? "" : "s"} ago`} (${last.source} ${last.date})`;
+}
+
 /** A typed or picked person without the leading `@`s and spaces. */
 export const personName = (s: string) => s.trim().replace(/^@+/, "").trim();
 

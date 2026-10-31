@@ -1,6 +1,22 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { peopleFrom, personName, personRows } from "./people.ts";
+import { byLastContact, contactAge, lastLine, peopleFrom, personName, personRows } from "./people.ts";
+
+test("contactAge, byLastContact and lastLine (#969)", () => {
+  assert.equal(contactAge("2026-09-19", "2026-10-30"), "41 d ago");
+  assert.equal(contactAge("2026-10-30", "2026-10-30"), "today");
+  assert.equal(contactAge(undefined, "2026-10-30"), "never dated");
+  const items = byLastContact(["Anna", "bo", "cy", "Dan"], { anna: ["2026-09-19", "journal"], bo: ["2026-01-02", "task"], dan: ["2026-10-30", "note"] }, "2026-10-30");
+  assert.deepEqual(items.map((i) => [i.label, i.detail, i.value]), [
+    ["@cy", "never dated", "cy"],
+    ["@bo", "301 d ago", "bo"],
+    ["@Anna", "41 d ago", "Anna"],
+    ["@Dan", "today", "Dan"],
+  ]);
+  assert.equal(lastLine({ date: "2026-09-19", source: "journal" }, "2026-10-30"), "Last mentioned 41 days ago (journal 2026-09-19)");
+  assert.equal(lastLine({ date: "2026-10-29", source: "ledger" }, "2026-10-30"), "Last mentioned 1 day ago (ledger 2026-10-29)");
+  assert.equal(lastLine(null, "2026-10-30"), "Never mentioned with a date");
+});
 
 test("peopleFrom keeps @ tags once per name in any case, sorted", () => {
   assert.deepEqual(peopleFrom(["work", "@ola", "@Anna", "@anna", "email@x", "@", "@bo"]), ["Anna", "bo", "ola"]);
