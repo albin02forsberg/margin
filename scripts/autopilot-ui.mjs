@@ -12,6 +12,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { execFile } from "node:child_process";
 import { basename } from "node:path";
+import { cut, readyRow, createArgs, issueNo } from "./autopilot-ui-lib.mjs";
 
 const tty = process.stdout.isTTY;
 const logFile = process.env.AUTOPILOT_LOG;
@@ -51,7 +52,6 @@ const dur = (ms) => {
   const s = Math.max(0, Math.floor(ms / 1000)), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
   return d ? `${d}d${h}h` : h ? `${h}h${String(m).padStart(2, "0")}m` : `${m}m${String(s % 60).padStart(2, "0")}s`;
 };
-const cut = (s, n) => (n < 2 ? "" : s.length > n ? s.slice(0, n - 1) + "…" : s);
 const one = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
 const tok = (n) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
 const bar = (f, w = 20) => {
@@ -195,7 +195,7 @@ function announce() {  // bell + notification for items we have not told the own
   execFile("osascript", ["-e", `display notification "${fresh.map((n) => `#${n.n}`).join(", ")} need your decision" with title "Margin autopilot"`], () => {});
 }
 
-const run = (cmd, args) => new Promise((res) => execFile(cmd, args, (e, out, err) => res({ ok: !e, err: one(err || e?.message) })));
+const run = (cmd, args) => new Promise((res) => execFile(cmd, args, (e, out, err) => res({ ok: !e, out, err: one(err || e?.message) })));
 const URL = (n) => `https://github.com/${REPO}/issues/${n}`;
 function saveDismissed() { try { mkdirSync(STATE_DIR, { recursive: true }); writeFileSync(DISMISSED, JSON.stringify([...dismissed])); } catch {} }
 
@@ -226,19 +226,33 @@ async function act(action, item, text) {
   await pollUp();
 }
 
+// `n`: file a task for the agents as a normal issue (triager + reviewer gate as usual). Empty title cancels.
+function queueTask(title = "") {
+  st.input = { prompt: "Queue task: title", buf: title, cb: (t) => {
+    st.input = { prompt: "Details (optional)", buf: "", empty: true, cb: async (body) => {
+      st.msg = dim(`filing "${cut(t, 40)}"…`);
+      const r = await run("gh", createArgs(REPO, t, body));
+      if (r.ok) { st.msg = green(`✔ queued #${issueNo(r.out) || "?"} ${cut(t, 60)}`); pollUp(); }
+      else { st.msg = red(`✖ queue failed: ${r.err.slice(0, 120)}`); queueTask(t); }
+      render();
+    } };
+  } };
+}
+
 function onKey(buf) {
   const k = buf.toString();
   if (k === "\x03") { process.kill(0, "SIGINT"); return; }   // raw mode turns Ctrl-C into a plain key
   const it = st.needs[st.sel];
   if (st.input) {   // single-line text entry
-    if (k === "\r") { const { cb, buf: text } = st.input; st.input = null; if (text.trim()) cb(text.trim()); }
+    if (k === "\r") { const { cb, buf: text, empty } = st.input; st.input = null; if (text.trim() || empty) cb(text.trim()); }
     else if (k === "\x1b") st.input = null;
     else if (k === "\x7f") st.input.buf = st.input.buf.slice(0, -1);
     else if (!k.startsWith("\x1b")) st.input.buf += k.replace(/[\r\n]+/g, " ");
   } else if (st.confirm) {
     const c = st.confirm; st.confirm = null;
     if (k === "y") c();
-  } else if (!st.panel) {
+  } else if (k === "n") queueTask();
+  else if (!st.panel) {
     if (k === "d") st.panel = true;
   } else if (k === "d" || k === "q" || k === "\x1b") {
     if (standalone) process.exit(0);
@@ -262,6 +276,7 @@ if (process.env.AUTOPILOT_DEBUG) globalThis.__key = onKey;   // lets tests press
 
 // ---- rendering ---------------------------------------------------------------------------------
 const wrap = (s, w) => s.split("\n").flatMap((p) => { const o = []; let l = ""; for (const t of p.split(/\s+/)) { if ((l + " " + t).trim().length > w) { o.push(l); l = t; } else l = (l + " " + t).trim(); } o.push(l); return o; });
+const inputLine = () => ` ${bold(st.input.prompt)}: ${st.input.buf}█   ${dim("Enter sends · Esc cancels")}`;
 function renderPanel() {
   const w = Math.max(60, process.stdout.columns || 80), rows = process.stdout.rows || 40;
   const L = [bold(cyan(" Needs your decision")) + dim(`  ${st.needs.length} open`), dim("─".repeat(w))];
@@ -276,12 +291,13 @@ function renderPanel() {
     for (const l of wrap(it.text, w - 4).slice(0, Math.max(4, rows - L.length - 7))) L.push(`  ${l}`);
   }
   L.push("");
-  if (st.input) L.push(` ${bold(st.input.prompt)}: ${st.input.buf}█   ${dim("Enter sends · Esc cancels")}`);
+  if (st.input) L.push(inputLine());
   else if (st.confirm) L.push(` ${yellow(bold(`Close #${it.n} as not planned?`))}  ${dim("y = yes, any other key cancels")}`);
   else {
     L.push(it?.kind === "review"
       ? ` ${bold("x")} keep decision · ${bold("r")} overrule · ${bold("c")} comment · ${bold("h")} hold · ${bold("o")} open · ${bold("↑↓")} select · ${bold("d")}/Esc back`
       : ` ${bold("a")} approve · ${bold("r")} reject · ${bold("c")} comment · ${bold("h")} hold · ${bold("o")} open · ${bold("↑↓")} select · ${bold("d")}/Esc back`);
+    L.push(` ${bold("n")} queue a task for the agents`);
     if (st.msg) L.push(" " + st.msg);
   }
   process.stdout.write("\x1b[H\x1b[J" + L.join("\n"));
@@ -314,6 +330,7 @@ function render() {
     if (todo.length > 3) L.push(dim(`    … and ${todo.length - 3} more`));
   } else if (rev) L.push(dim(` ${rev} autonomous decision${rev === 1 ? "" : "s"} to review (optional) — press `) + bold("d"));
   else L.push(green(" ✔ nothing needs you"));
+  if (st.input) L.push(inputLine());
   if (st.msg) L.push(" " + st.msg);
   L.push(dim("─".repeat(w)));
   L.push(sleepUntil
@@ -348,7 +365,7 @@ function render() {
   if (u?.ready) {
     const free = Math.max(0, MAX - active);
     L.push(`   ${bold(u.ready.length)} ready to build · ${u.inProgress} in progress · ${free} free slot${free === 1 ? "" : "s"}`);
-    for (const i of u.ready.slice(0, Math.min(3, free || 1))) L.push(`   ${cyan("▸")} #${i.number} ${dim(cut(i.title, w - 14))}`);
+    for (const i of u.ready.slice(0, Math.min(3, free || 1))) L.push(`   ${cyan("▸")} ${dim(readyRow(i, w - 6))}`);
     L.push(`   ${bold(u.unplanned)} to triage · PRs: ${u.prs.length ? u.prs.map((p) => `#${p.n} ${p.ci === "green" ? green("green") : p.ci === "failing" ? red("failing") : yellow("pending")}`).join(", ") : dim("none open")}`);
     const full = u.ready.length >= 2 * MAX;
     L.push(`   main CI ${u.mainCi === "green" ? green("green") : u.mainCi === "failing" ? yellow("last run failed") : red(bold("RED, 3 failures in a row"))}`);
@@ -364,7 +381,7 @@ function render() {
     const txt = cut(`${r.who ? `${cut(r.who, 18)}: ` : ""}${r.line}`, w - 14);
     L.push(`  ${dim(clock(r.t))} ${r.kind === "text" ? txt : dim(txt)}`);
   }
-  L.push("", dim(" d: decisions  ·  Ctrl-C: restart  ·  touch ~/.cache/margin-autopilot/STOP: stop after this run"));
+  L.push("", dim(" d: decisions  ·  n: queue task  ·  Ctrl-C: restart  ·  touch ~/.cache/margin-autopilot/STOP: stop after this run"));
   process.stdout.write("\x1b[H\x1b[J" + L.join("\n"));
 }
 

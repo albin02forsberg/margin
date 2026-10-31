@@ -229,6 +229,9 @@ Publishing it makes installed copies offer the update on their next start
 `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repo secrets.
 `/autopilot` also releases on its own through the `releaser` agent when its gate
 passes (see above); add the `no-release` label to any open issue to pause that.
+`scripts/autopilot-forever.sh` shows a live dashboard (`scripts/autopilot-ui.mjs`):
+`d` opens what needs your decision, `n` queues a task for the agents (a title and
+optional details, filed as a normal issue that goes through triage and review).
 
 ## Staying in sync
 
