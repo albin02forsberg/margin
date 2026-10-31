@@ -110,6 +110,11 @@ sync tools that touch files make notes look fresh).
 person (from the `@` tags, or type any name) and lists the tasks waiting on them (see **Waiting for**), their open tasks (tagged, inheriting the
 tag, or naming `@anna` in the title) and then every other line mentioning `@anna` (any case;
 email addresses don't count, journal included), then their ledger entries; `Enter` jumps there.
+The picker lists people longest out of touch first, with how long ago you last had contact ("41 d
+ago"), and the person view opens with "Last mentioned 41 days ago (journal 2026-09-19)". Last
+contact is the latest of: a journal day mentioning them (its date), another note mentioning them
+(when the file last changed), a done task tagged or naming them (its `CLOSED` date) and a ledger
+payment to them.
 
 <img src="docs/gifs/links.gif" width="800" alt="Opening a note, showing its backlinks and graph, and following a link with Enter">
 

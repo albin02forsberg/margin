@@ -61,7 +61,7 @@
   import { windowTitle } from "$lib/wintitle";
   import { orderNotes, parsePins, togglePin } from "$lib/pins";
   import * as nav from "$lib/navhistory";
-  import { peopleFrom, personName, personRows } from "$lib/people";
+  import { byLastContact, lastLine, peopleFrom, personName, personRows, type LastContact } from "$lib/people";
   import { waitingRows, type Waiting } from "$lib/waiting";
   import { addBookmark, bookmarkAt, mergeBookmarks, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, retitleBookmarks, type Bookmark } from "$lib/bookmarks";
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
@@ -1974,12 +1974,15 @@
   /** Pick a person (`@name` tag, or type one), then one of their open tasks or a line mentioning them (#704). */
   async function personView() {
     const people = peopleFrom(await call<string[]>("org_tags"));
-    const v = await pick({ prompt: "Person", items: people.map((n) => ({ label: `@${n}`, value: n as unknown })), allowCustom: true, hint: people.length ? "or type a name and press Ctrl+↵" : "no :@name: tags yet; type a name and press Ctrl+↵" });
+    const today = new Date().toLocaleDateString("sv-SE");
+    const items = byLastContact(people, people.length ? await call<LastContact>("people_last", { names: people }) : {}, today);
+    const v = await pick({ prompt: "Person", items, allowCustom: true, hint: people.length ? "longest out of touch first · or type a name and press Ctrl+↵" : "no :@name: tags yet; type a name and press Ctrl+↵" });
     const name = v == null ? "" : personName(String(v));
     if (!name) return;
-    const rows = personRows(await call("person_view", { name }), rel, new Date().toLocaleDateString("sv-SE"));
+    const pv = await call<Parameters<typeof personRows>[0] & { last?: { date: string; source: string } | null }>("person_view", { name });
+    const rows = personRows(pv, rel, today);
     if (!rows.length) return flash(`Nothing for @${name} yet: tag a task :@${name}: or write @${name} in a note`);
-    const r = await pick({ prompt: `@${name}`, items: rows });
+    const r = await pick({ prompt: `@${name}`, items: rows, body: lastLine(pv.last, today) });
     if (r) await openFile(...(r as [string, number]));
   }
 
