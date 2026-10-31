@@ -52,6 +52,7 @@
   import { chatContext, mergeSources, type ToolEvent } from "$lib/chatctx";
   import { bugReportUrl, isError, osName } from "$lib/bugreport";
   import { notesText, notesTitle, notesToShow, type Notes } from "$lib/whatsnew";
+  import { feedsDue } from "$lib/feeds";
   import { dayTime, focusLeft, inactiveStamp, naive, overLong, parseWhen, worked, type WeekDay } from "$lib/clock";
   import { shutdownKeys, shutdownTasks, summarise, type ShutdownAction } from "$lib/shutdown";
   import { morningKeys, planCandidates, planSummary, type MorningAction } from "$lib/morning";
@@ -1591,9 +1592,9 @@
   }
 
   /** Fetch the [[feeds]] and file their new items (one undo group); they count as seen only once filed. */
-  async function fetchFeeds() {
-    if (!cfg.config.feeds?.length) return flash("No feeds yet: add RSS or Atom URLs in Settings → Feeds.");
-    flash("Fetching feeds…");
+  async function fetchFeeds(quiet = false) {
+    if (!cfg.config.feeds?.length) return quiet || flash("No feeds yet: add RSS or Atom URLs in Settings → Feeds.");
+    if (!quiet) flash("Fetching feeds…");
     type Fetched = { items: { file: string; heading: string; entry: string }[]; seen: Record<string, string[]>; errors: string[] };
     const r = await call<Fetched>("fetch_feeds");
     await recorded(async () => {
@@ -1607,7 +1608,20 @@
     });
     await call("mark_feeds_seen", { seen: r.seen });
     const n = r.items.length;
+    if (quiet && !n && !r.errors.length) return;
     flash(`${n ? `✓ ${n} new item${n === 1 ? "" : "s"}` : "No new items"}${r.errors.length ? ` · ⚠ ${r.errors.join("; ")}` : ""}`);
+  }
+
+  let feedsBusy = false, feedsTried = 0, feedsFlashed = 0;
+  /** The minute tick's background fetch: when `feeds_auto_hours` is up, nothing is open and none runs; a failure waits for the next interval. */
+  async function autoFeeds() {
+    const h = cfg?.config?.feeds_auto_hours;
+    if (feedsBusy || !h || picker?.isOpen() || menu?.isOpen() || taskDialog?.isOpen() || tableDialog?.isOpen() || formulaDialog?.isOpen() || drill?.isOpen() || metrics?.isOpen() || rhythm?.isOpen() || activity?.isOpen()) return;
+    const last = await call<number | null>("feeds_last");
+    if (!feedsDue(Math.max(last ?? 0, feedsTried / 1000), h, Date.now() / 1000)) return;
+    feedsBusy = true;
+    feedsTried = Date.now();
+    try { await fetchFeeds(true); } catch (e) { if (Date.now() - feedsFlashed > 864e5) (feedsFlashed = Date.now(), flash(`⚠ feeds: ${e}`)); } finally { feedsBusy = false; }
   }
 
   async function insertDate() {
@@ -3101,7 +3115,7 @@
     { label: "Search in all notes", keys: ["Ctrl+Shift+F"], leader: "/", run: search },
     { label: "New task", keys: ["Ctrl+N"], leader: "a", run: () => newTask() },
     { label: "Capture with template…", leader: "c", run: captureTemplate },
-    { label: "Fetch feeds (RSS/Atom → reading list)", run: () => act(fetchFeeds) },
+    { label: "Fetch feeds (RSS/Atom → reading list)", run: () => act(() => fetchFeeds()) },
     { label: "New note", keys: ["Ctrl+Shift+N"], leader: "n n", run: newNote },
     { label: "Rename note…", leader: "n r", run: renameNote },
     { label: "Note: duplicate…", leader: "n c", run: () => act(duplicateNote) },
@@ -3604,7 +3618,7 @@
       if (cfg.config_error) flash(`⚠ config.toml couldn't be loaded (${cfg.config_error}); Margin keeps running on the last good settings (defaults if it never loaded). The file is untouched.`);
       if (!import.meta.env.DEV) checkUpdate(true).catch(() => {}); // offline or no release yet: stay quiet
     });
-    const timer = setInterval(() => act(refreshTc), 60_000);
+    const timer = setInterval(() => (act(refreshTc), act(autoFeeds)), 60_000);
     const blur = () => (saveSession(), act(saveAll));
     const focus = () => syncFromDisk();
     const unlisten = listen<{ paths: string[]; refresh: string[] }>("fs-changed", (e) => syncFromDisk(e.payload.paths, e.payload.refresh));
