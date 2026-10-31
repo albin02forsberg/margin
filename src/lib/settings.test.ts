@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changes, checkSnippets, checkTemplates, checkViews, GROUPS, hide, needsMacPrompt, refresh, refreshRows, shows, type Field } from "./settings.ts";
+import { changes, checkFeeds, checkSnippets, checkTemplates, checkViews, GROUPS, hide, needsMacPrompt, refresh, refreshRows, shows, type Field } from "./settings.ts";
 
 const config = { notes_dir: "~/notes", expected_daily_hours: 8, profiles: ["Work", "Home"], reminders: true };
 const fields: Field[] = GROUPS.flatMap((g) => g.fields).filter((f) => f.key in config);
@@ -62,6 +62,14 @@ test("snippets need a typeable key of their own; text is kept as typed", () => {
   assert.throws(() => checkSnippets([{ key: "", text: "x" }]), /Snippet 1 needs a key/);
   assert.throws(() => checkSnippets([{ key: "a b", text: "x" }]), /needs a key/);
   assert.throws(() => checkSnippets([{ key: "m", text: "" }, { key: "<m", text: "" }]), /Snippets 1 and 2/);
+});
+
+test("feeds need an http(s) URL of their own; empty file and heading are left out", () => {
+  assert.deepEqual(checkFeeds([{ name: " Blog ", url: " https://b.example/rss ", file: " ", heading: "" }]), [{ name: "Blog", url: "https://b.example/rss" }]);
+  assert.deepEqual(checkFeeds([{ name: "", url: "http://x/feed", file: "news.org", heading: "Later" }]), [{ name: "", url: "http://x/feed", file: "news.org", heading: "Later" }]);
+  assert.throws(() => checkFeeds([{ name: "a", url: "" }]), /Feed 1 needs an http\(s\) URL/);
+  assert.throws(() => checkFeeds([{ name: "a", url: "file:///etc/passwd" }]), /needs an http/);
+  assert.throws(() => checkFeeds([{ url: "https://a/x" }, { url: " https://a/x" }]), /Feeds 1 and 2 have the same URL/);
 });
 
 test("the macOS watcher dialog shows once, only when turning it on without the permission", () => {

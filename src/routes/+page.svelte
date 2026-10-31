@@ -1590,6 +1590,26 @@
     flash(`✓ Captured “${t.name}” to ${rel(path)}`);
   }
 
+  /** Fetch the [[feeds]] and file their new items (one undo group); they count as seen only once filed. */
+  async function fetchFeeds() {
+    if (!cfg.config.feeds?.length) return flash("No feeds yet: add RSS or Atom URLs in Settings → Feeds.");
+    flash("Fetching feeds…");
+    type Fetched = { items: { file: string; heading: string; entry: string }[]; seen: Record<string, string[]>; errors: string[] };
+    const r = await call<Fetched>("fetch_feeds");
+    await recorded(async () => {
+      for (const file of new Set(r.items.map((i) => i.file))) {
+        const path: string = await call("capture_path", { file });
+        await toFile(path, async (text) => {
+          for (const i of r.items) if (i.file === file) text = await call("capture_insert", { text, heading: i.heading, entry: i.entry });
+          return text;
+        });
+      }
+    });
+    await call("mark_feeds_seen", { seen: r.seen });
+    const n = r.items.length;
+    flash(`${n ? `✓ ${n} new item${n === 1 ? "" : "s"}` : "No new items"}${r.errors.length ? ` · ⚠ ${r.errors.join("; ")}` : ""}`);
+  }
+
   async function insertDate() {
     if (!inFile()) return;
     const input = await datePick("Insert date", false, undefined, false);
@@ -3081,6 +3101,7 @@
     { label: "Search in all notes", keys: ["Ctrl+Shift+F"], leader: "/", run: search },
     { label: "New task", keys: ["Ctrl+N"], leader: "a", run: () => newTask() },
     { label: "Capture with template…", leader: "c", run: captureTemplate },
+    { label: "Fetch feeds (RSS/Atom → reading list)", run: () => act(fetchFeeds) },
     { label: "New note", keys: ["Ctrl+Shift+N"], leader: "n n", run: newNote },
     { label: "Rename note…", leader: "n r", run: renameNote },
     { label: "Note: duplicate…", leader: "n c", run: () => act(duplicateNote) },

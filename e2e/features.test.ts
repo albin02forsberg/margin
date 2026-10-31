@@ -4,6 +4,8 @@ import { strict as assert } from "node:assert";
 import { existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { answer, browser, close, fileMatches, find, isoDay, Key, launch, noPicker, orgDay, palette, read, savedView, texts, type, type Dirs } from "./setup.ts";
 
 describe("First run", () => {
@@ -2196,5 +2198,31 @@ describe("Import a Markdown folder", () => {
     }
     assert.equal(read(join(vault, "Home.md")), home, "the source changed");
     assert.deepEqual(readdirSync(vault).sort(), ["Home.md", "sub"]);
+  });
+});
+
+describe("Feeds", () => {
+  let d: Dirs, server: Server;
+  const rss = `<?xml version="1.0"?><rss version="2.0"><channel><title>Blog</title>
+<item><title><![CDATA[Feeds & Margin]]></title><link>https://blog.example/feeds</link><guid>feeds-1</guid></item>
+</channel></rss>`;
+  before(async () => {
+    server = createServer((_, res) => { res.writeHead(200, { "Content-Type": "application/rss+xml" }); res.end(rss); });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/feed.xml`;
+    d = await launch({ config: ["[[feeds]]", `name = "Blog"`, `url = ${JSON.stringify(url)}`] });
+    await find(".agenda h1", "Today");
+  });
+  after(async () => { await close(); server.close(); }, { timeout: 30_000 });
+
+  it("files a new item under Reading once, however often it runs (#981)", async () => {
+    const inbox = join(d.notes, "inbox.org");
+    await palette("Fetch feeds");
+    await find(".status .msg", "1 new item");
+    await fileMatches(inbox, (s) => /^\* Reading\n\*\* TODO Read \[\[https:\/\/blog\.example\/feeds\]\[Feeds & Margin\]\] :read:\n:PROPERTIES:\n:FEED_ID: feeds-1\n:END:\n/m.test(s), "item not filed");
+    await fileMatches(join(d.data, "feeds_seen.json"), (s) => s.includes("feeds-1"), "item not marked seen");
+    await palette("Fetch feeds");
+    await find(".status .msg", "No new items");
+    assert.equal(read(inbox).split("blog.example/feeds").length, 2, "filed twice");
   });
 });

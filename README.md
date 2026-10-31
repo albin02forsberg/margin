@@ -547,6 +547,38 @@ the name to the file name, the target to the inbox. The rest is the body.
 Quick capture (Super+Shift+N) asks "Task" or a template when you have any; a
 template captured with the window hidden is filed without opening it.
 
+### Feeds
+
+"Fetch feeds" in Ctrl+K reads your RSS and Atom feeds and files each new item
+as a reading-list task, like the `r` template, with the item's id in a
+`:FEED_ID:` property:
+
+```org
+* Reading
+** TODO Read [[https://blog.example/post][Post title]] :read:
+:PROPERTIES:
+:FEED_ID: https://blog.example/post
+:END:
+[2026-10-31 Sat 09:05]
+```
+
+Every item is filed once. Fetching again, or deleting the entry or the heading,
+never brings it back: the ids already filed are kept per feed URL in
+`feeds_seen.json` in the time-tracking folder. A feed you just added files only
+its latest 20 items. Items without an http(s) link are skipped, and the same link
+from two feeds is filed once. A feed that fails (HTTP error, not a feed, 10 s
+timeout) is named in the message and the others still run. Only the first 2 MB
+of each feed is read. Nothing is fetched until you run the command. Edit the
+list in the settings page's "Feeds" group, or in `config.toml`:
+
+```toml
+[[feeds]]
+name = "Rust blog"
+url = "https://blog.rust-lang.org/feed.xml"
+file = "reading.org"   # optional: under the notes folder; strftime ok; default: inbox
+heading = "Reading"    # optional, the default; created if missing
+```
+
 ## Editing notes
 
 Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`) show line numbers and `:set nowrap` turns off line wrapping in every editor until you quit (`no` prefix turns an option off, `!` toggles it, `?` shows it; several at once: `:set nu rnu`). Ex commands: `:w`, `:wa` (all tabs), `:q` / `:x` / `:wq` (save and close the tab), `:q!` (close without saving), `:bn` / `:bp` (next / previous tab, like `gt` / `gT`), `:bd` (close tab), `:e name` (open a note by file name, path or title; creates it if none matches), `:e!` (reload from disk), `:noh`, `:s`, `:g`, `:sort`. On top of that:

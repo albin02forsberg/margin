@@ -31,7 +31,7 @@ function write(path: string, text: string) {
 }
 
 /** config.toml lines on top of setup.ts's. */
-const config = [`templates = []`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`];
+const config = [`templates = []`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`, ``, `[[feeds]]`, `name = "Orchard blog"`, `url = "https://blog.example/feed.xml"`, ``, `[[feeds]]`, `name = "Release notes"`, `url = "https://releases.example/atom.xml"`, `heading = "Upgrades"`];
 
 /** A small Markdown vault outside the notes folder, for the import preview (#900). */
 let vault = "";
@@ -368,6 +368,11 @@ async function pngs() {
   if (want("ai-tools")) { // #963: the switch, shown as the backend is Ollama (the default)
     await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Let the model search notes itself")]]`)).scrollIntoView({ block: "center" });
     await shot("ai-tools");
+  }
+
+  if (want("feeds")) { // #981: the feeds list in Settings
+    await (await find(".settings .chips button", "Feeds")).click();
+    await shot("feeds");
   }
 
   if (want("long-session")) { // #970: the demo clock has run 2h 20m, past a 2 h limit; last, as it tints the chip
