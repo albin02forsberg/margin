@@ -9,7 +9,14 @@ export const cleanChat = (s: string) =>
   s.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/<think>[\s\S]*$/, "").trim().replace(/^\s*\*+ /gm, "- ");
 
 /** What ai_chat's ON_TOOL channel sends (#963): a tool call the model made, or that the model can't use tools. */
-export type ToolEvent = { name: string; args: Record<string, unknown> } | { no_tools: true };
+export type ToolEvent = { name: string; args: Record<string, unknown>; sources?: { kind?: string; path: string; title: string; line: number; text: string }[] } | { no_tools: true };
+
+/** BASE (maybe none) plus EXTRA, without a second entry for the same note and line. */
+export function mergeSources<T extends { path: string; line: number }>(base: T[] | undefined, extra: T[]): T[] {
+  const out = [...(base ?? [])];
+  for (const s of extra) if (!out.some((o) => o.path === s.path && o.line === s.line)) out.push(s);
+  return out;
+}
 
 /** EVENT as one line under the question: "searched notes: foo", or the hint that the model can't use tools. */
 export function toolLine(e: ToolEvent): string {

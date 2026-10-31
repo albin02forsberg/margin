@@ -1,7 +1,7 @@
 // Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chatContext, cleanChat, toolLine } from "./chatctx.ts";
+import { chatContext, cleanChat, mergeSources, toolLine } from "./chatctx.ts";
 
 const doc = "intro\n* A\na1\na2\n** A1\nx\n* B\nb1\n";
 
@@ -47,4 +47,11 @@ test("tool calls read as one line each, and unknown tools by name (#963)", () =>
   assert.equal(toolLine({ name: "open_note", args: {} }), "opened");
   assert.equal(toolLine({ name: "rm", args: { path: "/" } }), "called rm");
   assert.match(toolLine({ no_tools: true }), /can't use tools/);
+});
+test("mergeSources keeps order and drops repeats of a note and line (#983)", () => {
+  const a = { path: "/a", line: 0, title: "A", text: "x" };
+  const b = { path: "/b", line: 3, title: "B", text: "" };
+  assert.deepEqual(mergeSources([a], [{ ...a, text: "" }, b, b]), [a, b]);
+  assert.deepEqual(mergeSources(undefined, [b]), [b]);
+  assert.deepEqual(mergeSources([], []), []);
 });
