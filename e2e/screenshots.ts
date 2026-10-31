@@ -388,6 +388,17 @@ async function pngs() {
     await shot("feeds");
   }
 
+  if (want("semantic-index")) { // #965: the switch and its status; CI has no Ollama, so it shows why
+    await (await find(".settings .chips button", "AI chat")).click();
+    await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Semantic index of my notes")]]/input`)).click();
+    await (await find(".settings button", "Save ai chat")).click();
+    await find(".status .msg", "Settings saved");
+    const rebuild = await find(".settings button", "Rebuild");
+    await rebuild.scrollIntoView({ block: "center" });
+    await browser.waitUntil(async () => (await browser.$$(".settings .error")).length > 0, { timeout: 10000 }).catch(() => {});
+    await shot("semantic-index");
+  }
+
   if (want("long-session")) { // #970: the demo clock has run 2h 20m, past a 2 h limit; last, as it tints the chip
     await (await find(".settings .chips button", "Time")).click();
     await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Ask if still working after")]]/input`)).click();

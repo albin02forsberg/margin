@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { CATEGORIES, changes, checkFeeds, checkSnippets, checkTemplates, checkViews, GROUPS, hide, needsMacPrompt, refresh, refreshRows, shows, toForm, type Field, type Form, type Row } from "$lib/settings";
 
   type List = "views" | "templates" | "snippets" | "feeds";
@@ -122,6 +123,26 @@
   /** The `claude mcp add …` line that registers this binary's read-only MCP server (#929). */
   let mcp = $state("");
   invoke<string>("mcp_command").then((c) => (mcp = c), () => {});
+  /** The semantic index (#965): size on disk, what's in it, whether it's updating, the last error. */
+  type IndexStatus = { bytes: number; notes: number; sections: number; running: boolean; error: string };
+  let index = $state<IndexStatus | null>(null);
+  async function loadIndex(f: () => Promise<unknown> = async () => {}) {
+    try {
+      await f();
+      index = await invoke<IndexStatus>("ai_index_status");
+      errors.index = "";
+    } catch (e) {
+      errors.index = String(e);
+    }
+  }
+  $effect(() => {
+    void reload;
+    if (active && config.ai_semantic) untrack(() => loadIndex());
+  });
+  $effect(() => {
+    const off = listen("ai-index", () => loadIndex());
+    return () => void off.then((f) => f());
+  });
   let macDialog: HTMLDialogElement;
   const MAC_OK = "activity-watcher-macos-ok";
   function check(f: Field, box: HTMLInputElement) {
@@ -210,6 +231,14 @@
               <button type="button" class="link reset" title="Default: {String(toForm(f, defaults[f.key])).replaceAll("\n", ", ") || "empty"}" onclick={() => reset(g.name, f)}>Reset to default</button>
             {/if}
           </svelte:element>
+          {#if f.key === "ai_semantic" && base.ai_semantic}
+            <p class="dim">
+              {#if index}Index: {index.sections} sections of {index.notes} notes, {(index.bytes / 1048576).toFixed(1)} MB{index.running ? " (updating…)" : ""}.{/if}
+              <button type="button" class="link" disabled={index?.running} onclick={() => loadIndex(() => invoke("ai_index_rebuild"))}>Rebuild</button>
+            </p>
+            {#if index?.error}<p class="error">⚠ {index.error}</p>{/if}
+            {#if errors.index}<p class="error">⚠ {errors.index}</p>{/if}
+          {/if}
         {/each}
         {#if g.name === "Integrations" && base.activity_watcher && gnome && gnome !== "running"}
           {#if gnome === "missing"}

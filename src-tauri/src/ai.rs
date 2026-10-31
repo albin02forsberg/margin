@@ -263,6 +263,23 @@ pub fn parse(status: u16, body: &str, model: &str) -> Result<String, String> {
     }
 }
 
+/// The vector of TEXT from Ollama's embedding MODEL at URL (`POST /api/embed`, #965).
+pub fn embed(url: &str, model: &str, text: &str) -> Result<Vec<f32>, String> {
+    let body = serde_json::json!({ "model": model, "input": text }).to_string();
+    let (status, resp) = request("Ollama", "ai_url", url, "POST", "/api/embed", Some(&body), WAIT).map_err(|e| unreachable(url, e))?;
+    parse_embed(status, &resp, model)
+}
+
+/// Ollama's /api/embed answer (HTTP STATUS, BODY) → the first embedding, or an error as in parse.
+pub fn parse_embed(status: u16, body: &str, model: &str) -> Result<Vec<f32>, String> {
+    if status != 200 {
+        return parse(status, body, model).map(|_| vec![]);
+    }
+    let v: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+    let e = v["embeddings"][0].as_array().ok_or("Ollama sent no embedding")?;
+    e.iter().map(|x| x.as_f64().map(|x| x as f32).ok_or_else(|| "Ollama sent a malformed embedding".to_string())).collect()
+}
+
 /// A model's raw TEXT → org text: no reasoning, `*` bullets as `-` so they don't become
 /// headings; ONE_LINE keeps the first line without bullet or quotes.
 pub fn clean(text: &str, one_line: bool) -> String {
@@ -904,6 +921,37 @@ mod tests {
         get("http://127.0.0.1:1/never", &sum, &no).unwrap();
         assert_eq!(MODELS[0].path(&dir), dir.join("qwen2.5-3b-instruct-q4_k_m.gguf"));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn embed_http() {
+        // Answers one request per reply in turn, reading each up to its Content-Length; returns them.
+        let replies = ["200 OK\r\n\r\n{\"model\":\"nomic-embed-text\",\"embeddings\":[[0.5,-1,2e-3]]}", "404 Not Found\r\n\r\n{\"error\":\"model \\\"nomic-embed-text\\\" not found, try pulling it first\"}", "200 OK\r\n\r\n{\"embeddings\":[]}"];
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", l.local_addr().unwrap());
+        let srv = std::thread::spawn(move || {
+            replies.map(|r| {
+                let (mut c, _) = l.accept().unwrap();
+                let (mut req, mut buf) = (String::new(), [0; 512]);
+                let full = |t: &str| t.split_once("\r\n\r\n").zip(t.split("Content-Length: ").nth(1).and_then(|x| x.split("\r\n").next()?.parse::<usize>().ok())).is_some_and(|((_, b), n)| b.len() >= n);
+                while !full(&req) {
+                    let n = c.read(&mut buf).unwrap();
+                    req.push_str(&String::from_utf8_lossy(&buf[..n]));
+                }
+                c.write_all(format!("HTTP/1.0 {r}").as_bytes()).unwrap();
+                req
+            })
+        });
+        let base = base.as_str();
+        assert_eq!(embed(base, "nomic-embed-text", "Plan\n* Launch"), Ok(vec![0.5, -1.0, 0.002]));
+        assert!(embed(base, "nomic-embed-text", "x").unwrap_err().contains("ollama pull nomic-embed-text"));
+        assert_eq!(embed(base, "m", "x").unwrap_err(), "Ollama sent no embedding");
+        let reqs = srv.join().unwrap();
+        assert!(reqs[0].starts_with("POST /api/embed HTTP/1.0\r\n") && reqs[0].ends_with(r#"{"input":"Plan\n* Launch","model":"nomic-embed-text"}"#), "{}", reqs[0]);
+        assert_eq!(parse_embed(500, r#"{"error":"out of memory"}"#, "m").unwrap_err(), "Ollama: out of memory");
+        assert!(parse_embed(200, r#"{"embeddings":[["x"]]}"#, "m").unwrap_err().contains("malformed"));
+        let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap();
+        assert!(embed(&format!("http://{free}"), "m", "x").unwrap_err().contains("isn't running"));
     }
 
     #[test]
