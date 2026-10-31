@@ -2561,11 +2561,27 @@ fn ai_excluded(s: State<App>, path: PathBuf) -> bool {
     retrieve::excluded(&path, &c.notes(), &c.ai_exclude)
 }
 
+/// The index's best sections for QUESTION (path, line, similarity) when `ai_semantic` is on and
+/// the index exists; empty on any failure (Ollama down, no index), so retrieval falls back to keywords (#966).
+fn semantic_hits(app: &AppHandle, c: &Config, question: &str) -> Vec<(PathBuf, usize, f32)> {
+    let model = c.ai_embed_model.trim();
+    if !c.ai_semantic || c.ai_backend != ai::Backend::Ollama || model.is_empty() {
+        return vec![];
+    }
+    let Ok(path) = index_file(app, c) else { return vec![] };
+    let ix = embed::Index::load(&path, model);
+    if ix.files.is_empty() {
+        return vec![];
+    }
+    let Ok(q) = ai::embed(&c.ai_url, model, &embed::prefixed(model, true, question)) else { return vec![] };
+    ix.top_k(&q, 8).into_iter().map(|(p, l, c)| (p.to_path_buf(), l, c)).collect()
+}
+
 /// What "Use my notes" sends for QUESTION, as switched on in `ai_source_*`: the open tasks, agenda
 /// and time log when asked about, then the matching notes, linked notes of the OPEN one included
 /// (#304, #468). Notes matching `ai_exclude` are left out of all of it.
 #[tauri::command(async)]
-fn ai_retrieve(s: State<App>, question: String, open: Option<PathBuf>) -> Vec<retrieve::Source> {
+fn ai_retrieve(app: AppHandle, s: State<App>, question: String, open: Option<PathBuf>) -> Vec<retrieve::Source> {
     let (c, kw, day) = (s.cfg(), s.kw(), today());
     let root = c.notes();
     let files: Vec<_> = s.files().into_iter().filter(|f| !retrieve::excluded(&f.path, &root, &c.ai_exclude)).collect();
@@ -2576,7 +2592,8 @@ fn ai_retrieve(s: State<App>, question: String, open: Option<PathBuf>) -> Vec<re
     let mut out = retrieve::app_sources(tasks.as_deref(), agenda.as_deref(), time.as_deref(), day);
     if c.ai_source_notes {
         let used: usize = out.iter().map(retrieve::cost).sum();
-        out.extend(retrieve::retrieve(&files, &question, open.as_deref(), retrieve::BUDGET.saturating_sub(used)));
+        let hits = semantic_hits(&app, &c, &question);
+        out.extend(retrieve::retrieve(&files, &question, open.as_deref(), retrieve::BUDGET.saturating_sub(used), &hits));
     }
     out
 }
@@ -2762,7 +2779,7 @@ fn index_run(app: &AppHandle) -> R<usize> {
     }
     let root = c.notes();
     let files: Vec<_> = s.files().into_iter().filter(|f| !retrieve::excluded(&f.path, &root, &c.ai_exclude)).collect();
-    embed::Index::sync(&index_file(app, &c)?, model, &files, &|t| ai::embed(&c.ai_url, model, t), INDEX_CAP)
+    embed::Index::sync(&index_file(app, &c)?, model, &files, &|t| ai::embed(&c.ai_url, model, &embed::prefixed(model, false, t)), INDEX_CAP)
 }
 
 /// The semantic index as Settings shows it: bytes on disk, notes and sections in it, whether it is

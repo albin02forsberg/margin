@@ -1031,8 +1031,10 @@ in **Notes the AI never sees** are left out, and the index is kept in Margin's
 local data folder (never in the notes or the time-tracking folder). Under the
 switch, Settings shows its size and why it can't be built (Ollama not running,
 the model not pulled, or the built-in backend picked), and **Rebuild** starts it
-over; changing the model rebuilds it too. The chat doesn't use it yet and keeps
-matching by keyword.
+over; changing the model rebuilds it too. With the index ready, **Use my notes**
+also embeds your question and adds the sections closest in meaning, so a note
+without your words can still be found; if Ollama or the index is unavailable the
+chat quietly matches by keyword as before.
 
 When the question asks about your tasks or projects (*task*, *todo*, *deadline*…),
 your day or week (*today*, *week*, *agenda*, *meeting*…) or your time (*hours*,

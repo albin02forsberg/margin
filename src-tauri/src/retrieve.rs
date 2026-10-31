@@ -165,15 +165,27 @@ pub fn pack(sources: &[Source]) -> String {
 /// The notes of FILES that answer QUESTION: the SEEDS best matches, then the notes linked to or from
 /// them or the OPEN note (one hop), most-linked to good matches first; the open note itself is left
 /// out (the chat sends it on its own). As many excerpts as fit in LEFT bytes once packed.
-pub fn retrieve(files: &[Arc<OrgFile>], question: &str, open: Option<&Path>, mut left: usize) -> Vec<Source> {
+/// SEMANTIC are the index's best sections for the question (path, line, cosine, #966): a note with
+/// one ranks by half its keyword score (against the best's) and half its best similarity, and may
+/// be a seed without sharing a word; hits on notes not in FILES are dropped. Empty = keywords only.
+pub fn retrieve(files: &[Arc<OrgFile>], question: &str, open: Option<&Path>, mut left: usize, semantic: &[(PathBuf, usize, f32)]) -> Vec<Source> {
     let terms = terms(question);
-    if terms.is_empty() {
+    if terms.is_empty() && semantic.is_empty() {
         return vec![];
     }
-    let scored: Vec<(usize, Option<usize>)> = files.iter().map(|f| score(f, &terms)).collect();
+    let mut scored: Vec<(usize, Option<usize>)> = files.iter().map(|f| score(f, &terms)).collect();
+    let mut sim = vec![0f32; files.len()];
+    for (p, line, c) in semantic {
+        if let Some(i) = files.iter().position(|f| &f.path == p).filter(|&i| *c > sim[i]) {
+            sim[i] = *c;
+            scored[i].1 = scored[i].1.or(Some(*line));
+        }
+    }
+    let top = scored.iter().map(|s| s.0).max().unwrap_or(0).max(1) as f32;
+    let rank = |i: usize| scored[i].0 as f32 / top * if semantic.is_empty() { 1.0 } else { 0.5 } + 0.5 * sim[i];
     let open = open.and_then(|p| files.iter().position(|f| f.path == p));
-    let mut seeds: Vec<usize> = (0..files.len()).filter(|&i| scored[i].0 > 0 && Some(i) != open).collect();
-    seeds.sort_by_key(|&i| (std::cmp::Reverse(scored[i].0), i));
+    let mut seeds: Vec<usize> = (0..files.len()).filter(|&i| (scored[i].0 > 0 || sim[i] > 0.0) && Some(i) != open).collect();
+    seeds.sort_by(|&a, &b| rank(b).total_cmp(&rank(a)).then(a.cmp(&b)));
     seeds.truncate(SEEDS);
     let adj = adjacency(files);
     // A neighbour ranks by the scores of the seeds it touches, then by how many it touches (the open note counts as one).
@@ -309,7 +321,7 @@ pub fn tool_sources(files: &[Arc<OrgFile>], ctx: &ToolCtx, name: &str, args: &se
     let out = match name {
         _ if !offered.iter().any(|n| n == name) => Err(format!("Error: unknown tool {name}. Use {}.", offered.join(", "))),
         "search_notes" => arg("query").map(|q| {
-            used = retrieve(files, q, None, TOOL_RESULT);
+            used = retrieve(files, q, None, TOOL_RESULT, &[]);
             match pack(&used) {
                 p if p.is_empty() => format!("No note matches {q}."),
                 p => p,
@@ -472,7 +484,7 @@ mod tests {
             note("d", "#+title: Daily\nnothing here, but see [[file:b.org][the plan]]\n"),
             note("e", "#+title: Lonely\nno match, no link\n"),
         ];
-        let got = retrieve(&files, "When is the launch budget due?", None, BUDGET);
+        let got = retrieve(&files, "When is the launch budget due?", None, BUDGET, &[]);
         // Budget has both terms (one in a heading) > Alpha, Misc (one term each); Daily only links to Budget.
         assert_eq!(names(&got), ["Budget", "Alpha", "Misc", "Daily"]);
         // The matching section only, without the drawer or keywords.
@@ -480,10 +492,10 @@ mod tests {
         assert_eq!(got[1].text, "The launch date is May 3.");
         assert_eq!(got[3].text, "nothing here, but see [[file:b.org][the plan]]");
         // The open note is left out, but its links count.
-        let got = retrieve(&files, "launch", Some(Path::new("/n/b.org")), BUDGET);
+        let got = retrieve(&files, "launch", Some(Path::new("/n/b.org")), BUDGET, &[]);
         assert_eq!(names(&got), ["Alpha", "Misc", "Daily"]);
-        assert!(retrieve(&files, "the and", None, BUDGET).is_empty());
-        assert!(retrieve(&files, "zebra", None, BUDGET).is_empty());
+        assert!(retrieve(&files, "the and", None, BUDGET, &[]).is_empty());
+        assert!(retrieve(&files, "zebra", None, BUDGET, &[]).is_empty());
         // No term in text or title: no score; a title-only match still counts.
         assert_eq!(score(&files[4], &terms("zebra")), (0, None));
         assert_eq!(score(&files[4], &terms("lonely zebra")), (30, None));
@@ -493,14 +505,14 @@ mod tests {
     fn stays_in_budget() {
         let big = format!("#+title: Big\n{}", "ålpha ".repeat(2000));
         let files: Vec<_> = (0..6).map(|i| note(&format!("n{i}"), &big)).collect();
-        let got = retrieve(&files, "ålpha", None, BUDGET);
+        let got = retrieve(&files, "ålpha", None, BUDGET, &[]);
         let packed = pack(&got);
         assert!(packed.len() <= BUDGET, "{}", packed.len());
         assert!(got.len() >= 3 && got.iter().all(|s| s.text.len() <= EXCERPT));
         assert!(packed.starts_with("[note: Big | n0.org:2]\nålpha"));
         // a long section: the lines around the match
         let long = note("l", &format!("#+title: L\n* H\n{}needle here\n{}", "filler line\n".repeat(200), "more\n".repeat(200)));
-        let got = retrieve(&[long], "needle", None, BUDGET);
+        let got = retrieve(&[long], "needle", None, BUDGET, &[]);
         assert!(got[0].text.contains("needle here") && got[0].text.len() <= EXCERPT && got[0].line > 100);
     }
 
@@ -550,7 +562,7 @@ mod tests {
         let big = format!("#+title: Big\n{}", "ålpha ".repeat(2000));
         let notes: Vec<_> = (0..6).map(|i| note(&format!("n{i}"), &big)).collect();
         let used: usize = got.iter().map(cost).sum();
-        got.extend(retrieve(&notes, "ålpha", None, BUDGET - used));
+        got.extend(retrieve(&notes, "ålpha", None, BUDGET - used, &[]));
         assert!(got.len() >= 3 && got.iter().map(cost).sum::<usize>() <= BUDGET);
         assert!(pack(&got).starts_with("[time: last 7 days]\nTotals: Margin 100h 00m\n"));
     }
@@ -573,8 +585,23 @@ mod tests {
         // an excluded note isn't found, nor reached as a linked note
         let files = [note("plan", "#+title: Plan\nlaunch soon, see [[file:secret.org][s]]\n"), note("secret", "#+title: Secret\ncodes\n")];
         let kept: Vec<_> = files.iter().filter(|f| !excluded(&f.path, root, &["secret".to_string()])).cloned().collect();
-        assert_eq!(names(&retrieve(&kept, "launch", None, BUDGET)), ["Plan"]);
-        assert_eq!(names(&retrieve(&files, "launch", None, BUDGET)), ["Plan", "Secret"]);
+        assert_eq!(names(&retrieve(&kept, "launch", None, BUDGET, &[])), ["Plan"]);
+        assert_eq!(names(&retrieve(&files, "launch", None, BUDGET, &[])), ["Plan", "Secret"]);
+    }
+
+    #[test]
+    fn semantic_hits() {
+        let files = [note("a", "#+title: Alpha\nlaunch plan\n"), note("b", "#+title: Bee\nshipping the release\n"), note("c", "#+title: Cee\nunrelated\n")];
+        let hit = |n: &str, c: f32| (PathBuf::from(format!("/n/{n}.org")), 1, c);
+        // no shared word, still found; a stale hit (deleted or excluded note) is dropped
+        let got = retrieve(&files, "launch", None, BUDGET, &[hit("b", 0.9), hit("gone", 0.99)]);
+        assert_eq!(names(&got), ["Alpha", "Bee"]);
+        // a perfect similarity weighs as much as the best keyword match (ties by file order)
+        let got = retrieve(&files, "launch", None, BUDGET, &[hit("c", 1.0), hit("b", 0.5)]);
+        assert_eq!(names(&got), ["Alpha", "Cee", "Bee"]);
+        // nothing to search by keywords: the hits alone carry it
+        assert_eq!(names(&retrieve(&files, "the and", None, BUDGET, &[hit("b", 0.9)])), ["Bee"]);
+        assert!(retrieve(&files, "the and", None, BUDGET, &[]).is_empty());
     }
 
     #[test]
