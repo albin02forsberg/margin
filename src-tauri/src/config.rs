@@ -99,6 +99,10 @@ pub struct Config {
     pub ai_source_time: bool,
     /// Let an Ollama model search and open notes itself (tool calls) while "Use my notes" is on (#469).
     pub ai_tools: bool,
+    /// Keep a semantic index of the notes up to date in the background, through Ollama's /api/embed (#965).
+    pub ai_semantic: bool,
+    /// The Ollama embedding model for ai_semantic; changing it rebuilds the index.
+    pub ai_embed_model: String,
     /// Notes the AI never sees (not retrieved, linked, sent as the open note, or read for tasks):
     /// case-insensitive substrings of their path below notes_dir.
     pub ai_exclude: Vec<String>,
@@ -298,6 +302,8 @@ impl Default for Config {
             ai_source_tasks: true,
             ai_source_time: true,
             ai_tools: false,
+            ai_semantic: false,
+            ai_embed_model: "nomic-embed-text".into(),
             ai_exclude: vec![],
             mcp_write: false,
             restore_tabs: true,

@@ -394,6 +394,9 @@ fn watch(app: &AppHandle) {
             if !refresh.is_empty() {
                 tray::refresh(&handle);
                 write_calendar(&handle);
+                if refresh.iter().any(|p| p.starts_with(&roots[0])) {
+                    reindex(&handle);
+                }
             }
             let _ = handle.emit("fs-changed", serde_json::json!({ "paths": paths, "refresh": refresh }));
         }
@@ -417,6 +420,7 @@ fn watch(app: &AppHandle) {
         }
     }
     *s.watcher.lock().unwrap() = Some(d);
+    reindex(app);
 }
 
 /// Where nightly builds (nightly.yml) publish their update manifest.
@@ -2701,6 +2705,94 @@ fn ai_model_delete(app: AppHandle, id: String) -> R<()> {
     Ok(())
 }
 
+static INDEXING: AtomicBool = AtomicBool::new(false);
+/// A reindex was asked for while one ran: run again after it.
+static INDEX_AGAIN: AtomicBool = AtomicBool::new(false);
+/// Why the last run failed ("" = it didn't), shown under the switch in Settings.
+static INDEX_ERR: Mutex<String> = Mutex::new(String::new());
+/// Sections embedded per run; the index is saved after each.
+const INDEX_CAP: usize = 64;
+
+/// Where the semantic index of the notes lives (#965), beside the downloaded models.
+fn index_file(app: &AppHandle, c: &Config) -> R<PathBuf> {
+    Ok(embed::index_path(&app.path().app_local_data_dir().map_err(|e| e.to_string())?, &c.notes()))
+}
+
+/// With `ai_semantic` on, bring the semantic index up to date on one background worker, INDEX_CAP
+/// sections a run until done; emits `ai-index` when it stops. Errors leave keyword search alone.
+fn reindex(app: &AppHandle) {
+    if !app.state::<App>().cfg().ai_semantic {
+        return;
+    }
+    if INDEXING.swap(true, Ordering::SeqCst) {
+        return INDEX_AGAIN.store(true, Ordering::SeqCst);
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let ok = loop {
+            INDEX_AGAIN.store(false, Ordering::SeqCst);
+            let r = index_run(&app);
+            *INDEX_ERR.lock().unwrap_or_else(|e| e.into_inner()) = r.as_ref().err().cloned().unwrap_or_default();
+            match r {
+                Ok(n) if n == INDEX_CAP || INDEX_AGAIN.load(Ordering::SeqCst) => continue,
+                r => break r.is_ok(),
+            }
+        };
+        INDEXING.store(false, Ordering::SeqCst);
+        let _ = app.emit("ai-index", ());
+        if ok && INDEX_AGAIN.swap(false, Ordering::SeqCst) {
+            reindex(&app);
+        }
+    });
+}
+
+/// One run of reindex: the notes minus `ai_exclude`, embedded by `ai_embed_model` through Ollama.
+fn index_run(app: &AppHandle) -> R<usize> {
+    let s = app.state::<App>();
+    let c = s.cfg();
+    if !c.ai_semantic {
+        return Ok(0);
+    }
+    if c.ai_backend != ai::Backend::Ollama {
+        return Err("Semantic search needs the Ollama backend (Space f a); keyword search is used meanwhile.".into());
+    }
+    let model = c.ai_embed_model.trim();
+    if model.is_empty() {
+        return Err("Set the embedding model, e.g. nomic-embed-text.".into());
+    }
+    let root = c.notes();
+    let files: Vec<_> = s.files().into_iter().filter(|f| !retrieve::excluded(&f.path, &root, &c.ai_exclude)).collect();
+    embed::Index::sync(&index_file(app, &c)?, model, &files, &|t| ai::embed(&c.ai_url, model, t), INDEX_CAP)
+}
+
+/// The semantic index as Settings shows it: bytes on disk, notes and sections in it, whether it is
+/// being updated and the last run's error ("" = none).
+#[tauri::command(async)]
+fn ai_index_status(app: AppHandle, s: State<App>) -> R<Value> {
+    let c = s.cfg();
+    let path = index_file(&app, &c)?;
+    let ix = embed::Index::load(&path, c.ai_embed_model.trim());
+    let bytes = std::fs::metadata(&path).map_or(0, |m| m.len());
+    let sections: usize = ix.files.iter().map(|f| f.chunks.len()).sum();
+    let error = INDEX_ERR.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    Ok(json!({ "bytes": bytes, "notes": ix.files.len(), "sections": sections, "running": INDEXING.load(Ordering::SeqCst), "error": error }))
+}
+
+/// Delete the semantic index and build it again.
+#[tauri::command]
+fn ai_index_rebuild(app: AppHandle, s: State<App>) -> R<()> {
+    if INDEXING.load(Ordering::SeqCst) {
+        return Err("The index is being updated; try again when it's done.".into());
+    }
+    let path = index_file(&app, &s.cfg())?;
+    match std::fs::remove_file(&path) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(format!("{}: {e}", path.display())),
+        _ => {}
+    }
+    reindex(&app);
+    Ok(())
+}
+
 /// Save the draft BACKEND and MODEL ("" = off) to config.toml, leaving the rest as written.
 /// Returns reload_config's warning (or "").
 #[tauri::command]
@@ -3245,7 +3337,7 @@ pub fn run() {
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, people_last, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, ai_index_status, ai_index_rebuild, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, fetch_feeds, feeds_opml, mark_feeds_seen, feeds_last, babel::babel_run
         ])
         .build(tauri::generate_context!())

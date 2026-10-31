@@ -1022,6 +1022,18 @@ click one to open it at that line, and *No note matched* means nothing was sent.
 Matching is by keyword, not meaning, so use the words your notes use. As with
 everything else here, the model runs on this machine (`ai_url` must be localhost).
 
+**Semantic index of my notes** (`ai_semantic`, off by default; Ollama only) prepares
+matching by meaning: Margin keeps a vector of every note section, made by Ollama's
+embedding model **Embedding model** (`ai_embed_model`, default `nomic-embed-text`;
+run `ollama pull nomic-embed-text` first), up to date in the background as notes
+change, a batch of sections at a time. Only changed sections are sent again, notes
+in **Notes the AI never sees** are left out, and the index is kept in Margin's
+local data folder (never in the notes or the time-tracking folder). Under the
+switch, Settings shows its size and why it can't be built (Ollama not running,
+the model not pulled, or the built-in backend picked), and **Rebuild** starts it
+over; changing the model rebuilds it too. The chat doesn't use it yet and keeps
+matching by keyword.
+
 When the question asks about your tasks or projects (*task*, *todo*, *deadline*…),
 your day or week (*today*, *week*, *agenda*, *meeting*…) or your time (*hours*,
 *time*, *worked*…), *Use my notes* also sends the open tasks, the next 7 days of

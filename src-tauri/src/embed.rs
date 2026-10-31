@@ -245,6 +245,19 @@ impl Index {
         std::fs::read(path).ok().and_then(|b| Index::from_bytes(&b, model)).unwrap_or_else(|| Index::new(model))
     }
 
+    /// One background run (#965): the index at PATH (of MODEL) updated as in `update` and saved
+    /// when anything changed, the work so far also on an embedder error.
+    pub fn sync(path: &Path, model: &str, files: &[Arc<OrgFile>], embed: &dyn Fn(&str) -> Result<Vec<f32>, String>, cap: usize) -> Result<usize, String> {
+        let mut ix = Index::load(path, model);
+        let shape = |ix: &Index| ix.files.iter().map(|f| (f.path.clone(), f.mtime, f.chunks.len())).collect::<Vec<_>>();
+        let before = (shape(&ix), path.exists());
+        let r = ix.update(files, embed, cap);
+        if r != Ok(0) || before != (shape(&ix), true) {
+            ix.save(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        }
+        r
+    }
+
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
         if let Some(d) = path.parent() {
             std::fs::create_dir_all(d)?;
@@ -344,6 +357,27 @@ mod tests {
         assert_eq!((ix.files[0].chunks.len(), ix.files[1].chunks.len(), ix.files[1].mtime), (3, 0, 0));
         let wrong = |_: &str| Ok(vec![1.0]);
         assert!(ix.update(&[a, b], &wrong, 9).unwrap_err().contains("dimensions"));
+    }
+
+    #[test]
+    fn sync_saves_progress_and_skips_no_ops() {
+        let log = RefCell::new(vec![]);
+        let dir = std::env::temp_dir().join(format!("margin-sync-{}", std::process::id()));
+        let p = index_path(&dir, Path::new("/n"));
+        let a = note("/n/a.org", "* One\naaa\n* Two\neee\n", 1);
+        let fail = |_: &str| Err::<Vec<f32>, String>("down".into());
+        assert_eq!(Index::sync(&p, "m", std::slice::from_ref(&a), &fail, 9), Err("down".into()));
+        assert!(p.exists() && Index::load(&p, "m").files[0].chunks.is_empty());
+        assert_eq!(Index::sync(&p, "m", std::slice::from_ref(&a), &fake(&log), 1), Ok(1));
+        assert_eq!(Index::sync(&p, "m", std::slice::from_ref(&a), &fake(&log), 1), Ok(1));
+        assert_eq!(Index::load(&p, "m").files[0].chunks.len(), 2);
+        let t = std::fs::metadata(&p).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        assert_eq!(Index::sync(&p, "m", std::slice::from_ref(&a), &fake(&log), 1), Ok(0));
+        assert_eq!(std::fs::metadata(&p).unwrap().modified().unwrap(), t, "nothing changed: not rewritten");
+        assert_eq!(Index::sync(&p, "m", &[], &fake(&log), 1), Ok(0));
+        assert!(Index::load(&p, "m").files.is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
