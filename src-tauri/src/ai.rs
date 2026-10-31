@@ -304,18 +304,17 @@ const TOOL_ROUNDS: usize = 4;
 
 /// Like `chat` (Ollama only) with TOOLS (Ollama's JSON schemas) the model may call, each through
 /// RUN_TOOL(name, arguments), for up to TOOL_ROUNDS rounds; results share retrieve::BUDGET bytes.
-/// Then the answer goes to ON_PIECE. None when the model can't use tools: fall back to plain retrieval.
+/// Every round streams to ON_PIECE (the caller drops a round's text once it sees a tool call); the last is the answer. None when the model can't use tools: fall back to plain retrieval.
 pub fn chat_with_tools(url: &str, model: &str, msgs: &[Msg], tools: &serde_json::Value, run_tool: &mut dyn FnMut(&str, &serde_json::Value) -> String, on_piece: &mut dyn FnMut(&str)) -> Result<Option<String>, String> {
     let opts = serde_json::json!({ "num_ctx": 4096, "num_predict": 512 });
     let (mut msgs, mut left) = (msgs.to_vec(), retrieve::BUDGET);
     for round in 0..TOOL_ROUNDS {
-        let body = serde_json::json!({ "model": model, "messages": msgs, "tools": tools, "stream": false, "options": opts });
-        let m = match ollama_chat(url, model, &body.to_string(), &mut |_| {}) {
+        let body = serde_json::json!({ "model": model, "messages": msgs, "tools": tools, "stream": true, "options": opts });
+        let m = match ollama_chat(url, model, &body.to_string(), on_piece) {
             Err(e) if round == 0 && e.contains("does not support tools") => return Ok(None),
             r => r?,
         };
         if m.tool_calls.is_empty() {
-            on_piece(&m.content); // the answer is already here; asking again would write it twice
             return Ok(Some(clean(&m.content, false)));
         }
         let mut results = vec![];
@@ -742,8 +741,15 @@ mod tests {
         let a = chat_with_tools(&base, "m", &q, &tools, &mut |n, a| { ran.push(format!("{n} {a}")); "Launch is May 3.".into() }, &mut |p| got.push(p.to_string()));
         assert_eq!(a.unwrap().as_deref(), Some("May 3."));
         assert_eq!((ran, got), (vec![r#"search {"q":"launch"}"#.to_string()], vec!["<think>x</think>May 3.".to_string()]));
+        // A streamed round: preamble pieces reach ON_PIECE as they come, a later line carries the call.
+        let streamed = "HTTP/1.0 200 OK\r\n\r\n{\"message\":{\"content\":\"Let \"},\"done\":false}\n{\"message\":{\"content\":\"me look\"},\"done\":false}\n{\"message\":{\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"search\",\"arguments\":{\"q\":\"x\"}}}]},\"done\":true}\n";
+        let (base, _) = serve(vec![streamed.into(), "HTTP/1.0 200 OK\r\n\r\n{\"message\":{\"content\":\"Yes \"},\"done\":false}\n{\"message\":{\"content\":\"it is\"},\"done\":true}\n".into()]);
+        let mut got = vec![];
+        let a = chat_with_tools(&base, "m", &q, &tools, &mut |_, _| "r".into(), &mut |p| got.push(p.to_string()));
+        assert_eq!(a.unwrap().as_deref(), Some("Yes it is"));
+        assert_eq!(got, ["Let ", "me look", "Yes ", "it is"]);
         let reqs = srv.join().unwrap();
-        assert!(reqs[0].contains(r#""stream":false,"tools":[{"function":{"name":"search"}"#), "{}", reqs[0]);
+        assert!(reqs[0].contains(r#""stream":true,"tools":[{"function":{"name":"search"}"#), "{}", reqs[0]);
         assert!(reqs[1].contains(r#"{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":{"q":"launch"},"name":"search"}}]},{"content":"Launch is May 3.","role":"tool","tool_name":"search"}]"#), "{}", reqs[1]);
         // Past the round cap the answer streams without tools; all results together stay in BUDGET.
         let mut replies: Vec<_> = (0..TOOL_ROUNDS).map(|i| call(&i.to_string())).collect();

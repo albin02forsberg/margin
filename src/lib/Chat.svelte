@@ -41,7 +41,7 @@
     [text, busy, error, partial, calls] = ["", true, "", "", []];
     await scroll();
     try {
-      const { answer, sources } = await ask($state.snapshot(msgs), withNote && !!note && !excluded, useNotes, (p) => { partial += p; scroll(); }, (e) => { calls.push(toolLine(e)); scroll(); });
+      const { answer, sources } = await ask($state.snapshot(msgs), withNote && !!note && !excluded, useNotes, (p) => { partial += p; scroll(); }, (e) => { if ("name" in e) partial = ""; calls.push(toolLine(e)); scroll(); });
       msgs.push({ role: "assistant", content: answer, sources, tools: calls.length ? [...calls] : undefined });
     } catch (e) {
       // Cancelled or failed midway: keep what came. Unanswered: back into the box, so the history stays question, answer, …
