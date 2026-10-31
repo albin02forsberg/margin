@@ -798,7 +798,65 @@ fn person_view(s: State<App>, name: String) -> Value {
     let (files, kw) = (s.files(), s.kw());
     let (tasks, notes) = person(&files, &s.cfg().notes(), &kw, &name);
     let payments: Vec<Value> = ledger_text(&s).map(|(p, t)| ledger::payments(&t, &name).into_iter().map(|r| json!({ "path": p, "line": r.line, "date": r.date, "cents": r.cents, "currency": r.currency, "text": r.text })).collect()).unwrap_or_default();
-    json!({ "tasks": with_spent(&*spent_lookup(&s), tasks), "notes": notes, "payments": payments, "waiting": waiting_on(&files, &kw, &name) })
+    let last = contacts(&s, std::slice::from_ref(&name)).into_values().next().map(|(d, src)| json!({ "date": d, "source": src }));
+    json!({ "tasks": with_spent(&*spent_lookup(&s), tasks), "notes": notes, "payments": payments, "waiting": waiting_on(&files, &kw, &name), "last": last })
+}
+
+type Contacts = std::collections::HashMap<String, (NaiveDate, &'static str)>;
+
+/// Last contact (#969) with each of NAMES, keyed lowercase without `@`: the latest of a non-task line mentioning
+/// `@name` (DAY gives the file's day and source: a daily file's date, else its mtime), a done task tagged or titled
+/// `@name` (its CLOSED day, "task") and PAYMENTS (payee, date: "ledger"). One pass over FILES outside `ROOT/.trash`.
+fn last_contacts(files: &[Arc<org::OrgFile>], root: &Path, kw: &org::Kw, names: &[String], day: impl Fn(&org::OrgFile) -> Option<(NaiveDate, &'static str)>,
+                 payments: &[(String, NaiveDate)]) -> Contacts {
+    let mut keys: Vec<String> = names.iter().map(|n| n.trim().trim_start_matches('@').to_lowercase()).filter(|n| !n.is_empty()).collect();
+    keys.sort_by_key(|n| std::cmp::Reverse(n.len())); // longest first, so `@anna-lena` isn't cut at `@anna`
+    keys.dedup();
+    let mut out = Contacts::new();
+    let mut add = |n: &str, d: NaiveDate, src: &'static str| {
+        let k = n.trim_start_matches('@').to_lowercase();
+        if keys.contains(&k) && out.get(&k).is_none_or(|(o, _)| d > *o) {
+            out.insert(k, (d, src));
+        }
+    };
+    let word = |n: &str| if n.ends_with(|c: char| c.is_alphanumeric() || c == '_') { r"\b" } else { "" };
+    let alts: Vec<String> = keys.iter().map(|n| format!("{}{}", regex::escape(n), word(n))).collect();
+    // notes::person_re for every name at once.
+    let Some(re) = Some(alts).filter(|a| !a.is_empty()).and_then(|a| regex::Regex::new(&format!(r"(?i)(?:^|[^\w@.])@({})", a.join("|"))).ok()) else { return out };
+    let trash = root.join(".trash");
+    for f in files.iter().filter(|f| !f.path.starts_with(&trash) && re.is_match(&f.text)) {
+        let tasks: std::collections::BTreeSet<usize> = f.headlines.iter().filter(|h| h.keyword.is_some()).map(|h| h.line).collect();
+        if let Some((d, src)) = day(f) {
+            for (_, l) in f.text.lines().enumerate().filter(|(i, _)| !tasks.contains(i)) {
+                re.captures_iter(l).for_each(|c| add(&c[1], d, src));
+            }
+        }
+        for h in f.headlines.iter().filter(|h| h.keyword.as_deref().is_some_and(|k| kw.is_done(k))) {
+            let Some(d) = h.closed.map(|c| c.date()) else { continue };
+            h.tags.iter().chain(&h.inherited).filter(|t| t.starts_with('@')).for_each(|t| add(t, d, "task"));
+            re.captures_iter(&h.title).for_each(|c| add(&c[1], d, "task"));
+        }
+    }
+    payments.iter().for_each(|(n, d)| add(n, *d, "ledger"));
+    out
+}
+
+/// `last_contacts` for NAMES over the app's notes (daily files dated by name, others by mtime) and ledger payees.
+fn contacts(s: &App, names: &[String]) -> Contacts {
+    let c = s.cfg();
+    let root = c.notes();
+    let day = |f: &org::OrgFile| {
+        let daily = is_daily_path(&root, &c.daily_dir, &f.path).then(|| f.path.file_stem()?.to_str()?.get(..10)?.parse::<NaiveDate>().ok()).flatten();
+        daily.map(|d| (d, "journal")).or_else(|| f.mtime.map(|t| (chrono::DateTime::<chrono::Local>::from(t).date_naive(), "note")))
+    };
+    let pays: Vec<(String, NaiveDate)> = ledger_text(s).map(|(_, t)| ledger::rows(&t, |e| e.payee().is_some()).into_iter().filter_map(|r| Some((r.payee?, r.date))).collect()).unwrap_or_default();
+    last_contacts(&s.files(), &root, &s.kw(), names, day, &pays)
+}
+
+/// Last contact `(date, source)` per lowercased name, for sorting the `Space n @` picker (#969).
+#[tauri::command(async)]
+fn people_last(s: State<App>, names: Vec<String>) -> Contacts {
+    contacts(&s, &names)
 }
 
 /// The waiting-for list (`Space x w`, #808): open WAIT tasks with whom and since when (see org::waiting).
@@ -3175,7 +3233,7 @@ pub fn run() {
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, md_import, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
-            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
+            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, people_last, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, fetch_feeds, feeds_opml, mark_feeds_seen, babel::babel_run
@@ -3221,6 +3279,28 @@ mod tests {
         assert_eq!(t, ["Call @Anna", "Inherited"]);
         assert_eq!(notes.iter().map(|m| m.line).collect::<Vec<_>>(), [1, 6]);
         assert_eq!(person(&files, Path::new("/n"), &kw, "@").0.len(), 0);
+    }
+
+    #[test]
+    fn last_contacts_takes_latest_of_journal_notes_done_tasks_and_payments() {
+        let kw = org::Kw { todo: vec!["TODO".into()], done: vec!["DONE".into()] };
+        let d = |s: &str| NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+        let f = |p: &str, t: &str| Arc::new(org::parse(Path::new(p), t, &kw));
+        let files = [
+            f("/n/daily/2026-09-19.org", "Lunch with @Anna and @bo.\n* TODO Call @bo\n"),
+            f("/n/work.org", "* Project :@anna:\n* DONE Sent deck to @Bo\nCLOSED: [2026-10-01 Thu 10:00]\n* TODO Open @cy\nmail cy@anna.se\n"),
+            f("/n/old.org", "* DONE Ancient\nCLOSED: [2026-01-01 Thu]\n:PROPERTIES:\n:END:\n"),
+            f("/n/.trash/t.org", "@anna in the trash\n"),
+        ];
+        // Daily files by name, the rest by "mtime": work.org last changed 2026-08-01.
+        let day = |o: &org::OrgFile| if o.path.starts_with("/n/daily") { Some((d("2026-09-19"), "journal")) } else { Some((d("2026-08-01"), "note")) };
+        let names: Vec<String> = ["anna", "@Bo", "cy", "dan", "ed"].map(String::from).into();
+        let c = last_contacts(&files, Path::new("/n"), &kw, &names, day, &[("ed".into(), d("2026-07-07")), ("Anna".into(), d("2026-05-05"))]);
+        assert_eq!(c.get("anna"), Some(&(d("2026-09-19"), "journal")));
+        assert_eq!(c.get("bo"), Some(&(d("2026-10-01"), "task")));
+        assert_eq!(c.get("ed"), Some(&(d("2026-07-07"), "ledger")));
+        assert_eq!((c.get("cy"), c.get("dan")), (None, None)); // only an open task and an email address; never mentioned
+        assert!(last_contacts(&files, Path::new("/n"), &kw, &["@".into()], day, &[]).is_empty());
     }
 
     #[test]

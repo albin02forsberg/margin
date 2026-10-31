@@ -1352,7 +1352,9 @@ describe("Note pickers, pins and archive", () => {
   it("Space n @ lists a person's open tasks and mentions", async () => {
     await open("Pinme", "pinme.org");
     await leader("n@");
+    await find(".picker li small", "today"); // last contact (#969): people.org was just written
     await answer("Person", "@ola");
+    await find(".picker .body", "Last mentioned today (note ");
     await find(".picker li span", "TODO Call Ola");
     await answer("@ola", "budget");
     await find(".status .file", "people.org");
