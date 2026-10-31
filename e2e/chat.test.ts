@@ -134,9 +134,9 @@ describe("AI chat", () => {
     await find(".chat .tool", "searched notes: rollout");
     await find(".chat p.assistant", `Answer ${n + 2}`);
     const [call, result] = asked.slice(n);
-    // tasks and the time log are on by default, so their tools come too (#990)
+    // the time log is on, so its tool comes too; tasks were switched off above, so theirs don't (#990)
     const offered = (call.body.tools ?? []).map((t: any) => t.function.name);
-    assert.ok(["search_notes", "list_tasks", "agenda", "time_report"].every((n) => offered.includes(n)), JSON.stringify(call.body));
+    assert.ok(["search_notes", "time_report"].every((n) => offered.includes(n)) && !offered.includes("list_tasks") && !offered.includes("agenda"), JSON.stringify(call.body));
     const tool = result.body.messages.at(-1);
     assert.ok(tool.role === "tool" && tool.content.includes("The rollout happens on May 3."), JSON.stringify(tool));
     n = asked.length;
