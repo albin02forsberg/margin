@@ -67,6 +67,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "activity_exclude", label: "Activity to ignore", kind: "list", hint: "regexes over app names and window titles, one per line" },
     { key: "activity_meetings", label: "Meetings", kind: "list", hint: "regexes over app names, window titles and URLs, one per line" },
     { key: "activity_calendar", label: "Meeting calendar (.ics)", hint: "a file or an https:// URL; names meeting suggestions; empty = off" },
+    { key: "feeds_auto_hours", label: "Fetch feeds every (hours)", kind: "number", step: "any", hint: "RSS/Atom feeds are fetched in the background while Margin runs, and only new items are filed; 0 = off (only Ctrl+K → Fetch feeds)" },
     { key: "ai_url", label: "Ollama server", hint: "local addresses only; pick the model with Space f a" },
   ] },
   { name: "AI chat", fields: [

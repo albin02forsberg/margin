@@ -46,6 +46,9 @@ pub struct Config {
     /// Notify once when one running session passes this many hours (a forgotten timer); 0 = off.
     #[serde(deserialize_with = "max_session_hours")]
     pub max_session_hours: f64,
+    /// Fetch the `[[feeds]]` in the background every this many hours while the app runs; 0 = off.
+    #[serde(deserialize_with = "feeds_auto_hours")]
+    pub feeds_auto_hours: f64,
     /// Desktop notifications for timed entries and upcoming deadlines.
     pub reminders: bool,
     pub remind_before_minutes: i64,
@@ -212,6 +215,15 @@ fn max_session_hours<'de, D: serde::Deserializer<'de>>(d: D) -> Result<f64, D::E
     Ok(h)
 }
 
+/// `feeds_auto_hours`: 0 (off) or more hours.
+fn feeds_auto_hours<'de, D: serde::Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
+    let h = f64::deserialize(d)?;
+    if !(h.is_finite() && h >= 0.0) {
+        return Err(serde::de::Error::custom("feeds_auto_hours must be 0 (off) or more hours"));
+    }
+    Ok(h)
+}
+
 /// `public_holidays`: "se" or "none".
 fn public_holidays<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
     let v = String::deserialize(d)?.trim().to_lowercase();
@@ -256,6 +268,7 @@ impl Default for Config {
             focus_minutes: 0,
             focus_break_minutes: 5,
             max_session_hours: 0.0,
+            feeds_auto_hours: 0.0,
             reminders: true,
             remind_before_minutes: 10,
             deadline_warning_days: 1,
@@ -685,6 +698,10 @@ mod tests {
         for bad in ["-1", "nan", "inf"] {
             assert!(save(mine, t(&format!("max_session_hours = {bad}")), &[]).is_err(), "{bad}");
             assert!(toml::from_str::<Config>(&format!("max_session_hours = {bad}")).unwrap_err().to_string().contains("0 (off) or more"), "{bad}"); // on load too
+        }
+        assert_eq!(save(mine, t("feeds_auto_hours = 6"), &[]).unwrap().1.feeds_auto_hours, 6.0);
+        for bad in ["-1", "nan"] {
+            assert!(save(mine, t(&format!("feeds_auto_hours = {bad}")), &[]).is_err(), "{bad}");
         }
         assert!(save(mine, t("nope = 1"), &[]).is_err() && save(mine, t("views = []"), &[]).is_err());
         assert!(save(mine, t("profiles = []"), &[]).is_err()); // keep at least one profile

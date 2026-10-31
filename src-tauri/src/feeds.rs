@@ -228,6 +228,17 @@ pub fn save(data: &Path, new: Seen) -> Result<(), String> {
     crate::config::write_atomic(&data.join(FILE), serde_json::to_string(&seen).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 
+/// Stamp DATA's feeds_last.txt with the unix time of this fetch.
+pub fn stamp(data: &Path) -> Result<(), String> {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| e.to_string())?.as_secs();
+    crate::config::write_atomic(&data.join("feeds_last.txt"), now.to_string()).map_err(|e| e.to_string())
+}
+
+/// The unix time `stamp` wrote (None if never).
+pub fn last(data: &Path) -> Option<u64> {
+    std::fs::read_to_string(data.join("feeds_last.txt")).ok()?.trim().parse().ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

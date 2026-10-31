@@ -2430,7 +2430,15 @@ fn feeds_opml(path: String) -> R<Vec<(String, String)>> {
 /// Remember SEEN (feed URL → guids) in data_dir's feeds_seen.json, so those items are never filed again.
 #[tauri::command]
 fn mark_feeds_seen(s: State<App>, seen: feeds::Seen) -> R<()> {
-    feeds::save(&s.cfg().data(), seen)
+    let data = s.cfg().data();
+    feeds::save(&data, seen)?;
+    feeds::stamp(&data)
+}
+
+/// Unix seconds of the last filed fetch (feeds_last.txt), for the background timer.
+#[tauri::command]
+fn feeds_last(s: State<App>) -> Option<u64> {
+    feeds::last(&s.cfg().data())
 }
 
 /// Remember that blocks titled TITLE (an EDITOR label) go to PROJECT (the user picked another project than the guess).
@@ -3178,7 +3186,7 @@ pub fn run() {
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
-            export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, fetch_feeds, feeds_opml, mark_feeds_seen, babel::babel_run
+            export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, fetch_feeds, feeds_opml, mark_feeds_seen, feeds_last, babel::babel_run
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
