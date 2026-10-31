@@ -129,6 +129,21 @@ pub fn parse(body: &str) -> Vec<Item> {
     out
 }
 
+/// The feeds of an OPML subscription list as (name, url): outlines with an http(s) `xmlUrl` at any nesting depth,
+/// the name from `title`, else `text`, else the URL; a URL listed twice counts once.
+pub fn opml(body: &str) -> Vec<(String, String)> {
+    let (mut out, mut rest) = (vec![], body);
+    while let Some((attrs, after)) = tag(rest, "outline") {
+        rest = &rest[after..];
+        let Some(url) = attr(attrs, "xmlUrl").filter(|u| check_url(u).is_ok()) else { continue };
+        if out.iter().all(|(_, u)| *u != url) {
+            let name = attr(attrs, "title").filter(|t| !t.is_empty()).or_else(|| attr(attrs, "text").filter(|t| !t.is_empty()));
+            out.push((name.unwrap_or_else(|| url.clone()), url));
+        }
+    }
+    out
+}
+
 /// IT as a reading-list TODO stamped NOW, its guid in `:FEED_ID:`.
 pub fn entry(it: &Item, now: chrono::NaiveDateTime) -> String {
     let link = it.link.replace('[', "%5B").replace(']', "%5D").replace(' ', "%20");
@@ -233,6 +248,17 @@ mod tests {
 <entry><title type="html">A &lt;b&gt;bold&lt;/b&gt; claim</title><link rel="edit" href="https://at.example/edit/1"/><link rel='alternate' type="text/html" href='https://at.example/1?a=1&amp;b=2'/><id>urn:uuid:1</id></entry>
 <entry><title>Only edit</title><link rel="edit" href="https://at.example/edit/2"/><id>urn:uuid:2</id></entry>
 <entry><title>Cut off at the size cap</title><link href="https://at.example/3"/>"#;
+
+    #[test]
+    fn opml_flattens_categories() {
+        let x = r#"<opml version="2.0"><body>
+<outline text="Tech" title="Tech"><outline type="rss" text="A &amp; B" xmlUrl="https://a.example/feed"/>
+<outline type="rss" text="dup" title="Dup" xmlUrl="https://a.example/feed"/></outline>
+<outline text="No url"/><outline text="Mail" xmlUrl="mailto:a@b.c"/><outline text="File" xmlUrl="file:///etc/passwd"/>
+<outline type="rss" xmlUrl='https://c.example/rss' title="C"/><outline xmlUrl="https://d.example/x"/></body></opml>"#;
+        assert_eq!(opml(x), [("A & B".into(), "https://a.example/feed".into()), ("C".into(), "https://c.example/rss".into()), ("https://d.example/x".into(), "https://d.example/x".into())]);
+        assert!(opml("<opml><body><outline").is_empty());
+    }
 
     fn items(n: usize) -> Vec<Item> {
         (0..n).map(|i| Item { guid: format!("g{i}"), title: format!("t{i}"), link: format!("https://x.example/{i}") }).collect()

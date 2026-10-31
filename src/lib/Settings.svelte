@@ -47,6 +47,19 @@
       errors[k] = String(e);
     }
   }
+  let opmlPath = $state("");
+  /** Add the feeds of the OPML file at OPMLPATH that aren't listed yet; they stay unsaved until Save. */
+  async function importOpml() {
+    try {
+      const have = new Set(rows.feeds.map((f) => f.url.trim()));
+      const add = (await invoke<[string, string][]>("feeds_opml", { path: opmlPath })).filter(([, u]) => !have.has(u));
+      rows.feeds.push(...add.map(([name, url]) => ({ name, url, file: "", heading: "" })));
+      errors.feeds = add.length ? "" : "Every feed in that file is already listed";
+      if (add.length) opmlPath = "";
+    } catch (e) {
+      errors.feeds = String(e);
+    }
+  }
   /** Swap rows I and I+D of LIST. */
   function move(list: Row[], i: number, d: number) {
     [list[i], list[i + d]] = [list[i + d], list[i]];
@@ -324,6 +337,10 @@
         </div>
       {/each}
       <button type="button" class="link" onclick={() => rows.feeds.push({ name: "", url: "", file: "", heading: "" })}>Add feed</button>
+      <div class="row">
+        <input aria-label="OPML file" placeholder="Absolute path to an OPML file, e.g. ~/feeds.opml" bind:value={opmlPath} />
+        <button type="button" class="link" disabled={!opmlPath.trim()} onclick={importOpml}>Import OPML</button>
+      </div>
       {@render foot("feeds", "feeds")}
     </fieldset>
   </form>

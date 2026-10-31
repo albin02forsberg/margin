@@ -572,7 +572,9 @@ its latest 20 items. Items without an http(s) link are skipped, and the same lin
 from two feeds is filed once. A feed that fails (HTTP error, not a feed, 10 s
 timeout) is named in the message and the others still run. Only the first 2 MB
 of each feed is read. Nothing is fetched until you run the command. Edit the
-list in the settings page's "Feeds" group, or in `config.toml`:
+list in the settings page's "Feeds" group (its "Import OPML" field takes the
+absolute path of an OPML export from another reader and adds the feeds not
+listed yet, nested folders included; press Save to keep them), or in `config.toml`:
 
 ```toml
 [[feeds]]
