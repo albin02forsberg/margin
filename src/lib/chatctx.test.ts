@@ -48,6 +48,13 @@ test("tool calls read as one line each, and unknown tools by name (#963)", () =>
   assert.equal(toolLine({ name: "rm", args: { path: "/" } }), "called rm");
   assert.match(toolLine({ no_tools: true }), /can't use tools/);
 });
+test("task, agenda and time tool calls read as one line each (#990)", () => {
+  assert.equal(toolLine({ name: "list_tasks", args: {} }), "listed open tasks");
+  assert.equal(toolLine({ name: "list_tasks", args: { state: "TODO", project: " acme " } }), "listed TODO acme tasks");
+  assert.equal(toolLine({ name: "agenda", args: { from: "2026-11-02", to: "2026-11-08" } }), "read the agenda 2026-11-02..2026-11-08");
+  assert.equal(toolLine({ name: "agenda", args: {} }), "read the agenda");
+  assert.equal(toolLine({ name: "time_report", args: { from: "mon" } }), "read the time log mon");
+});
 test("mergeSources keeps order and drops repeats of a note and line (#983)", () => {
   const a = { path: "/a", line: 0, title: "A", text: "x" };
   const b = { path: "/b", line: 3, title: "B", text: "" };

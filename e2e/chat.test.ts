@@ -121,7 +121,7 @@ describe("AI chat", () => {
 
   it("lets the model search notes with tools, and says when it can't (#963)", async () => {
     await browser.keys([Key.Ctrl, ","]);
-    await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Let the model search notes itself")]]/input`)).click();
+    await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Let the model look things up itself")]]/input`)).click();
     await (await find(".settings button", "Save ai chat")).click();
     await fileMatches(join(d.cfgDir, "config.toml"), (s) => /^ai_tools = true$/m.test(s), "switch not saved");
     await browser.keys([Key.Ctrl, "p"]);
@@ -134,7 +134,9 @@ describe("AI chat", () => {
     await find(".chat .tool", "searched notes: rollout");
     await find(".chat p.assistant", `Answer ${n + 2}`);
     const [call, result] = asked.slice(n);
-    assert.ok(Array.isArray(call.body.tools) && call.body.tools.some((t: any) => t.function.name === "search_notes"), JSON.stringify(call.body));
+    // the time log is on, so its tool comes too; tasks were switched off above, so theirs don't (#990)
+    const offered = (call.body.tools ?? []).map((t: any) => t.function.name);
+    assert.ok(["search_notes", "time_report"].every((n) => offered.includes(n)) && !offered.includes("list_tasks") && !offered.includes("agenda"), JSON.stringify(call.body));
     const tool = result.body.messages.at(-1);
     assert.ok(tool.role === "tool" && tool.content.includes("The rollout happens on May 3."), JSON.stringify(tool));
     n = asked.length;
