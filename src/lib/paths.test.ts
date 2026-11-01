@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ago, changed, findNote, findTab, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath, weekJournals } from "./paths.ts";
+import { ago, changed, findNote, altTab, findTab, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath, weekJournals } from "./paths.ts";
 
 test("findNote", () => {
   const files = ["/n/inbox.org", "/n/work/Plan.org", "/n/20260101120000-big_idea.org", "/n/x.org"];
@@ -135,4 +135,12 @@ test("ago", () => {
 test("weekJournals", () => {
   const f = ["/n/daily/2026-09-29.org", "/n/daily/2026-10-01.org", "/n/daily/2026-09-28.org", "/n/other/2026-09-30.org", "/n/daily/x.org", "/n/daily/2026-10-02.org"];
   assert.deepEqual(weekJournals(f, "daily", "2026-09-28", "2026-10-01"), ["/n/daily/2026-09-28.org", "/n/daily/2026-09-29.org", "/n/daily/2026-10-01.org"]);
+});
+
+test("altTab", () => {
+  const tabs = [{ key: "a" }, { key: "b" }, { key: "c" }];
+  assert.equal(altTab("b", tabs, 0), 1);
+  assert.equal(altTab("b", tabs, 1), -1); // already there
+  assert.equal(altTab("x", tabs, 0), -1); // closed
+  assert.equal(altTab("", tabs, 0), -1);
 });

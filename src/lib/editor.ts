@@ -36,6 +36,12 @@ export const hooks = {
   closeAll: (_force?: boolean) => {},
   /** `:b NAME|N`: switch to the open tab NAME or number N picks. */
   buffer: (_name: string) => {},
+  /** `:bd[!] NAME`: close the open tab NAME picks (no NAME: the current one, via `close`). */
+  closeTab: (_name: string, _force: boolean) => {},
+  /** `:ls`: pick an open tab from a list. */
+  listTabs: () => {},
+  /** `:b #` / `<C-^>`: switch to the previously shown tab. */
+  alternate: () => {},
   /** `:e[!] [NAME]`: open the note NAME, or reload the current one from disk. */
   edit: (_name: string, _force: boolean) => {},
   follow: (_target?: string) => {},
@@ -65,7 +71,8 @@ Vim.defineEx("xit", "x", () => { hooks.save(); hooks.close(); });
 Vim.defineEx("wall", "wa", () => hooks.saveAll());
 Vim.defineEx("bnext", "bn", () => hooks.tab(1));
 Vim.defineEx("bprevious", "bp", () => hooks.tab(-1));
-Vim.defineEx("bdelete", "bd", (_cm: unknown, p: ExP) => hooks.close(bang(p)[0]));
+Vim.defineEx("bdelete", "bd", (_cm: unknown, p: ExP) => { const [f, n] = bang(p); n ? hooks.closeTab(n, f) : hooks.close(f); });
+for (const [name, alias] of [["ls", "ls"], ["buffers", "buffers"], ["files", "files"]]) Vim.defineEx(name, alias, () => hooks.listTabs());
 Vim.defineEx("qall", "qa", (_cm: unknown, p: ExP) => hooks.closeAll(bang(p)[0]));
 Vim.defineEx("wqall", "wqa", () => { hooks.saveAll(); hooks.closeAll(); });
 Vim.defineEx("xall", "xa", () => { hooks.saveAll(); hooks.closeAll(); });
@@ -137,6 +144,8 @@ Vim.defineAction("nextTab", () => hooks.tab(1));
 Vim.defineAction("prevTab", () => hooks.tab(-1));
 Vim.mapCommand("gt", "action", "nextTab", {}, { context: "normal" });
 Vim.mapCommand("gT", "action", "prevTab", {}, { context: "normal" });
+Vim.defineAction("altTab", () => hooks.alternate());
+for (const k of ["<C-^>", "<C-6>"]) Vim.mapCommand(k, "action", "altTab", {}, { context: "normal" });
 // `g;` / `g,`: walk the change list (see changelist.ts); the count steps that many entries.
 for (const [keys, d] of [["g;", -1], ["g,", 1]] as const) {
   Vim.defineAction(`change${d}`, (cm: any, a: { repeat?: number }) => {

@@ -27,7 +27,7 @@
   import { pickStale } from "$lib/stale";
   import { visibleCmds } from "$lib/areas";
   import { lineDiff } from "$lib/linediff";
-  import { ago, changed, findNote, findTab, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, resolvePath, weekJournals } from "$lib/paths";
+  import { ago, changed, findNote, altTab, findTab, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, resolvePath, weekJournals } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
@@ -832,6 +832,11 @@
     addEventListener("pointercancel", up);
   }
 
+  /** The tab shown before this one (`:b #`, `<C-^>`). */
+  function alternateTab() {
+    const i = altTab(prevKey, tabs, cur);
+    i < 0 ? flash("No alternate tab") : act(() => show(i));
+  }
   async function switchTab() {
     const i = await pick({ prompt: "Switch to tab", items: tabs.map((t, i) => ({ label: t.title, detail: t.path ? rel(t.path) : "", value: i })) });
     if (i != null) await show(i);
@@ -3202,6 +3207,7 @@
     { label: "Run setup again…", run: setup },
     { label: "Help: tutorial", leader: "?", run: async () => openFile((await call<[string, boolean]>("tutorial"))[0]) },
     { label: "Switch tab…", leader: "b b", run: switchTab },
+    { label: "Alternate tab", run: alternateTab },
     { label: "Next tab (also gt)", keys: ["Ctrl+Tab"], leader: "b n", run: () => cycleTab(1) },
     { label: "Previous tab (also gT)", keys: ["Ctrl+Shift+Tab"], leader: "b p", run: () => cycleTab(-1) },
     { label: "Move tab left", leader: "b <", run: () => moveTab(cur, cur - 1) },
@@ -3517,6 +3523,7 @@
 
   /** `:e NAME` opens the note NAME matches (path, file name or title), creating it when none does; `:e` / `:e!` reload this one from disk. */
   async function editNote(name: string, force: boolean) {
+    if (name === "#") return alternateTab();
     if (!name) return tab?.dirty && !force ? flash("Unsaved edits — :e! discards them and reloads from disk.") : reloadFromDisk();
     const [files, titles] = await Promise.all([call<string[]>("list_files"), call<Record<string, string>>("note_titles")]);
     const f = findNote(name, files, new Map(Object.entries(titles)), cfg.notes);
@@ -3606,7 +3613,15 @@
       ed.hooks.close = (force) => act(() => { if (force) discardEdits(tab); return closeTab(); });
       ed.hooks.edit = (name, force) => act(() => editNote(name, force));
       ed.hooks.closeAll = (force) => act(() => { if (force) tabs.forEach(discardEdits); return closeOthers(true); });
+      ed.hooks.alternate = alternateTab;
+      ed.hooks.listTabs = () => act(switchTab);
+      ed.hooks.closeTab = (name, force) => {
+        const i = findTab(name, tabs, cfg.notes);
+        if (i < 0) return flash(`No open tab matches “${name.trim()}”`);
+        act(() => { if (force) discardEdits(tabs[i]); return closeTab(i); });
+      };
       ed.hooks.buffer = (name) => {
+        if (name.trim() === "#") return alternateTab();
         const i = findTab(name, tabs, cfg.notes);
         i < 0 ? flash(name.trim() ? `No open tab matches “${name.trim()}”` : "Argument required") : act(() => show(i));
       };
