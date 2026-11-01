@@ -809,18 +809,20 @@ fn person_view(s: State<App>, name: String) -> Value {
 type Contacts = std::collections::HashMap<String, (NaiveDate, &'static str)>;
 
 /// Last contact (#969) with each of NAMES, keyed lowercase without `@`: the latest of a non-task line mentioning
-/// `@name` (DAY gives the file's day and source: a daily file's date, else its mtime), a done task tagged or titled
+/// `@name` (DAY gives the file's day and source: a daily file's date, else its mtime, which only counts for names
+/// with no other date since a sync bumps it), a done task tagged or titled
 /// `@name` (its CLOSED day, "task") and PAYMENTS (payee, date: "ledger"). One pass over FILES outside `ROOT/.trash`.
 fn last_contacts(files: &[Arc<org::OrgFile>], root: &Path, kw: &org::Kw, names: &[String], day: impl Fn(&org::OrgFile) -> Option<(NaiveDate, &'static str)>,
                  payments: &[(String, NaiveDate)]) -> Contacts {
     let mut keys: Vec<String> = names.iter().map(|n| n.trim().trim_start_matches('@').to_lowercase()).filter(|n| !n.is_empty()).collect();
     keys.sort_by_key(|n| std::cmp::Reverse(n.len())); // longest first, so `@anna-lena` isn't cut at `@anna`
     keys.dedup();
-    let mut out = Contacts::new();
+    let (mut out, mut weak) = (Contacts::new(), Contacts::new()); // weak: mtime-dated notes, only for names with no dated source
     let mut add = |n: &str, d: NaiveDate, src: &'static str| {
         let k = n.trim_start_matches('@').to_lowercase();
-        if keys.contains(&k) && out.get(&k).is_none_or(|(o, _)| d > *o) {
-            out.insert(k, (d, src));
+        let m = if src == "note" { &mut weak } else { &mut out };
+        if keys.contains(&k) && m.get(&k).is_none_or(|(o, _)| d > *o) {
+            m.insert(k, (d, src));
         }
     };
     let word = |n: &str| if n.ends_with(|c: char| c.is_alphanumeric() || c == '_') { r"\b" } else { "" };
@@ -831,7 +833,10 @@ fn last_contacts(files: &[Arc<org::OrgFile>], root: &Path, kw: &org::Kw, names: 
     for f in files.iter().filter(|f| !f.path.starts_with(&trash) && re.is_match(&f.text)) {
         let tasks: std::collections::BTreeSet<usize> = f.headlines.iter().filter(|h| h.keyword.is_some()).map(|h| h.line).collect();
         if let Some((d, src)) = day(f) {
-            for (_, l) in f.text.lines().enumerate().filter(|(i, _)| !tasks.contains(i)) {
+            // On the mtime path a heading counts by its title only: a `:@name:` tag is no contact.
+            let titles: std::collections::HashMap<usize, &str> = f.headlines.iter().map(|h| (h.line, h.title.as_str())).collect();
+            for (i, l) in f.text.lines().enumerate().filter(|(i, _)| !tasks.contains(i)) {
+                let l = if src == "note" { titles.get(&i).copied().unwrap_or(l) } else { l };
                 re.captures_iter(l).for_each(|c| add(&c[1], d, src));
             }
         }
@@ -842,6 +847,9 @@ fn last_contacts(files: &[Arc<org::OrgFile>], root: &Path, kw: &org::Kw, names: 
         }
     }
     payments.iter().for_each(|(n, d)| add(n, *d, "ledger"));
+    for (k, v) in weak {
+        out.entry(k).or_insert(v);
+    }
     out
 }
 
@@ -3420,6 +3428,15 @@ mod tests {
         assert_eq!(c.get("ed"), Some(&(d("2026-07-07"), "ledger")));
         assert_eq!((c.get("cy"), c.get("dan")), (None, None)); // only an open task and an email address; never mentioned
         assert!(last_contacts(&files, Path::new("/n"), &kw, &["@".into()], day, &[]).is_empty());
+        // A later mtime never beats a dated source; without one it is the fallback, but a heading tag alone is no contact.
+        let late = |o: &org::OrgFile| if o.path.starts_with("/n/daily") { Some((d("2026-09-19"), "journal")) } else { Some((d("2026-11-01"), "note")) };
+        let names: Vec<String> = ["anna", "bo", "fay", "gus"].map(String::from).into();
+        let more = [files[0].clone(), files[1].clone(), f("/n/m.org", "Met @fay today\n* Notes :@gus:\n")];
+        let c = last_contacts(&more, Path::new("/n"), &kw, &names, late, &[]);
+        assert_eq!(c.get("anna"), Some(&(d("2026-09-19"), "journal")));
+        assert_eq!(c.get("bo"), Some(&(d("2026-10-01"), "task")));
+        assert_eq!(c.get("fay"), Some(&(d("2026-11-01"), "note")));
+        assert_eq!(c.get("gus"), None);
     }
 
     #[test]
