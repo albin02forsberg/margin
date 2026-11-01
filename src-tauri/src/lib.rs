@@ -31,7 +31,7 @@ use config::Config;
 use serde_json::{json, Value};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 use notify_debouncer_mini::{new_debouncer, notify, DebounceEventResult, Debouncer};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WindowEvent};
 use timeclock::{format_hm, Project, Tc};
@@ -46,6 +46,8 @@ struct App {
     profile: Mutex<String>,
     cache: org::Cache,
     watcher: Mutex<Option<Debouncer<notify::RecommendedWatcher>>>,
+    /// The semantic index in memory (#1010), loaded on first use; see `index_in`.
+    semantic: Mutex<Option<embed::Cached>>,
 }
 
 impl App {
@@ -67,6 +69,17 @@ impl App {
     /// Parsed notes, minus the capture-template files.
     fn files(&self) -> Vec<Arc<org::OrgFile>> {
         files_of(&self.cfg(), &self.cache)
+    }
+    fn semantic(&self) -> MutexGuard<'_, Option<embed::Cached>> {
+        self.semantic.lock().unwrap_or_else(|e| e.into_inner())
+    }
+    /// The semantic index slot, or None while a reindex round holds it.
+    fn semantic_now(&self) -> Option<MutexGuard<'_, Option<embed::Cached>>> {
+        match self.semantic.try_lock() {
+            Ok(g) => Some(g),
+            Err(TryLockError::Poisoned(e)) => Some(e.into_inner()),
+            Err(TryLockError::WouldBlock) => None,
+        }
     }
     fn backup(&self) {
         let c = self.cfg();
@@ -2577,12 +2590,14 @@ fn semantic_hits(app: &AppHandle, c: &Config, question: &str) -> Vec<(PathBuf, u
         return vec![];
     }
     let Ok(path) = index_file(app, c) else { return vec![] };
-    let ix = embed::Index::load(&path, model);
-    if ix.files.is_empty() {
+    // While a reindex round holds the index, keywords only; the question is embedded unlocked.
+    let s = app.state::<App>();
+    if s.semantic_now().is_none_or(|mut g| index_in(&mut g, &path, model).ix.files.is_empty()) {
         return vec![];
     }
     let Ok(q) = ai::embed(&c.ai_url, model, &embed::prefixed(model, true, question)) else { return vec![] };
-    ix.top_k(&q, 8).into_iter().map(|(p, l, c)| (p.to_path_buf(), l, c)).collect()
+    let Some(mut g) = s.semantic_now() else { return vec![] };
+    index_in(&mut g, &path, model).ix.top_k(&q, 8).into_iter().map(|(p, l, c)| (p.to_path_buf(), l, c)).collect()
 }
 
 /// What "Use my notes" sends for QUESTION, as switched on in `ai_source_*`: the open tasks, agenda
@@ -2735,12 +2750,26 @@ static INDEXING: AtomicBool = AtomicBool::new(false);
 static INDEX_AGAIN: AtomicBool = AtomicBool::new(false);
 /// Why the last run failed ("" = it didn't), shown under the switch in Settings.
 static INDEX_ERR: Mutex<String> = Mutex::new(String::new());
-/// Sections embedded per run; the index is saved after each.
+/// Sections embedded per run.
 const INDEX_CAP: usize = 64;
+/// While runs follow each other, the index is saved at most this often (and when they stop).
+const INDEX_SAVE: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Where the semantic index of the notes lives (#965), beside the downloaded models.
 fn index_file(app: &AppHandle, c: &Config) -> R<PathBuf> {
     Ok(embed::index_path(&app.path().app_local_data_dir().map_err(|e| e.to_string())?, &c.notes()))
+}
+
+/// The in-memory index in SLOT for PATH and MODEL, loaded on first use or when the notes folder or
+/// model changed (the old one's unsaved work written first).
+fn index_in<'a>(slot: &'a mut Option<embed::Cached>, path: &Path, model: &str) -> &'a mut embed::Cached {
+    if !slot.as_ref().is_some_and(|c| c.is(path, model)) {
+        if let Some(old) = slot.as_mut() {
+            let _ = old.save_if(std::time::Duration::ZERO);
+        }
+        *slot = Some(embed::Cached::open(path, model));
+    }
+    slot.as_mut().unwrap()
 }
 
 /// With `ai_semantic` on, bring the semantic index up to date on one background worker, INDEX_CAP
@@ -2763,6 +2792,12 @@ fn reindex(app: &AppHandle) {
                 r => break r.is_ok(),
             }
         };
+        // The runs only save every INDEX_SAVE: write the rest now, the work before an error included.
+        let saved = app.state::<App>().semantic().as_mut().map_or(Ok(()), |c| c.save_if(std::time::Duration::ZERO));
+        if let Err(e) = &saved {
+            *INDEX_ERR.lock().unwrap_or_else(|e| e.into_inner()) = e.clone();
+        }
+        let ok = ok && saved.is_ok();
         INDEXING.store(false, Ordering::SeqCst);
         let _ = app.emit("ai-index", ());
         if ok && INDEX_AGAIN.swap(false, Ordering::SeqCst) {
@@ -2787,7 +2822,13 @@ fn index_run(app: &AppHandle) -> R<usize> {
     }
     let root = c.notes();
     let files: Vec<_> = s.files().into_iter().filter(|f| !retrieve::excluded(&f.path, &root, &c.ai_exclude)).collect();
-    embed::Index::sync(&index_file(app, &c)?, model, &files, &|t| ai::embed(&c.ai_url, model, &embed::prefixed(model, false, t)), INDEX_CAP)
+    let path = index_file(app, &c)?;
+    // Held for the whole run: `update` embeds as it goes; questions meanwhile use keywords.
+    let mut g = s.semantic();
+    let ix = index_in(&mut g, &path, model);
+    let r = ix.update(&files, &|t| ai::embed(&c.ai_url, model, &embed::prefixed(model, false, t)), INDEX_CAP);
+    ix.save_if(INDEX_SAVE)?;
+    r
 }
 
 /// The semantic index as Settings shows it: bytes on disk, notes and sections in it, whether it is
@@ -2796,7 +2837,8 @@ fn index_run(app: &AppHandle) -> R<usize> {
 fn ai_index_status(app: AppHandle, s: State<App>) -> R<Value> {
     let c = s.cfg();
     let path = index_file(&app, &c)?;
-    let ix = embed::Index::load(&path, c.ai_embed_model.trim());
+    let mut g = s.semantic();
+    let ix = &index_in(&mut g, &path, c.ai_embed_model.trim()).ix;
     let bytes = std::fs::metadata(&path).map_or(0, |m| m.len());
     let sections: usize = ix.files.iter().map(|f| f.chunks.len()).sum();
     let error = INDEX_ERR.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -2810,10 +2852,14 @@ fn ai_index_rebuild(app: AppHandle, s: State<App>) -> R<()> {
         return Err("The index is being updated; try again when it's done.".into());
     }
     let path = index_file(&app, &s.cfg())?;
+    // Dropped before the file goes, so neither a question nor the run brings the old one back.
+    let mut g = s.semantic();
+    *g = None;
     match std::fs::remove_file(&path) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(format!("{}: {e}", path.display())),
         _ => {}
     }
+    drop(g);
     reindex(&app);
     Ok(())
 }
@@ -3305,7 +3351,7 @@ pub fn run() {
                 }
             };
             let profile = saved_profile(&cfg);
-            app.manage(App { cfg_path, cfg: Mutex::new(cfg), cfg_error: Mutex::new(cfg_error), profile: Mutex::new(profile), cache: Default::default(), watcher: Mutex::new(None) });
+            app.manage(App { cfg_path, cfg: Mutex::new(cfg), cfg_error: Mutex::new(cfg_error), profile: Mutex::new(profile), cache: Default::default(), watcher: Mutex::new(None), semantic: Mutex::new(None) });
             watch(app.handle());
             {
                 let c = app.state::<App>().cfg();
