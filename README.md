@@ -236,7 +236,10 @@ Publishing it makes installed copies offer the update on their next start
 passes (see above); add the `no-release` label to any open issue to pause that.
 `scripts/autopilot-forever.sh` shows a live dashboard (`scripts/autopilot-ui.mjs`):
 `d` opens what needs your decision, `n` queues a task for the agents (a title and
-optional details, filed as a normal issue that goes through triage and review).
+optional details, filed as a normal issue that goes through triage and review),
+`j`/`k` select an Up next row or open PR and `o` opens it in the browser, `?` lists all keys.
+Terminals 120 columns or wider get two columns; short ones drop Recent and the totals
+before Up next.
 
 ## Staying in sync
 
