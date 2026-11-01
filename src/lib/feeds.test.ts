@@ -10,3 +10,10 @@ test("feedsDue: off, not yet, due, never, clock backwards", () => {
   assert.equal(feedsDue(0, 6, 1e6), true);
   assert.equal(feedsDue(5000, 1, 1000), true);
 });
+
+test("feedsBlocked: only when a target is open", async () => {
+  const { feedsBlocked } = await import("./feeds.ts");
+  assert.equal(feedsBlocked(["/n/inbox.org"], ["/n/a.org"]), false);
+  assert.equal(feedsBlocked(["/n/inbox.org", "/n/r.org"], ["/n/a.org", "/n/r.org"]), true);
+  assert.equal(feedsBlocked([], ["/n/a.org"]), false);
+});
