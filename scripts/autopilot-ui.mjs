@@ -12,7 +12,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { execFile } from "node:child_process";
 import { basename } from "node:path";
-import { cut, readyRow, createArgs, issueNo, columns, budget, clip } from "./autopilot-ui-lib.mjs";
+import { cut, readyRow, createArgs, issueNo, columns, budget, keptLines, clip } from "./autopilot-ui-lib.mjs";
 
 const tty = process.stdout.isTTY;
 const logFile = process.env.AUTOPILOT_LOG;
@@ -251,10 +251,10 @@ function onKey(buf) {
   } else if (st.confirm) {
     const c = st.confirm; st.confirm = null;
     if (k === "y") c();
-  } else if (k === "n") queueTask();
+  } else if (st.help) st.help = false;   // any key only closes help
+  else if (k === "n") queueTask();
   else if (!st.panel) {
-    if (st.help) st.help = false;
-    else if (k === "d") st.panel = true;
+    if (k === "d") st.panel = true;
     else if (k === "?") st.help = true;
     else if (k === "j" || k === "\x1b[B") st.msel = Math.min(st.msel + 1, items.length - 1);
     else if (k === "k" || k === "\x1b[A") st.msel = Math.max(st.msel - 1, 0);
@@ -385,8 +385,8 @@ function render() {
   // up next
   const u = st.up, upL = [];
   const nReady = u?.ready ? Math.min(3, Math.max(0, MAX - active) || 1, u.ready.length) : 0;
-  items = u?.ready ? [...u.ready.slice(0, nReady).map((i) => ({ url: URL(i.number) })), ...u.prs.map((p) => ({ url: `https://github.com/${REPO}/pull/${p.n}` }))] : [];
-  st.msel = Math.min(st.msel, Math.max(0, items.length - 1));
+  // `line`: index in upL (ready rows start at 2, all PRs share the line after them), so clipped rows can be dropped
+  const all = u?.ready ? [...u.ready.slice(0, nReady).map((i, k) => ({ url: URL(i.number), line: 2 + k })), ...u.prs.map((p) => ({ url: `https://github.com/${REPO}/pull/${p.n}`, line: 2 + nReady }))] : [];
   upL.push(bold(" Up next") + (u?.err ? red(`  gh error: ${u.err}`) : u ? dim(`  from GitHub, ${dur(now - u.at)} ago`) : dim("  loading…")));
   if (u?.ready) {
     const free = Math.max(0, MAX - active);
@@ -400,16 +400,17 @@ function render() {
   }
 
   const totalsL = [` ${bold(st.issues)} issues${wide ? "" : " filed"} · ${bold(st.prs)} PRs${wide ? "" : " opened"} · ${green(bold(st.merges))} merged · ${st.commits} commits · ${dim(st.tools + (wide ? " tools" : " tool calls"))}`];
-  const recentL = (n, w2) => [bold(" Recent"), ...st.recent.slice(-n).map((r) => {
+  const recentL = (n, w2) => [bold(" Recent"), ...(n > 0 ? st.recent.slice(-n) : []).map((r) => {
     const txt = cut(`${r.who ? `${cut(r.who, 18)}: ` : ""}${r.line}`, w2 - 14);
     return `  ${dim(clock(r.t))} ${r.kind === "text" ? txt : dim(txt)}`;
   })];
   const more = (n) => dim(`   (+${n} more)`);
 
-  let body;
+  let body, upShown;
   if (wide) {   // left: Agents, Up next, totals; right: limits, Recent. Each column fills the rows below the head.
     const avail = rows - head.length - 3;   // minus the blank line above the columns, and blank + footer below
     const left = budget(avail - agentL.length - 1, upL.length, 2, 0, 0);
+    upShown = left.up;
     const right = budget(avail - limits.length - 2, 0, 0, 3, 14);
     body = ["", ...columns(
       [...agentL, "", ...clip(upL, left.up, more), ...(left.totals ? ["", ...totalsL] : [])],
@@ -417,10 +418,14 @@ function render() {
   } else {
     const fixed = head.length + 1 + limits.length + 1 + agentL.length + 1 + 1 + 1 + 2;   // blanks, rule, Recent title, footer
     const b = budget(rows - fixed, upL.length, 2, 3, 8);
+    upShown = b.up;
     body = ["", ...limits, "", ...agentL, "", ...clip(upL, b.up, more), ...(b.totals ? ["", ...totalsL] : []), dim("─".repeat(w)), ...recentL(b.recent, w)];
   }
+  items = all.filter((x) => x.line < keptLines(upL.length, upShown));   // j/k/o only reach rows on screen
+  st.msel = Math.min(st.msel, Math.max(0, items.length - 1));
   const hints = [todo.length || rev ? "d: decisions" : "", "n: queue task", items.length ? "j/k: select · o: open" : "", "?: help"].filter(Boolean).join("  ·  ");
-  process.stdout.write("\x1b[H\x1b[J" + [...head, ...body, "", dim(cut(` ${hints}  ·  Ctrl-C: restart`, w))].join("\n"));
+  const frame = [...head, ...body, "", dim(cut(` ${hints}  ·  Ctrl-C: restart`, w))];
+  process.stdout.write("\x1b[H\x1b[J" + frame.slice(0, rows).join("\n"));   // last resort: never scroll the screen
 }
 
 // End the run for a fresh coordinator context. Soft: ≥70% while no agent is busy. Hard: ≥90%.

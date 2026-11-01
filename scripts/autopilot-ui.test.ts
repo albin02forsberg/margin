@@ -1,7 +1,7 @@
 // Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cut, sizeOf, readyRow, createArgs, issueNo, vlen, padVisible, columns, budget, clip } from "./autopilot-ui-lib.mjs";
+import { cut, sizeOf, readyRow, createArgs, issueNo, vlen, padVisible, columns, budget, keptLines, clip } from "./autopilot-ui-lib.mjs";
 
 test("cut keeps short text and ends long text in an ellipsis", () => {
   assert.equal(cut("abc", 5), "abc");
@@ -46,13 +46,31 @@ test("budget drops Recent to its minimum, then totals, then cuts Up next", () =>
   assert.deepEqual(budget(30, 6, 2, 3, 8), { up: 6, totals: 2, recent: 8 });
   assert.deepEqual(budget(10, 6, 2, 3, 8), { up: 6, totals: 0, recent: 4 });
   assert.deepEqual(budget(8, 6, 2, 3, 8), { up: 5, totals: 0, recent: 3 });
-  assert.deepEqual(budget(2, 6, 2, 3, 8), { up: 1, totals: 0, recent: 3 });
+  assert.deepEqual(budget(2, 6, 2, 3, 8), { up: 1, totals: 0, recent: 1 });
+});
+
+test("budget never hands out more rows than there are, even when none are left", () => {
+  for (const [up, totals, rmin, rmax] of [[6, 2, 3, 8], [8, 2, 0, 0], [0, 0, 3, 14], [1, 2, 3, 8]])
+    for (let avail = -6; avail <= 20; avail++) {
+      const b = budget(avail, up, totals, rmin, rmax);
+      assert.ok(b.up + b.totals + b.recent <= Math.max(0, avail), `avail ${avail}: ${JSON.stringify(b)}`);
+      assert.ok(b.up >= 0 && b.recent >= 0 && b.up <= up, `avail ${avail}: ${JSON.stringify(b)}`);
+    }
+  assert.deepEqual(budget(-3, 6, 2, 3, 8), { up: 0, totals: 0, recent: 0 });
 });
 
 test("clip shows how many lines were cut", () => {
   const more = (n: number) => `+${n}`;
   assert.deepEqual(clip(["a", "b"], 3, more), ["a", "b"]);
   assert.deepEqual(clip(["a", "b", "c", "d"], 2, more), ["a", "+3"]);
+  assert.deepEqual(clip(["a", "b"], 0, more), []);
+});
+
+test("keptLines counts the lines clip leaves intact", () => {
+  assert.equal(keptLines(2, 3), 2);
+  assert.equal(keptLines(4, 2), 1);
+  assert.equal(keptLines(4, 1), 0);
+  assert.equal(keptLines(4, -2), 0);
 });
 
 test("issueNo reads the number from the gh output", () => {
