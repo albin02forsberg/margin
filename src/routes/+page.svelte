@@ -2221,12 +2221,24 @@
   }
 
   async function search() {
+    let latest = "";
     const h: Hit | null = await pick({
       prompt: "Search all notes",
-      hint: '"phrase" · -exclude · in:folder · re:regex · case:match',
+      hint: '"phrase" · -exclude · in:folder · re:regex · case:match · ~meaning',
       source: async (q) => {
+        latest = q;
         if (q.trim().length < 2) return [];
         try {
+          if (q.trimStart().startsWith("~")) {
+            // ~: by meaning from the semantic index (#1017). Each call embeds the query, so wait out more typing first.
+            const query = q.trimStart().slice(1).trim();
+            if (!query) return [];
+            await new Promise((r) => setTimeout(r, 400));
+            if (latest !== q) return []; // typed on: the Picker drops this result anyway
+            const found = await call<(Hit & { heading: string; score: number })[]>("semantic_search", { query, k: 20 });
+            if (!found.length) return [{ label: "Nothing in the semantic index matches", dim: true, value: null }];
+            return found.map((h) => ({ label: h.text || h.heading || h.title, detail: `${[h.title, h.heading].filter(Boolean).join(" › ")} · ${h.score.toFixed(2)}`, value: h as Hit | null }));
+          }
           return (await call<Hit[]>("notes_search", { query: q })).map((h) => ({ label: h.text, detail: `${h.title} · line ${h.line + 1}`, value: h as Hit | null }));
         } catch (e) {
           return [{ label: String(e), dim: true, value: null }]; // bad re: pattern: a row, not a flash per keystroke
