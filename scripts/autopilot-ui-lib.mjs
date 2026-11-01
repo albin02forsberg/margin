@@ -52,5 +52,20 @@ export function budget(avail, up, totals, rmin, rmax) {
 /** How many of `len` lines `clip(lines, n)` keeps intact (the rest become the "+N more" line or are gone). */
 export const keptLines = (len, n) => (len <= n ? len : Math.max(0, n - 1));
 
+/** Issue/PR an Agent tool_use is about: the first `#123` (or "issue 123" / "PR 123") in its description, else its prompt. */
+export function refOf(input) {
+  for (const s of [input?.description, input?.prompt]) {
+    const m = String(s ?? "").match(/#(\d+)|\b(?:issue|PR)\s+(\d+)/i);
+    if (m) return `#${m[1] ?? m[2]}`;
+  }
+  return "";
+}
+
+/** Merged PRs in the last hour and day, from their `mergedAt` timestamps. */
+export function throughput(mergedAt, now) {
+  const ago = mergedAt.map((t) => now - Date.parse(t));
+  return { h1: ago.filter((a) => a <= 3600e3).length, h24: ago.filter((a) => a <= 86400e3).length };
+}
+
 /** First `n` of `lines`, the last slot replaced by `more(cutCount)` when some are cut; nothing when `n` ≤ 0. */
 export const clip = (lines, n, more) => (lines.length <= n ? lines : n <= 0 ? [] : [...lines.slice(0, keptLines(lines.length, n)), more(lines.length - keptLines(lines.length, n))]);

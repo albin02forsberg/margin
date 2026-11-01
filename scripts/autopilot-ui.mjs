@@ -6,13 +6,13 @@
 //      AUTOPILOT_MAX (agent slots, default 3), AUTOPILOT_CONTEXT (context window tokens, default 200000),
 //      AUTOPILOT_REPO (default albin02forsberg/margin).
 import { createInterface } from "node:readline";
-import { appendFileSync, writeFileSync, readFileSync, openSync, mkdirSync, existsSync } from "node:fs";
+import { appendFileSync, writeFileSync, readFileSync, openSync, mkdirSync, existsSync, unlinkSync } from "node:fs";
 import { ReadStream } from "node:tty";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { execFile } from "node:child_process";
 import { basename } from "node:path";
-import { cut, readyRow, createArgs, issueNo, columns, budget, keptLines, clip } from "./autopilot-ui-lib.mjs";
+import { cut, readyRow, createArgs, issueNo, columns, budget, keptLines, clip, refOf, throughput } from "./autopilot-ui-lib.mjs";
 
 const tty = process.stdout.isTTY;
 const logFile = process.env.AUTOPILOT_LOG;
@@ -36,6 +36,7 @@ const st = {
 const OWNER = "albin02forsberg";
 const STATE_DIR = limitsFile ? dirname(limitsFile) : join(homedir(), ".cache", "margin-autopilot");
 const DISMISSED = join(STATE_DIR, "dismissed.json");
+const PAUSE = join(STATE_DIR, "PAUSE");   // while it exists the runner starts no new run (`p` toggles it)
 const standalone = process.argv.includes("--decide"); // decision panel only, no run attached
 // --sleep <until-epoch-s> <why>: the runner is waiting for a reset; keep the dashboard up until then (or STOP).
 const si = process.argv.indexOf("--sleep");
@@ -45,7 +46,7 @@ try { dismissed = new Set(JSON.parse(readFileSync(DISMISSED, "utf8"))); } catch 
 const notified = new Set();
 const rawTail = [];
 let lastBeat = 0;
-const agents = new Map(); // Agent tool_use id -> { name, born, seen, last }
+const agents = new Map(); // Agent tool_use id -> { name, ref, born, seen, last }
 
 const clock = (t = Date.now()) => new Date(t).toTimeString().slice(0, 8);
 const dur = (ms) => {
@@ -108,7 +109,7 @@ function onEvent(e) {
         count(b);
         if (b.name === "Agent") {
           const name = one(b.input?.description ?? b.input?.subagent_type ?? "agent");
-          agents.set(b.id, { name, born: Date.now(), seen: Date.now(), last: "starting…" });
+          agents.set(b.id, { name, ref: refOf(b.input), born: Date.now(), seen: Date.now(), last: "starting…" });
         }
         note(describe(b), e.parent_tool_use_id, "tool");
       }
@@ -124,10 +125,12 @@ const gh = (args) => new Promise((res, rej) => execFile("gh", args, { maxBuffer:
 const THREE_H = 3 * 3600e3;
 async function pollUp() {
   try {
-    const [iss, prs, runsJson] = await Promise.all([
+    const day = new Date(Date.now() - 86400e3).toISOString().slice(0, 19) + "Z";
+    const [iss, prs, runsJson, mergedJson] = await Promise.all([
       gh(["issue", "list", "-R", REPO, "--state", "open", "--limit", "80", "--json", "number,title,labels,assignees,comments,updatedAt"]),
       gh(["pr", "list", "-R", REPO, "--state", "open", "--json", "number,title,isDraft,statusCheckRollup"]),
       gh(["run", "list", "-R", REPO, "--branch", "main", "--workflow", "ci.yml", "--limit", "6", "--json", "status,conclusion"]),
+      gh(["pr", "list", "-R", REPO, "--state", "merged", "--search", `merged:>=${day}`, "--limit", "200", "--json", "mergedAt"]),
     ]);
     const issues = JSON.parse(iss), pulls = JSON.parse(prs), runs = JSON.parse(runsJson);
     const lab = (i) => i.labels.map((l) => l.name);
@@ -144,6 +147,7 @@ async function pollUp() {
     st.up = {
       at: Date.now(),
       ready,
+      merged: throughput(JSON.parse(mergedJson).map((p) => p.mergedAt), Date.now()),
       inProgress: live.filter((i) => i.assignees.length).length,
       unplanned: live.filter((i) => !hasC(i, "## Plan") && !i.assignees.length).length,
       decisions: live.filter((i) => lab(i).includes("needs-decision")).length,
@@ -239,6 +243,14 @@ function queueTask(title = "") {
   } };
 }
 
+// `p`: the runner starts no new run while PAUSE exists; a run in progress is never stopped.
+function togglePause() {
+  try {
+    if (existsSync(PAUSE)) { unlinkSync(PAUSE); st.msg = green("▶ resumed: the next run starts as usual"); }
+    else { mkdirSync(STATE_DIR, { recursive: true }); writeFileSync(PAUSE, ""); st.msg = yellow("⏸ paused: no new run starts (the current one finishes)"); }
+  } catch (e) { st.msg = red(`✖ pause failed: ${one(e.message).slice(0, 120)}`); }
+}
+
 function onKey(buf) {
   const k = buf.toString();
   if (k === "\x03") { process.kill(0, "SIGINT"); return; }   // raw mode turns Ctrl-C into a plain key
@@ -259,6 +271,7 @@ function onKey(buf) {
     else if (k === "j" || k === "\x1b[B") st.msel = Math.min(st.msel + 1, items.length - 1);
     else if (k === "k" || k === "\x1b[A") st.msel = Math.max(st.msel - 1, 0);
     else if (k === "o" && items[st.msel]) execFile("open", [items[st.msel].url], () => {});
+    else if (k === "p") togglePause();
   } else if (k === "d" || k === "q" || k === "\x1b") {
     if (standalone) process.exit(0);
     st.panel = false;
@@ -323,9 +336,11 @@ const HELP = [
   ["n", "queue a task for the agents (title, then details)"],
   ["j / k, ↑ / ↓", "select an Up next row or open PR"],
   ["o", "open the selected issue or PR in the browser"],
+  ["p", "pause / resume: no new run starts while paused (the current one finishes)"],
   ["?", "this help (any key closes it)"],
   ["Ctrl-C", "restart the runner"],
   ["touch ~/.cache/margin-autopilot/STOP", "stop after this run"],
+  ["touch ~/.cache/margin-autopilot/PAUSE", "same as p (rm it to resume)"],
 ];
 function renderHelp() {
   const L = [bold(cyan(" Keys")), ""];
@@ -355,9 +370,11 @@ function render() {
   else head.push(green(" ✔ nothing needs you"));
   if (st.input) head.push(inputLine());
   if (st.msg) head.push(" " + st.msg);
+  const paused = existsSync(PAUSE);   // shown always, so a forgotten PAUSE file can't silently stop all work
+  if (paused) head.push(yellow(bold(" ⏸  Paused")) + dim(" — no new run starts (a running one finishes) · press ") + bold("p") + dim(" to resume"));
   head.push(dim("─".repeat(w)));
   head.push(sleepUntil
-    ? ` 💤 ${bold("Sleeping")}  ${cut(sleepWhy, w - 40)} - next run in ${dur(sleepUntil - now)}`
+    ? ` 💤 ${bold("Sleeping")}  ${cut(sleepWhy, w - 40)}${paused ? "" : ` - next run in ${dur(sleepUntil - now)}`}`
     : ` ${cyan(spin)} ${bold("Now")}  ${cut(st.now, w - 10)}`);
 
   // usage + context
@@ -373,13 +390,13 @@ function render() {
     ` ${"Context".padEnd(8)} ${bar(cf, bw)} ${String(Math.round(cf * 100)).padStart(3)}%  ${dim(`${tok(st.ctx)} / ${tok(CTX)}${wide ? "" : " coordinator"}${st.compactions ? ` · ${st.compactions} compaction${st.compactions > 1 ? "s" : ""}` : ""}`)}`,
   ];
 
-  // agents (not selectable: names carry no reliable issue number)
+  // agents, with the issue/PR their prompt names (not selectable: that number is a best guess)
   const nameW = wide ? 20 : 30;
   const agentL = [bold(" Agents") + dim(`  ${active}/${MAX} slots busy · ${st.agents} started this run`)];
   if (!live.length) agentL.push(dim("   none running"));
   for (const a of live.slice(0, 5)) {
     const dot = now - a.seen < 30e3 ? green("●") : yellow("●");
-    agentL.push(`   ${dot} ${cut(a.name, nameW).padEnd(nameW)} ${dim(dur(now - a.born).padStart(7))}  ${dim(cut(a.last, cw - nameW - 16))}`);
+    agentL.push(`   ${dot} ${cut(a.name, nameW).padEnd(nameW)} ${cyan((a.ref ?? "").padEnd(6))} ${dim(dur(now - a.born).padStart(7))}  ${dim(cut(a.last, cw - nameW - 23))}`);
   }
 
   // up next
@@ -395,7 +412,7 @@ function render() {
     const pr = (p, k) => { const s = `#${p.n} ${p.ci === "green" ? green("green") : p.ci === "failing" ? red("failing") : yellow("pending")}`; return k + nReady === st.msel ? bold(cyan("▶")) + s : s; };
     upL.push(`   ${bold(u.unplanned)} to triage · PRs: ${u.prs.length ? u.prs.map(pr).join(", ") : dim("none open")}`);
     const full = u.ready.length >= 2 * MAX;
-    upL.push(`   main CI ${u.mainCi === "green" ? green("green") : u.mainCi === "failing" ? yellow("last run failed") : red(bold("RED, 3 failures in a row"))}`);
+    upL.push(`   main CI ${u.mainCi === "green" ? green("green") : u.mainCi === "failing" ? yellow("last run failed") : red(bold("RED, 3 failures in a row"))}${u.merged ? ` · merged ${bold(u.merged.h1)} in 1h, ${bold(u.merged.h24)} in 24h` : ""}`);
     upL.push(`   scout ${dim(due(u.scoutAt, now))} · ideator ${full ? dim(`idle, queue ≥ ${2 * MAX}`) : dim(due(u.ideatorAt, now))} · triager ${dim("watching")}`);
   }
 
@@ -423,7 +440,7 @@ function render() {
   }
   items = all.filter((x) => x.line < keptLines(upL.length, upShown));   // j/k/o only reach rows on screen
   st.msel = Math.min(st.msel, Math.max(0, items.length - 1));
-  const hints = [todo.length || rev ? "d: decisions" : "", "n: queue task", items.length ? "j/k: select · o: open" : "", "?: help"].filter(Boolean).join("  ·  ");
+  const hints = [todo.length || rev ? "d: decisions" : "", "n: queue task", items.length ? "j/k: select · o: open" : "", paused ? "p: resume" : "p: pause", "?: help"].filter(Boolean).join("  ·  ");
   const frame = [...head, ...body, "", dim(cut(` ${hints}  ·  Ctrl-C: restart`, w))];
   process.stdout.write("\x1b[H\x1b[J" + frame.slice(0, rows).join("\n"));   // last resort: never scroll the screen
 }

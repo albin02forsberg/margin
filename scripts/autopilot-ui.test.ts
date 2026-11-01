@@ -1,7 +1,7 @@
 // Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cut, sizeOf, readyRow, createArgs, issueNo, vlen, padVisible, columns, budget, keptLines, clip } from "./autopilot-ui-lib.mjs";
+import { cut, sizeOf, readyRow, createArgs, issueNo, vlen, padVisible, columns, budget, keptLines, clip, refOf, throughput } from "./autopilot-ui-lib.mjs";
 
 test("cut keeps short text and ends long text in an ellipsis", () => {
   assert.equal(cut("abc", 5), "abc");
@@ -71,6 +71,20 @@ test("keptLines counts the lines clip leaves intact", () => {
   assert.equal(keptLines(4, 2), 1);
   assert.equal(keptLines(4, 1), 0);
   assert.equal(keptLines(4, -2), 0);
+});
+
+test("refOf finds the issue or PR an agent works on", () => {
+  assert.equal(refOf({ description: "Implement #1007 part B", prompt: "see #12" }), "#1007");
+  assert.equal(refOf({ description: "shepherd", prompt: "Review PR 1012 and merge it" }), "#1012");
+  assert.equal(refOf({ description: "scout pass", prompt: "scan main" }), "");
+  assert.equal(refOf(undefined), "");
+});
+
+test("throughput counts merges in the last hour and day", () => {
+  const now = Date.parse("2026-11-01T12:00:00Z");
+  const t = ["2026-11-01T11:30:00Z", "2026-11-01T02:00:00Z", "2026-10-31T11:00:00Z"];
+  assert.deepEqual(throughput(t, now), { h1: 1, h24: 2 });
+  assert.deepEqual(throughput([], now), { h1: 0, h24: 0 });
 });
 
 test("issueNo reads the number from the gh output", () => {
