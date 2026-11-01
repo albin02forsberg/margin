@@ -2645,6 +2645,21 @@ fn ai_retrieve(app: AppHandle, s: State<App>, question: String, open: Option<Pat
     out
 }
 
+/// The K notes closest in meaning to the note at PATH, from the semantic index with no embedding
+/// call (#1016); empty while the index is being updated or the note isn't in it yet.
+#[tauri::command(async)]
+fn ai_related(app: AppHandle, s: State<App>, path: PathBuf, k: usize) -> R<Vec<embed::Found>> {
+    s.check(&path)?;
+    let c = s.cfg();
+    let model = semantic_model(&c)?;
+    let file = index_file(&app, &c)?;
+    let hits: Vec<_> = match s.semantic_now() {
+        Some(mut g) => index_in(&mut g, &file, model).ix.related(&path, k.clamp(1, 100)).into_iter().map(|(p, l, c)| (p.to_path_buf(), l, c)).collect(),
+        None => vec![],
+    };
+    Ok(embed::found(&s.files(), &hits))
+}
+
 /// The model's answer to the chat MESSAGES, about the open NOTE (name, text; left out when the note
 /// at OPEN is excluded) and the SOURCES from ai_retrieve if given; the raw answer streams to
 /// ON_PIECE as it comes, and the cleaned one is returned. With `ai_tools` (Ollama, SOURCES given)
@@ -3432,7 +3447,7 @@ pub fn run() {
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, people_last, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, ai_index_status, ai_index_rebuild, semantic_search, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, ai_index_status, ai_index_rebuild, semantic_search, ai_related, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, fetch_feeds, feeds_opml, mark_feeds_seen, feeds_last, babel::babel_run
         ])
         .build(tauri::generate_context!())

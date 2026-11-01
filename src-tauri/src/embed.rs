@@ -211,6 +211,28 @@ impl Index {
     }
 
     /// MAGIC, then little-endian u32 VERSION, model, dim and file count; per file its path, u64
+    /// The K notes most like the one at PATH, best first, as the best section of each (path, line,
+    /// score): the mean of PATH's section vectors (normalised) ranked by top_k, PATH itself left out
+    /// (#1016). Empty when PATH isn't indexed.
+    pub fn related(&self, path: &Path, k: usize) -> Vec<(&Path, usize, f32)> {
+        let Some(f) = self.files.iter().find(|f| f.path == path) else { return vec![] };
+        let vs: Vec<&Vec<f32>> = f.chunks.iter().map(|c| &c.vec).filter(|v| !v.is_empty() && v.len() == self.dim).collect();
+        if vs.is_empty() {
+            return vec![];
+        }
+        let mut mean = vec![0f32; self.dim];
+        for v in &vs {
+            let n = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(f32::MIN_POSITIVE);
+            mean.iter_mut().zip(v.iter()).for_each(|(m, x)| *m += x / n);
+        }
+        let mut seen = std::collections::HashSet::from([path]);
+        // All sections ranked (top_k sorts them all anyway), then the best of each other note.
+        let mut out = self.top_k(&mean, usize::MAX);
+        out.retain(|h| seen.insert(h.0));
+        out.truncate(k);
+        out
+    }
+
     /// mtime and chunk count; per chunk u32 line, u64 hash and DIM f32s. Strings are u32 length + UTF-8.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut b = MAGIC.to_vec();
@@ -393,6 +415,29 @@ mod tests {
         assert_eq!(top, [("/a", 0), ("/b", 3)]);
         assert_eq!(ix.top_k(&[0.0, 1.0], 9).len(), 3); // a zero vector never matches
         assert!(ix.top_k(&[0.0, 0.0], 9).is_empty() && ix.top_k(&[1.0], 9).is_empty());
+    }
+
+    #[test]
+    fn related_averages_and_skips_itself() {
+        let log = RefCell::new(vec![]);
+        let mut ix = Index::new("m");
+        // fake counts a, e, o: A's sections average to "a and e", like C's best section; B is all o.
+        let notes = [
+            note("/n/a.org", "#+title: X\n* S\naaaa\n* T\neeee\n", 1),
+            note("/n/b.org", "#+title: X\n* U\noooooooo\n* V\nooooooo a\n", 1),
+            note("/n/c.org", "#+title: X\n* W\nooooooo\n* Y\naaaa eeee\n", 1),
+            note("/n/d.org", "#+title: X\n", 1),
+        ];
+        ix.update(&notes, &fake(&log), 100).unwrap();
+        let got: Vec<_> = ix.related(Path::new("/n/a.org"), 5).into_iter().map(|(p, l, _)| (p.to_str().unwrap(), l)).collect();
+        assert_eq!(got, [("/n/c.org", 3), ("/n/b.org", 3)]); // best section per note, A left out
+        assert_eq!(ix.related(Path::new("/n/a.org"), 1).len(), 1);
+        assert!(ix.related(Path::new("/n/d.org"), 5).is_empty()); // no sections
+        assert!(ix.related(Path::new("/n/new.org"), 5).is_empty()); // not indexed
+        // A wrong-length vector is skipped; a zero mean finds nothing.
+        ix.files[0].chunks.iter_mut().for_each(|c| c.vec = vec![0.0; 3]);
+        ix.files[0].chunks[0].vec = vec![1.0];
+        assert!(ix.related(Path::new("/n/a.org"), 5).is_empty());
     }
 
     #[test]

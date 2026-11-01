@@ -2253,6 +2253,15 @@
     if (h) await openFile(h.path, h.line);
   }
 
+  /** Space s r: the notes closest in meaning to this one, from the semantic index; Enter jumps to the section (#1016). */
+  async function relatedNotes() {
+    if (!inFile()) return flash("Open a note first.");
+    const found: (Hit & { heading: string; score: number })[] = await call("ai_related", { path: tab.path, k: 15 }); // why not (off, no Ollama) is flashed by act
+    if (!found.length) return flash("Nothing related yet: the note isn't in the semantic index (or it is being updated).");
+    const h = await pick({ prompt: "Related notes (by meaning)", items: found.map((h) => ({ label: h.title, detail: `${h.heading ? `${h.heading} · ` : ""}${h.score.toFixed(2)}`, value: h as unknown })) });
+    if (h) await openFile((h as Hit).path, (h as Hit).line);
+  }
+
   /** Space s o: lines of this note matching a search (words, "phrase", -word, /regex/), with heading paths; Enter jumps (#769). */
   async function occur() {
     if (!inFile()) return flash("Open a note first");
@@ -3137,6 +3146,7 @@
     { label: "Command palette", keys: ["Ctrl+K"], leader: "SPC", run: () => palette() },
     { label: "Open note…", keys: ["Ctrl+P"], leader: ".", run: quickOpen },
     { label: "Search in this note (occur)…", leader: "s o", run: occur },
+    { label: "Related notes (by meaning)…", leader: "s r", run: () => act(relatedNotes) },
     { label: "Search in all notes", keys: ["Ctrl+Shift+F"], leader: "/", run: search },
     { label: "New task", keys: ["Ctrl+N"], leader: "a", run: () => newTask() },
     { label: "Capture with template…", leader: "c", run: captureTemplate },
