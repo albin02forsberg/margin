@@ -38,14 +38,19 @@ export function columns(left, right, lw, sep = " │ ") {
 
 /**
  * Lines per section when `avail` rows are left for Up next (`up` lines), totals (`totals` lines) and Recent
- * (`rmin`..`rmax`). Recent shrinks to its minimum first, then totals go, then Up next is cut (never below 1).
+ * (`rmin`..`rmax`). Recent shrinks to its minimum first, then totals go, then Up next is cut (to 1 while there
+ * is room, then Recent too). The parts never add up to more than `avail` (none at all when it is negative).
  */
 export function budget(avail, up, totals, rmin, rmax) {
-  const r = Math.min(rmax, avail - up - totals);
+  const a = Math.max(0, avail), r = Math.min(rmax, a - up - totals);
   if (r >= rmin) return { up, totals, recent: r };
-  if (avail - up >= rmin) return { up, totals: 0, recent: Math.min(rmax, avail - up) };
-  return { up: Math.max(1, Math.min(up, avail - rmin)), totals: 0, recent: rmin };
+  if (a - up >= rmin) return { up, totals: 0, recent: Math.min(rmax, a - up) };
+  const u = Math.min(up, a, Math.max(1, a - rmin));
+  return { up: u, totals: 0, recent: Math.min(rmin, a - u) };
 }
 
-/** First `n` of `lines`, the last slot replaced by `more(cutCount)` when some are cut. */
-export const clip = (lines, n, more) => (lines.length <= n ? lines : [...lines.slice(0, Math.max(0, n - 1)), more(lines.length - Math.max(0, n - 1))]);
+/** How many of `len` lines `clip(lines, n)` keeps intact (the rest become the "+N more" line or are gone). */
+export const keptLines = (len, n) => (len <= n ? len : Math.max(0, n - 1));
+
+/** First `n` of `lines`, the last slot replaced by `more(cutCount)` when some are cut; nothing when `n` ≤ 0. */
+export const clip = (lines, n, more) => (lines.length <= n ? lines : n <= 0 ? [] : [...lines.slice(0, keptLines(lines.length, n)), more(lines.length - keptLines(lines.length, n))]);

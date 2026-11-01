@@ -239,7 +239,7 @@ passes (see above); add the `no-release` label to any open issue to pause that.
 optional details, filed as a normal issue that goes through triage and review),
 `j`/`k` select an Up next row or open PR and `o` opens it in the browser, `?` lists all keys.
 Terminals 120 columns or wider get two columns; short ones drop Recent and the totals
-before Up next.
+before Up next, and the dashboard never draws past the bottom row (`j`/`k` only reach rows on screen).
 
 ## Staying in sync
 
