@@ -52,7 +52,7 @@
   import { chatContext, mergeSources, type ToolEvent } from "$lib/chatctx";
   import { bugReportUrl, isError, osName } from "$lib/bugreport";
   import { notesText, notesTitle, notesToShow, type Notes } from "$lib/whatsnew";
-  import { feedsDue } from "$lib/feeds";
+  import { feedsBlocked, feedsDue } from "$lib/feeds";
   import { dayTime, focusLeft, inactiveStamp, naive, overLong, parseWhen, worked, type WeekDay } from "$lib/clock";
   import { shutdownKeys, shutdownTasks, summarise, type ShutdownAction } from "$lib/shutdown";
   import { morningKeys, planCandidates, planSummary, type MorningAction } from "$lib/morning";
@@ -875,12 +875,12 @@
   }
 
   /** Apply an async text transform to a file, through its open tab if there is one. */
-  async function toFile(path: string, f: (text: string) => Promise<string>) {
+  async function toFile(path: string, f: (text: string) => Promise<string>, record = true) {
     const t = fileTab(path);
     const old = await textOf(path);
     const next = await f(old);
     if (next === old) return;
-    if (recording && !recording.texts.some((r) => r.path === path)) recording.texts.push({ path, text: old });
+    if (record && recording && !recording.texts.some((r) => r.path === path)) recording.texts.push({ path, text: old });
     if (!t) {
       const warn: string = await call("write_file", { path, text: next });
       if (warn) flash(`⚠ ${warn}`);
@@ -1591,21 +1591,22 @@
     flash(`✓ Captured “${t.name}” to ${rel(path)}`);
   }
 
-  /** Fetch the [[feeds]] and file their new items (one undo group); they count as seen only once filed. */
+  /** Fetch the [[feeds]] and file their new items (one undo group, none when QUIET: a background run must not join or add one); they count as seen only once filed. */
   async function fetchFeeds(quiet = false) {
     if (!cfg.config.feeds?.length) return quiet || flash("No feeds yet: add RSS or Atom URLs in Settings → Feeds.");
     if (!quiet) flash("Fetching feeds…");
     type Fetched = { items: { file: string; heading: string; entry: string }[]; seen: Record<string, string[]>; errors: string[] };
     const r = await call<Fetched>("fetch_feeds");
-    await recorded(async () => {
+    const run = async () => {
       for (const file of new Set(r.items.map((i) => i.file))) {
         const path: string = await call("capture_path", { file });
         await toFile(path, async (text) => {
           for (const i of r.items) if (i.file === file) text = await call("capture_insert", { text, heading: i.heading, entry: i.entry });
           return text;
-        });
+        }, !quiet);
       }
-    });
+    };
+    await (quiet ? run() : recorded(run));
     await call("mark_feeds_seen", { seen: r.seen });
     const n = r.items.length;
     if (quiet && !n && !r.errors.length) return;
@@ -1620,8 +1621,12 @@
     const last = await call<number | null>("feeds_last");
     if (!feedsDue(Math.max(last ?? 0, feedsTried / 1000), h, Date.now() / 1000)) return;
     feedsBusy = true;
-    feedsTried = Date.now();
-    try { await fetchFeeds(true); } catch (e) { if (Date.now() - feedsFlashed > 864e5) (feedsFlashed = Date.now(), flash(`⚠ feeds: ${e}`)); } finally { feedsBusy = false; }
+    try {
+      const targets: string[] = await Promise.all([...new Set((cfg.config.feeds ?? []).map((f: { file: string }) => f.file))].map((file) => call<string>("capture_path", { file })));
+      if (feedsBlocked(targets, tabs.flatMap((t) => (t.kind === "file" && t.path ? [t.path] : [])))) return;
+      feedsTried = Date.now();
+      await fetchFeeds(true);
+    } catch (e) { if (Date.now() - feedsFlashed > 864e5) (feedsFlashed = Date.now(), flash(`⚠ feeds: ${e}`)); } finally { feedsBusy = false; }
   }
 
   async function insertDate() {

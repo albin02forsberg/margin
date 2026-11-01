@@ -579,7 +579,7 @@ timeout) is named in the message and the others still run. Only the first 2 MB
 of each feed is read. Nothing is fetched until you run the command, unless you
 set `feeds_auto_hours` (e.g. 6; 0 = off, the default): Margin then fetches in the
 background that often while it runs (checked once a minute, the time of the last
-fetch is kept in `feeds_last.txt`), never while a dialog or picker is open, and
+fetch is kept in `feeds_last.txt`), never while a dialog or picker is open or a note it files to is open in a tab (it waits), not as an undo step, and
 only says something when there are new items or an error. Edit the
 list in the settings page's "Feeds" group (its "Import OPML" field takes the
 absolute path of an OPML export from another reader and adds the feeds not
