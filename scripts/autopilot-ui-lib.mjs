@@ -19,3 +19,33 @@ export const createArgs = (repo, title, body) => ["issue", "create", "-R", repo,
 
 /** Issue number from `gh issue create` output (it prints the new issue URL). */
 export const issueNo = (out) => out.match(/\/issues\/(\d+)/)?.[1] ?? "";
+
+const ANSI = /\x1b\[[0-9;]*m/g;
+/** Terminal cells of `s`: ANSI codes count 0, emoji and CJK 2, the rest 1. */
+export function vlen(s) {
+  let n = 0;
+  for (const ch of s.replace(ANSI, "")) { const c = ch.codePointAt(0); n += c >= 0x1f300 || (c >= 0x1100 && c <= 0x115f) || (c >= 0x2e80 && c <= 0xa4cf) || (c >= 0xff00 && c <= 0xff60) ? 2 : 1; }
+  return n;
+}
+
+/** Pads `s` with spaces to `w` visible cells (ANSI-aware); longer strings are left as is. */
+export const padVisible = (s, w) => s + " ".repeat(Math.max(0, w - vlen(s)));
+
+/** Puts line arrays side by side: left padded to `lw` cells, `sep` between. */
+export function columns(left, right, lw, sep = " │ ") {
+  return Array.from({ length: Math.max(left.length, right.length) }, (_, i) => padVisible(left[i] ?? "", lw) + sep + (right[i] ?? ""));
+}
+
+/**
+ * Lines per section when `avail` rows are left for Up next (`up` lines), totals (`totals` lines) and Recent
+ * (`rmin`..`rmax`). Recent shrinks to its minimum first, then totals go, then Up next is cut (never below 1).
+ */
+export function budget(avail, up, totals, rmin, rmax) {
+  const r = Math.min(rmax, avail - up - totals);
+  if (r >= rmin) return { up, totals, recent: r };
+  if (avail - up >= rmin) return { up, totals: 0, recent: Math.min(rmax, avail - up) };
+  return { up: Math.max(1, Math.min(up, avail - rmin)), totals: 0, recent: rmin };
+}
+
+/** First `n` of `lines`, the last slot replaced by `more(cutCount)` when some are cut. */
+export const clip = (lines, n, more) => (lines.length <= n ? lines : [...lines.slice(0, Math.max(0, n - 1)), more(lines.length - Math.max(0, n - 1))]);

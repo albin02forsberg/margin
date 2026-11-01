@@ -12,7 +12,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { execFile } from "node:child_process";
 import { basename } from "node:path";
-import { cut, readyRow, createArgs, issueNo } from "./autopilot-ui-lib.mjs";
+import { cut, readyRow, createArgs, issueNo, columns, budget, clip } from "./autopilot-ui-lib.mjs";
 
 const tty = process.stdout.isTTY;
 const logFile = process.env.AUTOPILOT_LOG;
@@ -31,7 +31,7 @@ const started = Date.now();
 const st = {
   tools: 0, agents: 0, issues: 0, prs: 0, merges: 0, commits: 0, model: "", now: "starting…", recent: [],
   ctx: 0, compactions: 0, limits: null, up: null, rotating: false,
-  needs: [], panel: false, sel: 0, input: null, confirm: null, msg: "",
+  needs: [], panel: false, sel: 0, msel: 0, help: false, input: null, confirm: null, msg: "",
 };
 const OWNER = "albin02forsberg";
 const STATE_DIR = limitsFile ? dirname(limitsFile) : join(homedir(), ".cache", "margin-autopilot");
@@ -54,7 +54,7 @@ const dur = (ms) => {
 };
 const one = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
 const tok = (n) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
-const bar = (f, w = 20) => {
+const bar = (f, w = 20) => {  // w cells wide
   const x = Math.max(0, Math.min(1, f)), n = Math.round(x * w);
   const col = x >= 0.9 ? red : x >= 0.7 ? yellow : green;
   return col("█".repeat(n)) + dim("░".repeat(w - n));
@@ -253,7 +253,12 @@ function onKey(buf) {
     if (k === "y") c();
   } else if (k === "n") queueTask();
   else if (!st.panel) {
-    if (k === "d") st.panel = true;
+    if (st.help) st.help = false;
+    else if (k === "d") st.panel = true;
+    else if (k === "?") st.help = true;
+    else if (k === "j" || k === "\x1b[B") st.msel = Math.min(st.msel + 1, items.length - 1);
+    else if (k === "k" || k === "\x1b[A") st.msel = Math.max(st.msel - 1, 0);
+    else if (k === "o" && items[st.msel]) execFile("open", [items[st.msel].url], () => {});
   } else if (k === "d" || k === "q" || k === "\x1b") {
     if (standalone) process.exit(0);
     st.panel = false;
@@ -312,77 +317,110 @@ function resetText(ts, long) {
 }
 function due(at, now) { return at == null ? "due now" : at <= now ? "due now" : `in ${dur(at - now)}`; }
 
+let items = [];   // what j/k/o can act on in the main view, rebuilt on every render: Up next rows, then open PRs
+const HELP = [
+  ["d", "decisions: approve / reject / comment / hold (inside: a r c h x o, ↑↓)"],
+  ["n", "queue a task for the agents (title, then details)"],
+  ["j / k, ↑ / ↓", "select an Up next row or open PR"],
+  ["o", "open the selected issue or PR in the browser"],
+  ["?", "this help (any key closes it)"],
+  ["Ctrl-C", "restart the runner"],
+  ["touch ~/.cache/margin-autopilot/STOP", "stop after this run"],
+];
+function renderHelp() {
+  const L = [bold(cyan(" Keys")), ""];
+  for (const [k, d] of HELP) L.push(`  ${bold(k.padEnd(12))} ${d}`);
+  process.stdout.write("\x1b[H\x1b[J" + L.join("\n"));
+}
+
 function render() {
   if (standalone || st.panel) return renderPanel();
-  const w = Math.max(60, process.stdout.columns || 80);
-  const rows = process.stdout.rows || 40;
+  if (st.help) return renderHelp();
+  const cols = process.stdout.columns || 80, w = Math.max(60, cols), rows = process.stdout.rows || 40;
+  const wide = cols >= 120;                       // two columns: Agents + Up next | limits + Recent
+  const cw = wide ? Math.floor((w - 3) / 2) : w, rw = w - 3 - cw;
   const spin = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"[Math.floor(Date.now() / 100) % 10];
   const now = Date.now();
   const live = [...agents.values()].filter((a) => now - a.seen < 15 * 60e3).sort((a, b) => b.seen - a.seen);
   const active = live.filter((a) => now - a.seen < 30e3).length;
-  const L = [];
-  L.push(bold(cyan(" Margin autopilot")) + dim(`  up ${dur(now - started)}${st.model ? `  ·  ${st.model}` : ""}`));
-  L.push(dim("─".repeat(w)));
+  const head = [];
+  head.push(bold(cyan(" Margin autopilot")) + dim(`  up ${dur(now - started)}${st.model ? `  ·  ${st.model}` : ""}`));
+  head.push(dim("─".repeat(w)));
   const todo = st.needs.filter((n) => n.kind !== "review"), rev = st.needs.length - todo.length;
   if (todo.length) {
-    L.push(yellow(bold(` ⚠  ${todo.length} need${todo.length === 1 ? "s" : ""} your decision`)) + dim(`  — press `) + bold("d") + dim(" to approve / reject / comment"));
-    for (const n of todo.slice(0, 3)) L.push(`    ${yellow("▸")} #${n.n} ${cut(n.title, w - 22)} ${dim(n.label)}`);
-    if (todo.length > 3) L.push(dim(`    … and ${todo.length - 3} more`));
-  } else if (rev) L.push(dim(` ${rev} autonomous decision${rev === 1 ? "" : "s"} to review (optional) — press `) + bold("d"));
-  else L.push(green(" ✔ nothing needs you"));
-  if (st.input) L.push(inputLine());
-  if (st.msg) L.push(" " + st.msg);
-  L.push(dim("─".repeat(w)));
-  L.push(sleepUntil
+    head.push(yellow(bold(` ⚠  ${todo.length} need${todo.length === 1 ? "s" : ""} your decision`)) + dim(`  — press `) + bold("d") + dim(" to approve / reject / comment"));
+    for (const n of todo.slice(0, 3)) head.push(`    ${yellow("▸")} #${n.n} ${cut(n.title, w - 22)} ${dim(n.label)}`);
+    if (todo.length > 3) head.push(dim(`    … and ${todo.length - 3} more`));
+  } else if (rev) head.push(dim(` ${rev} autonomous decision${rev === 1 ? "" : "s"} to review (optional) — press `) + bold("d"));
+  else head.push(green(" ✔ nothing needs you"));
+  if (st.input) head.push(inputLine());
+  if (st.msg) head.push(" " + st.msg);
+  head.push(dim("─".repeat(w)));
+  head.push(sleepUntil
     ? ` 💤 ${bold("Sleeping")}  ${cut(sleepWhy, w - 40)} - next run in ${dur(sleepUntil - now)}`
     : ` ${cyan(spin)} ${bold("Now")}  ${cut(st.now, w - 10)}`);
 
   // usage + context
-  L.push("");
   const lim = st.limits, win = lim?.unifiedWindows ?? {};
-  const fh = win.five_hour, sd = win.seven_day;
+  const fh = win.five_hour, sd = win.seven_day, bw = wide ? 12 : 20;
   const limRow = (name, x, long) => x
-    ? ` ${name.padEnd(8)} ${bar(x.utilization)} ${String(Math.round(x.utilization * 100)).padStart(3)}%  ${dim(resetText(x.resetsAt, long))}`
+    ? ` ${name.padEnd(8)} ${bar(x.utilization, bw)} ${String(Math.round(x.utilization * 100)).padStart(3)}%  ${dim(resetText(x.resetsAt, long))}`
     : ` ${name.padEnd(8)} ${dim("waiting for first API reply…")}`;
-  L.push(limRow("5h limit", fh, false));
-  L.push(limRow("Weekly", sd, true) + (lim && lim.status !== "allowed" ? "  " + red(bold(lim.status === "rejected" ? "LIMIT HIT" : lim.status)) : ""));
   const cf = st.ctx / CTX;
-  L.push(` ${"Context".padEnd(8)} ${bar(cf)} ${String(Math.round(cf * 100)).padStart(3)}%  ${dim(`${tok(st.ctx)} / ${tok(CTX)} coordinator${st.compactions ? ` · ${st.compactions} compaction${st.compactions > 1 ? "s" : ""}` : ""}`)}`);
+  const limits = [
+    limRow("5h limit", fh, false),
+    limRow("Weekly", sd, true) + (lim && lim.status !== "allowed" ? "  " + red(bold(lim.status === "rejected" ? "LIMIT HIT" : lim.status)) : ""),
+    ` ${"Context".padEnd(8)} ${bar(cf, bw)} ${String(Math.round(cf * 100)).padStart(3)}%  ${dim(`${tok(st.ctx)} / ${tok(CTX)}${wide ? "" : " coordinator"}${st.compactions ? ` · ${st.compactions} compaction${st.compactions > 1 ? "s" : ""}` : ""}`)}`,
+  ];
 
-  // agents
-  L.push("");
-  L.push(bold(" Agents") + dim(`  ${active}/${MAX} slots busy · ${st.agents} started this run`));
-  if (!live.length) L.push(dim("   none running"));
+  // agents (not selectable: names carry no reliable issue number)
+  const nameW = wide ? 20 : 30;
+  const agentL = [bold(" Agents") + dim(`  ${active}/${MAX} slots busy · ${st.agents} started this run`)];
+  if (!live.length) agentL.push(dim("   none running"));
   for (const a of live.slice(0, 5)) {
     const dot = now - a.seen < 30e3 ? green("●") : yellow("●");
-    L.push(`   ${dot} ${cut(a.name, 30).padEnd(30)} ${dim(dur(now - a.born).padStart(7))}  ${dim(cut(a.last, w - 46))}`);
+    agentL.push(`   ${dot} ${cut(a.name, nameW).padEnd(nameW)} ${dim(dur(now - a.born).padStart(7))}  ${dim(cut(a.last, cw - nameW - 16))}`);
   }
 
   // up next
-  L.push("");
-  const u = st.up;
-  L.push(bold(" Up next") + (u?.err ? red(`  gh error: ${u.err}`) : u ? dim(`  from GitHub, ${dur(now - u.at)} ago`) : dim("  loading…")));
+  const u = st.up, upL = [];
+  const nReady = u?.ready ? Math.min(3, Math.max(0, MAX - active) || 1, u.ready.length) : 0;
+  items = u?.ready ? [...u.ready.slice(0, nReady).map((i) => ({ url: URL(i.number) })), ...u.prs.map((p) => ({ url: `https://github.com/${REPO}/pull/${p.n}` }))] : [];
+  st.msel = Math.min(st.msel, Math.max(0, items.length - 1));
+  upL.push(bold(" Up next") + (u?.err ? red(`  gh error: ${u.err}`) : u ? dim(`  from GitHub, ${dur(now - u.at)} ago`) : dim("  loading…")));
   if (u?.ready) {
     const free = Math.max(0, MAX - active);
-    L.push(`   ${bold(u.ready.length)} ready to build · ${u.inProgress} in progress · ${free} free slot${free === 1 ? "" : "s"}`);
-    for (const i of u.ready.slice(0, Math.min(3, free || 1))) L.push(`   ${cyan("▸")} ${dim(readyRow(i, w - 6))}`);
-    L.push(`   ${bold(u.unplanned)} to triage · PRs: ${u.prs.length ? u.prs.map((p) => `#${p.n} ${p.ci === "green" ? green("green") : p.ci === "failing" ? red("failing") : yellow("pending")}`).join(", ") : dim("none open")}`);
+    upL.push(`   ${bold(u.ready.length)} ready to build · ${u.inProgress} in progress · ${free} free slot${free === 1 ? "" : "s"}`);
+    u.ready.slice(0, nReady).forEach((i, k) => upL.push(`   ${k === st.msel ? cyan("▶") : cyan("▸")} ${k === st.msel ? readyRow(i, cw - 6) : dim(readyRow(i, cw - 6))}`));
+    const pr = (p, k) => { const s = `#${p.n} ${p.ci === "green" ? green("green") : p.ci === "failing" ? red("failing") : yellow("pending")}`; return k + nReady === st.msel ? bold(cyan("▶")) + s : s; };
+    upL.push(`   ${bold(u.unplanned)} to triage · PRs: ${u.prs.length ? u.prs.map(pr).join(", ") : dim("none open")}`);
     const full = u.ready.length >= 2 * MAX;
-    L.push(`   main CI ${u.mainCi === "green" ? green("green") : u.mainCi === "failing" ? yellow("last run failed") : red(bold("RED, 3 failures in a row"))}`);
-    L.push(`   scout ${dim(due(u.scoutAt, now))} · ideator ${full ? dim(`idle, queue ≥ ${2 * MAX}`) : dim(due(u.ideatorAt, now))} · triager ${dim("watching")}`);
+    upL.push(`   main CI ${u.mainCi === "green" ? green("green") : u.mainCi === "failing" ? yellow("last run failed") : red(bold("RED, 3 failures in a row"))}`);
+    upL.push(`   scout ${dim(due(u.scoutAt, now))} · ideator ${full ? dim(`idle, queue ≥ ${2 * MAX}`) : dim(due(u.ideatorAt, now))} · triager ${dim("watching")}`);
   }
 
-  L.push("");
-  L.push(` ${bold(st.issues)} issues filed · ${bold(st.prs)} PRs opened · ${green(bold(st.merges))} merged · ${st.commits} commits · ${dim(st.tools + " tool calls")}`);
-  L.push(dim("─".repeat(w)));
-  const room = Math.max(3, Math.min(8, rows - L.length - 3));
-  L.push(bold(" Recent"));
-  for (const r of st.recent.slice(-room)) {
-    const txt = cut(`${r.who ? `${cut(r.who, 18)}: ` : ""}${r.line}`, w - 14);
-    L.push(`  ${dim(clock(r.t))} ${r.kind === "text" ? txt : dim(txt)}`);
+  const totalsL = [` ${bold(st.issues)} issues${wide ? "" : " filed"} · ${bold(st.prs)} PRs${wide ? "" : " opened"} · ${green(bold(st.merges))} merged · ${st.commits} commits · ${dim(st.tools + (wide ? " tools" : " tool calls"))}`];
+  const recentL = (n, w2) => [bold(" Recent"), ...st.recent.slice(-n).map((r) => {
+    const txt = cut(`${r.who ? `${cut(r.who, 18)}: ` : ""}${r.line}`, w2 - 14);
+    return `  ${dim(clock(r.t))} ${r.kind === "text" ? txt : dim(txt)}`;
+  })];
+  const more = (n) => dim(`   (+${n} more)`);
+
+  let body;
+  if (wide) {   // left: Agents, Up next, totals; right: limits, Recent. Each column fills the rows below the head.
+    const avail = rows - head.length - 3;   // minus the blank line above the columns, and blank + footer below
+    const left = budget(avail - agentL.length - 1, upL.length, 2, 0, 0);
+    const right = budget(avail - limits.length - 2, 0, 0, 3, 14);
+    body = ["", ...columns(
+      [...agentL, "", ...clip(upL, left.up, more), ...(left.totals ? ["", ...totalsL] : [])],
+      [...limits, "", ...recentL(right.recent, rw)], cw)];
+  } else {
+    const fixed = head.length + 1 + limits.length + 1 + agentL.length + 1 + 1 + 1 + 2;   // blanks, rule, Recent title, footer
+    const b = budget(rows - fixed, upL.length, 2, 3, 8);
+    body = ["", ...limits, "", ...agentL, "", ...clip(upL, b.up, more), ...(b.totals ? ["", ...totalsL] : []), dim("─".repeat(w)), ...recentL(b.recent, w)];
   }
-  L.push("", dim(" d: decisions  ·  n: queue task  ·  Ctrl-C: restart  ·  touch ~/.cache/margin-autopilot/STOP: stop after this run"));
-  process.stdout.write("\x1b[H\x1b[J" + L.join("\n"));
+  const hints = [todo.length || rev ? "d: decisions" : "", "n: queue task", items.length ? "j/k: select · o: open" : "", "?: help"].filter(Boolean).join("  ·  ");
+  process.stdout.write("\x1b[H\x1b[J" + [...head, ...body, "", dim(cut(` ${hints}  ·  Ctrl-C: restart`, w))].join("\n"));
 }
 
 // End the run for a fresh coordinator context. Soft: ≥70% while no agent is busy. Hard: ≥90%.
