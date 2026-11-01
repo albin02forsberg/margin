@@ -237,7 +237,10 @@ passes (see above); add the `no-release` label to any open issue to pause that.
 `scripts/autopilot-forever.sh` shows a live dashboard (`scripts/autopilot-ui.mjs`):
 `d` opens what needs your decision, `n` queues a task for the agents (a title and
 optional details, filed as a normal issue that goes through triage and review),
-`j`/`k` select an Up next row or open PR and `o` opens it in the browser, `?` lists all keys.
+`j`/`k` select an Up next row or open PR and `o` opens it in the browser, `p` pauses
+(no new run starts until you press `p` again or remove `~/.cache/margin-autopilot/PAUSE`;
+a running one finishes, and the header says paused), `?` lists all keys. Agent rows show
+the issue or PR each agent works on, and the main CI line counts PRs merged in the last hour and day.
 Terminals 120 columns or wider get two columns; short ones drop Recent and the totals
 before Up next, and the dashboard never draws past the bottom row (`j`/`k` only reach rows on screen).
 

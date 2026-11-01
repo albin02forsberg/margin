@@ -6,6 +6,8 @@
 # Install:  edit the paths in scripts/com.margin.autopilot.plist, copy it to
 #           ~/Library/LaunchAgents/ and `launchctl load` it.
 # Stop:     touch ~/.cache/margin-autopilot/STOP   (or kill the process)
+# Pause:    touch ~/.cache/margin-autopilot/PAUSE  (or `p` in the dashboard): no new run starts until it is
+#           removed; a running one is never stopped
 # Env:      AUTOPILOT_ARGS         (default "--hours 5")
 #           AUTOPILOT_MODEL        coordinator model (default sonnet)
 #           AUTOPILOT_WEEKLY_CAP   pause new runs at this weekly utilization, 0-1 (default 0.95,
@@ -111,7 +113,8 @@ sleep_triage_tick() {
   st_last=$(date +%s); st_fp=$(issues_fp)
 }
 
-# countdown <seconds> <why> [notriage]: one updating line on a TTY, silent otherwise (launchd log); honours STOP.
+# countdown <seconds> <why> [notriage|pause]: one updating line on a TTY, silent otherwise (launchd log); honours
+# STOP. `pause`: no triage, and it returns as soon as the PAUSE file is gone.
 countdown() {
   local until left sum next=0 ui=
   until=$(( $(date +%s) + $1 ))
@@ -119,9 +122,10 @@ countdown() {
   if [ -t 1 ] && command -v node >/dev/null; then
     AUTOPILOT_LOG="$log" node scripts/autopilot-ui.mjs --sleep "$until" "$2" & ui=$!
   fi
-  [ "${3:-}" = notriage ] || [ "$sleep_triage" = 0 ] || next=$(( $(date +%s) + st_poll ))
+  [ -n "${3:-}" ] || [ "$sleep_triage" = 0 ] || next=$(( $(date +%s) + st_poll ))
   sum=$(limit_summary)
   while [ "$(date +%s)" -lt "$until" ] && [ ! -e "$dir/STOP" ]; do
+    [ "${3:-}" = pause ] && [ ! -e "$dir/PAUSE" ] && break
     left=$(( until - $(date +%s) ))
     [ -t 1 ] && [ -z "$ui" ] && printf '\r\033[K💤 %s - next run in %dd %dh %02dm %02ds%s (STOP file: ~/.cache/margin-autopilot/STOP)' "$2" \
       $((left / 86400)) $((left % 86400 / 3600)) $((left % 3600 / 60)) $((left % 60)) "${sum:+ · $sum}"
@@ -135,6 +139,13 @@ countdown() {
 }
 
 # Gates return 0 when they paused (the caller restarts the loop), 1 when clear.
+pause_gate() {  # PAUSE file (dashboard `p`): start no new run until it is removed; checked only between runs
+  [ -e "$dir/PAUSE" ] || return 1
+  say "paused: PAUSE file found, no new run until it is removed"
+  countdown 86400 "paused: press p in the dashboard or rm ~/.cache/margin-autopilot/PAUSE" pause
+  [ -e "$dir/PAUSE" ] || say "resumed: PAUSE file removed"
+  return 0
+}
 weekly_gate() {  # at the weekly cap: wait out the week
   [ -s "$limits" ] || return 1
   local now u r
@@ -187,6 +198,7 @@ fixes=0; fast=0
 while [ ! -e "$dir/STOP" ]; do
   [ "$(stat -f %z "$log" 2>/dev/null || echo 0)" -gt 5242880 ] && mv -f "$log" "$log.1"
   self_update
+  pause_gate && continue
   weekly_gate && continue
   pace_gate && continue
   disk_gate && continue
