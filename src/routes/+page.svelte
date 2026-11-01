@@ -27,7 +27,7 @@
   import { pickStale } from "$lib/stale";
   import { visibleCmds } from "$lib/areas";
   import { lineDiff } from "$lib/linediff";
-  import { ago, changed, findNote, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, resolvePath, weekJournals } from "$lib/paths";
+  import { ago, changed, findNote, findTab, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, resolvePath, weekJournals } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
   import Menu, { type MenuNode } from "$lib/Menu.svelte";
   import Agenda, { type AgendaApi, type AgendaItem } from "$lib/Agenda.svelte";
@@ -3605,6 +3605,11 @@
       ed.hooks.saveAll = () => act(saveAll);
       ed.hooks.close = (force) => act(() => { if (force) discardEdits(tab); return closeTab(); });
       ed.hooks.edit = (name, force) => act(() => editNote(name, force));
+      ed.hooks.closeAll = (force) => act(() => { if (force) tabs.forEach(discardEdits); return closeOthers(true); });
+      ed.hooks.buffer = (name) => {
+        const i = findTab(name, tabs, cfg.notes);
+        i < 0 ? flash(name.trim() ? `No open tab matches “${name.trim()}”` : "Argument required") : act(() => show(i));
+      };
       ed.hooks.follow = (target) => act(() => followLink(target ?? ed.linkAtCursor(view)));
       ed.hooks.tab = (d) => act(() => cycleTab(d));
       ed.hooks.snippets = () => cfg?.snippets ?? [];

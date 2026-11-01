@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ago, changed, findNote, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath, weekJournals } from "./paths.ts";
+import { ago, changed, findNote, findTab, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, relativeTo, resolvePath, weekJournals } from "./paths.ts";
 
 test("findNote", () => {
   const files = ["/n/inbox.org", "/n/work/Plan.org", "/n/20260101120000-big_idea.org", "/n/x.org"];
@@ -13,6 +13,21 @@ test("findNote", () => {
   assert.equal(f("big idea"), "/n/20260101120000-big_idea.org");
   assert.equal(f("Reading List"), "/n/x.org");
   assert.equal(f("nope"), undefined);
+});
+
+test("findTab", () => {
+  const tabs = [{ title: "Agenda" }, { title: "Plan", path: "/n/work/Plan.org" }, { title: "Reading list", path: "/n/x.org" }, { title: "Planet", path: "/n/planet.org" }];
+  const f = (q: string) => findTab(q, tabs, "/n");
+  assert.equal(f("2"), 1);
+  assert.equal(f("9"), -1);
+  assert.equal(f("0"), -1);
+  assert.equal(f("plan"), 1); // file name beats the substring match on "Planet"
+  assert.equal(f("work/plan"), 1);
+  assert.equal(f("reading list"), 2);
+  assert.equal(f("agen"), 0); // views match by title
+  assert.equal(f("net"), 3);
+  assert.equal(f("nope"), -1);
+  assert.equal(findTab("today", [{ title: "Today's tasks" }, { title: "Today" }], "/n"), 1); // an exact title first
 });
 
 test("resolvePath", () => {
