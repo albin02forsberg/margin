@@ -105,3 +105,14 @@ export function findNote(name: string, files: string[], titles: Map<string, stri
     ?? files.find((f) => file(f) === n || file(f).replace(/^\d{14}-/, "").replace(/_/g, " ") === n)
     ?? files.find((f) => titles.get(f)?.toLowerCase() === name.trim().toLowerCase());
 }
+
+/** `:b NAME`: the index of the open tab NAME picks: a 1-based number, a `findNote` match, else the first title containing NAME; -1 for none. */
+export function findTab(name: string, tabs: { title: string; path?: string }[], notes: string): number {
+  const n = name.trim(), q = n.toLowerCase();
+  if (/^\d+$/.test(n)) return +n >= 1 && +n <= tabs.length ? +n - 1 : -1;
+  const files = tabs.flatMap((t) => (t.path ? [t.path] : []));
+  const f = findNote(n, files, new Map(tabs.flatMap((t) => (t.path ? [[t.path, t.title] as [string, string]] : []))), notes);
+  if (f) return tabs.findIndex((t) => t.path === f);
+  const i = tabs.findIndex((t) => t.title.toLowerCase() === q);
+  return i >= 0 ? i : tabs.findIndex((t) => t.title.toLowerCase().includes(q));
+}

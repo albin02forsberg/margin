@@ -91,6 +91,24 @@ describe("Margin", () => {
     await fileMatches(join(notes, "tasks.org"), (s) => s.includes("\nEdited by e2e"), ":x didn't save");
   });
 
+  it(":b switches tabs by name, g; returns to the last edit (#480)", async () => {
+    const ex = async (s: string) => { await type(s); await browser.keys(Key.Enter); };
+    await ex(":e tasks");
+    await find(".status .file", "tasks.org");
+    await ex(":b scratch");
+    await find(".status .file", "scratch.org");
+    await ex(":b tasks");
+    await find(".status .file", "tasks.org");
+    await type("ggAX");
+    await browser.keys(Key.Escape);
+    await type("G");
+    await type("g;");
+    await find(".cm-activeLine", "Fixture taskX");
+    await type("u");
+    await ex(":bd");
+    await find(".status .file", "scratch.org");
+  });
+
   it("keeps a note deleted outside the app on screen, flagged", async () => {
     const file = join(notes, "scratch.org");
     unlinkSync(file);

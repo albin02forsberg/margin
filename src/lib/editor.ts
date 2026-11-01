@@ -15,6 +15,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import * as tbl from "./orgtable";
 import { renumber, itemSwap } from "./list";
 import { setArg, type NumOpts } from "./setopt";
+import { changeList, changeStep } from "./changelist";
 import { EMPH, toggleEmphasis } from "./emphasis";
 import { FN, addFootnote, footnoteTarget } from "./footnote";
 import { headingAt, level, narrowField, subtreeEnd } from "./narrow";
@@ -31,6 +32,10 @@ export const hooks = {
   saveAll: () => {},
   /** FORCE (`:q!`, `:bd!`) drops unsaved edits instead of saving them. */
   close: (_force?: boolean) => {},
+  /** `:qa[!]`: close every tab (FORCE drops unsaved edits). */
+  closeAll: (_force?: boolean) => {},
+  /** `:b NAME|N`: switch to the open tab NAME or number N picks. */
+  buffer: (_name: string) => {},
   /** `:e[!] [NAME]`: open the note NAME, or reload the current one from disk. */
   edit: (_name: string, _force: boolean) => {},
   follow: (_target?: string) => {},
@@ -61,6 +66,10 @@ Vim.defineEx("wall", "wa", () => hooks.saveAll());
 Vim.defineEx("bnext", "bn", () => hooks.tab(1));
 Vim.defineEx("bprevious", "bp", () => hooks.tab(-1));
 Vim.defineEx("bdelete", "bd", (_cm: unknown, p: ExP) => hooks.close(bang(p)[0]));
+Vim.defineEx("qall", "qa", (_cm: unknown, p: ExP) => hooks.closeAll(bang(p)[0]));
+Vim.defineEx("wqall", "wqa", () => { hooks.saveAll(); hooks.closeAll(); });
+Vim.defineEx("xall", "xa", () => { hooks.saveAll(); hooks.closeAll(); });
+Vim.defineEx("buffer", "b", (_cm: unknown, p: ExP) => hooks.buffer(p.argString ?? ""));
 Vim.defineEx("edit", "e", (_cm: unknown, p: ExP) => { const [f, n] = bang(p); hooks.edit(n, f); });
 
 // `:set number` / `relativenumber` / `wrap`: session-wide vim options, a compartment per view.
@@ -128,6 +137,15 @@ Vim.defineAction("nextTab", () => hooks.tab(1));
 Vim.defineAction("prevTab", () => hooks.tab(-1));
 Vim.mapCommand("gt", "action", "nextTab", {}, { context: "normal" });
 Vim.mapCommand("gT", "action", "prevTab", {}, { context: "normal" });
+// `g;` / `g,`: walk the change list (see changelist.ts); the count steps that many entries.
+for (const [keys, d] of [["g;", -1], ["g,", 1]] as const) {
+  Vim.defineAction(`change${d}`, (cm: any, a: { repeat?: number }) => {
+    const v: EditorView = cm.cm6, r = changeStep(v.state, d * (a.repeat ?? 1));
+    if ("msg" in r) return say(cm, r.msg);
+    v.dispatch({ selection: { anchor: r.pos }, effects: r.effect, scrollIntoView: true });
+  });
+  Vim.mapCommand(keys, "action", `change${d}`, {}, { context: "normal" });
+}
 
 type OrgConf = { todo: string[]; done: string[]; path?: string };
 const orgConf = Facet.define<OrgConf, OrgConf>({ combine: (v) => v[0] ?? { todo: [], done: [] } });
@@ -1223,6 +1241,7 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
     numConf.of(numExt(vimOpts)),
     trackViews,
     history(),
+    changeList,
     drawSelection(),
     highlightActiveLine(),
     highlightSelectionMatches(),
