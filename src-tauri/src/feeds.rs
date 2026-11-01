@@ -15,6 +15,14 @@ pub const FIRST: usize = 20;
 const KEEP: usize = 500;
 pub const FILE: &str = "feeds_seen.json";
 
+/// Reserved `Seen` key holding the (normalised) links already filed, oldest first; no feed URL equals it.
+const LINKS: &str = "_links";
+
+/// A link without `#fragment` and trailing `/`, so trivial variants match.
+fn norm(link: &str) -> &str {
+    link.split('#').next().unwrap_or(link).trim_end_matches('/')
+}
+
 /// Seen guids per feed URL, oldest first.
 pub type Seen = BTreeMap<String, Vec<String>>;
 
@@ -174,9 +182,10 @@ pub fn mark(seen: &mut Seen, new: Seen) {
 }
 
 /// The new entries of FEEDS given each one's fetched body (or error) in RESULTS; a link filed by an earlier
-/// feed is skipped (but marked seen). A feed's empty FILE is the INBOX.
+/// feed or an earlier run (`LINKS`) is skipped (but marked seen). A feed's empty FILE is the INBOX.
 pub fn pick(feeds: &[Feed], results: Vec<Result<String, String>>, seen: &Seen, inbox: &str, now: chrono::NaiveDateTime) -> Fetched {
-    let (mut f, mut links) = (Fetched::default(), HashSet::new());
+    let (mut f, mut links) = (Fetched::default(), seen.get(LINKS).map(|v| v.iter().cloned().collect::<HashSet<String>>()).unwrap_or_default());
+    let mut filed = vec![];
     for (feed, r) in feeds.iter().zip(results) {
         let name = if feed.name.trim().is_empty() { &feed.url } else { &feed.name };
         let body = match r {
@@ -188,12 +197,17 @@ pub fn pick(feeds: &[Feed], results: Vec<Result<String, String>>, seen: &Seen, i
         };
         let items = parse(&body);
         for it in fresh(&items, seen.get(&feed.url)) {
-            if links.insert(it.link.clone()) {
+            if links.insert(norm(&it.link).to_string()) {
+                filed.push(norm(&it.link).to_string());
                 let file = if feed.file.trim().is_empty() { inbox } else { feed.file.trim() };
                 f.items.push(New { file: file.into(), heading: feed.heading.clone(), entry: entry(&it, now) });
             }
         }
         f.seen.entry(feed.url.clone()).or_default().extend(items.into_iter().map(|i| i.guid));
+    }
+    if !filed.is_empty() {
+        filed.reverse(); // `mark` wants newest first
+        f.seen.insert(LINKS.into(), filed);
     }
     f
 }
@@ -341,6 +355,15 @@ mod tests {
         mark(&mut seen, f.seen);
         let f = pick(&feeds[..2], vec![Ok(RSS.to_string()), Ok(dup)], &seen, "inbox.org", now);
         assert!(f.items.is_empty() && f.errors.is_empty(), "{f:?}");
+        // A later run: another feed, other guids, same link (modulo `/` and `#frag`) files nothing.
+        let other = RSS.replace("a-1", "g9").replace("blog.example/a<", "blog.example/a/<").replace("blog.example/b\n", "blog.example/b#x\n");
+        let f = pick(&feeds[2..3], vec![Ok(other)], &seen, "inbox.org", now);
+        assert!(f.items.is_empty(), "{:?}", f.items);
+        // Filed links persist, bounded by KEEP.
+        let mut seen = Seen::new();
+        mark(&mut seen, Seen::from([(LINKS.into(), (0..KEEP + 3).rev().map(|i| format!("l{i}")).collect())]));
+        mark(&mut seen, Seen::from([(LINKS.into(), vec!["new".into()])]));
+        assert_eq!((seen[LINKS].len(), seen[LINKS].last().map(String::as_str)), (KEEP, Some("new")));
     }
 
     #[test]
