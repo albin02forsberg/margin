@@ -106,6 +106,12 @@ export function findNote(name: string, files: string[], titles: Map<string, stri
     ?? files.find((f) => titles.get(f)?.toLowerCase() === name.trim().toLowerCase());
 }
 
+/** `:b #` / `<C-^>`: the index of the tab with key PREV (the one shown before), -1 if it is closed or already CUR. */
+export const altTab = (prev: string, tabs: { key: string }[], cur: number): number => {
+  const i = prev ? tabs.findIndex((t) => t.key === prev) : -1;
+  return i === cur ? -1 : i;
+};
+
 /** `:b NAME`: the index of the open tab NAME picks: a 1-based number, a `findNote` match, else the first title containing NAME; -1 for none. */
 export function findTab(name: string, tabs: { title: string; path?: string }[], notes: string): number {
   const n = name.trim(), q = n.toLowerCase();
