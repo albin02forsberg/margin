@@ -1031,7 +1031,8 @@ embedding model **Embedding model** (`ai_embed_model`, default `nomic-embed-text
 run `ollama pull nomic-embed-text` first), up to date in the background as notes
 change, a batch of sections at a time. Only changed sections are sent again, notes
 in **Notes the AI never sees** are left out, and the index is kept in Margin's
-local data folder (never in the notes or the time-tracking folder). Under the
+local data folder (never in the notes or the time-tracking folder) and in memory
+while Margin runs, written to disk at most every 30 seconds while it builds. Under the
 switch, Settings shows its size and why it can't be built (Ollama not running,
 the model not pulled, or the built-in backend picked), and **Rebuild** starts it
 over; changing the model rebuilds it too. With the index ready, **Use my notes**

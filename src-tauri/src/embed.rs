@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// A section longer than this is split on line boundaries.
 const CHUNK: usize = 1500;
@@ -256,24 +256,49 @@ impl Index {
         std::fs::read(path).ok().and_then(|b| Index::from_bytes(&b, model)).unwrap_or_else(|| Index::new(model))
     }
 
-    /// One background run (#965): the index at PATH (of MODEL) updated as in `update` and saved
-    /// when anything changed, the work so far also on an embedder error.
-    pub fn sync(path: &Path, model: &str, files: &[Arc<OrgFile>], embed: &dyn Fn(&str) -> Result<Vec<f32>, String>, cap: usize) -> Result<usize, String> {
-        let mut ix = Index::load(path, model);
-        let shape = |ix: &Index| ix.files.iter().map(|f| (f.path.clone(), f.mtime, f.chunks.len())).collect::<Vec<_>>();
-        let before = (shape(&ix), path.exists());
-        let r = ix.update(files, embed, cap);
-        if r != Ok(0) || before != (shape(&ix), true) {
-            ix.save(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        }
-        r
-    }
-
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
         if let Some(d) = path.parent() {
             std::fs::create_dir_all(d)?;
         }
         crate::config::write_atomic(path, self.to_bytes())
+    }
+}
+
+/// The index at PATH kept in memory (#1010), so runs, questions and status don't re-read it and
+/// a run writes it only when something changed (DIRTY), at most every so often.
+pub struct Cached {
+    pub path: PathBuf,
+    pub ix: Index,
+    dirty: bool,
+    saved: Instant,
+}
+
+impl Cached {
+    /// The index at PATH of MODEL; a missing file counts as unsaved, so the first run writes one.
+    pub fn open(path: &Path, model: &str) -> Cached {
+        Cached { path: path.into(), ix: Index::load(path, model), dirty: !path.exists(), saved: Instant::now() }
+    }
+
+    pub fn is(&self, path: &Path, model: &str) -> bool {
+        self.path == path && self.ix.model == model
+    }
+
+    /// One background run (#965): `Index::update`, marked dirty when anything changed.
+    pub fn update(&mut self, files: &[Arc<OrgFile>], embed: &dyn Fn(&str) -> Result<Vec<f32>, String>, cap: usize) -> Result<usize, String> {
+        let shape = |ix: &Index| ix.files.iter().map(|f| (f.path.clone(), f.mtime, f.chunks.len())).collect::<Vec<_>>();
+        let before = shape(&self.ix);
+        let r = self.ix.update(files, embed, cap);
+        self.dirty |= r != Ok(0) || before != shape(&self.ix);
+        r
+    }
+
+    /// Write the index when it is dirty and the last write is at least EVERY old (ZERO = now).
+    pub fn save_if(&mut self, every: Duration) -> Result<(), String> {
+        if self.dirty && self.saved.elapsed() >= every {
+            self.ix.save(&self.path).map_err(|e| format!("{}: {e}", self.path.display()))?;
+            (self.dirty, self.saved) = (false, Instant::now());
+        }
+        Ok(())
     }
 }
 
@@ -383,18 +408,49 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("margin-sync-{}", std::process::id()));
         let p = index_path(&dir, Path::new("/n"));
         let a = note("/n/a.org", "* One\naaa\n* Two\neee\n", 1);
+        // A run saved right away, from a fresh load each time, as a lone reindex round does.
+        let sync = |files: &[Arc<OrgFile>], embed: &dyn Fn(&str) -> Result<Vec<f32>, String>, cap| {
+            let mut c = Cached::open(&p, "m");
+            let r = c.update(files, embed, cap);
+            c.save_if(Duration::ZERO).unwrap();
+            r
+        };
         let fail = |_: &str| Err::<Vec<f32>, String>("down".into());
-        assert_eq!(Index::sync(&p, "m", std::slice::from_ref(&a), &fail, 9), Err("down".into()));
+        assert_eq!(sync(std::slice::from_ref(&a), &fail, 9), Err("down".into()));
         assert!(p.exists() && Index::load(&p, "m").files[0].chunks.is_empty());
-        assert_eq!(Index::sync(&p, "m", std::slice::from_ref(&a), &fake(&log), 1), Ok(1));
-        assert_eq!(Index::sync(&p, "m", std::slice::from_ref(&a), &fake(&log), 1), Ok(1));
+        assert_eq!(sync(std::slice::from_ref(&a), &fake(&log), 1), Ok(1));
+        assert_eq!(sync(std::slice::from_ref(&a), &fake(&log), 1), Ok(1));
         assert_eq!(Index::load(&p, "m").files[0].chunks.len(), 2);
         let t = std::fs::metadata(&p).unwrap().modified().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
-        assert_eq!(Index::sync(&p, "m", std::slice::from_ref(&a), &fake(&log), 1), Ok(0));
+        assert_eq!(sync(std::slice::from_ref(&a), &fake(&log), 1), Ok(0));
         assert_eq!(std::fs::metadata(&p).unwrap().modified().unwrap(), t, "nothing changed: not rewritten");
-        assert_eq!(Index::sync(&p, "m", &[], &fake(&log), 1), Ok(0));
+        assert_eq!(sync(&[], &fake(&log), 1), Ok(0));
         assert!(Index::load(&p, "m").files.is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn cached_rounds_save_once() {
+        let log = RefCell::new(vec![]);
+        let dir = std::env::temp_dir().join(format!("margin-cached-{}", std::process::id()));
+        let p = index_path(&dir, Path::new("/n"));
+        let a = note("/n/a.org", "* One\naaa\n* Two\neee\n* Three\nooo\n", 1);
+        let mut c = Cached::open(&p, "m");
+        assert!(c.is(&p, "m") && !c.is(&p, "other"));
+        let hour = Duration::from_secs(3600);
+        for _ in 0..3 {
+            assert_eq!(c.update(std::slice::from_ref(&a), &fake(&log), 1), Ok(1));
+            c.save_if(hour).unwrap();
+        }
+        assert!(!p.exists(), "rounds within the period are not written");
+        c.save_if(Duration::ZERO).unwrap();
+        assert_eq!(Index::load(&p, "m"), c.ix);
+        let t = std::fs::metadata(&p).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        assert_eq!(c.update(std::slice::from_ref(&a), &fake(&log), 1), Ok(0));
+        c.save_if(Duration::ZERO).unwrap();
+        assert_eq!(std::fs::metadata(&p).unwrap().modified().unwrap(), t, "no-op round: not rewritten");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
