@@ -52,6 +52,9 @@ pub struct Project {
     /// The rate's currency code ("EUR"); empty to show amounts without one.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub currency: String,
+    /// The customer the project is billed to (#1029): its projects share one rounding carry. Empty for none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub customer: String,
 }
 fn yes() -> bool {
     true
@@ -65,7 +68,7 @@ fn is_month(s: &str) -> bool {
 
 impl Project {
     pub fn new(export_code: &str) -> Self {
-        Project { export_code: export_code.into(), rounding: Some(0.5), round_up: false, active: true, budget_hours: None, budget_period: month(), rate: None, currency: String::new() }
+        Project { export_code: export_code.into(), rounding: Some(0.5), round_up: false, active: true, budget_hours: None, budget_period: month(), rate: None, currency: String::new(), customer: String::new() }
     }
     /// The rate when it means something: positive and finite.
     pub fn rate(&self) -> Option<f64> {
@@ -801,20 +804,24 @@ pub fn round_hours(h: f64, resolution: Option<f64>, up: bool) -> f64 {
     }
 }
 
-/// Port of `albin/apply-time-carry`: round per project, carrying the remainder forward.
+/// Port of `albin/apply-time-carry`: round per project, carrying the remainder forward. The remainder is kept per
+/// customer (any case) for projects that name one, else per project (#1029). Returns the sessions and the carry left.
 pub fn apply_carry(sessions: &[Session], projects: &Projects) -> (Vec<Session>, f64) {
-    let mut carry = 0.0;
+    let mut carry: HashMap<(bool, String), f64> = HashMap::new();
     let out = sessions
         .iter()
         .map(|s| {
-            let (res, up) = projects.get(&s.project).map_or((Some(0.5), false), |p| (p.rounding, p.round_up));
-            let exact = s.hours + carry;
+            let p = projects.get(&s.project);
+            let (res, up) = p.map_or((Some(0.5), false), |p| (p.rounding, p.round_up));
+            let customer = p.map_or("", |p| p.customer.trim()).to_lowercase();
+            let c = carry.entry(if customer.is_empty() { (false, s.project.clone()) } else { (true, customer) }).or_default();
+            let exact = s.hours + *c;
             let rounded = round_hours(exact, res, up);
-            carry = exact - rounded;
+            *c = exact - rounded;
             Session { hours: rounded, ..s.clone() }
         })
         .collect();
-    (out, carry)
+    (out, carry.values().sum())
 }
 
 pub fn export_code(project: &str, projects: &Projects) -> String {
@@ -1582,6 +1589,32 @@ mod tests {
         let (r, carry) = apply_carry(&[s(0.4), s(0.4), s(0.4)], &Projects::new());
         assert_eq!(r.iter().map(|s| s.hours).collect::<Vec<_>>(), vec![0.5, 0.5, 0.0]);
         assert!((carry - 0.2).abs() < 1e-9);
+    }
+
+    #[test]
+    fn carry_is_kept_per_customer_else_per_project() {
+        let s = |p: &str, h| Session { date: d("2026-10-01"), project: p.into(), desc: "x".into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None };
+        let of = |c: &str| Project { customer: c.into(), ..Project::new("") };
+        let hours = |p: &Projects, ss: &[Session]| apply_carry(ss, p).0.iter().map(|s| s.hours).collect::<Vec<_>>();
+        let ss = [s("A", 0.4), s("B", 0.4), s("A", 0.4), s("B", 0.4)];
+        // Same customer (any case): one carry across A and B.
+        assert_eq!(hours(&Projects::from([("A".into(), of("Globex")), ("B".into(), of(" globex "))]), &ss), vec![0.5, 0.5, 0.0, 0.5]);
+        // Different customers, or none: each project carries its own remainder.
+        let per_project = vec![0.5, 0.5, 0.5, 0.5];
+        assert_eq!(hours(&Projects::from([("A".into(), of("Globex")), ("B".into(), of("Initech"))]), &ss), per_project);
+        assert_eq!(hours(&Projects::new(), &ss), per_project);
+        // A customer named like a project without one doesn't share its carry.
+        assert_eq!(hours(&Projects::from([("A".into(), of("B")), ("B".into(), of(""))]), &ss), per_project);
+    }
+
+    #[test]
+    fn customer_is_optional_in_toml() {
+        let p: Projects = toml::from_str("[Acme]\nexport_code = \"A\"\n").unwrap();
+        assert_eq!(p["Acme"].customer, "");
+        assert!(!toml::to_string(&p).unwrap().contains("customer"));
+        let p = Projects::from([("Acme".into(), Project { customer: "Globex".into(), ..Project::new("A") })]);
+        let back: Projects = toml::from_str(&toml::to_string(&p).unwrap()).unwrap();
+        assert_eq!(back, p);
     }
 
     #[test]

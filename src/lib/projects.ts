@@ -1,12 +1,12 @@
 /** A project as `tc_projects` / `tc_save_project` see it (projects.toml). */
 export type Project = {
   export_code: string; rounding: number | null; round_up: boolean; active: boolean; budget_hours?: number | null; budget_period?: string;
-  rate?: number | null; currency?: string;
+  rate?: number | null; currency?: string; customer?: string;
 };
 /** One row of the project settings page; ROUNDING, BUDGET and RATE are "" for none (a number input may hand them back as numbers). */
 export type Row = {
   name: string; code: string; rounding: string; up: boolean; active: boolean; budget: string | number | null; period: string;
-  rate: string | number | null; currency: string; dirty: boolean;
+  rate: string | number | null; currency: string; customer: string; dirty: boolean;
 };
 
 export const ROUNDINGS: [string, string][] = [["0.25", "Quarter hour"], ["0.5", "Half hour"], ["1", "Whole hour"], ["", "Don't round"]];
@@ -16,7 +16,7 @@ const period = (s: string | undefined) => (s === "week" ? "week" : "month");
 export const toRow = (name: string, p: Project): Row => ({
   name, code: p.export_code, rounding: p.rounding == null ? "" : String(p.rounding), up: p.round_up, active: p.active,
   budget: p.budget_hours == null ? "" : String(p.budget_hours), period: period(p.budget_period),
-  rate: p.rate == null ? "" : String(p.rate), currency: p.currency ?? "", dirty: false,
+  rate: p.rate == null ? "" : String(p.rate), currency: p.currency ?? "", customer: p.customer ?? "", dirty: false,
 });
 
 /** A positive number from an input, else null (blank, zero, negative or junk). */
@@ -29,7 +29,18 @@ const positive = (v: string | number | null) => {
 export const toProject = (r: Row): Project => ({
   export_code: r.code.trim(), rounding: r.rounding ? +r.rounding : null, round_up: !!r.rounding && r.up, active: r.active,
   budget_hours: positive(r.budget), budget_period: period(r.period), rate: positive(r.rate), currency: (r.currency ?? "").trim(),
+  customer: (r.customer ?? "").trim(),
 });
+
+/** The customers PROJECTS are billed to (#1029), one per name in any case (the first spelling), sorted. */
+export function customers(projects: Record<string, Pick<Project, "customer">>): string[] {
+  const by = new Map<string, string>();
+  for (const p of Object.values(projects)) {
+    const c = (p.customer ?? "").trim();
+    if (c && !by.has(c.toLowerCase())) by.set(c.toLowerCase(), c);
+  }
+  return [...by.values()].sort((a, b) => a.localeCompare(b));
+}
 
 /** AMOUNT to 2 decimals in the locale's format, with the currency code when there is one: "1,234.50 EUR". */
 export const money = (amount: number, currency = "", locale?: string) =>

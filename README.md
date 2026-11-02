@@ -855,6 +855,10 @@ colour once it's over. An optional hourly rate and currency (`rate = 95.5`,
 on the project's card, and the week and month reports (`Space t s` / `Space t m`, also
 the HTML/PDF export) get Rate and Earned columns plus an "Earned" total per currency
 (different currencies are never added up). Projects without a rate look as before.
+Rounding carries each session's remainder into the next one of the same project, so
+rounded totals stay close to the real ones. An optional customer (the Customer column,
+`customer = "Globex"` in `projects.toml`, any case) makes all of that customer's
+projects share one carry-over; the CSV export and reports keep their format.
 `Space t I` (Time: invoice for project…) picks a project with a rate and a month and
 writes the note `invoices/<project>-<YYYY-MM>.org`: a `#+NAME: invoice` table of the
 month's billable hours per task (rounded like the month report, so the totals match),
