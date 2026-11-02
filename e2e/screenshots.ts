@@ -188,10 +188,12 @@ ${[-1, -2, -3, -5, -6, -7, -8, -9, -10, -12, -13, -14, -15, -16, -17, -18, -19, 
 [Orchard]
 export_code = "ORC-100"
 rounding = 0.25
+customer = "Northwind"
 
 [Harbor]
 export_code = "HRB-210"
 rounding = 0.25
+customer = "Northwind"
 
 [Internal]
 export_code = "INT"
@@ -397,6 +399,18 @@ async function pngs() {
     await rebuild.scrollIntoView({ block: "center" });
     await browser.waitUntil(async () => (await browser.$$(".settings .error")).length > 0, { timeout: 10000 }).catch(() => {});
     await shot("semantic-index");
+  }
+
+  if (want("customer-invoice")) { // #1029: one invoice note for both of Northwind's projects (no rates: hours only)
+    await browser.keys(Key.Escape);
+    await command("Time: invoice for customer");
+    await find(".picker label span", "Invoice for customer");
+    await type("Northwind");
+    await browser.keys(Key.Enter);
+    await find(".picker label span", "Invoice for the month containing");
+    await browser.keys(Key.Enter); // this month
+    await find(".cm-content", "no hourly rate");
+    await shot("customer-invoice");
   }
 
   if (want("long-session")) { // #970: the demo clock has run 2h 20m, past a 2 h limit; last, as it tints the chip

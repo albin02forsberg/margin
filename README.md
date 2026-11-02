@@ -860,6 +860,12 @@ writes the note `invoices/<project>-<YYYY-MM>.org`: a `#+NAME: invoice` table of
 month's billable hours per task (rounded like the month report, so the totals match),
 the rate, each amount and a total in the project's currency. Running it again replaces
 only that table, so text you add around it stays; export it with `Space e p` / `e h`.
+A project can also name the customer it's billed to (the Customer column, `customer = "Globex"`
+in `projects.toml`; optional, blank for none). `Space t C` (Time: invoice for customer…) picks
+a customer and a month and writes `invoices/<customer>-<YYYY-MM>.org` the same way: a subtotal
+row per project of that customer (any case) with its tasks below, priced like that project's
+own invoice, and a total with an amount per currency. Projects without a rate are listed with
+their hours and "no hourly rate".
 Below it, Time off sets each kind's export code (kept in `leave.toml`, apart from
 the projects, so time off is never offered when you start tracking; no code means
 the kind's name is exported).

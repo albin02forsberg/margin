@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { cards, merge, money, ROUNDINGS, toProject, type Card, type Project, type Row, type Task, type Tracked } from "$lib/projects";
+  import { cards, customers, merge, money, ROUNDINGS, toProject, type Card, type Project, type Row, type Task, type Tracked } from "$lib/projects";
   import { hm } from "$lib/clock";
   import { costLine } from "$lib/ledger";
   import BudgetBar from "$lib/BudgetBar.svelte";
@@ -96,7 +96,7 @@
     <p class="dim">No projects yet: they're added the first time you track time on one.</p>
   {:else}
     <div class="card form"><table>
-      <thead><tr><th>Project</th><th>Export code</th><th>Round billable hours to</th><th>Always round up</th><th>Budget (hours)</th><th>Hourly rate</th><th>Show in project list</th><th></th></tr></thead>
+      <thead><tr><th>Project</th><th>Export code</th><th>Round billable hours to</th><th>Always round up</th><th>Budget (hours)</th><th>Hourly rate</th><th>Customer</th><th>Show in project list</th><th></th></tr></thead>
       <tbody>
         {#each rows as r, i (r.name)}
           <tr class:inactive={!r.active}>
@@ -118,13 +118,15 @@
               <input form="p{i}" type="number" min="0" step="any" aria-label="Hourly rate for {r.name}" placeholder="none" bind:value={r.rate} oninput={() => (r.dirty = true)} />
               <input form="p{i}" class="cur" aria-label="Currency for {r.name}" placeholder="EUR" bind:value={r.currency} oninput={() => (r.dirty = true)} />
             </td>
+            <td><input form="p{i}" list="customers" aria-label="Customer for {r.name}" placeholder="none" bind:value={r.customer} oninput={() => (r.dirty = true)} /></td>
             <td><input form="p{i}" type="checkbox" aria-label="Show {r.name} in the project list" bind:checked={r.active} onchange={() => (r.dirty = true)} /></td>
             <td><button form="p{i}" type="submit" disabled={!r.dirty}>Save</button></td>
           </tr>
         {/each}
       </tbody>
     </table></div>
-    <p class="dim">Enter in an export code saves its row. A budget shows how much of it is used on the project's card; an hourly rate shows what this month's billable hours earned, there and in the time reports. Hidden projects keep their time; they just aren't offered when you start tracking.</p>
+    <datalist id="customers">{#each customers(saved) as c (c)}<option value={c}></option>{/each}</datalist>
+    <p class="dim">Enter in an export code saves its row. A budget shows how much of it is used on the project's card; an hourly rate shows what this month's billable hours earned, there and in the time reports. A customer groups projects into one invoice (Space t C). Hidden projects keep their time; they just aren't offered when you start tracking.</p>
   {/if}
   {#if !error}
     <h2>Time off</h2>

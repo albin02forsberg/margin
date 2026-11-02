@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { budgetUsage, cards, merge, money, toProject, toRow } from "./projects.ts";
+import { budgetUsage, cards, customers, merge, money, toProject, toRow } from "./projects.ts";
 
 test("project rows round-trip, and round-up is off without rounding", () => {
-  const none = { budget_hours: null, budget_period: "month", rate: null, currency: "" };
+  const none = { budget_hours: null, budget_period: "month", rate: null, currency: "", customer: "" };
   const p = { export_code: "ACME", rounding: 0.25, round_up: true, active: false, ...none };
   assert.deepEqual(toProject(toRow("Acme", p)), p);
   assert.deepEqual(toProject(toRow("X", { export_code: " X ", rounding: null, round_up: false, active: true })), { export_code: "X", rounding: null, round_up: false, active: true, ...none });
@@ -11,7 +11,7 @@ test("project rows round-trip, and round-up is off without rounding", () => {
 });
 
 test("budgets round-trip; blank, zero or junk is none; the period is week or month", () => {
-  const p = { export_code: "A", rounding: null, round_up: false, active: true, budget_hours: 20, budget_period: "week", rate: null, currency: "" };
+  const p = { export_code: "A", rounding: null, round_up: false, active: true, budget_hours: 20, budget_period: "week", rate: null, currency: "", customer: "" };
   assert.deepEqual(toProject(toRow("A", p)), p);
   const legacy = toRow("A", { export_code: "A", rounding: null, round_up: false, active: true });
   assert.deepEqual([legacy.budget, legacy.period], ["", "month"]);
@@ -22,12 +22,21 @@ test("budgets round-trip; blank, zero or junk is none; the period is week or mon
 });
 
 test("rates round-trip with their currency; blank, zero, negative or junk is none", () => {
-  const p = { export_code: "A", rounding: 0.5, round_up: false, active: true, budget_hours: null, budget_period: "month", rate: 95.5, currency: "EUR" };
+  const p = { export_code: "A", rounding: 0.5, round_up: false, active: true, budget_hours: null, budget_period: "month", rate: 95.5, currency: "EUR", customer: "" };
   assert.deepEqual(toProject(toRow("A", p)), p);
   const legacy = toRow("A", { export_code: "A", rounding: null, round_up: false, active: true });
   assert.deepEqual([legacy.rate, legacy.currency], ["", ""]);
   for (const rate of ["", " ", "0", "-3", "abc", null]) assert.equal(toProject({ ...legacy, rate }).rate, null, String(rate));
   assert.deepEqual([toProject({ ...legacy, rate: 80, currency: " SEK " }).rate, toProject({ ...legacy, currency: " SEK " }).currency], [80, "SEK"]);
+});
+
+test("customers: optional, trimmed, one per name in any case (#1029)", () => {
+  const p = { export_code: "A", rounding: null, round_up: false, active: true, customer: "Globex" };
+  assert.deepEqual(toProject(toRow("A", p)).customer, "Globex");
+  assert.equal(toRow("A", { export_code: "A", rounding: null, round_up: false, active: true }).customer, "");
+  assert.equal(toProject({ ...toRow("A", p), customer: "  Initech " }).customer, "Initech");
+  assert.equal(toProject({ ...toRow("A", p), customer: "   " }).customer, "");
+  assert.deepEqual(customers({ A: p, B: { customer: " globex " }, C: { customer: "Acme" }, D: { customer: " " }, E: {} }), ["Acme", "Globex"]);
 });
 
 test("money: two decimals in the locale, the currency only when set", () => {

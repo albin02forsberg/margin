@@ -52,6 +52,9 @@ pub struct Project {
     /// The rate's currency code ("EUR"); empty to show amounts without one.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub currency: String,
+    /// The customer the project is billed to (#1029); empty for none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub customer: String,
 }
 fn yes() -> bool {
     true
@@ -65,7 +68,7 @@ fn is_month(s: &str) -> bool {
 
 impl Project {
     pub fn new(export_code: &str) -> Self {
-        Project { export_code: export_code.into(), rounding: Some(0.5), round_up: false, active: true, budget_hours: None, budget_period: month(), rate: None, currency: String::new() }
+        Project { export_code: export_code.into(), rounding: Some(0.5), round_up: false, active: true, budget_hours: None, budget_period: month(), rate: None, currency: String::new(), customer: String::new() }
     }
     /// The rate when it means something: positive and finite.
     pub fn rate(&self) -> Option<f64> {
@@ -1262,19 +1265,59 @@ pub fn invoice_table(sessions: &[Session], projects: &Projects, project: &str, f
     let p = projects.get(project).ok_or_else(|| format!("No project named {project}"))?;
     let rate = p.rate().ok_or_else(|| format!("{project} has no hourly rate: set one in Time: project settings (Space t P)"))?;
     let rounded = apply_carry(&prepare_report_sessions(sessions), projects).0;
+    let tasks = billable_tasks(&rounded, project, from, to);
+    let cur = p.currency.trim();
+    let mut rows = vec![["Task", "Hours", "Rate", "Amount"].map(String::from).to_vec()];
+    for (t, h) in &tasks {
+        rows.push(vec![t.clone(), format!("{h:.2}"), format!("{rate:.2}"), format!("{:.2}", earned(*h, rate))]);
+    }
+    let total = tasks.iter().fold(0.0, |a, t| a + t.1);
+    rows.push(vec!["*Total*".into(), format!("*{total:.2}*"), String::new(), format!("*{}*", money(earned(total, rate), cur))]);
+    Ok(format!("#+NAME: invoice\n{}", org_table(&rows)))
+}
+
+/// PROJECT's billable hours per task (a table-safe description) in FROM..=TO of the carry-ROUNDED sessions, most first.
+fn billable_tasks(rounded: &[Session], project: &str, from: NaiveDate, to: NaiveDate) -> Vec<(String, f64)> {
     let mut by: BTreeMap<&str, f64> = BTreeMap::new();
     for s in rounded.iter().filter(|s| s.project == project && from <= s.date && s.date <= to) {
         *by.entry(if is_blank_desc(&s.desc) { "(no description)" } else { s.desc.trim() }).or_default() += s.hours;
     }
-    let mut tasks: Vec<_> = by.into_iter().filter(|t| t.1.abs() > 1e-9).collect();
+    let mut tasks: Vec<_> = by.into_iter().filter(|t| t.1.abs() > 1e-9).map(|(t, h)| (t.replace('|', "\\vert{}"), h)).collect();
     tasks.sort_by(|a, b| b.1.total_cmp(&a.1));
-    let cur = p.currency.trim();
-    let mut rows = vec![["Task", "Hours", "Rate", "Amount"].map(String::from).to_vec()];
-    for (t, h) in &tasks {
-        rows.push(vec![t.replace('|', "\\vert{}"), format!("{h:.2}"), format!("{rate:.2}"), format!("{:.2}", earned(*h, rate))]);
+    tasks
+}
+
+/// The `#+NAME: invoice` table of CUSTOMER (any case) for FROM..=TO (#1029): a bold subtotal row per project billed
+/// to it with its tasks below, priced like `invoice_table` (a project's amount is its own invoice's total); a project
+/// without a rate shows its hours only. The total row has all hours and an amount per currency, one row each (never
+/// added up across them). An error when no project has that customer.
+pub fn customer_invoice_table(sessions: &[Session], projects: &Projects, customer: &str, from: NaiveDate, to: NaiveDate) -> Result<String, String> {
+    let customer = customer.trim();
+    let ps: Vec<_> = projects.iter().filter(|(_, p)| !customer.is_empty() && p.customer.trim().to_lowercase() == customer.to_lowercase()).collect();
+    if ps.is_empty() {
+        return Err(format!("No project is billed to {customer}: set a customer in Time: project settings (Space t P)"));
     }
-    let total = tasks.iter().fold(0.0, |a, t| a + t.1);
-    rows.push(vec!["*Total*".into(), format!("*{total:.2}*"), String::new(), format!("*{}*", money(earned(total, rate), cur))]);
+    let rounded = apply_carry(&prepare_report_sessions(sessions), projects).0;
+    let mut rows = vec![["Project", "Task", "Hours", "Rate", "Amount"].map(String::from).to_vec()];
+    let (mut total, mut by_cur) = (0.0, BTreeMap::<&str, f64>::new());
+    for (name, p) in ps {
+        let tasks = billable_tasks(&rounded, name, from, to);
+        let hours = tasks.iter().fold(0.0, |a, t| a + t.1);
+        total += hours;
+        let (rate, cur) = (p.rate(), p.currency.trim());
+        let amount = rate.map(|r| earned(hours, r));
+        if let Some(a) = amount {
+            *by_cur.entry(cur).or_default() += a;
+        }
+        let rate_cell = rate.map_or("no hourly rate".into(), |r| format!("{r:.2}"));
+        rows.push(vec![format!("*{}*", name.replace('|', "\\vert{}")), String::new(), format!("*{hours:.2}*"), rate_cell, amount.map_or(String::new(), |a| format!("*{}*", money(a, cur)))]);
+        for (t, h) in tasks {
+            rows.push(vec![String::new(), t, format!("{h:.2}"), String::new(), rate.map_or(String::new(), |r| format!("{:.2}", earned(h, r)))]);
+        }
+    }
+    let mut amounts = by_cur.into_iter().map(|(c, a)| format!("*{}*", money(a, c)));
+    rows.push(vec!["*Total*".into(), String::new(), format!("*{total:.2}*"), String::new(), amounts.next().unwrap_or_default()]);
+    amounts.for_each(|a| rows.push(vec![String::new(); 4].into_iter().chain([a]).collect()));
     Ok(format!("#+NAME: invoice\n{}", org_table(&rows)))
 }
 
@@ -1825,6 +1868,48 @@ mod tests {
         assert!(invoice_table(&ss, &p, "Nope", from, to).is_err());
         // An empty month: just the total row.
         assert!(invoice_table(&ss, &p, "Acme", d("2026-11-01"), d("2026-11-30")).unwrap().ends_with("| *Total* | *0.00* |      | *0.00 EUR* |\n"));
+    }
+
+    #[test]
+    fn customer_invoice_sums_its_projects() {
+        let s = |p: &str, desc: &str, h| Session { date: d("2026-10-06"), project: p.into(), desc: desc.into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None };
+        let of = |customer: &str, rate: Option<f64>, currency: &str| Project { customer: customer.into(), rate, currency: currency.into(), ..Project::new("") };
+        let p = Projects::from([
+            ("A".into(), of("Globex", Some(95.5), "EUR")),
+            ("B".into(), of(" globex ", Some(50.0), "EUR")),
+            ("C".into(), of("GLOBEX", Some(1000.0), "SEK")),
+            ("D".into(), of("Globex", None, "")),
+            ("E".into(), of("Initech", Some(10.0), "EUR")),
+            ("F".into(), of("", Some(10.0), "EUR")),
+        ]);
+        let ss = [s("A", "spec", 1.4), s("A", "build", 0.7), s("B", "x", 1.0), s("C", "y", 2.0), s("D", "free", 3.0), s("E", "z", 5.0), s("F", "w", 5.0)];
+        let (from, to) = (d("2026-10-01"), d("2026-10-31"));
+        let t = customer_invoice_table(&ss, &p, "globex", from, to).unwrap();
+        // Each rated project's subtotal is its own invoice's total.
+        for name in ["A", "B", "C"] {
+            let own = invoice_table(&ss, &p, name, from, to).unwrap();
+            let amount = own.lines().last().unwrap().split('|').nth(4).unwrap().trim().to_string();
+            assert!(t.lines().any(|l| l.starts_with(&format!("| *{name}*")) && l.contains(&amount)), "{name} {amount}\n{t}");
+        }
+        // EUR adds up A and B (1.5 h and 0.5 h at 95.5 = 191.00, 1.0 h at 50); SEK stays on its own row.
+        assert!(t.contains("| *Total* |       | *8.00* |                | *241.00 EUR*  |\n|         |       |        |                | *2000.00 SEK* |\n"), "{t}");
+        assert!(t.contains("| *D*") && t.contains("no hourly rate") && t.contains("| free "), "{t}");
+        assert!(!t.contains("*E*") && !t.contains("*F*"), "{t}");
+        assert!(customer_invoice_table(&ss, &p, "Nope", from, to).is_err());
+        assert!(customer_invoice_table(&ss, &p, " ", from, to).is_err(), "blank is no customer");
+        // Only unrated projects: hours, no amount.
+        let only = customer_invoice_table(&ss, &Projects::from([("D".into(), of("Solo", None, ""))]), "Solo", from, to).unwrap();
+        assert!(only.lines().last().unwrap().starts_with("| *Total* |      | *3.00* |"), "{only}");
+    }
+
+    #[test]
+    fn customer_is_optional_in_toml() {
+        let p: Projects = toml::from_str("[Acme]\nexport_code = \"A\"\n").unwrap();
+        assert_eq!(p["Acme"].customer, "");
+        assert!(!toml::to_string(&p).unwrap().contains("customer"));
+        let p = Projects::from([("Acme".into(), Project { customer: "Globex".into(), ..Project::new("A") })]);
+        let back: Projects = toml::from_str(&toml::to_string(&p).unwrap()).unwrap();
+        assert_eq!(back, p);
     }
 
     #[test]
