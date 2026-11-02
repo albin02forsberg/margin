@@ -4,7 +4,7 @@
 #![allow(dead_code)]
 
 use crate::org::OrgFile;
-use crate::retrieve::meta;
+use crate::retrieve::skip_drawers;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -51,7 +51,7 @@ pub fn chunks(f: &OrgFile) -> Vec<Chunk> {
             }
             buf.clear();
         };
-        for (i, l) in lines.iter().enumerate().take(b).skip(a).filter(|(_, l)| !meta(l)) {
+        for (i, l) in skip_drawers(lines.iter().copied().enumerate().take(b).skip(a)) {
             if !buf.is_empty() && buf.len() + l.len() + 1 > CHUNK {
                 flush(at, &mut buf);
             }
@@ -88,7 +88,7 @@ pub fn found(files: &[Arc<OrgFile>], hits: &[(PathBuf, usize, f32)]) -> Vec<Foun
         let end = f.headlines.iter().map(|h| h.line).find(|&l| l > *line).unwrap_or(usize::MAX);
         // From the line after the headline when the section starts with one, up to the next.
         let from = line + f.headlines.iter().any(|h| h.line == *line) as usize;
-        let text = f.text.lines().take(end).skip(from).map(str::trim).find(|l| !l.is_empty() && !meta(l) && !["SCHEDULED:", "DEADLINE:", "CLOSED:"].iter().any(|k| l.starts_with(k))).unwrap_or("").to_string();
+        let text = skip_drawers(f.text.lines().enumerate().take(end).skip(from)).map(|(_, l)| l.trim()).find(|l| !l.is_empty()).unwrap_or("").to_string();
         Some(Found { path: p.clone(), title: f.title.clone(), heading, line: *line, text, score: *score })
     }).collect()
 }
@@ -398,6 +398,15 @@ mod tests {
         let c = chunks(&note("/n/b.org", &format!("#+title: B\n* H\n{}", body.join("\n")), 1));
         assert!(c.len() > 1 && c.iter().all(|c| c.text.len() <= CHUNK + 10));
         assert_eq!(c[1].line, c[0].line + c[0].text.lines().count() - 1);
+    }
+
+    #[test]
+    fn logbook_is_not_embedded() {
+        let f = note("/n/a.org", "#+title: A\n* DONE One\n:LOGBOOK:\nCLOCK: [2026-01-01 Thu 10:00]--[2026-01-01 Thu 11:00] =>  1:00\n- State \"DONE\" from \"TODO\" [2026-01-01 Thu 11:00]\n:END:\nbody one\n* Only\n:LOGBOOK:\nCLOCK: [2026-01-01 Thu 10:00]\n:END:\n* Open\n:LOGBOOK:\nCLOCK: x\n", 1);
+        let c = chunks(&f);
+        assert_eq!(c.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(), ["A\n* DONE One\nbody one", "A\n* Only", "A\n* Open"]);
+        let hit = [(PathBuf::from("/n/a.org"), 1, 0.9)];
+        assert_eq!(found(&[f], &hit)[0].text, "body one");
     }
 
     #[test]
