@@ -1,7 +1,7 @@
 // Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cut, sizeOf, readyRow, createArgs, issueNo, vlen, padVisible, columns, budget, keptLines, clip, refOf, throughput } from "./autopilot-ui-lib.mjs";
+import { cut, sizeOf, readyRow, createArgs, issueNo, vlen, padVisible, columns, budget, keptLines, clip, refOf, throughput, buckets, spark, median, stats } from "./autopilot-ui-lib.mjs";
 
 test("cut keeps short text and ends long text in an ellipsis", () => {
   assert.equal(cut("abc", 5), "abc");
@@ -85,6 +85,45 @@ test("throughput counts merges in the last hour and day", () => {
   const t = ["2026-11-01T11:30:00Z", "2026-11-01T02:00:00Z", "2026-10-31T11:00:00Z"];
   assert.deepEqual(throughput(t, now), { h1: 1, h24: 2 });
   assert.deepEqual(throughput([], now), { h1: 0, h24: 0 });
+});
+
+test("buckets counts per rolling step, oldest first, skipping future and too old", () => {
+  const now = Date.parse("2026-11-01T12:00:00Z");
+  const t = ["2026-11-01T11:59:00Z", "2026-11-01T11:00:00Z", "2026-11-01T10:30:00Z", "2026-11-01T12:01:00Z", "2026-11-01T09:00:00Z"];
+  assert.deepEqual(buckets(t, now, 3, 3600e3), [0, 2, 1]);   // 11:00 is exactly 1h ago: second bucket
+  assert.deepEqual(buckets([], now, 2, 3600e3), [0, 0]);
+});
+
+test("spark scales to the largest count and leaves empty buckets blank", () => {
+  assert.equal(spark([0, 1, 2, 4, 8]), " ▁▂▄█");
+  assert.equal(spark([1]), "█");
+  assert.equal(spark([0, 0]), "  ");
+  assert.equal(spark([]), "");
+});
+
+test("median handles odd, even and empty lists", () => {
+  assert.equal(median([3, 1, 2]), 2);
+  assert.equal(median([4, 1, 2, 3]), 2.5);
+  assert.equal(median([]), null);
+});
+
+test("stats buckets merges and issues and takes the median PR time over 7 days", () => {
+  const now = Date.parse("2026-11-08T12:00:00Z");
+  const prs = [
+    { createdAt: "2026-11-08T10:00:00Z", mergedAt: "2026-11-08T11:30:00Z" },   // 1.5h
+    { createdAt: "2026-11-06T00:00:00Z", mergedAt: "2026-11-07T00:00:00Z" },   // 24h
+    { createdAt: "2026-10-20T00:00:00Z", mergedAt: "2026-10-21T00:00:00Z" },   // outside the week
+  ];
+  const issues = [{ createdAt: "2026-11-08T01:00:00Z", closedAt: null }, { createdAt: "2026-10-01T00:00:00Z", closedAt: "2026-11-08T02:00:00Z" }];
+  const s = stats(prs, issues, now);
+  assert.equal(s.hour.length, 24);
+  assert.equal(s.hour[23], 1);
+  assert.deepEqual(s.day, [0, 0, 0, 0, 0, 1, 1]);
+  assert.deepEqual(s.filed, [0, 0, 0, 0, 0, 0, 1]);
+  assert.deepEqual(s.closed, [0, 0, 0, 0, 0, 0, 1]);
+  assert.equal(s.n, 2);
+  assert.equal(s.medianMs, (1.5 + 24) / 2 * 3600e3);
+  assert.equal(stats([], [], now).medianMs, null);
 });
 
 test("issueNo reads the number from the gh output", () => {

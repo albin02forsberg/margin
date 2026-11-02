@@ -67,5 +67,42 @@ export function throughput(mergedAt, now) {
   return { h1: ago.filter((a) => a <= 3600e3).length, h24: ago.filter((a) => a <= 86400e3).length };
 }
 
+/** Counts of `ts` (ISO strings) in `n` rolling buckets of `step` ms ending at `now`, oldest first; future and older ones are ignored. */
+export function buckets(ts, now, n, step) {
+  const out = Array(n).fill(0);
+  for (const t of ts) {
+    const ago = now - Date.parse(t);
+    if (ago >= 0 && ago < n * step) out[n - 1 - Math.floor(ago / step)]++;
+  }
+  return out;
+}
+
+/** Sparkline, one cell per count scaled to the largest (`▁`..`█`); zero is a space. */
+export function spark(counts) {
+  const max = Math.max(0, ...counts);
+  return counts.map((c) => (c > 0 ? "▁▂▃▄▅▆▇█"[Math.ceil((c / max) * 8) - 1] : " ")).join("");
+}
+
+/** Median of `xs`, or null when empty. */
+export function median(xs) {
+  const s = [...xs].sort((a, b) => a - b), m = s.length >> 1;
+  return s.length ? (s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2) : null;
+}
+
+/**
+ * Dashboard stats from merged PRs (`mergedAt`, `createdAt`) and issues (`createdAt`, `closedAt`): merged per hour
+ * over 24 h and per day over 7 days, issues filed and closed per day, median open-to-merge time of PRs merged in 7 days.
+ */
+export function stats(prs, issues, now) {
+  const H = 3600e3, D = 24 * H, merged = prs.map((p) => p.mergedAt);
+  const week = prs.filter((p) => { const a = now - Date.parse(p.mergedAt); return a >= 0 && a < 7 * D; });
+  return {
+    hour: buckets(merged, now, 24, H), day: buckets(merged, now, 7, D),
+    filed: buckets(issues.map((i) => i.createdAt), now, 7, D),
+    closed: buckets(issues.filter((i) => i.closedAt).map((i) => i.closedAt), now, 7, D),
+    medianMs: median(week.map((p) => Date.parse(p.mergedAt) - Date.parse(p.createdAt))), n: week.length,
+  };
+}
+
 /** First `n` of `lines`, the last slot replaced by `more(cutCount)` when some are cut; nothing when `n` ≤ 0. */
 export const clip = (lines, n, more) => (lines.length <= n ? lines : n <= 0 ? [] : [...lines.slice(0, keptLines(lines.length, n)), more(lines.length - keptLines(lines.length, n))]);
