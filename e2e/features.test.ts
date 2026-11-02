@@ -2228,3 +2228,44 @@ describe("Feeds", () => {
     assert.equal(read(inbox).split("blog.example/feeds").length, 2, "filed twice");
   });
 });
+
+// Own launch: publish_dir starts empty, so the first run asks for the folder (#1037).
+describe("Publish notes as a site", () => {
+  let d: Dirs;
+  before(async () => {
+    d = await launch({
+      files: ({ notes }) => {
+        mkdirSync(join(notes, "img"), { recursive: true });
+        writeFileSync(join(notes, "img", "pic.png"), "png");
+        writeFileSync(join(notes, "home.org"), "#+title: Home\n#+filetags: :publish:\n\nSee [[file:guide.org][the guide]], [[file:private.org][private]] and [[file:img/pic.png]].\n");
+        writeFileSync(join(notes, "guide.org"), "#+title: Guide\n#+filetags: :publish:\n\nGuide text.\n");
+        writeFileSync(join(notes, "private.org"), "#+title: Private\n\nSecret.\n");
+      },
+    });
+  });
+  after(close);
+
+  it("writes tagged notes, an index and assets, and re-runs delete only its own stale pages", async () => {
+    const site = join(d.root, "site");
+    await palette("Export: publish notes tagged");
+    await answer("Publish the site to folder", site);
+    await find(".picker label span", "Published 2 notes");
+    await browser.keys(Key.Escape);
+    const home = read(join(site, "home.html"));
+    assert.match(home, /<a href="guide\.html">the guide<\/a>, private and <img src="assets\/pic\.png"/);
+    assert.ok(!home.includes("file:"), home);
+    assert.match(read(join(site, "index.html")), /<a href="guide\.html">Guide<\/a>[\s\S]*<a href="home\.html">Home<\/a>/);
+    assert.equal(read(join(site, "assets", "pic.png")), "png");
+    assert.ok(!existsSync(join(site, "private.html")), "untagged note published");
+
+    // Untag the guide: the re-run (folder remembered) drops its page and keeps a hand-placed file.
+    writeFileSync(join(site, "CNAME"), "notes.example");
+    writeFileSync(join(d.notes, "guide.org"), "#+title: Guide\n\nGuide text.\n");
+    await browser.pause(500); // let the watcher see the change
+    await palette("Export: publish notes tagged");
+    await find(".picker label span", "Published 1 note ");
+    await browser.keys(Key.Escape);
+    assert.ok(!existsSync(join(site, "guide.html")), "stale page kept");
+    assert.equal(read(join(site, "CNAME")), "notes.example");
+  });
+});

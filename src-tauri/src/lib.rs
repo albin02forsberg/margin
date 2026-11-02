@@ -3303,6 +3303,30 @@ fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, forma
     Ok(dir.join(&pages[0].1))
 }
 
+/// The site folder DIR (`publish_dir`) is set, absolute, has no `..` and isn't inside the notes, data or config folders.
+fn publish_dest(dir: &Path, forbidden: &[PathBuf]) -> R<()> {
+    if dir.as_os_str().is_empty() {
+        return Err("Set a publish folder first (Settings → Folders)".into());
+    }
+    if !dir.is_absolute() || dir.components().any(|c| c == Component::ParentDir) || forbidden.iter().any(|r| dir.starts_with(r)) {
+        return Err(format!("{} must be an absolute folder outside the notes, data and config folders", dir.display()));
+    }
+    Ok(())
+}
+
+/// Publish the notes tagged `publish_tag` as a static site in `publish_dir` (see export::publish, #1037).
+/// Returns its index page and the number of notes.
+#[tauri::command(async)]
+fn publish_site(s: State<App>) -> R<(PathBuf, usize)> {
+    let c = s.cfg();
+    let dir = config::expand(&c.publish_dir);
+    publish_dest(&dir, &[c.notes(), c.data(), s.cfg_path.parent().unwrap().to_path_buf()])?;
+    let files = s.files();
+    let files: Vec<&org::OrgFile> = files.iter().map(|f| &**f).collect();
+    let n = export::publish(&dir, &c.notes(), &files, &c.publish_tag, &s.kw(), |f| expand(&s, &f.path, &f.text))?;
+    Ok((dir.join("index.html"), n))
+}
+
 /// The time report for START..END as an HTML page in export_dir; PRINT opens the print dialog.
 #[tauri::command]
 fn export_report(s: State<App>, start: String, end: String, print: bool, overwrite: Option<bool>) -> R<PathBuf> {
@@ -3314,13 +3338,14 @@ fn export_report(s: State<App>, start: String, end: String, print: bool, overwri
     write_export(&s, &format!("time_report_{}_{start}_{end}.html", s.profile().to_lowercase()), html, overwrite)
 }
 
-/// Open an exported file with its default app (only files in export_dir or a folder in it).
+/// Open an exported file with its default app (only files in export_dir or a folder in it, or in publish_dir).
 #[tauri::command]
 fn export_open(app: AppHandle, s: State<App>, path: PathBuf) -> R<()> {
     use tauri_plugin_opener::OpenerExt;
-    let dir = config::expand(&s.cfg().export_dir);
+    let (dir, site) = (config::expand(&s.cfg().export_dir), config::expand(&s.cfg().publish_dir));
     let parent = path.parent();
-    if path.components().any(|c| c == std::path::Component::ParentDir) || !(parent == Some(dir.as_path()) || parent.and_then(Path::parent) == Some(dir.as_path())) {
+    let site = !site.as_os_str().is_empty() && parent == Some(site.as_path());
+    if path.components().any(|c| c == std::path::Component::ParentDir) || !(site || parent == Some(dir.as_path()) || parent.and_then(Path::parent) == Some(dir.as_path())) {
         return Err(format!("{} is not in the export folder", path.display()));
     }
     app.opener().open_path(path.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
@@ -3476,7 +3501,7 @@ pub fn run() {
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, people_last, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, ai_index_status, ai_index_rebuild, semantic_search, ai_related, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
-            export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, fetch_feeds, feeds_opml, mark_feeds_seen, feeds_last, babel::babel_run
+            export_note, export_markdown, export_html_fragment, export_linked, publish_site, export_report, export_open, quit::quit_reply, weblink::fetch_title, fetch_feeds, feeds_opml, mark_feeds_seen, feeds_last, babel::babel_run
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -4414,6 +4439,16 @@ mod tests {
         assert_eq!(csv_target("r.csv".into(), d), d.join("r.csv"));
         assert_eq!(csv_target("/x/r.csv".into(), d), PathBuf::from("/x/r.csv"));
         assert!(csv_dest(&csv_target("../r.csv".into(), d), &[]).is_err());
+    }
+
+    #[test]
+    fn publish_dest_stays_out_of_the_app_folders() {
+        let t = std::env::temp_dir();
+        let roots = [t.join("notes"), t.join("timeclock")];
+        assert!(publish_dest(&t.join("site"), &roots).is_ok());
+        for bad in [PathBuf::new(), "site".into(), t.join("notes/site"), t.join("timeclock"), t.join("x/../notes/site")] {
+            assert!(publish_dest(&bad, &roots).is_err(), "{}", bad.display());
+        }
     }
 
     #[test]

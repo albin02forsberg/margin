@@ -2960,6 +2960,20 @@
     if (path) await exported(path, format === "pdf");
   }
 
+  /** Publish the notes tagged `publish_tag` as a static site in `publish_dir`, asked for (and saved) the first time (#1037). */
+  async function publishSite() {
+    if (!cfg.config.publish_dir) {
+      const dir = (await ask("Publish the site to folder", join(cfg.export, "site"), "asked once; change it in Settings → Folders"))?.trim();
+      if (!dir) return;
+      await ownCfg(() => call("save_config", { values: { publish_dir: dir }, reset: [] }));
+      cfg = await call("config");
+    }
+    const [path, n] = await call<[string, number]>("publish_site");
+    flash(`✓ Published ${n} note${n === 1 ? "" : "s"}`);
+    const open = await pick({ prompt: `Published ${n} note${n === 1 ? "" : "s"} to ${path}`, items: [{ label: "Open it", value: true }, { label: "Done", value: false }] });
+    if (open) await call("export_open", { path });
+  }
+
   /** Run export command CMD; if its target exists, ask to overwrite or keep both. Null on cancel. */
   async function exportTo(cmd: string, args: Record<string, unknown>): Promise<string | null> {
     try {
@@ -3428,6 +3442,7 @@
     { label: "Export: copy note as rich text", leader: "e C", run: copyRichText },
     { label: "Export: note as PDF", leader: "e p", run: () => exportNote("pdf") },
     { label: "Export: note and linked notes…", leader: "e a", run: exportLinked },
+    { label: "Export: publish notes tagged :publish: as a static site", leader: "n E", run: publishSite },
     { label: "Export: time report (HTML/PDF)…", leader: "e t", run: exportReport },
   ];
   /** `cmds` without the areas hidden in Settings (`hidden_areas`): palette, keys and Space menu all use this. */
