@@ -28,6 +28,13 @@ test("findTab", () => {
   assert.equal(f("net"), 3);
   assert.equal(f("nope"), -1);
   assert.equal(findTab("today", [{ title: "Today's tasks" }, { title: "Today" }], "/n"), 1); // an exact title first
+  const x = (q: string) => findTab(q, tabs, "/n", true); // `:bd NAME`: no substring fallback
+  assert.equal(x("net"), -1);
+  assert.equal(x("agen"), -1);
+  assert.equal(x("agenda"), 0);
+  assert.equal(x("plan"), 1);
+  assert.equal(x("work/plan"), 1);
+  assert.equal(x("3"), 2);
 });
 
 test("resolvePath", () => {

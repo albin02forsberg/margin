@@ -107,6 +107,15 @@ describe("Margin", () => {
     await type("u");
     await ex(":bd");
     await find(".status .file", "scratch.org");
+    await ex(":e tasks");
+    await find(".status .file", "tasks.org");
+    await ex(":b scratch");
+    await find(".status .file", "scratch.org");
+    await ex(":bd #"); // the alternate tab (tasks), not a title containing "#"
+    await browser.waitUntil(async () => !(await browser.$(".tabs").getText()).includes("tasks"), { timeoutMsg: ":bd # didn't close tasks" });
+    await ex(":bd scr"); // a substring alone never closes a tab
+    await find(".msg", "No exact match");
+    await find(".status .file", "scratch.org");
   });
 
   it("keeps a note deleted outside the app on screen, flagged", async () => {

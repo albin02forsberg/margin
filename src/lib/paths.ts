@@ -112,13 +112,13 @@ export const altTab = (prev: string, tabs: { key: string }[], cur: number): numb
   return i === cur ? -1 : i;
 };
 
-/** `:b NAME`: the index of the open tab NAME picks: a 1-based number, a `findNote` match, else the first title containing NAME; -1 for none. */
-export function findTab(name: string, tabs: { title: string; path?: string }[], notes: string): number {
+/** `:b NAME`: the index of the open tab NAME picks: a 1-based number, a `findNote` match, an exact title, else (unless EXACT, as for `:bd`) the first title containing NAME; -1 for none. */
+export function findTab(name: string, tabs: { title: string; path?: string }[], notes: string, exact = false): number {
   const n = name.trim(), q = n.toLowerCase();
   if (/^\d+$/.test(n)) return +n >= 1 && +n <= tabs.length ? +n - 1 : -1;
   const files = tabs.flatMap((t) => (t.path ? [t.path] : []));
   const f = findNote(n, files, new Map(tabs.flatMap((t) => (t.path ? [[t.path, t.title] as [string, string]] : []))), notes);
   if (f) return tabs.findIndex((t) => t.path === f);
   const i = tabs.findIndex((t) => t.title.toLowerCase() === q);
-  return i >= 0 ? i : tabs.findIndex((t) => t.title.toLowerCase().includes(q));
+  return i >= 0 || exact ? i : tabs.findIndex((t) => t.title.toLowerCase().includes(q));
 }
