@@ -3414,7 +3414,7 @@
     { label: "Time: public holidays", leader: "t h", run: t("holidays") },
     { label: "Time: export CSV…", leader: "t e", run: t("export") },
     { label: "Time: invoice for project… (billable hours × rate into invoices/<project>-<month>.org)", leader: "t I", run: () => act(invoice) },
-    { label: "Time: invoice for customer… (all its projects into invoices/<customer>-<month>.org)", leader: "t C", run: () => act(customerInvoice) },
+    { label: "Time: invoice for customer… (everything billed to it into invoices/<customer>-<month>.org)", leader: "t C", run: () => act(customerInvoice) },
     { label: "Time: switch profile…", leader: "t p", run: () => switchProfile() },
     { label: "Time: project settings", leader: "t P", run: t("projects") },
     { label: "Time: open work diary", leader: "t d", run: t("diary") },
