@@ -3638,8 +3638,12 @@
       ed.hooks.alternate = alternateTab;
       ed.hooks.listTabs = () => act(switchTab);
       ed.hooks.closeTab = (name, force) => {
-        const i = findTab(name, tabs, cfg.notes);
-        if (i < 0) return flash(`No open tab matches “${name.trim()}”`);
+        const n = name.trim(), q = n.toLowerCase();
+        const i = n === "#" ? altTab(prevKey, tabs, cur) : findTab(n, tabs, cfg.notes, true); // exact only: closing is destructive
+        if (i < 0) {
+          const near = n === "#" ? [] : tabs.filter((t) => t.title.toLowerCase().includes(q)).slice(0, 3).map((t) => t.title);
+          return flash(n === "#" ? "No alternate tab" : near.length ? `No exact match; did you mean: ${near.join(", ")}?` : `No open tab matches “${n}”`);
+        }
         act(() => { if (force) discardEdits(tabs[i]); return closeTab(i); });
       };
       ed.hooks.buffer = (name) => {
