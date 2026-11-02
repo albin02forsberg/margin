@@ -126,7 +126,7 @@
       </tbody>
     </table></div>
     <datalist id="customers">{#each customers(saved) as c (c)}<option value={c}></option>{/each}</datalist>
-    <p class="dim">Enter in an export code saves its row. A budget shows how much of it is used on the project's card; an hourly rate shows what this month's billable hours earned, there and in the time reports. A customer groups projects into one invoice (Space t C). Hidden projects keep their time; they just aren't offered when you start tracking.</p>
+    <p class="dim">Enter in an export code saves its row. A budget shows how much of it is used on the project's card; an hourly rate shows what this month's billable hours earned, there and in the time reports. Projects with the same customer share one rounding carry-over. Hidden projects keep their time; they just aren't offered when you start tracking.</p>
   {/if}
   {#if !error}
     <h2>Time off</h2>

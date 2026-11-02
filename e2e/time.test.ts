@@ -221,24 +221,6 @@ describe("Time tracking", () => {
     }
   });
 
-  it("Space t C writes one invoice for every project of a customer, unrated ones with hours only (#1029)", async () => {
-    const projects = join(d.data, "work", "projects.toml"), [orig, origP] = [read(log), read(projects)];
-    try {
-      writeFileSync(projects, origP.replace('export_code = "ACME"', 'export_code = "ACME"\nrate = 100\ncurrency = "EUR"\ncustomer = "Globex"').replace('export_code = "BETA"', 'export_code = "BETA"\ncustomer = "globex"'));
-      writeFileSync(log, `{"ev":"in","t":"2020-01-06T09:00:00","project":"Acme"}\n{"ev":"out","t":"2020-01-06T10:30:00"}\n{"ev":"in","t":"2020-01-06T10:30:00","project":"Beta"}\n{"ev":"out","t":"2020-01-06T11:30:00","note":"beta work"}\n`);
-      await noPicker();
-      await palette("Time: invoice for customer");
-      await answer("Invoice for customer", "Globex");
-      await answer("Invoice for the month containing", "2020-01-15");
-      const note = join(d.notes, "invoices", "Globex-2020-01.org");
-      await fileMatches(note, (s) => /\| \*Acme\* .*\*150\.00 EUR\*/.test(s) && /\| \*Beta\* .*no hourly rate/.test(s) && s.includes("beta work") && /\| \*Total\* .*\*2\.50\*/.test(s), "no customer invoice note");
-      await find(".cm-content", "no hourly rate");
-    } finally {
-      writeFileSync(log, orig);
-      writeFileSync(projects, origP);
-    }
-  });
-
   it("Space t u fills clocktable and tasks blocks and leaves an Emacs-only block alone", async () => {
     const orig = read(log);
     try {

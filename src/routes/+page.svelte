@@ -15,7 +15,6 @@
   import { linkFor, asUrl, asWebUrl } from "$lib/weblink";
   import { srcAt, resultsChange } from "$lib/babel";
   import { svgs } from "$lib/diagram";
-  import { customers } from "$lib/projects";
   import { accepted, changeLabel, hitKey, type Hit as ReplaceHit } from "$lib/replace";
   import { bareTitle, bracketRetitle, findTarget, linkHeadings, linkTarget, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
@@ -2892,18 +2891,6 @@
     flash("Invoice written; a re-run replaces only its #+NAME: invoice table");
   }
 
-  /** One invoice note for every project billed to a customer and a month (#1029); unrated projects list hours only. */
-  async function customerInvoice() {
-    const items = customers(await call<Record<string, { customer?: string }>>("tc_projects"));
-    if (!items.length) return flash("⚠ No project has a customer: set one in Time: project settings (Space t P)");
-    const customer = await pick({ prompt: "Invoice for customer", items });
-    if (customer == null) return;
-    const d = await datePick("Invoice for the month containing", false, undefined, false);
-    if (d == null) return;
-    await openFile(await call<string>("tc_customer_invoice", { customer, dateInput: d }));
-    flash("Invoice written; a re-run replaces only its #+NAME: invoice table");
-  }
-
   async function exportCsv() {
     const start = await datePick("Export from");
     if (start == null) return;
@@ -3414,7 +3401,6 @@
     { label: "Time: public holidays", leader: "t h", run: t("holidays") },
     { label: "Time: export CSV…", leader: "t e", run: t("export") },
     { label: "Time: invoice for project… (billable hours × rate into invoices/<project>-<month>.org)", leader: "t I", run: () => act(invoice) },
-    { label: "Time: invoice for customer… (everything billed to it into invoices/<customer>-<month>.org)", leader: "t C", run: () => act(customerInvoice) },
     { label: "Time: switch profile…", leader: "t p", run: () => switchProfile() },
     { label: "Time: project settings", leader: "t P", run: t("projects") },
     { label: "Time: open work diary", leader: "t d", run: t("diary") },
