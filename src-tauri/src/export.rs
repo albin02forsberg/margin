@@ -984,6 +984,31 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
     }
 
     #[test]
+    fn publish_site_links_everywhere() {
+        let root = std::env::temp_dir().join(format!("margin-publish2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (notes, dir) = (root.join("notes"), root.join("site"));
+        std::fs::create_dir_all(notes.join("x")).unwrap();
+        std::fs::create_dir_all(notes.join("y")).unwrap();
+        std::fs::write(notes.join("x/f.txt"), "1").unwrap();
+        std::fs::write(notes.join("y/f.txt"), "2").unwrap();
+        let text = "#+title: T\n#+filetags: :publish:\n* H [[x/f.txt][in head]]\n- term :: [[y/f.txt][in term]] *[[x/f.txt][bold]]*\n  - [[y/f.txt]]\n| [[x/f.txt]] |\n#+begin_quote\n[[y/f.txt]]\n#+end_quote\n#+begin_verse\n[[x/f.txt]]\n#+end_verse\n";
+        let mut a = org::parse(&notes.join("a.org"), text, &kw());
+        a.mtime = Some(std::time::SystemTime::now());
+        assert_eq!(publish(&dir, &notes, &[&a], "publish", &kw(), |f| f.text.clone()), Ok(1));
+        let h = std::fs::read_to_string(dir.join("a.html")).unwrap();
+        assert!(h.contains("assets/f.txt") && h.contains("assets/f (2).txt") || h.contains("assets/f.txt") && h.contains("assets/f.txt (2)"), "{h}");
+        assert!(dir.join("assets").is_dir());
+        let i = std::fs::read_to_string(dir.join("index.html")).unwrap();
+        assert!(i.contains("class=\"date\""), "{i}");
+        // Errors surface instead of panicking: DIR is a file; an asset vanishes before it is copied.
+        let file = root.join("file");
+        std::fs::write(&file, "").unwrap();
+        assert!(publish(&file, &notes, &[&a], "publish", &kw(), |f| f.text.clone()).is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn stale_pages() {
         let v = |s: &[&str]| s.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(stale(&v(&["a.html", "old.html", "pic.png", "b.md", "x.html.bak"]), &v(&["a.html", "b.html"]), "html"), ["old.html"]);
