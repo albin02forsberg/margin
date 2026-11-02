@@ -210,7 +210,6 @@ impl Index {
         out
     }
 
-    /// MAGIC, then little-endian u32 VERSION, model, dim and file count; per file its path, u64
     /// The K notes most like the one at PATH, best first, as the best section of each (path, line,
     /// score): the mean of PATH's section vectors (normalised) ranked by top_k, PATH itself left out
     /// (#1016). Empty when PATH isn't indexed.
@@ -233,6 +232,7 @@ impl Index {
         out
     }
 
+    /// MAGIC, then little-endian u32 VERSION, model, dim and file count; per file its path, u64
     /// mtime and chunk count; per chunk u32 line, u64 hash and DIM f32s. Strings are u32 length + UTF-8.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut b = MAGIC.to_vec();
