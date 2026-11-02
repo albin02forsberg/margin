@@ -225,7 +225,7 @@ describe("Time tracking", () => {
     const projects = join(d.data, "work", "projects.toml"), [orig, origP] = [read(log), read(projects)];
     try {
       writeFileSync(projects, origP.replace('export_code = "ACME"', 'export_code = "ACME"\nrate = 100\ncurrency = "EUR"\ncustomer = "Globex"').replace('export_code = "BETA"', 'export_code = "BETA"\ncustomer = "globex"'));
-      writeFileSync(log, `{"ev":"in","t":"2020-01-06T09:00:00","project":"Acme"}\n{"ev":"in","t":"2020-01-06T10:30:00","project":"Beta"}\n{"ev":"out","t":"2020-01-06T11:30:00","note":"beta work"}\n`);
+      writeFileSync(log, `{"ev":"in","t":"2020-01-06T09:00:00","project":"Acme"}\n{"ev":"out","t":"2020-01-06T10:30:00"}\n{"ev":"in","t":"2020-01-06T10:30:00","project":"Beta"}\n{"ev":"out","t":"2020-01-06T11:30:00","note":"beta work"}\n`);
       await noPicker();
       await palette("Time: invoice for customer");
       await answer("Invoice for customer", "Globex");
