@@ -63,6 +63,24 @@ pub fn meta(l: &str) -> bool {
     t.starts_with("#+") || (t.starts_with(':') && t[1..].find(':').is_some_and(|i| i > 0 && t[1..=i].chars().all(|c| c.is_alphanumeric() || "_-".contains(c))))
 }
 
+/// LINES (index, text) without meta lines, planning lines and whole `:NAME:` .. `:END:` drawers
+/// (LOGBOOK clocks and state changes); a drawer left open runs to the end of LINES.
+pub fn skip_drawers<'a>(lines: impl Iterator<Item = (usize, &'a str)>) -> impl Iterator<Item = (usize, &'a str)> {
+    let mut open = false;
+    lines.filter(move |(_, l)| {
+        let t = l.trim();
+        if open {
+            open = !t.eq_ignore_ascii_case(":END:");
+            return false;
+        }
+        if t.len() > 2 && t.starts_with(':') && t.ends_with(':') && meta(t) && !t.eq_ignore_ascii_case(":END:") {
+            open = true;
+            return false;
+        }
+        !meta(t) && !["SCHEDULED:", "DEADLINE:", "CLOSED:"].iter().any(|k| t.starts_with(k))
+    })
+}
+
 /// F's score for TERMS (each counts 3 in the title, 2 in a heading, 1 in the text; more terms beat
 /// more repeats) and its best line, if any term occurs.
 fn score(f: &OrgFile, terms: &[String]) -> (usize, Option<usize>) {
