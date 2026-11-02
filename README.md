@@ -310,6 +310,7 @@ profile clocks out first, and warns where old files stay (nothing is moved).
 | Ctrl+P | Open a note — or type a title to create one |
 | Ctrl+Shift+N | New note |
 | Space s o | Occur: list the lines of this note matching a search (same syntax, or `/regex/`) with their heading path; Enter jumps to one |
+| Space s r | Related notes (by meaning): the notes closest to this one in the semantic index (needs **Semantic index of my notes**), each with its best-matching heading; Enter jumps to that section |
 | Ctrl+Shift+F | Search all notes as you type (lines with every word, in any order; `"quote"` a phrase, `-word` or `-"phrase"` to exclude, `in:folder` or `in:parent/child` to search one folder, `re:ABC-\d+` or `re:"TODO\s+\w+"` for a regex that must match, `case:match` to make the whole query case-sensitive; a bad regex shows as the only row). Start with `~` to search by meaning instead (`~ how we price renewals`): the sections closest to it in the semantic index, with note › heading and similarity; needs **Semantic index of my notes** |
 | Ctrl+L | Insert a link to another note or to any heading (a heading without an `:ID:` links as `[[file:note.org::*Heading]]`, or `[[*Heading]]` in the same note; a one-line selection becomes the link text; pasting a URL over a selection links it too) |
 | `[[` / `@` / `:` (insert mode) | Complete as you type: `[[` + part of a title offers notes and headings and inserts the same link as Ctrl+L, `@` after a space offers known people, and `:` after a heading's title offers existing tags. Enter or Tab accepts, arrows move, Esc closes the popup (and stays in insert mode). New notes are still created with Ctrl+L |
@@ -1043,7 +1044,9 @@ also embeds your question and adds the sections closest in meaning, so a note
 without your words can still be found; if Ollama or the index is unavailable the
 chat quietly matches by keyword as before. **Search all notes** (Ctrl+Shift+F)
 searches the index directly when the query starts with `~`, and says why when it
-can't (switched off, index still building, Ollama not running).
+can't (switched off, index still building, Ollama not running), and **Related notes**
+(Space s r) lists the notes closest in meaning to the open one, straight from the
+index with no call to Ollama.
 
 When the question asks about your tasks or projects (*task*, *todo*, *deadline*…),
 your day or week (*today*, *week*, *agenda*, *meeting*…) or your time (*hours*,
