@@ -2582,22 +2582,46 @@ fn ai_excluded(s: State<App>, path: PathBuf) -> bool {
     retrieve::excluded(&path, &c.notes(), &c.ai_exclude)
 }
 
-/// The index's best sections for QUESTION (path, line, similarity) when `ai_semantic` is on and
-/// the index exists; empty on any failure (Ollama down, no index), so retrieval falls back to keywords (#966).
-fn semantic_hits(app: &AppHandle, c: &Config, question: &str) -> Vec<(PathBuf, usize, f32)> {
+/// C's embedding model, or why semantic search can't run.
+fn semantic_model(c: &Config) -> R<&str> {
     let model = c.ai_embed_model.trim();
-    if !c.ai_semantic || c.ai_backend != ai::Backend::Ollama || model.is_empty() {
-        return vec![];
+    if !c.ai_semantic {
+        return Err("Semantic search is off: turn it on in Settings → AI.".into());
     }
-    let Ok(path) = index_file(app, c) else { return vec![] };
-    // While a reindex round holds the index, keywords only; the question is embedded unlocked.
+    if c.ai_backend != ai::Backend::Ollama {
+        return Err("Semantic search needs the Ollama backend (Space f a).".into());
+    }
+    if model.is_empty() {
+        return Err("Set the embedding model in Settings → AI, e.g. nomic-embed-text.".into());
+    }
+    Ok(model)
+}
+
+/// The index's K best sections for TEXT (path, line, similarity), or why not: off, index empty or
+/// being updated, Ollama down. The chat falls back to keywords on any error (#966, #1017).
+fn semantic_query(app: &AppHandle, c: &Config, text: &str, k: usize) -> R<Vec<(PathBuf, usize, f32)>> {
+    const BUSY: &str = "The semantic index is empty or still building; try again in a moment.";
+    let model = semantic_model(c)?;
+    let path = index_file(app, c)?;
+    // While a reindex round holds the index there are no hits; the text is embedded unlocked.
     let s = app.state::<App>();
     if s.semantic_now().is_none_or(|mut g| index_in(&mut g, &path, model).ix.files.is_empty()) {
-        return vec![];
+        return Err(BUSY.into());
     }
-    let Ok(q) = ai::embed(&c.ai_url, model, &embed::prefixed(model, true, question)) else { return vec![] };
-    let Some(mut g) = s.semantic_now() else { return vec![] };
-    index_in(&mut g, &path, model).ix.top_k(&q, 8).into_iter().map(|(p, l, c)| (p.to_path_buf(), l, c)).collect()
+    let q = ai::embed(&c.ai_url, model, &embed::prefixed(model, true, text))?;
+    let Some(mut g) = s.semantic_now() else { return Err(BUSY.into()) };
+    Ok(index_in(&mut g, &path, model).ix.top_k(&q, k).into_iter().map(|(p, l, c)| (p.to_path_buf(), l, c)).collect())
+}
+
+/// Search all notes by meaning (`~` in Search all notes): QUERY's K best sections (#1017).
+#[tauri::command(async)]
+fn semantic_search(app: AppHandle, s: State<App>, query: String, k: usize) -> R<Vec<embed::Found>> {
+    let c = s.cfg();
+    if query.trim().is_empty() {
+        return Ok(vec![]);
+    }
+    let hits = semantic_query(&app, &c, query.trim(), k.clamp(1, 100))?;
+    Ok(embed::found(&s.files(), &hits))
 }
 
 /// What "Use my notes" sends for QUESTION, as switched on in `ai_source_*`: the open tasks, agenda
@@ -2615,7 +2639,7 @@ fn ai_retrieve(app: AppHandle, s: State<App>, question: String, open: Option<Pat
     let mut out = retrieve::app_sources(tasks.as_deref(), agenda.as_deref(), time.as_deref(), day);
     if c.ai_source_notes {
         let used: usize = out.iter().map(retrieve::cost).sum();
-        let hits = semantic_hits(&app, &c, &question);
+        let hits = semantic_query(&app, &c, &question, 8).unwrap_or_default();
         out.extend(retrieve::retrieve(&files, &question, open.as_deref(), retrieve::BUDGET.saturating_sub(used), &hits));
     }
     out
@@ -3408,7 +3432,7 @@ pub fn run() {
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, people_last, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, ai_index_status, ai_index_rebuild, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, ai_index_status, ai_index_rebuild, semantic_search, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, export_report, export_open, quit::quit_reply, weblink::fetch_title, fetch_feeds, feeds_opml, mark_feeds_seen, feeds_last, babel::babel_run
         ])
         .build(tauri::generate_context!())
@@ -3434,6 +3458,18 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn semantic_model_says_why_not() {
+        let mut c = Config::default();
+        assert!(semantic_model(&c).unwrap_err().contains("is off"));
+        c.ai_semantic = true;
+        assert_eq!(semantic_model(&c), Ok("nomic-embed-text"));
+        c.ai_embed_model = " ".into();
+        assert!(semantic_model(&c).unwrap_err().contains("embedding model"));
+        c.ai_backend = ai::Backend::Embedded;
+        assert!(semantic_model(&c).unwrap_err().contains("Ollama"));
+    }
 
     #[test]
     fn retag_queries_maps_each_query() {

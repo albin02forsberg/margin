@@ -66,6 +66,33 @@ pub fn chunks(f: &OrgFile) -> Vec<Chunk> {
     out
 }
 
+/// A section the index found, as the pickers show it (#1017).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct Found {
+    pub path: PathBuf,
+    pub title: String,
+    /// The heading LINE is under ("" before the first one).
+    pub heading: String,
+    pub line: usize,
+    /// The section's first line that isn't a headline or meta ("" if none).
+    pub text: String,
+    pub score: f32,
+}
+
+/// HITS (path, line, score) of FILES as Found, in order; hits of notes not in FILES are dropped.
+pub fn found(files: &[Arc<OrgFile>], hits: &[(PathBuf, usize, f32)]) -> Vec<Found> {
+    let by_path: HashMap<&Path, &OrgFile> = files.iter().map(|f| (f.path.as_path(), &**f)).collect();
+    hits.iter().filter_map(|(p, line, score)| {
+        let f = by_path.get(p.as_path())?;
+        let heading = f.headlines.iter().rev().find(|h| h.line <= *line).map_or("", |h| &h.title).to_string();
+        let end = f.headlines.iter().map(|h| h.line).find(|&l| l > *line).unwrap_or(usize::MAX);
+        // From the line after the headline when the section starts with one, up to the next.
+        let from = line + f.headlines.iter().any(|h| h.line == *line) as usize;
+        let text = f.text.lines().take(end).skip(from).map(str::trim).find(|l| !l.is_empty() && !meta(l) && !["SCHEDULED:", "DEADLINE:", "CLOSED:"].iter().any(|k| l.starts_with(k))).unwrap_or("").to_string();
+        Some(Found { path: p.clone(), title: f.title.clone(), heading, line: *line, text, score: *score })
+    }).collect()
+}
+
 fn hash(text: &str) -> u64 {
     u64::from_le_bytes(Sha256::digest(text.as_bytes())[..8].try_into().unwrap())
 }
@@ -326,6 +353,15 @@ mod tests {
             log.borrow_mut().push(t.to_string());
             Ok("aeo".chars().map(|c| t.matches(c).count() as f32).collect())
         }
+    }
+
+    #[test]
+    fn found_names_the_section() {
+        let f = note("/n/a.org", "#+title: Alpha\nintro\n* One\nSCHEDULED: <2026-01-01>\n:PROPERTIES:\n:ID: x\n:END:\n\nbody one\n** Two\n* Three\nthree\n", 1);
+        let hits = [(PathBuf::from("/n/a.org"), 2, 0.9), (PathBuf::from("/n/gone.org"), 0, 0.8), (PathBuf::from("/n/a.org"), 1, 0.7), (PathBuf::from("/n/a.org"), 9, 0.6)];
+        let got: Vec<_> = found(&[f], &hits).into_iter().map(|h| (h.title, h.heading, h.line, h.text, h.score)).collect();
+        let s = String::from;
+        assert_eq!(got, [(s("Alpha"), s("One"), 2, s("body one"), 0.9), (s("Alpha"), s(""), 1, s("intro"), 0.7), (s("Alpha"), s("Two"), 9, s(""), 0.6)]);
     }
 
     #[test]
