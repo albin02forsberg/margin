@@ -123,6 +123,8 @@ pub struct Index {
     pub model: String,
     pub dim: usize,
     pub files: Vec<Indexed>,
+    /// Sections the last `update` left unembedded (over its cap, or after an error); not saved.
+    pub pending: usize,
 }
 
 /// Where the index of the notes folder ROOT lives: LOCAL is the app's local data dir, never the
@@ -133,19 +135,19 @@ pub fn index_path(local: &Path, root: &Path) -> PathBuf {
 
 impl Index {
     pub fn new(model: &str) -> Index {
-        Index { model: model.into(), dim: 0, files: vec![] }
+        Index { model: model.into(), dim: 0, files: vec![], pending: 0 }
     }
 
     /// Bring the index up to date with FILES (already filtered by `ai_exclude`): notes no longer
     /// listed lose their vectors, unchanged ones (same scanned mtime) are kept, and changed or new
     /// sections are embedded, reusing any vector of the same text (so a moved note costs nothing).
     /// At most CAP sections are embedded per run; a note left short is retried next run. Returns
-    /// how many were embedded; on an embedder error the work so far is kept and the error returned.
+    /// how many were embedded (`pending` = how many are left); on an embedder error the work so far is kept and the error returned.
     pub fn update(&mut self, files: &[Arc<OrgFile>], embed: &dyn Fn(&str) -> Result<Vec<f32>, String>, cap: usize) -> Result<usize, String> {
         let old = std::mem::take(&mut self.files);
         let known: HashMap<u64, &Vec<f32>> = old.iter().flat_map(|f| &f.chunks).map(|c| (c.hash, &c.vec)).collect();
         let by_path: HashMap<&Path, &Indexed> = old.iter().map(|f| (f.path.as_path(), f)).collect();
-        let (mut done, mut err) = (0, None);
+        let (mut done, mut err, mut pending) = (0, None, 0);
         for f in files {
             // The scanned text's mtime, so a note edited while indexing is redone next run.
             let mtime = nanos(f.mtime);
@@ -161,6 +163,7 @@ impl Index {
                     None if done < cap && err.is_none() => match embed(&c.text) {
                         Ok(v) if v.is_empty() || (self.dim != 0 && v.len() != self.dim) => {
                             err = Some(format!("embedding has {} dimensions, expected {}", v.len(), self.dim));
+                            pending += 1;
                             continue;
                         }
                         Ok(v) => {
@@ -170,11 +173,13 @@ impl Index {
                         }
                         Err(e) => {
                             err = Some(e);
+                            pending += 1;
                             continue;
                         }
                     },
                     None => {
                         ix.mtime = 0;
+                        pending += 1;
                         continue;
                     }
                 };
@@ -185,6 +190,7 @@ impl Index {
             }
             self.files.push(ix);
         }
+        self.pending = pending;
         err.map_or(Ok(done), Err)
     }
 
@@ -297,7 +303,7 @@ impl Index {
             }
             files.push(Indexed { path, mtime, chunks });
         }
-        r.is_empty().then(|| Index { model: model.into(), dim, files })
+        r.is_empty().then(|| Index { model: model.into(), dim, files, pending: 0 })
     }
 
     /// The index at PATH, or an empty one when it is missing, corrupt, old or of another model.
@@ -415,6 +421,7 @@ mod tests {
         let ix = Index {
             model: "m".into(),
             dim: 2,
+            pending: 0,
             files: vec![
                 Indexed { path: "/a".into(), mtime: 1, chunks: vec![v(0, 1, vec![1.0, 0.0]), v(5, 2, vec![0.0, 0.0])] },
                 Indexed { path: "/b".into(), mtime: 1, chunks: vec![v(3, 3, vec![1.0, 1.0]), v(9, 4, vec![-1.0, 0.0])] },
@@ -481,13 +488,15 @@ mod tests {
         let mut ix = Index::new("m");
         let a = note("/n/a.org", "* One\naaa\n* Two\neee\n* Three\nooo\n", 1);
         assert_eq!(ix.update(std::slice::from_ref(&a), &fake(&log), 2), Ok(2));
-        assert_eq!((ix.files[0].chunks.len(), ix.files[0].mtime), (2, 0));
+        assert_eq!((ix.files[0].chunks.len(), ix.files[0].mtime, ix.pending), (2, 0, 1));
         assert_eq!(ix.update(std::slice::from_ref(&a), &fake(&log), 2), Ok(1));
+        assert_eq!(ix.pending, 0);
         assert_eq!((ix.files[0].chunks.len(), ix.files[0].mtime), (3, nanos(a.mtime)));
         let b = note("/n/b.org", "* New\nx\n", 1);
         let fail = |_: &str| Err::<Vec<f32>, String>("down".into());
         assert_eq!(ix.update(&[a.clone(), b.clone()], &fail, 9), Err("down".into()));
         assert_eq!((ix.files[0].chunks.len(), ix.files[1].chunks.len(), ix.files[1].mtime), (3, 0, 0));
+        assert_eq!(ix.pending, 1);
         let wrong = |_: &str| Ok(vec![1.0]);
         assert!(ix.update(&[a, b], &wrong, 9).unwrap_err().contains("dimensions"));
     }

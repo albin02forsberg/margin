@@ -124,7 +124,7 @@
   let mcp = $state("");
   invoke<string>("mcp_command").then((c) => (mcp = c), () => {});
   /** The semantic index (#965): size on disk, what's in it, whether it's updating, the last error. */
-  type IndexStatus = { bytes: number; notes: number; sections: number; running: boolean; error: string };
+  type IndexStatus = { bytes: number; notes: number; sections: number; running: boolean; pending: number; error: string };
   let index = $state<IndexStatus | null>(null);
   async function loadIndex(f: () => Promise<unknown> = async () => {}) {
     try {
@@ -140,8 +140,8 @@
     if (active && config.ai_semantic) untrack(() => loadIndex());
   });
   $effect(() => {
-    const off = listen("ai-index", () => loadIndex());
-    return () => void off.then((f) => f());
+    const offs = ["ai-index", "ai-index-progress"].map((e) => listen(e, () => loadIndex()));
+    return () => offs.forEach((o) => void o.then((f) => f()));
   });
   let macDialog: HTMLDialogElement;
   const MAC_OK = "activity-watcher-macos-ok";
@@ -233,7 +233,7 @@
           </svelte:element>
           {#if f.key === "ai_semantic" && base.ai_semantic}
             <p class="dim">
-              {#if index}Index: {index.sections} sections of {index.notes} notes, {(index.bytes / 1048576).toFixed(1)} MB{index.running ? " (updating…)" : ""}.{/if}
+              {#if index}Index: {index.sections} sections of {index.notes} notes, {(index.bytes / 1048576).toFixed(1)} MB{index.running ? (index.pending > 0 ? ` (updating, ${index.pending} to go)` : " (updating…)") : ""}.{/if}
               <button type="button" class="link" disabled={index?.running} onclick={() => loadIndex(() => invoke("ai_index_rebuild"))}>Rebuild</button>
             </p>
             {#if index?.error}<p class="error">⚠ {index.error}</p>{/if}
