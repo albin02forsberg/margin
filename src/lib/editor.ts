@@ -44,6 +44,18 @@ export const hooks = {
   alternate: () => {},
   /** `:e[!] [NAME]`: open the note NAME, or reload the current one from disk. */
   edit: (_name: string, _force: boolean) => {},
+  /** `:sp` / `:vs [NAME]`: open the note NAME (none: a picker) in the right pane. */
+  split: (_name: string) => {},
+  /** `:new` / `:vnew [TITLE]`: create a note and open it in the right pane. */
+  newSplit: (_title: string) => {},
+  /** `:only`: close the split, keeping the focused pane. */
+  only: () => {},
+  /** `:close`: close the focused pane. */
+  closePane: () => {},
+  /** `:sav NAME`: save the open note and rename it to NAME. */
+  saveAs: (_name: string) => {},
+  /** `:help`: open the tutorial. */
+  help: () => {},
   follow: (_target?: string) => {},
   tab: (_d: number) => {},
   /** The user's `[[snippets]]` (config.toml), expanded by `<key` + Tab. */
@@ -78,6 +90,13 @@ Vim.defineEx("wqall", "wqa", () => { hooks.saveAll(); hooks.closeAll(); });
 Vim.defineEx("xall", "xa", () => { hooks.saveAll(); hooks.closeAll(); });
 Vim.defineEx("buffer", "b", (_cm: unknown, p: ExP) => hooks.buffer(p.argString ?? ""));
 Vim.defineEx("edit", "e", (_cm: unknown, p: ExP) => { const [f, n] = bang(p); hooks.edit(n, f); });
+// Split view (#874) has one side-by-side layout, so `:sp` and `:vs` are the same.
+for (const [name, alias] of [["split", "sp"], ["vsplit", "vs"]]) Vim.defineEx(name, alias, (_cm: unknown, p: ExP) => hooks.split((p.argString ?? "").trim()));
+for (const name of ["new", "vnew"]) Vim.defineEx(name, name, (_cm: unknown, p: ExP) => hooks.newSplit((p.argString ?? "").trim()));
+Vim.defineEx("only", "on", () => hooks.only());
+Vim.defineEx("close", "clo", () => hooks.closePane());
+Vim.defineEx("saveas", "sav", (_cm: unknown, p: ExP) => hooks.saveAs((p.argString ?? "").trim()));
+Vim.defineEx("help", "h", () => hooks.help());
 
 // `:set number` / `relativenumber` / `wrap`: session-wide vim options, a compartment per view.
 // Global only: the callback ignores per-editor (cm) calls, so codemirror-vim keeps no stale local copies.

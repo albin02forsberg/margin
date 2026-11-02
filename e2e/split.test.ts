@@ -2,7 +2,7 @@
 import { after, before, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { join } from "node:path";
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { answer, browser, close, fileMatches, find, Key, launch, palette, read, type } from "./setup.ts";
 
 let notes: string;
@@ -111,5 +111,26 @@ describe("Split view", () => {
     await find(".status .mode", "INSERT");
     await browser.keys(Key.Escape);
     await find(".status .mode", "NORMAL");
+  });
+
+  it(":only, :vs NAME, :close and :sav NAME (#1021)", async () => {
+    const ex = async (s: string) => { await type(s); await browser.keys(Key.Enter); };
+    await ex(":only"); // alpha (right, focused) stays, on the left
+    await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: ":only left the split open" });
+    await find(".status .file", "alpha.org");
+    await ex(":close");
+    await find(".msg", "Cannot close last window");
+    await ex(":vs beta");
+    await find(".editor.split .cm-content", "Second line");
+    await find(".status .file", "beta.org");
+    await ex(":vs alpha"); // already in the left pane
+    await find(".msg", "already shown");
+    await ex(":close"); // the focused right pane goes, alpha stays
+    await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: ":close left the split open" });
+    await find(".status .file", "alpha.org");
+    await ex(":sav gamma");
+    await find(".status .file", "gamma.org");
+    await fileMatches(join(notes, "gamma.org"), (s) => s.includes("Alpha text."), ":sav didn't rename the note");
+    assert.ok(!existsSync(join(notes, "alpha.org")), "alpha.org still there");
   });
 });

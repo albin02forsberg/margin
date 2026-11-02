@@ -327,11 +327,45 @@
     const shown = [tab?.path, tabs.find((t) => t.key === key2)?.path]; // never the same note in both panes
     const ps = [...new Set([...(prev ? [prev] : []), ...sorted])].filter((p) => !shown.includes(p));
     const path = await pick({ prompt: "Open beside this note", items: ps.map((p) => ({ label: titles.get(p) ?? niceName(p), detail: rel(p), value: p as unknown })) });
-    if (typeof path !== "string") return;
+    if (typeof path === "string") await beside(path);
+  }
+
+  /** Open PATH in the right pane, or as a tab when the window is too narrow for a split. */
+  async function beside(path: string) {
     if (!isNarrow()) return showSplit(path);
     flash("Window too narrow for a split: opened as a tab");
     await openFile(path);
   }
+
+  /** `:sp` / `:vs [NAME]`: the note NAME matches (as `:e`) beside this one; no NAME, the picker. */
+  async function splitNote(name: string) {
+    if (!name) return openSplit();
+    const [files, titles] = await Promise.all([call<string[]>("list_files"), call<Record<string, string>>("note_titles")]);
+    const f = findNote(name, files, new Map(Object.entries(titles)), cfg.notes);
+    if (!f) return flash(`No note matches “${name}”`);
+    if ([tab?.path, tabs.find((t) => t.key === key2)?.path].includes(f)) return flash(`${niceName(f)} is already shown`); // never the same note in both panes
+    await beside(f);
+  }
+
+  /** `:new [TITLE]`: create a note (asking for TITLE when there is none) and open it beside this one, in insert mode. */
+  async function newSplit(title: string) {
+    title ||= (await ask("New note title"))?.trim() ?? "";
+    if (!title) return;
+    const n: NoteNode = await call("notes_new", { title });
+    await beside(n.path);
+    view.dispatch({ selection: { anchor: view.state.doc.length } });
+    ed.insertMode(view);
+  }
+
+  /** `:close`: close the focused pane; the other pane's note stays shown. */
+  async function closePane() {
+    if (key2 == null || isNarrow()) return flash("Cannot close last window"); // narrow: the right pane is hidden
+    await focusPane(side ^ 1);
+    await closeSplitSaved();
+  }
+
+  /** `:help`, Space ?: the tutorial note. */
+  const openTutorial = async () => openFile((await call<[string, boolean]>("tutorial"))[0]);
 
   /** Show the note at PATH in the right pane (opening its tab if needed) and focus it unless FOCUS is false. */
   async function showSplit(path: string, focus = true) {
@@ -2033,11 +2067,11 @@
   /** Path of a note being renamed right now; `pruneMissing` skips it. */
   let renaming = "";
 
-  /** Rename the open note in its folder; the backend fixes the [[file:]] links to it. */
-  async function renameNote() {
+  /** Rename the open note in its folder (to TO, else a prompted name); the backend fixes the [[file:]] links to it. */
+  async function renameNote(to?: string) {
     if (!inFile() || !tab.path!.startsWith(cfg.notes)) return flash("Open a note first.");
     const t = tab, from = t.path!;
-    let name = (await ask("Rename note to", base(from)))?.trim();
+    let name = (to ?? (await ask("Rename note to", base(from))))?.trim();
     if (!name || name === base(from)) return;
     if (!/\.org(_archive)?$/.test(name)) name += ".org";
     const r = await relocateNote(t, () => call<[string, string[]]>("rename_note", { from, name }));
@@ -3227,7 +3261,7 @@
     { label: "Show what's new (notes of the last update)", run: whatsNew },
     { label: "Report a bug (opens a prefilled GitHub issue)", run: () => openUrl(bugReportUrl({ version, os: osName(navigator.userAgent), nightly: !!cfg?.config?.nightly_updates, error: lastError })) },
     { label: "Run setup again…", run: setup },
-    { label: "Help: tutorial", leader: "?", run: async () => openFile((await call<[string, boolean]>("tutorial"))[0]) },
+    { label: "Help: tutorial", leader: "?", run: openTutorial },
     { label: "Switch tab…", leader: "b b", run: switchTab },
     { label: "Alternate tab", run: alternateTab },
     { label: "Next tab (also gt)", keys: ["Ctrl+Tab"], leader: "b n", run: () => cycleTab(1) },
@@ -3656,6 +3690,12 @@
       ed.hooks.snippets = () => cfg?.snippets ?? [];
       ed.hooks.ask = (name) => ask(name);
       ed.hooks.completions = completions;
+      ed.hooks.split = (name) => act(() => splitNote(name));
+      ed.hooks.newSplit = (title) => act(() => newSplit(title));
+      ed.hooks.only = () => (key2 == null ? flash("Already only one window") : act(closeSplitSaved));
+      ed.hooks.closePane = () => act(closePane);
+      ed.hooks.saveAs = (name) => (name ? act(() => renameNote(name)) : flash("Argument required")); // renaming saves first
+      ed.hooks.help = () => act(openTutorial);
       await openView("agenda");
       requestAnimationFrame(() => (motion = true)); // nothing animates on first load
       await restoreSession();
