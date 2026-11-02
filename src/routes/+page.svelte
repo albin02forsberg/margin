@@ -404,6 +404,7 @@
   async function closeSplitSaved() {
     const k = key2;
     closeSplit();
+    if (isText(tab)) { await tick(); view.focus(); } // the closed pane held focus; without this the next `:` goes to the body
     await saveTab(tabs.find((x) => x.key === k));
   }
 
