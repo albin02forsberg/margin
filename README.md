@@ -239,7 +239,9 @@ passes (see above); add the `no-release` label to any open issue to pause that.
 optional details, filed as a normal issue that goes through triage and review),
 `j`/`k` select an Up next row or open PR and `o` opens it in the browser, `p` pauses
 (no new run starts until you press `p` again or remove `~/.cache/margin-autopilot/PAUSE`;
-a running one finishes, and the header says paused), `?` lists all keys. Agent rows show
+a running one finishes, and the header says paused), `s` shows stats for the last 7 days
+(sparklines of PRs merged per hour and per day, issues filed and closed per day, and the
+median time from PR open to merge), `?` lists all keys. Agent rows show
 the issue or PR each agent works on, and the main CI line counts PRs merged in the last hour and day.
 Terminals 120 columns or wider get two columns; short ones drop Recent and the totals
 before Up next, and the dashboard never draws past the bottom row (`j`/`k` only reach rows on screen).

@@ -12,7 +12,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { execFile } from "node:child_process";
 import { basename } from "node:path";
-import { cut, readyRow, createArgs, issueNo, columns, budget, keptLines, clip, refOf, throughput } from "./autopilot-ui-lib.mjs";
+import { cut, readyRow, createArgs, issueNo, columns, budget, keptLines, clip, refOf, throughput, spark, stats } from "./autopilot-ui-lib.mjs";
 
 const tty = process.stdout.isTTY;
 const logFile = process.env.AUTOPILOT_LOG;
@@ -125,14 +125,16 @@ const gh = (args) => new Promise((res, rej) => execFile("gh", args, { maxBuffer:
 const THREE_H = 3 * 3600e3;
 async function pollUp() {
   try {
-    const day = new Date(Date.now() - 86400e3).toISOString().slice(0, 19) + "Z";
-    const [iss, prs, runsJson, mergedJson] = await Promise.all([
+    const week = new Date(Date.now() - 7 * 86400e3).toISOString().slice(0, 19) + "Z";
+    const [iss, prs, runsJson, mergedJson, recentJson] = await Promise.all([
       gh(["issue", "list", "-R", REPO, "--state", "open", "--limit", "80", "--json", "number,title,labels,assignees,comments,updatedAt"]),
       gh(["pr", "list", "-R", REPO, "--state", "open", "--json", "number,title,isDraft,statusCheckRollup"]),
       gh(["run", "list", "-R", REPO, "--branch", "main", "--workflow", "ci.yml", "--limit", "6", "--json", "status,conclusion"]),
-      gh(["pr", "list", "-R", REPO, "--state", "merged", "--search", `merged:>=${day}`, "--limit", "200", "--json", "mergedAt"]),
+      gh(["pr", "list", "-R", REPO, "--state", "merged", "--search", `merged:>=${week}`, "--limit", "500", "--json", "mergedAt,createdAt"]),
+      // filed or closed in the last 7 days implies updated in them; `stats` drops the older stamps
+      gh(["issue", "list", "-R", REPO, "--state", "all", "--search", `updated:>=${week}`, "--limit", "500", "--json", "createdAt,closedAt"]),
     ]);
-    const issues = JSON.parse(iss), pulls = JSON.parse(prs), runs = JSON.parse(runsJson);
+    const issues = JSON.parse(iss), pulls = JSON.parse(prs), runs = JSON.parse(runsJson), merged = JSON.parse(mergedJson);
     const lab = (i) => i.labels.map((l) => l.name);
     const logs = /^(Scout|Release|Ideator) log$/;
     const work = issues.filter((i) => !logs.test(i.title));
@@ -147,7 +149,8 @@ async function pollUp() {
     st.up = {
       at: Date.now(),
       ready,
-      merged: throughput(JSON.parse(mergedJson).map((p) => p.mergedAt), Date.now()),
+      merged: throughput(merged.map((p) => p.mergedAt), Date.now()),
+      stats: stats(merged, JSON.parse(recentJson), Date.now()),
       inProgress: live.filter((i) => i.assignees.length).length,
       unplanned: live.filter((i) => !hasC(i, "## Plan") && !i.assignees.length).length,
       decisions: live.filter((i) => lab(i).includes("needs-decision")).length,
@@ -264,10 +267,12 @@ function onKey(buf) {
     const c = st.confirm; st.confirm = null;
     if (k === "y") c();
   } else if (st.help) st.help = false;   // any key only closes help
+  else if (st.stats) st.stats = false;   // ...and stats
   else if (k === "n") queueTask();
   else if (!st.panel) {
     if (k === "d") st.panel = true;
     else if (k === "?") st.help = true;
+    else if (k === "s") st.stats = true;
     else if (k === "j" || k === "\x1b[B") st.msel = Math.min(st.msel + 1, items.length - 1);
     else if (k === "k" || k === "\x1b[A") st.msel = Math.max(st.msel - 1, 0);
     else if (k === "o" && items[st.msel]) execFile("open", [items[st.msel].url], () => {});
@@ -337,6 +342,7 @@ const HELP = [
   ["j / k, ↑ / ↓", "select an Up next row or open PR"],
   ["o", "open the selected issue or PR in the browser"],
   ["p", "pause / resume: no new run starts while paused (the current one finishes)"],
+  ["s", "stats: merges per hour and day, issues filed / closed, median PR time (any key closes)"],
   ["?", "this help (any key closes it)"],
   ["Ctrl-C", "restart the runner"],
   ["touch ~/.cache/margin-autopilot/STOP", "stop after this run"],
@@ -347,10 +353,25 @@ function renderHelp() {
   for (const [k, d] of HELP) L.push(`  ${bold(k.padEnd(12))} ${d}`);
   process.stdout.write("\x1b[H\x1b[J" + L.join("\n"));
 }
+// `s`: sparklines from the last poll (the 7-day GitHub history, not just this run)
+function renderStats() {
+  const u = st.up, s = u?.stats, sum = (xs) => xs.reduce((a, b) => a + b, 0), roomy = (process.stdout.columns || 80) >= 90;   // narrow: no per-day numbers
+  const L = [bold(cyan(" Stats")) + (u?.err ? red(`  gh error: ${u.err}`) : u ? dim(`  from GitHub, ${dur(Date.now() - u.at)} ago`) : dim("  loading…")), ""];
+  const row = (name, xs, span, daily) => `  ${name.padEnd(18)} ${dim("▕")}${cyan(spark(xs))}${dim("▏")} ${sum(xs) ? `${bold(sum(xs))} in ${span}, peak ${Math.max(...xs)}${daily && roomy ? dim(`   ${xs.join(" ")}`) : ""}` : dim("none yet")}`;
+  if (s) {
+    L.push(row("Merged per hour", s.hour, "24h"), `  ${" ".repeat(20)}${dim("-24h".padEnd(21) + "now")}`, "");
+    L.push(row("Merged per day", s.day, "7d", true), row("Issues filed/day", s.filed, "7d", true), row("Issues closed/day", s.closed, "7d", true));
+    L.push(`  ${" ".repeat(20)}${dim("-7d now")}`, "");
+    L.push(`  ${"Median PR time".padEnd(18)} ${s.medianMs == null ? dim("none yet") : `${bold(dur(s.medianMs))} ${dim(`open to merge, ${s.n} PR${s.n === 1 ? "" : "s"} in 7d`)}`}`);
+  }
+  L.push("", dim("  any key closes"));
+  process.stdout.write("\x1b[H\x1b[J" + L.slice(0, process.stdout.rows || 40).join("\n"));
+}
 
 function render() {
   if (standalone || st.panel) return renderPanel();
   if (st.help) return renderHelp();
+  if (st.stats) return renderStats();
   const cols = process.stdout.columns || 80, w = Math.max(60, cols), rows = process.stdout.rows || 40;
   const wide = cols >= 120;                       // two columns: Agents + Up next | limits + Recent
   const cw = wide ? Math.floor((w - 3) / 2) : w, rw = w - 3 - cw;
@@ -440,7 +461,7 @@ function render() {
   }
   items = all.filter((x) => x.line < keptLines(upL.length, upShown));   // j/k/o only reach rows on screen
   st.msel = Math.min(st.msel, Math.max(0, items.length - 1));
-  const hints = [todo.length || rev ? "d: decisions" : "", "n: queue task", items.length ? "j/k: select · o: open" : "", paused ? "p: resume" : "p: pause", "?: help"].filter(Boolean).join("  ·  ");
+  const hints = [todo.length || rev ? "d: decisions" : "", "n: queue task", items.length ? "j/k: select · o: open" : "", paused ? "p: resume" : "p: pause", "s: stats", "?: help"].filter(Boolean).join("  ·  ");
   const frame = [...head, ...body, "", dim(cut(` ${hints}  ·  Ctrl-C: restart`, w))];
   process.stdout.write("\x1b[H\x1b[J" + frame.slice(0, rows).join("\n"));   // last resort: never scroll the screen
 }
