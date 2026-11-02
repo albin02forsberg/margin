@@ -211,6 +211,14 @@
   function act(f: () => unknown) {
     Promise.resolve().then(f).catch((e) => flash(`⚠ ${e}`));
   }
+  /** True while a pane-changing ex command (:sp :new :only :close) runs: the prompt closing refocuses the editor, and its focusin must not swap the panes back (#1028). */
+  let exBusy = false;
+  /** Like `act`, with `exBusy` set synchronously (before the prompt's focusin) and cleared once the command settles. */
+  function exAct(f: () => unknown) {
+    exBusy = true;
+    act(async () => { try { await f(); } finally { exBusy = false; } });
+  }
+  const focusIn = (n: 0 | 1) => act(() => exBusy || focusPane(n, false));
 
   // ---------------------------------------------------------------- tabs & files
 
@@ -360,8 +368,8 @@
   /** `:close`: close the focused pane; the other pane's note stays shown. */
   async function closePane() {
     if (key2 == null || isNarrow()) return flash("Cannot close last window"); // narrow: the right pane is hidden
-    // No await between the swap and the close: the ex prompt closing refocuses this pane, and its queued
-    // focusin `focusPane` would otherwise swap back first and keep the wrong note.
+    // The ex prompt closing refocuses this pane; `exBusy` (see `exAct`) makes that focusin a no-op, and the swap
+    // stays await-free as a second guard.
     focusPane(side ^ 1, false); // synchronous when not focusing
     await closeSplitSaved();
   }
@@ -3693,10 +3701,10 @@
       ed.hooks.snippets = () => cfg?.snippets ?? [];
       ed.hooks.ask = (name) => ask(name);
       ed.hooks.completions = completions;
-      ed.hooks.split = (name) => act(() => splitNote(name));
-      ed.hooks.newSplit = (title) => act(() => newSplit(title));
-      ed.hooks.only = () => (key2 == null ? flash("Already only one window") : act(closeSplitSaved));
-      ed.hooks.closePane = () => act(closePane);
+      ed.hooks.split = (name) => exAct(() => splitNote(name));
+      ed.hooks.newSplit = (title) => exAct(() => newSplit(title));
+      ed.hooks.only = () => (key2 == null ? flash("Already only one window") : exAct(closeSplitSaved));
+      ed.hooks.closePane = () => exAct(closePane);
       ed.hooks.saveAs = (name) => (name ? act(() => renameNote(name)) : flash("Argument required")); // renaming saves first
       ed.hooks.help = () => act(openTutorial);
       await openView("agenda");
@@ -3864,7 +3872,7 @@
 
     <main>
       {#if dropCue}<div class="drop-cue" style={dropCue.style}>Drop to attach to {dropCue.title}</div>{/if}
-      <div class="pane" onpointerdowncapture={() => { if (drawerOpen()) closeDrawer(); act(() => focusPane(0, false)); }} onfocusin={() => act(() => focusPane(0, false))}>
+      <div class="pane" onpointerdowncapture={() => { if (drawerOpen()) closeDrawer(); act(() => focusPane(0, false)); }} onfocusin={() => focusIn(0)}>
         <div class="editor" bind:this={editorEl} style:display={isText(leftTab) ? "block" : "none"}></div>
         {#if cfg}
           {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo" || t.kind === "time" || t.kind === "projects" || t.kind === "ledger" || t.kind === "habits" || t.kind === "settings") as v (v.key)}
@@ -3887,7 +3895,7 @@
         {/if}
       </div>
       <!-- split view (#874): the right pane's editor; hidden, not removed, so its view survives closing the split -->
-      <div class="editor split" bind:this={splitEl} style:display={key2 != null ? "block" : "none"} onpointerdowncapture={() => act(() => focusPane(1, false))} onfocusin={() => act(() => focusPane(1, false))}></div>
+      <div class="editor split" bind:this={splitEl} style:display={key2 != null ? "block" : "none"} onpointerdowncapture={() => act(() => focusPane(1, false))} onfocusin={() => focusIn(1)}></div>
       {#if showOutline}
         <aside class="links outline">
           <h3>Outline <small>{tab?.kind === "file" ? outline.length : 0}</small></h3>
