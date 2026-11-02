@@ -1039,7 +1039,7 @@ everything else here, the model runs on this machine (`ai_url` must be localhost
 matching by meaning: Margin keeps a vector of every note section, made by Ollama's
 embedding model **Embedding model** (`ai_embed_model`, default `nomic-embed-text`;
 run `ollama pull nomic-embed-text` first), up to date in the background as notes
-change, a batch of sections at a time. Only changed sections are sent again, notes
+change, a batch of sections at a time (Settings shows how many are still to go). Only changed sections are sent again, notes
 in **Notes the AI never sees** are left out, and the index is kept in Margin's
 local data folder (never in the notes or the time-tracking folder) and in memory
 while Margin runs, written to disk at most every 30 seconds while it builds. Under the

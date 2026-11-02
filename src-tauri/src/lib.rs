@@ -2792,6 +2792,8 @@ static INDEX_ERR: Mutex<String> = Mutex::new(String::new());
 /// Notes and sections in the index as last seen, shown while a run holds the lock.
 static INDEX_NOTES: AtomicUsize = AtomicUsize::new(0);
 static INDEX_SECTIONS: AtomicUsize = AtomicUsize::new(0);
+/// Sections the last run left for the next one (0 when no run is going).
+static INDEX_PENDING: AtomicUsize = AtomicUsize::new(0);
 /// Sections embedded per run.
 const INDEX_CAP: usize = 64;
 /// While runs follow each other, the index is saved at most this often (and when they stop).
@@ -2828,6 +2830,7 @@ fn reindex(app: &AppHandle) {
         let ok = loop {
             INDEX_AGAIN.store(false, Ordering::SeqCst);
             let r = index_run(&app);
+            let _ = app.emit("ai-index-progress", ());
             *INDEX_ERR.lock().unwrap_or_else(|e| e.into_inner()) = r.as_ref().err().cloned().unwrap_or_default();
             match r {
                 Ok(n) if n == INDEX_CAP || INDEX_AGAIN.load(Ordering::SeqCst) => continue,
@@ -2841,6 +2844,7 @@ fn reindex(app: &AppHandle) {
         }
         let ok = ok && saved.is_ok();
         INDEXING.store(false, Ordering::SeqCst);
+        INDEX_PENDING.store(0, Ordering::SeqCst);
         let _ = app.emit("ai-index", ());
         if ok && INDEX_AGAIN.swap(false, Ordering::SeqCst) {
             reindex(&app);
@@ -2870,6 +2874,7 @@ fn index_run(app: &AppHandle) -> R<usize> {
     let ix = index_in(&mut g, &path, model);
     let r = ix.update(&files, &|t| ai::embed(&c.ai_url, model, &embed::prefixed(model, false, t)), INDEX_CAP);
     remember_counts(ix.ix.files.len(), ix.ix.files.iter().map(|f| f.chunks.len()).sum());
+    INDEX_PENDING.store(ix.ix.pending, Ordering::SeqCst);
     ix.save_if(INDEX_SAVE)?;
     r
 }
@@ -2890,7 +2895,10 @@ fn ai_index_status(app: AppHandle, s: State<App>) -> R<Value> {
     let bytes = std::fs::metadata(&path).map_or(0, |m| m.len());
     let error = INDEX_ERR.lock().unwrap_or_else(|e| e.into_inner()).clone();
     let last = (INDEX_NOTES.load(Ordering::SeqCst), INDEX_SECTIONS.load(Ordering::SeqCst));
-    Ok(index_status(live, last, bytes, INDEXING.load(Ordering::SeqCst), &error))
+    let running = INDEXING.load(Ordering::SeqCst);
+    let mut v = index_status(live, last, bytes, running, &error);
+    v["pending"] = (if running { INDEX_PENDING.load(Ordering::SeqCst) } else { 0 }).into();
+    Ok(v)
 }
 
 fn remember_counts(notes: usize, sections: usize) {
