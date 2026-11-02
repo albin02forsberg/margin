@@ -30,7 +30,7 @@ use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime};
 use config::Config;
 use serde_json::{json, Value};
 use std::path::{Component, Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 use notify_debouncer_mini::{new_debouncer, notify, DebounceEventResult, Debouncer};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WindowEvent};
@@ -2789,6 +2789,9 @@ static INDEXING: AtomicBool = AtomicBool::new(false);
 static INDEX_AGAIN: AtomicBool = AtomicBool::new(false);
 /// Why the last run failed ("" = it didn't), shown under the switch in Settings.
 static INDEX_ERR: Mutex<String> = Mutex::new(String::new());
+/// Notes and sections in the index as last seen, shown while a run holds the lock.
+static INDEX_NOTES: AtomicUsize = AtomicUsize::new(0);
+static INDEX_SECTIONS: AtomicUsize = AtomicUsize::new(0);
 /// Sections embedded per run.
 const INDEX_CAP: usize = 64;
 /// While runs follow each other, the index is saved at most this often (and when they stop).
@@ -2866,6 +2869,7 @@ fn index_run(app: &AppHandle) -> R<usize> {
     let mut g = s.semantic();
     let ix = index_in(&mut g, &path, model);
     let r = ix.update(&files, &|t| ai::embed(&c.ai_url, model, &embed::prefixed(model, false, t)), INDEX_CAP);
+    remember_counts(ix.ix.files.len(), ix.ix.files.iter().map(|f| f.chunks.len()).sum());
     ix.save_if(INDEX_SAVE)?;
     r
 }
@@ -2876,12 +2880,28 @@ fn index_run(app: &AppHandle) -> R<usize> {
 fn ai_index_status(app: AppHandle, s: State<App>) -> R<Value> {
     let c = s.cfg();
     let path = index_file(&app, &c)?;
-    let mut g = s.semantic();
-    let ix = &index_in(&mut g, &path, c.ai_embed_model.trim()).ix;
+    // A run holds the lock for whole batches: don't wait for it, show the last counts as running.
+    let live = s.semantic_now().map(|mut g| {
+        let ix = &index_in(&mut g, &path, c.ai_embed_model.trim()).ix;
+        let n = (ix.files.len(), ix.files.iter().map(|f| f.chunks.len()).sum());
+        remember_counts(n.0, n.1);
+        n
+    });
     let bytes = std::fs::metadata(&path).map_or(0, |m| m.len());
-    let sections: usize = ix.files.iter().map(|f| f.chunks.len()).sum();
     let error = INDEX_ERR.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    Ok(json!({ "bytes": bytes, "notes": ix.files.len(), "sections": sections, "running": INDEXING.load(Ordering::SeqCst), "error": error }))
+    let last = (INDEX_NOTES.load(Ordering::SeqCst), INDEX_SECTIONS.load(Ordering::SeqCst));
+    Ok(index_status(live, last, bytes, INDEXING.load(Ordering::SeqCst), &error))
+}
+
+fn remember_counts(notes: usize, sections: usize) {
+    INDEX_NOTES.store(notes, Ordering::SeqCst);
+    INDEX_SECTIONS.store(sections, Ordering::SeqCst);
+}
+
+/// The status JSON: LIVE (notes, sections) when the index could be read, else the LAST seen.
+fn index_status(live: Option<(usize, usize)>, last: (usize, usize), bytes: u64, running: bool, error: &str) -> Value {
+    let (notes, sections) = live.unwrap_or(last);
+    json!({ "bytes": bytes, "notes": notes, "sections": sections, "running": running, "error": error })
 }
 
 /// Delete the semantic index and build it again.
@@ -3473,6 +3493,17 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn index_status_falls_back_to_last_counts_while_busy() {
+        let slot = Mutex::new(());
+        let _held = slot.lock().unwrap();
+        // Busy slot: no wait, the last counts and running come through.
+        let live = slot.try_lock().ok().map(|_| (1, 2));
+        let v = index_status(live, (7, 40), 99, true, "");
+        assert_eq!((v["notes"].as_u64(), v["sections"].as_u64(), v["running"].as_bool()), (Some(7), Some(40), Some(true)));
+        assert_eq!(index_status(Some((1, 2)), (7, 40), 99, false, "e")["sections"], 2);
+    }
 
     #[test]
     fn semantic_model_says_why_not() {
