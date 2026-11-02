@@ -360,7 +360,9 @@
   /** `:close`: close the focused pane; the other pane's note stays shown. */
   async function closePane() {
     if (key2 == null || isNarrow()) return flash("Cannot close last window"); // narrow: the right pane is hidden
-    await focusPane(side ^ 1, false); // focus moves once, in closeSplitSaved, so the ex prompt closing can't pull it back
+    // No await between the swap and the close: the ex prompt closing refocuses this pane, and its queued
+    // focusin `focusPane` would otherwise swap back first and keep the wrong note.
+    focusPane(side ^ 1, false); // synchronous when not focusing
     await closeSplitSaved();
   }
 
