@@ -360,7 +360,7 @@
   /** `:close`: close the focused pane; the other pane's note stays shown. */
   async function closePane() {
     if (key2 == null || isNarrow()) return flash("Cannot close last window"); // narrow: the right pane is hidden
-    await focusPane(side ^ 1);
+    await focusPane(side ^ 1, false); // focus moves once, in closeSplitSaved, so the ex prompt closing can't pull it back
     await closeSplitSaved();
   }
 
