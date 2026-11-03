@@ -1348,7 +1348,8 @@
   /** Park (`:someday:` tag) or drop (CANCELLED) a stuck task (#1061) as one undo group. */
   async function stuckApply(loc: Loc, a: StuckAction) {
     const h = await heading(loc);
-    if (a === "drop") return recorded(() => edit(loc, "keyword", cancelKeyword(kw().done)!));
+    // A done keyword on a repeating task advances it, so end the series first (no-op without a repeater).
+    if (a === "drop") return recorded(async () => { for (const k of ["SCHEDULED", "DEADLINE"]) await setDate(loc, k, "norepeat"); await edit(loc, "keyword", cancelKeyword(kw().done)!); });
     if (h) await recorded(() => edit(loc, "tags", [...h.tags, "someday"].join(":")));
   }
 
