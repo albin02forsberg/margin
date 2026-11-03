@@ -4390,6 +4390,11 @@ mod tests {
         assert_eq!(planning_at(set, 0, "DEADLINE", "norepeat", t), Ok(set.into())); // nothing to drop
         assert_eq!(planning_at("* TODO A\n", 0, "DEADLINE", "norepeat", t), Ok("* TODO A\n".into()));
         assert!(org::read_date("norepeat", t).is_none()); // other date prompts still reject it
+        // Drop on a repeating stuck task (#1067): norepeat first, then the cancel keyword really cancels.
+        let kw = org::Kw { todo: vec!["TODO".into()], done: vec!["DONE".into(), "CANCELLED".into()] };
+        let r = planning_at("* TODO A\nSCHEDULED: <2026-10-05 Mon +1w>\n", 0, "SCHEDULED", "norepeat", t).unwrap();
+        let r = org::set_keyword(&r, 0, &kw, Some("CANCELLED"), t.and_hms_opt(9, 0, 0).unwrap(), true);
+        assert!(r.starts_with("* CANCELLED A") && !r.contains("+1w") && !r.contains("LAST_REPEAT"), "{r}");
     }
 
     #[test]
