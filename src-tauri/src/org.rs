@@ -2185,6 +2185,28 @@ pub fn move_planning(text: &str, line: usize, kind: &str, date: NaiveDate) -> St
     }
 }
 
+/// AFTER, plus `- Rescheduled from "[old]" on [now]` (org-log-reschedule) at the top of the
+/// task's LOGBOOK when its SCHEDULED day differs from BEFORE's; first scheduling, clearing and a
+/// time-only change log nothing. Unlike the repeater log, a missing LOGBOOK is created (below
+/// the planning line and PROPERTIES) so the count stays in one place.
+pub fn log_reschedule(before: &str, after: &str, line: usize, now: NaiveDateTime) -> String {
+    let (Some(old), Some(new)) = (planning_ts(before, line, "SCHEDULED"), planning_ts(after, line, "SCHEDULED")) else { return after.to_string() };
+    let mut lines = to_lines(after);
+    let Some(hl) = headline_at(&lines, line).filter(|_| old.date != new.date) else { return after.to_string() };
+    let mut i = hl + 2; // the planning line exists: NEW was read from it
+    if lines.get(i).is_some_and(|l| l.trim().eq_ignore_ascii_case(":PROPERTIES:")) {
+        i = drawer_end(&lines, i).map_or(i, |j| j + 1);
+    }
+    let was = old.span().map_or(String::new(), |t| format!(" {t}"));
+    let entry = format!("- Rescheduled from \"[{}{was}]\" on [{}]", old.date.format("%Y-%m-%d %a"), now.format("%Y-%m-%d %a %H:%M"));
+    if lines.get(i).is_some_and(|l| l.trim().eq_ignore_ascii_case(":LOGBOOK:")) {
+        lines.insert(i + 1, entry);
+    } else {
+        lines.splice(i..i, [":LOGBOOK:".into(), entry, ":END:".into()]);
+    }
+    join(lines, after)
+}
+
 /// Parse org-read-date style input: "", "today", "tomorrow", "+3d", "-1w",
 /// "mon".."sun", "2026-10-02", "10-02", "15" (day of month), each optionally
 /// followed by a time "14:00" or range "9:00-10:30", a repeater "+1w",
@@ -2967,6 +2989,33 @@ mod tests {
         let later = d("2026-10-03").and_hms_opt(9, 0, 0).unwrap();
         assert_eq!(add_note(&once, 0, "new", later), format!("* A\n- Note taken on [2026-10-03 Sat 09:00] \\\\\n  new\n{n}  old\n"));
         assert_eq!(add_note("no heading\n", 0, "x", at()), "no heading\n");
+    }
+
+    #[test]
+    fn reschedule_is_logged() {
+        let lg = |b: &str, a: &str| log_reschedule(b, a, 0, at());
+        let e = "- Rescheduled from \"[2026-10-01 Thu]\" on [2026-10-02 Fri 14:30]";
+        let t = "* TODO A\nSCHEDULED: <2026-10-01 Thu>\nbody\n";
+        // Later (shift_date): a LOGBOOK is created under the planning line.
+        let s = shift_date(t, 0, "SCHEDULED", 1);
+        assert_eq!(lg(t, &s), format!("* TODO A\nSCHEDULED: <2026-10-02 Fri>\n:LOGBOOK:\n{e}\n:END:\nbody\n"));
+        // Into an existing LOGBOOK after PROPERTIES, newest first; the old time is kept.
+        let t = "* TODO A\nSCHEDULED: <2026-10-01 Thu 09:00> DEADLINE: <2026-10-09 Fri>\n:PROPERTIES:\n:ID: x\n:END:\n:LOGBOOK:\nCLOCK: x\n:END:\n* B\n";
+        let s = move_planning(t, 0, "SCHEDULED", d("2026-10-05"));
+        let e9 = e.replace("Thu]", "Thu 09:00]");
+        assert_eq!(lg(t, &s), format!("* TODO A\nSCHEDULED: <2026-10-05 Mon 09:00> DEADLINE: <2026-10-09 Fri>\n:PROPERTIES:\n:ID: x\n:END:\n:LOGBOOK:\n{e9}\nCLOCK: x\n:END:\n* B\n"));
+        // PROPERTIES but no LOGBOOK: created after the drawer; from a body line too.
+        let t = "* TODO A\nSCHEDULED: <2026-10-01 Thu>\n:PROPERTIES:\n:ID: x\n:END:\nbody";
+        let s = shift_date(t, 0, "SCHEDULED", -1);
+        assert_eq!(log_reschedule(t, &s, 5, at()), format!("* TODO A\nSCHEDULED: <2026-09-30 Wed>\n:PROPERTIES:\n:ID: x\n:END:\n:LOGBOOK:\n{e}\n:END:\nbody"));
+        // First schedule, clearing, a time-only change and a deadline move log nothing.
+        let u = "* TODO A\n";
+        let s = set_planning(u, 0, "SCHEDULED", Some((d("2026-10-01"), None, None, None)));
+        assert_eq!(lg(u, &s), s);
+        let t = "* TODO A\nSCHEDULED: <2026-10-01 Thu> DEADLINE: <2026-10-09 Fri>\n";
+        for s in [set_planning(t, 0, "SCHEDULED", None), set_planning(t, 0, "SCHEDULED", Some((d("2026-10-01"), Some("10:00".into()), None, None))), shift_date(t, 0, "DEADLINE", 1)] {
+            assert_eq!(lg(t, &s), s);
+        }
     }
 
     #[test]

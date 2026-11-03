@@ -912,7 +912,10 @@ fn org_heading(s: State<App>, text: String, line: usize) -> Option<org::Parts> {
 /// | blocker ("ID TITLE": append to `:BLOCKER:`) | unblocker (ID: drop from `:BLOCKER:`) | ordered (toggle `:ORDERED:`).
 #[tauri::command]
 fn org_edit(s: State<App>, text: String, line: usize, op: String, value: Option<String>) -> R<String> {
-    org_edit_op(&text, line, &op, value, &s.kw(), timeclock::now(), s.cfg().log_done)
+    let (cfg, now) = (s.cfg(), timeclock::now());
+    let new = org_edit_op(&text, line, &op, value, &s.kw(), now, cfg.log_done)?;
+    // Only the date moves; a DONE repeater advance (keyword/cycle) is not a reschedule.
+    Ok(if cfg.log_reschedule && matches!(op.as_str(), "shift" | "move") { org::log_reschedule(&text, &new, line, now) } else { new })
 }
 
 /// `org_edit` without app state or clock; LOG stamps `CLOSED:` on done (config `log_done`).
@@ -1309,8 +1312,9 @@ fn capture_file(notes: &Path, file: &str, date_input: Option<&str>, now: NaiveDa
 /// INPUT is org-read-date style; "rm" removes the entry; a `norepeat` word drops the
 /// repeater (alone: keeps the date and time).
 #[tauri::command]
-fn org_planning(text: String, line: usize, kind: String, input: String) -> R<String> {
-    planning_at(&text, line, &kind, &input, today())
+fn org_planning(s: State<App>, text: String, line: usize, kind: String, input: String) -> R<String> {
+    let new = planning_at(&text, line, &kind, &input, today())?;
+    Ok(if s.cfg().log_reschedule { org::log_reschedule(&text, &new, line, timeclock::now()) } else { new })
 }
 
 fn planning_at(text: &str, line: usize, kind: &str, input: &str, today: NaiveDate) -> R<String> {

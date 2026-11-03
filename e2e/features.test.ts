@@ -613,7 +613,8 @@ describe("Task keys", () => {
     await select("Shift me");
     await browser.keys("T");
     await answer("Move 2 overdue tasks to", "today");
-    await fileMatches(f, (s) => s === `* TODO Late one\nSCHEDULED: <${orgDay(new Date())} 09:00 +1w>\n* TODO Late two\nDEADLINE: ${day(4)} SCHEDULED: ${day(0)}\n* DONE Late done\nSCHEDULED: ${day(-3)}\n`, "overdue tasks not moved to today");
+    const log = (d: string) => `:LOGBOOK:\n- Rescheduled from "[${d}]" on [NOW]\n:END:\n`;
+    await fileMatches(f, (s) => s.replace(/on \[[^\]]+\]/g, "on [NOW]") === `* TODO Late one\nSCHEDULED: <${orgDay(new Date())} 09:00 +1w>\n${log(`${orgDay(addDays(-5))} 09:00`)}* TODO Late two\nDEADLINE: ${day(4)} SCHEDULED: ${day(0)}\n${log(orgDay(addDays(-2)))}* DONE Late done\nSCHEDULED: ${day(-3)}\n`, "overdue tasks not moved to today (with a reschedule log each)");
     await noPicker();
     await select("Late one");
     await browser.keys("u");

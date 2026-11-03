@@ -36,6 +36,8 @@ pub struct Config {
     pub inbox: String,
     /// Stamp `CLOSED: [date time]` on tasks when they are marked done (org-log-done 'time).
     pub log_done: bool,
+    /// Log `- Rescheduled from "[old]" on [now]` in a task's LOGBOOK when its SCHEDULED day moves (org-log-reschedule).
+    pub log_reschedule: bool,
     /// Closing the window while a timer runs hides it to the tray instead of quitting.
     pub close_to_tray: bool,
     /// System-wide shortcut for quick capture, e.g. "Super+Shift+N"; empty to disable.
@@ -271,6 +273,7 @@ impl Default for Config {
             metrics: v(&["mood", "energy", "sleep"]),
             inbox: "inbox.org".into(),
             log_done: true,
+            log_reschedule: true,
             close_to_tray: true,
             capture_shortcut: "Super+Shift+N".into(),
             idle_threshold_minutes: 10,

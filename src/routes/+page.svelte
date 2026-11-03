@@ -1339,7 +1339,8 @@
     const n = `${due.length} overdue task${due.length === 1 ? "" : "s"}`;
     const input = await datePick(`Move ${n} to`, false, "SCHEDULED", false);
     if (input == null) return;
-    await recorded(async () => { for (const [path, line] of due) await edit({ path, line }, "move", `SCHEDULED ${input}`); });
+    // bottom-up: the reschedule log adds lines, which would shift the later tasks of a file
+    await recorded(async () => { for (const [path, line] of [...due].sort((a, b) => b[1] - a[1])) await edit({ path, line }, "move", `SCHEDULED ${input}`); });
     flash(`Moved ${n} — u (or Space n u) undoes.`);
   }
 

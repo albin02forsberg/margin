@@ -52,6 +52,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "done_keywords", label: "Done keywords", kind: "list", hint: "one per line" },
     { key: "stuck_next_keywords", label: "Next-action keywords", kind: "list", hint: "one per line; a project (open task with open subtasks) with none of these below it, nothing scheduled and no deadline is stuck (Space x S)" },
     { key: "log_done", label: "Record when tasks are done", kind: "bool", hint: "adds CLOSED: [date time] below the heading, as org-log-done does; the board's Done column shows this week's" },
+    { key: "log_reschedule", label: "Record reschedules", kind: "bool", hint: "adds - Rescheduled from \"[old date]\" on [now] to the task's LOGBOOK when you move its scheduled day, as org-log-reschedule does" },
     { key: "calendar_file", label: "Calendar feed (.ics)", hint: "kept up to date with scheduled tasks and deadlines; empty = off" },
   ] },
   { name: "Ledger", fields: [
