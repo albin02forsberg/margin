@@ -1195,7 +1195,7 @@ month, last month or a custom range as HTML or PDF (`e t`, or `E` in the Time
 view). Files go to `export_dir` (default `~/Desktop`); if one is already there you
 choose Overwrite, Keep both (saves `name (2).html`) or Cancel. PDF writes the
 HTML page and opens it in your browser with the print dialog up — choose "Save as
-PDF" there. Property drawers, planning lines, comments and `#+` keywords other
+PDF" there. Subtrees tagged `:noexport:` or titled `COMMENT` are left out (also from the published site), as are property drawers, planning lines, comments and `#+` keywords other
 than the title are left out; `id:` links become plain text. Images are embedded
 in the HTML, so the page works on its own; bare URLs become links, and
 `term :: text` lists and verse blocks keep their shape. Mermaid diagrams are embedded as SVG
