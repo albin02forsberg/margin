@@ -419,6 +419,7 @@ org's `org-log-reschedule`: `- Rescheduled from "[2026-10-01 Thu]" on [2026-10-0
 (the drawer is created when missing). Setting it for the first time, clearing it or changing
 only the time logs nothing, and neither does editing the timestamp by hand (Shift+Arrow in
 the editor). Turn this off with **Record reschedules** (`log_reschedule = false`).
+A task rescheduled 3 or more times shows a `pushed Nx` chip in Today and Tasks.
 
 `T` in Today (or the palette's **Today: move overdue scheduled tasks to…**) moves every
 open task scheduled before today (the "Scheduled 3d ago" ones) to one day you pick, keeping
