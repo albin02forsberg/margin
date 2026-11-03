@@ -12,6 +12,8 @@
     effort?: number | null;
     /** Minutes clocked on it (time log sessions named like the heading). */
     spent?: number | null;
+    /** Times it was rescheduled (LOGBOOK `Rescheduled from` entries). */
+    pushed?: number;
     /** Waits on an earlier sibling under `:ORDERED:` or an open `:BLOCKER:` task (#718). */
     blocked?: boolean;
     /** The first open task it waits on. */
@@ -79,6 +81,7 @@
   import { hm, worked } from "./clock";
   import { blockedDone, bulkTargets, columns, moveTo } from "./board";
   import { chips } from "./chips";
+  import { isPushed } from "./pushed";
   import { doneLog, withLog } from "./donelog";
   import { fmtEffort, fmtSpent, overbooked, planned, plannedLabel } from "./effort";
   import { agendaText } from "./agendatext";
@@ -398,6 +401,7 @@
   {@const s = fmtSpent(it.spent, it.effort)}
   {#if s}<span class="effort" class:over={s.over} title={s.over ? "Clocked: over the estimate" : "Clocked / estimated"}>{s.text}</span>
   {:else if it.effort}<span class="effort" title="Effort estimate">{fmtEffort(it.effort)}</span>{/if}
+  {#if isPushed(it.pushed)}<span class="effort over" title="Rescheduled {it.pushed} times">pushed {it.pushed}x</span>{/if}
 {/snippet}
 
 {#snippet card(it: AgendaItem, i: number)}
