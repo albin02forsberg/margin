@@ -351,6 +351,10 @@ Tasks show it as a badge (`1h 30m`), and each day in Today shows the total of it
 tasks (`~5h 30m planned`, each task counted once) against the day's expected hours from the
 Time calendar, less leave (`~5h 30m / 7h 30m planned`, highlighted when overbooked or planned on a day off). Removing it drops the property drawer
 only when nothing else was in it.
+**Go to Month calendar** (`Space v k`) shows a month as a Monday-first grid: each day's open scheduled tasks and
+appointments (repeaters included), deadlines (`2 due`), the first titles and the planned effort (`~3h`), tinted when it
+overbooks the day's expected hours. `h`/`j`/`k`/`l` or the arrows move, `[`/`]` change month, `t` jumps to today, and
+`Enter` (or a click) opens that day in Today.
 `w` in Today (or the **Plan** button) shows the day as an hour grid (08:00–18:00, widened to fit): each task with a time
 (`SCHEDULED: <… 14:00>`) is a block from its start to the stamp's own end (`14:00-15:30`), else start plus its effort
 (30 minutes without one). Overlapping tasks sit side by side, highlighted, free working time is labelled

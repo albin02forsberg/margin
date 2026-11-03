@@ -1,8 +1,8 @@
 /** A tab to reopen: a file at a line, or a view / task search (also the "Reopen closed tab" stack). */
-export type Entry = { path: string; line: number } | { kind: "agenda" | "todo" | "time" | "projects" | "ledger" | "habits" | "settings"; query?: string; title: string };
+export type Entry = { path: string; line: number } | { kind: "agenda" | "todo" | "time" | "projects" | "ledger" | "habits" | "calendar" | "settings"; query?: string; title: string };
 export type Session = { tabs: Entry[]; active: number; split: number };
 
-const KINDS = ["agenda", "todo", "time", "projects", "ledger", "habits", "settings"];
+const KINDS = ["agenda", "todo", "time", "projects", "ledger", "habits", "calendar", "settings"];
 const ok = (e: any): e is Entry =>
   !!e && typeof e === "object" &&
   (typeof e.path === "string" ? Number.isInteger(e.line) && e.line >= 0

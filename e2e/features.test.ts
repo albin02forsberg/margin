@@ -892,6 +892,17 @@ describe("Journal, archive and move", () => {
     await find(".status .file", "ledger.org");
   });
 
+  it("Space v k shows the month's planned tasks; Enter opens the selected day in Today (#1039)", async () => {
+    const t = new Date(); t.setDate(t.getDate() + 1);
+    writeFileSync(f("monthcal.org"), `* TODO Month cal task\nSCHEDULED: <${orgDay(t)}>\n`); // a deadline would also show today, as "Due in 1d"
+    await leader("vk");
+    await find(`.monthcal .day[data-day="${isoDay(t)}"]`, "Month cal task");
+    await find(`.monthcal .day[data-day="${isoDay(t)}"] .counts`, "task"); // other tests may schedule more for tomorrow
+    await browser.keys("l"); // today to tomorrow, across a month end too
+    await browser.keys(Key.Enter);
+    await find(".agenda .row", "Month cal task"); // only in tomorrow's Day view, not today's
+  });
+
   it("Space n k moves the previous entry's open items into today's, Space n u puts them back", async () => {
     const prev = f(join("daily", "2020-01-02.org")), file = f(join("daily", `${isoDay(new Date())}.org`)), before = read(prev);
     await leader("nk");
