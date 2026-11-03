@@ -73,7 +73,7 @@
 
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { tick } from "svelte";
+  import { tick, untrack } from "svelte";
   import type { TimeApi } from "./Time.svelte";
   import WeekBars from "./WeekBars.svelte";
   import { hm, worked } from "./clock";
@@ -87,9 +87,9 @@
   import { visible } from "./blocked";
 
   /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions.
-   *  LOGDONE: config `log_done` (the Done log needs its CLOSED: stamps). */
-  let { mode, api, active, reload, todo, done, query, title, time, logDone = false }: {
-    mode: "agenda" | "todo"; api: AgendaApi; active: boolean; reload: number; todo: string[]; done: string[]; query?: string; title?: string; time?: TimeApi; logDone?: boolean;
+   *  LOGDONE: config `log_done` (the Done log needs its CLOSED: stamps). GOTO (agenda mode): show that day (month calendar, #1039). */
+  let { mode, api, active, reload, todo, done, query, title, time, logDone = false, goto = null }: {
+    mode: "agenda" | "todo"; api: AgendaApi; active: boolean; reload: number; todo: string[]; done: string[]; query?: string; title?: string; time?: TimeApi; logDone?: boolean; goto?: { day: string } | null;
   } = $props();
 
   const stored = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -274,6 +274,10 @@
     start = span === 7 ? monday(t) : t;
     sel = 0;
   }
+  $effect(() => {
+    const g = goto;
+    if (g) untrack(() => { span = 1; start = parse(g.day); sel = 0; });
+  });
   const goToday = () => (start = span === 7 ? monday(new Date()) : new Date());
 
   function setBoard(on: boolean) {

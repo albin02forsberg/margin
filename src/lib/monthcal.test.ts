@@ -1,0 +1,36 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { addDays, bucket, monthGrid } from "./monthcal.ts";
+
+test("monthGrid: Monday-first full weeks, 4 to 6 rows", () => {
+  const nov = monthGrid("2026-11"); // starts on a Sunday: six leading days of October, 6 rows
+  assert.equal(nov.length, 42);
+  assert.deepEqual([nov[0], nov[6], nov[41]], ["2026-10-26", "2026-11-01", "2026-12-06"]);
+  const jun = monthGrid("2026-06"); // starts on a Monday, 30 days: 5 rows
+  assert.deepEqual([jun[0], jun.length, jun.at(-1)], ["2026-06-01", 35, "2026-07-05"]);
+  const feb = monthGrid("2027-02"); // Monday, 28 days: 4 rows
+  assert.deepEqual([feb[0], feb.length, feb.at(-1)], ["2027-02-01", 28, "2027-02-28"]);
+  assert.deepEqual(monthGrid("2028-02").slice(-2), ["2028-03-04", "2028-03-05"]); // leap year
+});
+
+test("addDays: across DST and month / year ends", () => {
+  assert.equal(addDays("2026-03-28", 2), "2026-03-30");
+  assert.equal(addDays("2026-10-24", 7), "2026-10-31");
+  assert.equal(addDays("2026-12-31", 1), "2027-01-01");
+  assert.equal(addDays("2026-03-01", -1), "2026-02-28");
+});
+
+test("bucket: scheduled, deadlines, effort once per heading; done and today-only rows left out", () => {
+  const it = (date: string, kind: string, title: string, line: number, effort?: number, keyword = "TODO") => ({ date, kind, title, path: "a.org", line, effort, keyword });
+  const items = [
+    it("2026-11-02", "scheduled", "Water", 1, 10), it("2026-11-09", "scheduled", "Water", 1, 10), // a weekly repeater, one row per day
+    it("2026-11-02", "scheduled", "Report", 5, 60), it("2026-11-02", "deadline", "Report", 5, 60),
+    it("2026-11-02", "timestamp", "Meeting", 9),
+    it("2026-11-02", "scheduled", "Shipped", 12, 30, "DONE"),
+    it("2026-11-03", "overdue", "Report", 5, 60), it("2026-11-03", "warning", "Tax", 14),
+  ];
+  const b = bucket(items, (x) => x.keyword === "DONE");
+  assert.deepEqual(b["2026-11-02"], { scheduled: 3, deadline: 1, effort: 70, titles: ["Water", "Report", "Meeting"] });
+  assert.deepEqual(b["2026-11-09"], { scheduled: 1, deadline: 0, effort: 10, titles: ["Water"] });
+  assert.equal(b["2026-11-03"], undefined);
+});

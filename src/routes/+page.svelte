@@ -45,6 +45,7 @@
   import Projects from "$lib/Projects.svelte";
   import Ledger from "$lib/Ledger.svelte";
   import Habits from "$lib/Habits.svelte";
+  import MonthCalendar from "$lib/MonthCalendar.svelte";
   import Settings from "$lib/Settings.svelte";
   import Graph, { type NoteGraph } from "$lib/Graph.svelte";
   import Outline from "$lib/Outline.svelte";
@@ -68,7 +69,7 @@
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
   import { pushRecent, sortByRecent, parseRecents } from "$lib/recents";
 
-  type View = "agenda" | "todo" | "time" | "projects" | "ledger" | "habits" | "settings";
+  type View = "agenda" | "todo" | "time" | "projects" | "ledger" | "habits" | "calendar" | "settings";
   /** SAVED: the text last read from / written to disk, to tell our own writes from outside changes.
    *  REPORT: how to regenerate a report tab when the data changes. */
   type Tab = {
@@ -545,10 +546,12 @@
     await show(i);
   }
 
+  /** A day for the Today tab to show (the month calendar's Enter); a new object each time, so the same day jumps again. */
+  let agendaGoto = $state.raw<{ day: string } | null>(null);
   async function openView(kind: View) {
     let i = tabs.findIndex((t) => t.key === kind);
     if (i < 0) {
-      tabs.push({ key: kind, title: { agenda: "Today", todo: "Tasks", time: "Time", projects: "Projects", ledger: "Ledger", habits: "Habits", settings: "Settings" }[kind], kind, dirty: false });
+      tabs.push({ key: kind, title: { agenda: "Today", todo: "Tasks", time: "Time", projects: "Projects", ledger: "Ledger", habits: "Habits", calendar: "Calendar", settings: "Settings" }[kind], kind, dirty: false });
       i = tabs.length - 1;
     }
     await show(i);
@@ -3274,6 +3277,7 @@
     { label: "AI drafts: choose model…", leader: "f a", run: aiChoose },
     { label: "Ledger: add an entry…", leader: "f l", run: ledgerAdd },
     { label: "Go to Ledger (month totals)", leader: "v l", run: openLedger },
+    { label: "Go to Month calendar (planned tasks per day)", leader: "v k", run: () => openView("calendar") },
     { label: "Ledger: export entries as CSV…", leader: "e l", run: ledgerExport },
     { label: "Ledger: import a bank CSV into the inbox for review…", run: ledgerImport },
     { label: "Ledger: accept import entry at cursor", run: ledgerAccept },
@@ -3890,7 +3894,7 @@
       <div class="pane" onpointerdowncapture={() => { if (drawerOpen()) closeDrawer(); act(() => focusPane(0, false)); }} onfocusin={() => focusIn(0)}>
         <div class="editor" bind:this={editorEl} style:display={isText(leftTab) ? "block" : "none"}></div>
         {#if cfg}
-          {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo" || t.kind === "time" || t.kind === "projects" || t.kind === "ledger" || t.kind === "habits" || t.kind === "settings") as v (v.key)}
+          {#each tabs.filter((t) => t.kind === "agenda" || t.kind === "todo" || t.kind === "time" || t.kind === "projects" || t.kind === "ledger" || t.kind === "habits" || t.kind === "calendar" || t.kind === "settings") as v (v.key)}
             <div class="view" data-key={v.key} style:display={v === leftTab ? "block" : "none"}>
               {#if v.kind === "time"}
                 <Time api={timeApi} active={v === leftTab} {reload} />
@@ -3900,10 +3904,12 @@
                 <Ledger api={timeApi} active={v === leftTab} {reload} />
               {:else if v.kind === "habits"}
                 <Habits api={timeApi} active={v === leftTab} {reload} />
+              {:else if v.kind === "calendar"}
+                <MonthCalendar api={timeApi} active={v === leftTab} {reload} done={kw().done ?? []} open={(day) => { agendaGoto = { day }; act(async () => { await openView("agenda"); await tick(); agendaGoto = null; }); }} />
               {:else if v.kind === "settings"}
                 <Settings {version} active={v === leftTab} {reload} config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} missing={cfg.config_missing} save={saveSettings} recreate={recreateConfig} edit={() => act(editConfig)} />
               {:else}
-                <Agenda mode={v.kind as "agenda" | "todo"} api={agendaApi} active={v === leftTab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} time={timeApi} logDone={!!cfg.config.log_done} />
+                <Agenda mode={v.kind as "agenda" | "todo"} goto={v.kind === "agenda" ? agendaGoto : null} api={agendaApi} active={v === leftTab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} time={timeApi} logDone={!!cfg.config.log_done} />
               {/if}
             </div>
           {/each}

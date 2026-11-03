@@ -301,6 +301,11 @@ async function pngs() {
   await browser.keys([Key.Ctrl, "1"]);
   await browser.$(".agenda h1").waitForDisplayed();
   await shot("today");
+  if (want("month-calendar")) { // #1039
+    await command("Go to Month calendar");
+    await browser.$(".monthcal .day").waitForDisplayed();
+    await shot("month-calendar");
+  }
 
   await browser.keys([Key.Ctrl, "4"]);
   await browser.$(".time h1").waitForDisplayed();
