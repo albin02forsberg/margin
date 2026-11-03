@@ -580,10 +580,13 @@ fn site_index(pages: &[(&OrgFile, String)], title: &str) -> String {
 }
 
 /// The names in an earlier run's MANIFEST (one per line) that KEEP no longer has. Only a bare file name, or one
-/// under `assets/`, counts: a hand-edited manifest can't reach outside the site folder.
+/// under `assets/`, counts: a hand-edited manifest can't reach outside the site folder. Names compare ignoring
+/// case, like `name_pages` and a case-insensitive filesystem (a case-only rename must not delete the new file).
+/// Trade-off: on a case-sensitive filesystem the old-cased file stays behind as an orphan (no longer listed; a
+/// rename back then fails as "in the way"), and a foreign `a.html` next to a manifest entry `A.html` is overwritten.
 fn manifest_stale(manifest: &str, keep: &[String]) -> Vec<String> {
     let bare = |n: &str| !n.is_empty() && n != "." && n != ".." && !n.contains(['/', '\\', ':']);
-    manifest.lines().map(str::trim).filter(|n| bare(n.strip_prefix("assets/").unwrap_or(n)) && !keep.iter().any(|k| k == n)).map(String::from).collect()
+    manifest.lines().map(str::trim).filter(|n| bare(n.strip_prefix("assets/").unwrap_or(n)) && !keep.iter().any(|k| k.eq_ignore_ascii_case(n))).map(String::from).collect()
 }
 
 /// Publish the notes in FILES tagged TAG (file tags) to DIR as a static site: a page per note (its text from
@@ -615,7 +618,7 @@ pub fn publish(dir: &Path, notes: &Path, files: &[&OrgFile], tag: &str, kw: &Kw,
     ids.site = Some(site);
     let names: Vec<String> = pages.iter().map(|(_, n)| n).chain(assets.iter().map(|(_, n)| n)).cloned().chain(["index.html".to_string()]).collect();
     let old = std::fs::read_to_string(dir.join(MANIFEST)).unwrap_or_default();
-    if let Some(n) = names.iter().find(|n| dir.join(n).exists() && !old.lines().any(|o| o.trim() == n.as_str())) {
+    if let Some(n) = names.iter().find(|n| dir.join(n).exists() && !old.lines().any(|o| o.trim().eq_ignore_ascii_case(n))) {
         return Err(format!("{} is in the way: an earlier publish didn't write it. Move it, or pick another folder.", dir.join(n).display()));
     }
     std::fs::create_dir_all(dir.join(if assets.is_empty() { "" } else { "assets" })).map_err(io)?;
@@ -933,6 +936,22 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
         let keep = vec!["a.html".to_string(), "index.html".into()];
         let m = "a.html\nold.html\nassets/pic.png\n\n../x.html\n/abs.html\nsub/x.html\nassets/../x\nassets/sub/x\nC:x\n..\nassets/\n";
         assert_eq!(manifest_stale(m, &keep), ["old.html", "assets/pic.png"]);
+        assert!(manifest_stale("A.html\nassets/Pic.png\n", &["a.html".to_string(), "assets/pic.png".into()]).is_empty());
+    }
+
+    #[test]
+    fn publish_case_only_rename() {
+        let root = std::env::temp_dir().join(format!("margin-publish-case-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (notes, dir) = (root.join("notes"), root.join("site"));
+        std::fs::create_dir_all(&notes).unwrap();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(MANIFEST), "A.html\nindex.html\n").unwrap();
+        std::fs::write(dir.join("A.html"), "old").unwrap();
+        let a = org::parse(&notes.join("a.org"), "#+filetags: :publish:\nHi.\n", &kw());
+        assert_eq!(publish(&dir, &notes, &[&a], "publish", &kw(), |f| f.text.clone()), Ok(1));
+        assert!(dir.join("a.html").exists(), "the renamed page must survive the stale sweep");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
