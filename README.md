@@ -637,6 +637,7 @@ Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`) show l
 | Space n r | Rename this note (same folder, `.org` added if missing); `[[file:]]` links to it in other notes are updated after a backup, `[[id:]]` links need nothing |
 | Space n p | Pin or unpin this note: pinned notes come first in Ctrl+P (marked ★, in pin order); pins are kept per machine and follow renames and moves |
 | Space n P | Open one of the pinned notes |
+| Space n I | Import Kindle `My Clippings.txt` / Readwise CSV highlights, one note per book under `Reading/`; a re-import only appends new highlights (see [Importing highlights](#importing-highlights)) |
 | Space n E | Publish the notes tagged `:publish:` as a static HTML site in `publish_dir` (see Export) |
 | Space n c | Duplicate this note (unsaved edits included) into a new note beside it; its properties and `:ID:`s are not copied, so `[[id:]]` links stay unambiguous |
 | Space n m | Move this note to another folder under the notes folder (pick one, or type a path like `archive/2026` to create it; not `.trash`, the attachments folder or the images folder). `[[file:]]` links to it are updated and its own relative links (attachments too) re-based, after a backup |
@@ -1237,6 +1238,20 @@ links to `.md` files point to the imported note when it's in the same import (a 
 the link, `[[work/Meeting]]`, picks that folder's note when several share the name; a bare
 name takes the first in sorted order), else stay as
 `[[Wiki links]]`; images and `![[embeds]]` are copied where pasted attachments go.
+
+### Importing highlights
+
+**Notes: import Kindle / Readwise highlights** (`Space n I`) asks for a Kindle
+`My Clippings.txt` or a Readwise CSV export (`.csv`; columns found by name: Highlight, Book Title,
+Book Author, Note, Location, Highlighted at), shows how many highlights each book would get and on
+*Import* writes one note per book to `Reading/<title>.org` in the notes folder (`#+title:`,
+`#+author:`; the same title by another author gets `<title>-2.org`). Each highlight is a heading
+named after its first words, with `:LOCATION:`, `:ADDED:` (an inactive timestamp) and a
+`:HIGHLIGHT_KEY:` in its property drawer, the quote in a `#+begin_quote` block and your Kindle note
+or Readwise note below it. Kindle bookmarks are skipped and a highlight that appears twice is
+imported once. Importing again only appends highlights the note doesn't have yet (matched by
+`:HIGHLIGHT_KEY:`), so you can re-import the whole clippings file after each reading session; what
+is already in the note, your own edits included, is never changed. The source file is only read.
 
 ## Reminders
 
