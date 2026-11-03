@@ -23,6 +23,8 @@ static TS_HEAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<\d{4}-\d{2}-\d
 pub(crate) static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[(id|file):([^\]]+)\](?:\[([^\]]*)\])?\]").unwrap());
 pub(crate) static TAGS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+(:[^\s]+:)\s*$").unwrap());
 static STATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^\s*- State "([^"]+)"\s+from .*?\[(\d{4}-\d{2}-\d{2})"#).unwrap());
+/// A `- Rescheduled from "…"` line (see log_reschedule).
+static RESCHEDULED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^\s*- Rescheduled from ""#).unwrap());
 static CLOSED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"CLOSED:\s*\[(\d{4}-\d{2}-\d{2})(?:\s+[^\s\]\d]+)?(?:\s+(\d{1,2}:\d{2}))?[^\]]*\]\s*").unwrap());
 /// An entry in a `:BLOCKER:` value: `[[id:x][desc]]` (id 1, desc 2) or a bare `x` (3).
 static BLOCKER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[id:([^\]]+)\](?:\[([^\]]*)\])?\]|(\S+)").unwrap());
@@ -105,6 +107,8 @@ pub struct Headline {
     pub habit: bool,
     /// Dates of `- State "DONE" from ...` log entries (any done keyword).
     pub done_log: Vec<NaiveDate>,
+    /// Number of `- Rescheduled from "…"` log entries (own body only, not children's).
+    pub pushed: u32,
     /// `CLOSED: [date time]` on the planning line (midnight without a time).
     pub closed: Option<NaiveDateTime>,
     /// `:EFFORT:` in minutes.
@@ -315,6 +319,9 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
             }
             continue;
         }
+        if RESCHEDULED.is_match(line) {
+            h.pushed += 1;
+        }
         if let Some(c) = STATE.captures(line).filter(|c| kw.is_done(&c[1])) {
             h.done_log.extend(c[2].parse::<NaiveDate>().ok());
             continue;
@@ -424,6 +431,8 @@ pub struct Item {
     pub closed: Option<NaiveDateTime>,
     /// `:EFFORT:` in minutes.
     pub effort: Option<u32>,
+    /// Times the task was rescheduled (LOGBOOK `- Rescheduled from` entries).
+    pub pushed: u32,
     /// Minutes clocked on the task (timeclock::spent_on); filled in by the commands.
     pub spent: Option<u32>,
     /// Can't be done yet: an earlier sibling under `:ORDERED:` or a `:BLOCKER:` task is open (see blocked).
@@ -465,6 +474,7 @@ fn item(f: &OrgFile, h: &Headline, date: NaiveDate, kind: &'static str, label: S
         habit: None,
         closed: h.closed,
         effort: h.effort,
+        pushed: h.pushed,
         spent: None,
         blocked: false,
         blocked_by: None,
@@ -2989,6 +2999,16 @@ mod tests {
         let later = d("2026-10-03").and_hms_opt(9, 0, 0).unwrap();
         assert_eq!(add_note(&once, 0, "new", later), format!("* A\n- Note taken on [2026-10-03 Sat 09:00] \\\\\n  new\n{n}  old\n"));
         assert_eq!(add_note("no heading\n", 0, "x", at()), "no heading\n");
+    }
+
+    #[test]
+    fn pushed_counts_own_reschedules() {
+        let n = |t: &str| parse(Path::new("p.org"), t, &kw()).headlines.iter().map(|h| h.pushed).collect::<Vec<_>>();
+        let e = "- Rescheduled from \"[2026-10-01 Thu]\" on [2026-10-02 Fri 14:30]\n";
+        assert_eq!(n("* TODO A\n"), [0]);
+        assert_eq!(n(&format!("* TODO A\n:LOGBOOK:\n{e}{e}:END:\n")), [2]);
+        assert_eq!(n(&format!("* TODO A\n:LOGBOOK:\n{}:END:\n", e.repeat(5))), [5]);
+        assert_eq!(n(&format!("* TODO A\n{e}** TODO B\n{e}{e}")), [1, 2], "children stay separate");
     }
 
     #[test]
