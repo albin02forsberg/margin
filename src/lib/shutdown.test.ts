@@ -22,3 +22,7 @@ test("summary names done, moved and hours against the target", () => {
   assert.equal(summarise(2, 1, { hours: 6.5, expected: 8 }), "Done 2, moved 1 · 6h 30m clocked of 8h 00m");
   assert.equal(summarise(0, 0, { hours: 0, expected: 0 }), "Done 0, moved 0 · 0m clocked");
 });
+
+test("summary counts parked and dropped only when present", () => {
+  assert.equal(summarise(1, 0, { hours: 1, expected: 0 }, 2, 1), "Done 1, moved 0, parked 2, dropped 1 · 1h 00m clocked");
+});
