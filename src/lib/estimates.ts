@@ -25,6 +25,14 @@ export function estimates<T extends Done>(done: T[]) {
 /** Clocked time as a share of the estimate, "120%". */
 export const pct = (s: { est: number; spent: number }) => `${Math.round((s.spent / s.est) * 100)}%`;
 
+/** How a plan of MINUTES in CATEGORY has tended to run (#1048): the project's clocked/estimated ratio with >=3 timed
+ *  tasks, else the overall one, else null. `adjusted` is MINUTES scaled by it, rounded to whole minutes. */
+export function calibrate(done: Done[], category: string, minutes: number) {
+  const r = estimates(done), p = r.projects.find((x) => x.project === category);
+  const [s, scope] = p && p.n >= 3 ? [p, "project" as const] : r.total.n >= 3 ? [r.total, "all" as const] : [null, null];
+  return s ? { ratio: s.spent / s.est, n: s.n, scope: scope!, adjusted: Math.round((minutes * s.spent) / s.est) } : null;
+}
+
 /** The weekly review line, "Estimates: 120% of plan (4 tasks).", or null without estimated, clocked tasks. */
 export function estimateLine(done: Done[]) {
   const { total } = estimates(done);

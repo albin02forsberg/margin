@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { estimateLine, estimates, pct } from "./estimates.ts";
+import { calibrate, estimateLine, estimates, pct } from "./estimates.ts";
 
 const t = (title: string, category: string, effort: number | null, spent: number | null) => ({ title, category, effort, spent });
 
@@ -19,6 +19,17 @@ test("estimates sums per project and in total, worst overruns first, skipping un
 test("estimates keeps the 5 largest overruns", () => {
   const r = estimates([1, 2, 3, 4, 5, 6, 7].map((i) => t(`t${i}`, "w", 10, 10 + i)));
   assert.deepEqual(r.worst.map((w) => w.title), ["t7", "t6", "t5", "t4", "t3"]);
+});
+
+test("calibrate prefers the project ratio, falls back to all, needs 3 timed tasks", () => {
+  const w = [t("a", "w", 60, 90), t("b", "w", 60, 90), t("c", "w", 60, 90)], h = [t("d", "h", 60, 60), t("e", "h", 60, 60)];
+  assert.deepEqual(calibrate([...w, ...h], "w", 60), { ratio: 1.5, n: 3, scope: "project", adjusted: 90 });
+  const o = calibrate([...w, ...h], "h", 60)!;
+  assert.equal(o.scope, "all");
+  assert.equal(o.n, 5);
+  assert.equal(o.adjusted, 78);
+  assert.equal(calibrate(h, "h", 60), null);
+  assert.equal(calibrate([...h, t("x", "h", 60, null)], "h", 60), null);
 });
 
 test("estimateLine is null without data", () => {

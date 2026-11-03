@@ -40,7 +40,10 @@ the editor has vim keys.
   `:EFFORT:` with clocked time on tasks closed in the last 7, 30 or 90 days:
   per project and in total, the 5 largest overruns (Enter opens one) and a
   planning factor (clocked / estimated) to apply to new estimates. Tasks with
-  an estimate but no clocked time are left out of the ratio.
+  an estimate but no clocked time are left out of the ratio. The effort
+  picker uses the same data: with 3+ timed tasks in the task's project (else
+  overall) it shows how your estimates run and what each preset would
+  become (`1h -> ~1h 24m`); the value you pick is unchanged.
   `Space t H` (or *When do I work?* in the Time view) is a weekday x hour
   heatmap of clocked time over the last 4 or 12 weeks or this month (`r`
   switches), optionally for one project: each cell is the average minutes

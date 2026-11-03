@@ -20,7 +20,7 @@
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
   import { type Goal, goalWhen, isoWeek, putReview, reviewBody, reviewEntry } from "$lib/review";
-  import { estimates, pct } from "$lib/estimates";
+  import { calibrate, estimates, pct } from "$lib/estimates";
   import { fmtEffort } from "$lib/effort";
   import { buildTimeline, timelineMarkdown, type Entry as TimelineEntry } from "$lib/timeline";
   import { clockBlocks } from "$lib/clocktable";
@@ -1050,11 +1050,22 @@
     },
     async effort(loc) {
       if (!(await heading(loc))) return flash("Not on a task.");
+      // How past estimates ran (#1048), shown beside the presets; any failure just leaves the plain picker.
+      let cal: ((m: number) => ReturnType<typeof calibrate>) | null = null, note = "";
+      try {
+        const [c, done] = await Promise.all([call<{ category: string }>("org_context", { path: loc.path, text: await textOf(loc.path), line: loc.line }), doneSince(90)]);
+        cal = (m) => calibrate(done, c.category, m);
+        const k = cal(60);
+        if (k && Math.abs(k.ratio - 1) > 0.05) note = `Your estimates in ${k.scope === "project" ? c.category || "(no project)" : "all projects"} run at ${Math.round(k.ratio * 100)}% of plan (${k.n} tasks)`;
+      } catch { /* plain picker */ }
       const v = await pick({
         prompt: "Effort estimate",
-        items: [["15 min", "0:15"], ["30 min", "0:30"], ["1 hour", "1:00"], ["2 hours", "2:00"], ["4 hours", "4:00"], ["None", ""]].map(([label, value]) => ({ label, value, detail: value || "remove" })),
+        items: ([["15 min", "0:15", 15], ["30 min", "0:30", 30], ["1 hour", "1:00", 60], ["2 hours", "2:00", 120], ["4 hours", "4:00", 240], ["None", "", 0]] as const).map(([label, value, m]) => {
+          const k = note && m ? cal?.(m) : null;
+          return { label, value, detail: k && k.adjusted !== m ? `${fmtEffort(m)} -> ~${fmtEffort(k.adjusted)}` : value || "remove" };
+        }),
         allowCustom: true,
-        hint: "or type 1:30, 2h, 45min",
+        hint: note ? `${note}; or type 1:30, 2h, 45min` : "or type 1:30, 2h, 45min",
       });
       if (v != null) await edit(loc, "effort", String(v));
     },
@@ -2586,14 +2597,19 @@
     else if (e.session) await editSession(e.session as Session);
   }
 
+  /** DONE tasks closed in the last DAYS days (today included). */
+  async function doneSince(days: number) {
+    const t = new Date(), from = new Date(t.getFullYear(), t.getMonth(), t.getDate() - days + 1);
+    const closed = await call<AgendaItem[]>("search_todos", { query: `closed:>=${from.getFullYear()}-${pad(from.getMonth() + 1)}-${pad(from.getDate())}` });
+    return closed.filter((i) => i.keyword && kw().done.includes(i.keyword));
+  }
+
   /** Estimates vs actuals (#719): done tasks of the last 7/30/90 days with an :EFFORT:, per project and in total,
    *  and the 5 largest overruns (Enter opens one); the prompt gives the planning factor (clocked / estimated). */
   async function estimateReport() {
     const days = await pick({ prompt: "Estimates vs actuals over", items: [7, 30, 90].map((n) => ({ label: `Last ${n} days`, value: n as unknown })) });
     if (days == null) return;
-    const t = new Date(), from = new Date(t.getFullYear(), t.getMonth(), t.getDate() - (days as number) + 1);
-    const closed = await call<AgendaItem[]>("search_todos", { query: `closed:>=${from.getFullYear()}-${pad(from.getMonth() + 1)}-${pad(from.getDate())}` });
-    const r = estimates(closed.filter((i) => i.keyword && kw().done.includes(i.keyword)));
+    const r = estimates(await doneSince(days as number));
     if (!r.total.n) return flash(`No done task of the last ${days} days has both an estimate and clocked time${r.unclocked ? ` (${r.unclocked} estimated without clocked time)` : ""}.`);
     const row = (s: { n: number; est: number; spent: number }) => `${s.n} task${s.n === 1 ? "" : "s"} · est ${fmtEffort(s.est)} · clocked ${fmtEffort(s.spent)} · ${pct(s)}`;
     const it = await pick({
