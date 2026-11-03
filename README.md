@@ -435,7 +435,8 @@ scheduled or due in the next 3 days, then open `[#A]`/`[#B]` tasks with no date 
 habits and what is already scheduled today are left out), one key each: `t` today, `m` tomorrow,
 `s` pick a date, `n` or space leave it, `Esc` stops. Each choice sets `SCHEDULED` (a deadline stays
 as it is) and is its own undo. It ends with `Planned 2 for today · 3h 30m estimated of 8h 00m`
-(the `:EFFORT:` of today's open tasks against your expected hours), which can go into today's journal.
+(the `:EFFORT:` of today's open tasks against your expected hours; once 3 estimated tasks of the last 90 days
+have been clocked and you run 5% or more off, it adds `(~4h 54m at your usual 140%)`), which can go into today's journal.
 
 `*` in Today or Tasks marks the selected task (and moves down), like org agenda's marks;
 the header shows how many are marked and `Esc` clears them. While tasks are marked, `x`

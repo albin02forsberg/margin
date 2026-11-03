@@ -29,6 +29,7 @@ export function planCandidates<T extends Row>(agenda: T[], undated: T[], today: 
   return [...out.values()].sort((a, b) => rank.indexOf(a.why) - rank.indexOf(b.why));
 }
 
-/** "Planned 2 for today · 3h 30m estimated of 8h 00m" (EFFORT: minutes of today's open tasks; EXPECTED: hours, 0 = no target). */
-export const planSummary = (planned: number, effort: number, expected: number) =>
-  `Planned ${planned} for today · ${hm(effort / 60)} estimated${expected > 0 ? ` of ${hm(expected)}` : ""}`;
+/** "Planned 2 for today · 3h 30m estimated of 8h 00m" (EFFORT: minutes of today's open tasks; EXPECTED: hours, 0 = no target).
+ *  RATIO (clocked/estimated from past tasks, #1053) adds "(~4h 54m at your usual 140%)" when it differs from 100% by 5% or more. */
+export const planSummary = (planned: number, effort: number, expected: number, ratio: number | null = null) =>
+  `Planned ${planned} for today · ${hm(effort / 60)} estimated${effort > 0 && ratio && Math.abs(ratio - 1) >= 0.05 ? ` (~${hm(Math.round(effort * ratio) / 60)} at your usual ${Math.round(ratio * 100)}%)` : ""}${expected > 0 ? ` of ${hm(expected)}` : ""}`;
