@@ -35,12 +35,17 @@ const config = [`templates = []`, ``, `[[views]]`, `name = "Work this week"`, `q
 
 /** A small Markdown vault outside the notes folder, for the import preview (#900). */
 let vault = "";
+/** A Kindle clippings file outside the notes folder, for the highlights import preview (#1040). */
+let clippings = "";
 
 function fixtures({ root, notes, data }: Dirs) {
   vault = join(root, "Obsidian vault");
   write(join(vault, "Garden.md"), "---\ntags: [home]\n---\n# Garden\n- [ ] Plant tulips, see [[Bulbs]]\n![](img/bed.png)\n");
   write(join(vault, "plants/Bulbs.md"), "Order from the **spring** catalogue.\n");
   write(join(vault, "Reading.md"), "## Next\n- *Braiding Sweetgrass*\n");
+  clippings = join(root, "My Clippings.txt");
+  const clip = (book: string, loc: string, text: string) => `${book}\n- Your Highlight on page 3 | Location ${loc} | Added on Monday, January 6, 2025 9:12:00 PM\n\n${text}\n==========\n`;
+  write(clippings, clip("Braiding Sweetgrass (Robin Wall Kimmerer)", "120-122", "All flourishing is mutual.") + clip("Braiding Sweetgrass (Robin Wall Kimmerer)", "410-413", "Paying attention is a form of reciprocity with the living world.") + clip("The Overstory (Richard Powers)", "88-90", "The best time to plant a tree was twenty years ago."));
   write(join(notes, "orchard.org"), `
 :PROPERTIES:
 :ID: orchard
@@ -354,6 +359,13 @@ async function pngs() {
   await browser.keys(Key.Enter);
   await find(".picker label span", "Import 3 notes");
   await shot("md-import");
+  await browser.keys(Key.Escape);
+
+  await command("Notes: import Kindle"); // the preview only: Esc writes nothing
+  await type(clippings);
+  await browser.keys(Key.Enter);
+  await find(".picker label span", "Import 3 highlights");
+  await shot("highlights-import");
   await browser.keys(Key.Escape);
 
   await open("Harbor app", "harbor.org");

@@ -2435,6 +2435,25 @@
     if ((await pick({ prompt: `✓ ${r.notes.length} notes imported into ${r.target}`, body: r.notes.join("\n"), items: [{ label: "Show in file manager", value: "show" }] })) === "show") revealItemInDir(r.target);
   }
 
+  /** Kindle `My Clippings.txt` / Readwise CSV highlights as one note per book under `Reading/` (#1040): counts first,
+   *  existing notes only appended to. */
+  async function highlightsImport() {
+    const path = await ask("Highlights to import", "", "absolute path to a Kindle My Clippings.txt or a Readwise .csv export");
+    if (!path?.trim()) return;
+    type Summary = { books: { title: string; author: string; file: string; new: number; dupes: number; created: boolean }[]; new: number; dupes: number };
+    const line = (b: Summary["books"][number]) => `${b.file}: ${b.new} new${b.dupes ? `, ${b.dupes} already there` : ""}${b.created && b.new ? " (new note)" : ""}`;
+    const p = await call<Summary>("highlights_import", { path, dry: true });
+    if (!p.books.length) return flash(`No highlights in ${path}.`);
+    if (!p.new) return flash(`Nothing new: all ${p.dupes} highlights are already imported.`);
+    const books = p.books.filter((b) => b.new);
+    const go = await pick({ prompt: `Import ${p.new} highlight${p.new === 1 ? "" : "s"} into ${books.length} book note${books.length === 1 ? "" : "s"}? (${p.dupes} already there; notes are only appended to)`, body: books.map(line).join("\n"), items: [{ label: "Import", value: "go" }] });
+    if (go !== "go") return;
+    const r = await call<Summary>("highlights_import", { path, dry: false });
+    const done = r.books.filter((b) => b.new);
+    const open = await pick({ prompt: `✓ ${r.new} highlights imported`, items: done.map((b) => ({ label: b.title, value: b.file, detail: line(b) })) });
+    if (open) await openFile(join(cfg.notes, open));
+  }
+
   /** A bank CSV's new rows proposed in the inbox as `* TODO Review ledger import` headings (#791), after a preview
    *  whose column mapping can be changed. */
   async function ledgerImport() {
@@ -3247,6 +3266,7 @@
     { label: "Notes: rename or merge a tag (notes and saved views)…", run: () => renameTag() },
     { label: "Notes: replace text in all notes (preview first)…", leader: "n S", run: replaceInNotes },
     { label: "Notes: import a Markdown/Obsidian folder (preview first)…", run: mdImport },
+    { label: "Notes: import Kindle / Readwise highlights (one note per book, preview first)…", leader: "n I", run: highlightsImport },
     { label: "Tags: undo a rename or text replace (notes put back)…", run: undoTagRename },
     { label: "People: a person's open tasks and mentions (@name)…", leader: "n @", run: personView },
     { label: "Flashcards: review due :drill: headings", leader: "n d", run: reviewDrill },
