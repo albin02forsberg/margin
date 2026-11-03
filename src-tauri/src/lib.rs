@@ -577,7 +577,7 @@ fn attach_in(
 }
 
 /// Import the Markdown/Obsidian folder DIR as org notes under `imported/<name>/` (#900); DRY only reports.
-#[tauri::command]
+#[tauri::command(async)]
 fn md_import(s: State<App>, dir: String, dry: bool) -> R<mdimport::Summary> {
     let (c, dir) = (s.cfg(), config::expand(dir.trim()));
     mdimport::source_ok(&dir, &[c.notes(), c.data(), s.cfg_path.parent().unwrap().to_path_buf()])?;
@@ -586,7 +586,7 @@ fn md_import(s: State<App>, dir: String, dry: bool) -> R<mdimport::Summary> {
 
 /// Import a Kindle `My Clippings.txt` or Readwise CSV at PATH as one note per book under `Reading/` (#1040);
 /// existing notes are only appended to. DRY only reports.
-#[tauri::command]
+#[tauri::command(async)]
 fn highlights_import(s: State<App>, path: String, dry: bool) -> R<highlights::Summary> {
     let (c, path) = (s.cfg(), config::expand(path.trim()));
     let _lock = note_writes();
@@ -619,7 +619,7 @@ fn image_dirs(notes: &Path, images: &str) -> Vec<PathBuf> {
 }
 
 /// Files in the attachments and images folders (outside `.trash`) that no note links to.
-#[tauri::command]
+#[tauri::command(async)]
 fn unused_attachments(s: State<App>) -> Vec<PathBuf> {
     let c = s.cfg();
     let mut files = attachment_files(&c.notes().join(&c.attachments_dir));
