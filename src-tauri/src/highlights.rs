@@ -216,11 +216,15 @@ pub fn import(src: &Path, notes: &Path, dry: bool) -> Result<Summary, String> {
     let csv = src.extension().is_some_and(|e| e.eq_ignore_ascii_case("csv"));
     let hs = if csv { parse_readwise_csv(&text)? } else { parse_clippings(&text) };
     let mut books: Vec<((String, String), Vec<Highlight>)> = vec![];
+    let mut idx: std::collections::HashMap<(String, String), usize> = Default::default();
     for h in hs {
         let k = (if h.book.is_empty() { "Untitled".into() } else { h.book.clone() }, h.author.clone());
-        match books.iter_mut().find(|(b, _)| *b == k) {
-            Some((_, v)) => v.push(h),
-            None => books.push((k, vec![h])),
+        match idx.get(&k) {
+            Some(&i) => books[i].1.push(h),
+            None => {
+                idx.insert(k.clone(), books.len());
+                books.push((k, vec![h]));
+            }
         }
     }
     let dir = notes.join("Reading");
@@ -239,16 +243,15 @@ pub fn import(src: &Path, notes: &Path, dry: bool) -> Result<Summary, String> {
             })
             .unwrap();
         taken.push(path.clone());
-        let mut seen: Vec<String> = old.as_deref().map_or(vec![], |t| t.lines().filter_map(|l| l.trim().strip_prefix(":HIGHLIGHT_KEY:")).map(|k| k.trim().to_string()).collect());
+        let mut seen: std::collections::HashSet<String> = old.as_deref().map_or(Default::default(), |t| t.lines().filter_map(|l| l.trim().strip_prefix(":HIGHLIGHT_KEY:")).map(|k| k.trim().to_string()).collect());
         let mut add = String::new();
         let mut b = Book { title: title.clone(), author: author.clone(), file: path.strip_prefix(notes).unwrap().to_string_lossy().into_owned(), created: old.is_none(), ..Default::default() };
         for h in &hs {
             let k = key(h);
-            if seen.contains(&k) {
+            if !seen.insert(k) {
                 b.dupes += 1;
                 continue;
             }
-            seen.push(k);
             add += "\n";
             add += &render(h);
             b.new += 1;
@@ -273,6 +276,26 @@ mod tests {
     use super::*;
 
     const CLIP: &str = "\u{feff}Dune (Frank Herbert)\r\n- Your Highlight on page 12 | Location 180-182 | Added on Monday, January 1, 2024 10:00:00 AM\r\n\r\nFear is the mind-killer.\r\n* Not a heading\r\n==========\r\n\u{feff}Dune (Frank Herbert)\r\n- Your Note on page 12 | Location 182 | Added on Monday, January 1, 2024 10:01:00 AM\r\n\r\nGreat line\r\n==========\r\nDune (Frank Herbert)\r\n- Your Bookmark on page 20 | Location 300 | Added on Monday, January 1, 2024 10:02:00 AM\r\n\r\n\r\n==========\r\nDune (Frank Herbert)\r\n- Your Highlight on page 12 | Location 180-182 | Added on Monday, January 1, 2024 10:00:00 AM\r\n\r\nFear is the mind-killer.\r\n* Not a heading\r\n==========\r\nThe Name of the Book (Smith, J.)\r\n- Your Highlight at location 5-6 | Added on Tuesday, 2 January 2024 08:30:00\r\n\r\nFirst line\r\nsecond line\r\n==========\r\n";
+
+    #[test]
+    fn large_import_dedups_and_reimport_adds_nothing() {
+        let dir = std::env::temp_dir().join(format!("margin-hl-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut csv = String::from("Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,Location Type,Location,Highlighted at,Document tags\n");
+        for i in 0..3000 {
+            csv += &format!("text {i},Book {},A,,,,,location,{i},,\n", i % 3);
+        }
+        csv += "text 0,Book 0,A,,,,,location,0,,\n"; // duplicate
+        let src = dir.join("in.csv");
+        std::fs::write(&src, csv).unwrap();
+        let s = import(&src, &dir, false).unwrap();
+        assert_eq!((s.new, s.dupes), (3000, 1));
+        assert_eq!(s.books.iter().map(|b| b.title.as_str()).collect::<Vec<_>>(), ["Book 0", "Book 1", "Book 2"]);
+        let s = import(&src, &dir, false).unwrap();
+        assert_eq!((s.new, s.dupes), (0, 3001));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn parses_clippings() {
