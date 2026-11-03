@@ -1408,8 +1408,9 @@
       const delta = (await textOf(it.path)).split("\n").length - before;
       if (delta) for (const o of tasks.slice(i + 1)) if (o.path === it.path && o.line > it.line) o.line += delta;
     }
-    const [now, tc] = await Promise.all([call<AgendaItem[]>("agenda", { start: today, days: 1 }), call<{ week: WeekDay[] }>("tc_dashboard").catch(() => ({ week: [] as WeekDay[] }))]);
-    const sum = planSummary(planned, shutdownTasks(now, kw().todo).reduce((s, x) => s + (x.effort ?? 0), 0), worked(tc.week, today).expected);
+    const [now, tc, done] = await Promise.all([call<AgendaItem[]>("agenda", { start: today, days: 1 }), call<{ week: WeekDay[] }>("tc_dashboard").catch(() => ({ week: [] as WeekDay[] })), doneSince(90).catch(() => [])]);
+    const tot = estimates(done).total;
+    const sum = planSummary(planned, shutdownTasks(now, kw().todo).reduce((s, x) => s + (x.effort ?? 0), 0), worked(tc.week, today).expected, tot.n >= 3 ? tot.spent / tot.est : null);
     if (stopped) return flash(`Plan stopped: ${sum}`);
     if (!(await pick({ prompt: sum, items: [{ label: "Add to today's journal", value: true }, { label: "Close", value: false }] }))) return;
     const path: string = await call("capture_path", { file: journalFile(), journal: true });

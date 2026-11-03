@@ -39,4 +39,7 @@ test("skips today's scheduled, done, keyword-less, habits, blocked, timestamps a
 test("summary names how many were planned and today's estimate against the target", () => {
   assert.equal(planSummary(2, 210, 8), "Planned 2 for today · 3h 30m estimated of 8h 00m");
   assert.equal(planSummary(0, 0, 0), "Planned 0 for today · 0m estimated");
+  assert.equal(planSummary(2, 210, 8, 1.4), "Planned 2 for today · 3h 30m estimated (~4h 54m at your usual 140%) of 8h 00m");
+  assert.equal(planSummary(2, 210, 8, 1.03), "Planned 2 for today · 3h 30m estimated of 8h 00m");
+  assert.equal(planSummary(0, 0, 0, 1.4), "Planned 0 for today · 0m estimated");
 });
