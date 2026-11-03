@@ -585,12 +585,12 @@ fn md_import(s: State<App>, dir: String, dry: bool) -> R<mdimport::Summary> {
 }
 
 /// Import a Kindle `My Clippings.txt` or Readwise CSV at PATH as one note per book under `Reading/` (#1040);
-/// existing notes are only appended to. DRY only reports.
+/// existing notes are only appended to. DRY only reports; DRILL tags new highlights `drill`.
 #[tauri::command(async)]
-fn highlights_import(s: State<App>, path: String, dry: bool) -> R<highlights::Summary> {
+fn highlights_import(s: State<App>, path: String, dry: bool, drill: Option<bool>) -> R<highlights::Summary> {
     let (c, path) = (s.cfg(), config::expand(path.trim()));
     let _lock = note_writes();
-    highlights::import(&path, &c.notes(), dry)
+    highlights::import(&path, &c.notes(), dry, drill.unwrap_or(false))
 }
 
 /// Files under ROOT, skipping `.trash`.

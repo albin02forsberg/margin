@@ -1260,6 +1260,10 @@ imported once. Importing again only appends highlights the note doesn't have yet
 `:HIGHLIGHT_KEY:`), so you can re-import the whole clippings file after each reading session; what
 is already in the note, your own edits included, is never changed. The source file is only read.
 
+A Readwise CSV's `Tags` column becomes heading tags (`* Quote… :fav:deep:`). Choose *Import as
+flashcards* in the preview to also tag the newly imported highlights `:drill:`, so they show up
+as cards in the drill review; highlights already in a note are not retagged.
+
 ## Reminders
 
 Timed entries (`SCHEDULED: <… 14:00>`, deadlines with a time, appointments)
