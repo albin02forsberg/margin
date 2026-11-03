@@ -203,6 +203,9 @@ pub fn render(h: &Highlight) -> String {
     if !h.added.is_empty() {
         o += &format!(":ADDED: {}\n", h.added);
     }
+    if !h.text.is_empty() && !h.note.is_empty() {
+        o += &format!(":NOTE_KEY: {}\n", note_key(&key(h), &h.note)); // so a re-import knows the inline note
+    }
     o += ":END:\n";
     if !h.text.is_empty() {
         o += "#+begin_quote\n";
@@ -216,6 +219,12 @@ pub fn render(h: &Highlight) -> String {
         o += &format!("{}{l}\n", if l.starts_with('*') { " " } else { "" });
     }
     o
+}
+
+/// The normalized text of the entry holding `:HIGHLIGHT_KEY: K` (up to the next top-level heading).
+fn entry_norm(text: &str, k: &str) -> String {
+    let mut it = text.lines().skip_while(|l| l.trim().strip_prefix(":HIGHLIGHT_KEY:").map(str::trim) != Some(k)).skip(1);
+    norm(&it.by_ref().take_while(|l| !l.starts_with("* ")).collect::<Vec<_>>().join("\n"))
 }
 
 /// The value of the `#+KEY:` line of an org TEXT (any case), trimmed.
@@ -282,16 +291,15 @@ pub fn import(src: &Path, notes: &Path, dry: bool, drill: bool) -> Result<Summar
             })
             .unwrap();
         taken.push(path.clone());
-        let mut seen: std::collections::HashSet<String> = old.as_deref().map_or(Default::default(), |t| t.lines().filter_map(|l| l.trim().strip_prefix(":HIGHLIGHT_KEY:")).map(|k| k.trim().to_string()).collect());
+        let mut seen: std::collections::HashSet<String> = old.as_deref().map_or(Default::default(), |t| t.lines().filter_map(|l| l.trim().strip_prefix(":HIGHLIGHT_KEY:").or_else(|| l.trim().strip_prefix(":NOTE_KEY:"))).map(|k| k.trim().to_string()).collect());
         let mut add = String::new();
-        let mut old_norm: Option<String> = None;
         let mut b = Book { title: title.clone(), author: author.clone(), file: path.strip_prefix(notes).unwrap().to_string_lossy().into_owned(), created: old.is_none(), ..Default::default() };
         for h in &hs {
             let k = key(h);
             if !seen.insert(k.clone()) {
                 // a note added to a known highlight later becomes its own `* Note:` entry, once
                 let nk = note_key(&k, &h.note);
-                let fresh = !h.note.is_empty() && !h.text.is_empty() && !seen.contains(&nk) && !old_norm.get_or_insert_with(|| norm(old.as_deref().unwrap_or_default())).contains(&norm(&h.note));
+                let fresh = !h.note.is_empty() && !h.text.is_empty() && !seen.contains(&nk) && !entry_norm(old.as_deref().unwrap_or_default(), &k).contains(&norm(&h.note));
                 if !fresh {
                     seen.insert(nk);
                     b.dupes += 1;
@@ -308,6 +316,7 @@ pub fn import(src: &Path, notes: &Path, dry: bool, drill: bool) -> Result<Summar
                 h.tags.push("drill".into());
             }
             add += &render(&h);
+            seen.insert(note_key(&k, &h.note));
             b.new += 1;
         }
         if !dry && b.new > 0 {
@@ -348,6 +357,33 @@ mod tests {
         assert_eq!(s.books.iter().map(|b| b.title.as_str()).collect::<Vec<_>>(), ["Book 0", "Book 1", "Book 2"]);
         let s = import(&src, &dir, false, false).unwrap();
         assert_eq!((s.new, s.dupes), (0, 3001));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn note_dedupe_is_per_entry() {
+        let dir = std::env::temp_dir().join(format!("margin-hl-nk-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let clip = |a: &str, b: &str, note: &str| format!("B (A)\n- Your Highlight at location 1-2 | Added on Monday, January 1, 2024 10:00:00 AM\n\n{a}\n==========\nB (A)\n- Your Highlight at location 3-4 | Added on Monday, January 1, 2024 10:00:00 AM\n\n{b}\n==========\n{note}");
+        let src = dir.join("c.txt");
+        std::fs::write(&src, clip("an important point", "other", "")).unwrap();
+        assert_eq!(import(&src, &dir, false, false).unwrap().new, 2);
+        let note = "B (A)\n- Your Note at location 3-4 | Added on Monday, January 1, 2024 10:01:00 AM\n\nimportant\n==========\n";
+        std::fs::write(&src, clip("an important point", "other", note)).unwrap();
+        assert_eq!(import(&src, &dir, false, false).unwrap().new, 1);
+        assert_eq!(import(&src, &dir, false, false).unwrap().new, 0);
+        // inline note: written with a NOTE_KEY, not re-added; same clipping twice adds one entry
+        let inl = "B (A)\n- Your Highlight at location 9 | Added on Monday, January 1, 2024 10:00:00 AM\n\nquote\n==========\nB (A)\n- Your Note at location 9 | Added on Monday, January 1, 2024 10:01:00 AM\n\nmine\n==========\n";
+        std::fs::write(&src, inl.repeat(2)).unwrap();
+        assert_eq!(import(&src, &dir, false, false).unwrap().new, 1);
+        let f = dir.join("Reading/b.org");
+        assert_eq!(std::fs::read_to_string(&f).unwrap().matches(":NOTE_KEY:").count(), 1);
+        assert_eq!(import(&src, &dir, false, false).unwrap().new, 0);
+        // legacy file (inline note, no NOTE_KEY) is not duplicated
+        let t = std::fs::read_to_string(&f).unwrap().lines().filter(|l| !l.starts_with(":NOTE_KEY:")).collect::<Vec<_>>().join("\n") + "\n";
+        std::fs::write(&f, t).unwrap();
+        assert_eq!(import(&src, &dir, false, false).unwrap().new, 0);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -443,7 +479,7 @@ mod tests {
     #[test]
     fn renders_escaped_quote() {
         let h = &parse_clippings(CLIP)[0];
-        assert_eq!(render(h), format!("* Fear is the mind-killer. * Not a heading\n:PROPERTIES:\n:HIGHLIGHT_KEY: {}\n:LOCATION: page 12, location 180-182\n:ADDED: [2024-01-01 Mon 10:00]\n:END:\n#+begin_quote\nFear is the mind-killer.\n,* Not a heading\n#+end_quote\nGreat line\n", key(h)));
+        assert_eq!(render(h), format!("* Fear is the mind-killer. * Not a heading\n:PROPERTIES:\n:HIGHLIGHT_KEY: {}\n:LOCATION: page 12, location 180-182\n:ADDED: [2024-01-01 Mon 10:00]\n:NOTE_KEY: d3f11f1f2f4a726a\n:END:\n#+begin_quote\nFear is the mind-killer.\n,* Not a heading\n#+end_quote\nGreat line\n", key(h)));
         let long = Highlight { text: "word ".repeat(30), ..Default::default() };
         assert!(heading(&long).ends_with('…') && heading(&long).chars().count() <= 62);
     }
