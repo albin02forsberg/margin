@@ -358,6 +358,9 @@ fn edit(c: &Config, root: &Path, all: &[Arc<org::OrgFile>], name: &str, args: &V
                     t = crate::planning_at(&t, line, kind, if v.is_empty() { "rm" } else { v }, crate::today()).map_err(|e| format!("{k}: {e}: {v}"))?;
                 }
             }
+            if c.log_reschedule {
+                t = org::log_reschedule(&read, &t, line, timeclock::now());
+            }
             if let Some(p) = given("priority") {
                 if !p.is_empty() && !(p.len() == 1 && p.chars().all(|c| c.is_ascii_alphabetic())) {
                     return Err(format!("priority must be a letter like A, B or C, not {p}"));
@@ -674,10 +677,13 @@ mod tests {
         let (r, err) = tool(&ctx, "set_task_properties", json!({ "path": "t.org", "heading": "water plants", "scheduled": "2026-02-02 9:00", "priority": "a", "add_tags": "garden home", "effort": "1h 30m" }));
         assert!(!err, "{r}");
         assert_eq!(r, "t.org line 2: * TODO [#A] Water plants :home:garden:\nDEADLINE: <2026-03-01 Sun> SCHEDULED: <2026-02-02 Mon 09:00 +1w -2d>");
-        assert_eq!(read(), "#+title: T\n* TODO [#A] Water plants :home:garden:\nDEADLINE: <2026-03-01 Sun> SCHEDULED: <2026-02-02 Mon 09:00 +1w -2d>\n:PROPERTIES:\n:EFFORT: 1:30\n:END:\n* TODO Other\n");
+        // The moved SCHEDULED day is logged (log_reschedule, on by default).
+        let log = read().lines().find(|l| l.starts_with("- Rescheduled")).unwrap().to_string();
+        assert!(log.starts_with("- Rescheduled from \"[2026-01-05 Mon]\" on ["), "{log}");
+        assert_eq!(read(), format!("#+title: T\n* TODO [#A] Water plants :home:garden:\nDEADLINE: <2026-03-01 Sun> SCHEDULED: <2026-02-02 Mon 09:00 +1w -2d>\n:PROPERTIES:\n:EFFORT: 1:30\n:END:\n:LOGBOOK:\n{log}\n:END:\n* TODO Other\n"));
         // "" clears; tags replace.
         assert!(!tool(&ctx, "set_task_properties", json!({ "path": "t.org", "line": 2, "deadline": "", "priority": "", "tags": "x:y", "effort": "" })).1);
-        assert_eq!(read(), "#+title: T\n* TODO Water plants :x:y:\nSCHEDULED: <2026-02-02 Mon 09:00 +1w -2d>\n* TODO Other\n");
+        assert_eq!(read(), format!("#+title: T\n* TODO Water plants :x:y:\nSCHEDULED: <2026-02-02 Mon 09:00 +1w -2d>\n:LOGBOOK:\n{log}\n:END:\n* TODO Other\n"));
         // Relative dates are read against today.
         assert!(!tool(&ctx, "set_task_properties", json!({ "path": "t.org", "heading": "Other", "deadline": "+3d" })).1);
         let due = (timeclock::now().date() + chrono::Duration::days(3)).format("%Y-%m-%d %a").to_string();

@@ -413,6 +413,13 @@ org's `org-log-done 'time`; reopening it removes the stamp. Turn this off with
 **Record when tasks are done** (`log_done = false`); the board's Done column
 then only shows what you finished from the board in this session.
 
+Moving a task's scheduled day (`later`/`earlier`, **Move to…**, move-overdue, the shutdown,
+**Schedule** or the MCP `set_task_properties` tool) logs it in the task's `:LOGBOOK:` like
+org's `org-log-reschedule`: `- Rescheduled from "[2026-10-01 Thu]" on [2026-10-02 Fri 14:30]`
+(the drawer is created when missing). Setting it for the first time, clearing it or changing
+only the time logs nothing, and neither does editing the timestamp by hand (Shift+Arrow in
+the editor). Turn this off with **Record reschedules** (`log_reschedule = false`).
+
 `T` in Today (or the palette's **Today: move overdue scheduled tasks to…**) moves every
 open task scheduled before today (the "Scheduled 3d ago" ones) to one day you pick, keeping
 each task's time and repeater; deadlines, habits and done tasks are left alone. One `u` undoes the whole move.
