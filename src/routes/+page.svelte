@@ -2561,14 +2561,14 @@
     const t = new Date(), day = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const off = (n: number) => day(new Date(t.getFullYear(), t.getMonth(), t.getDate() - ((t.getDay() + 6) % 7) + n));
     const q = (query: string) => call<AgendaItem[]>("search_todos", { query });
-    const [closed, sched, due, next, inbox, dash, goals, someday] = await Promise.all([
+    const [closed, sched, due, next, inbox, dash, goals, someday, open] = await Promise.all([
       q(`closed:>=${off(0)} closed:<=${off(6)}`), q(`scheduled:<${day(t)} -tag:someday`), q(`due:<${day(t)} -tag:someday`), q(`scheduled:>=${off(7)} scheduled:<=${off(13)} -tag:someday`),
       call<number>("inbox_count"), call<{ projects: { project: string; worked: number }[] }>("tc_dashboard"),
-      call<Goal[]>("org_goals"), q("tag:someday"),
+      call<Goal[]>("org_goals"), q("tag:someday"), q("-tag:someday"),
     ]);
     const done = doneLog(closed.filter((i) => i.keyword && kw().done.includes(i.keyword))), seen = new Set<string>();
     const overdue = [...sched, ...due].filter((i) => !i.habit && !seen.has(`${i.path}\n${i.line}`) && !!seen.add(`${i.path}\n${i.line}`));
-    const body = reviewBody(done, dash.projects, overdue, next.filter((i) => !i.habit), inbox, goals, someday.length);
+    const body = reviewBody(done, dash.projects, overdue, next.filter((i) => !i.habit), inbox, goals, someday.length, open);
     let path = "";
     for (const f of weekJournals(await call<string[]>("list_files"), cfg.config.daily_dir, off(0), day(t))) if (putReview(await textOf(f), body) !== null) { path = f; break; }
     if (!path) path = await call("capture_path", { file: journalFile(), journal: true });

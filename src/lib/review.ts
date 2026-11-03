@@ -1,6 +1,7 @@
 // Weekly review (#670): a `* Weekly review` section in today's journal entry, built from the week's tasks and time.
 import { hm } from "./clock.ts";
 import { estimateLine } from "./estimates.ts";
+import { isPushed } from "./pushed.ts";
 
 export const BEGIN = "# review-begin", END = "# review-end";
 
@@ -21,11 +22,16 @@ export function isoWeek(day: string) {
 }
 
 const list = (xs: string[], none: string) => (xs.length ? xs.map((x) => `- ${x}`) : [`- ${none}`]);
+/** "Pushed: A (5x), B (3x)": the 3 open tasks rescheduled most often (lifetime count, not this week's), most first; null if none. */
+export function pushedLine(open: (Task & { pushed?: number })[]) {
+  const top = open.filter((t) => isPushed(t.pushed)).sort((a, b) => b.pushed! - a.pushed!).slice(0, 3);
+  return top.length ? `Pushed: ${top.map((t) => `${t.title.length > 40 ? `${t.title.slice(0, 39)}…` : t.title} (${t.pushed}x)`).join(", ")}` : null;
+}
 const task = (t: Task) => `${t.title}${t.category ? ` (${t.category})` : ""}`;
 
 /** The generated part, between the BEGIN/END markers: DONE (doneLog rows, by close time; with their estimates vs clocked time), the week's HOURS
- *  per project (tc_dashboard `projects`), GOALS (section omitted without any), OVERDUE and NEXT (scheduled next week) tasks, the INBOX count and the SOMEDAY count (#833; line omitted at 0). */
-export function reviewBody(done: Task[], hours: Hours[], overdue: Task[], next: Task[], inbox: number, goals: Goal[] = [], someday = 0) {
+ *  per project (tc_dashboard `projects`), GOALS (section omitted without any), OVERDUE and NEXT (scheduled next week) tasks, the INBOX count the SOMEDAY count (#833; line omitted at 0) and a PUSHED line (#1062) after the estimates. */
+export function reviewBody(done: Task[], hours: Hours[], overdue: Task[], next: Task[], inbox: number, goals: Goal[] = [], someday = 0, pushed: (Task & { pushed?: number })[] = []) {
   const worked = hours.filter((h) => h.worked > 0), total = worked.reduce((a, h) => a + h.worked, 0);
   return [
     BEGIN,
@@ -34,6 +40,7 @@ export function reviewBody(done: Task[], hours: Hours[], overdue: Task[], next: 
     `** Done (${done.length})`,
     ...list(done.map((t) => `${t.date} ${task(t)}`), "nothing closed"),
     ...[estimateLine(done)].filter((l) => l !== null),
+    ...[pushedLine(pushed)].filter((l) => l !== null),
     `** Hours per project (${hm(total)})`,
     ...list(worked.map((h) => `${h.project}: ${hm(h.worked)}`), "no time tracked"),
     ...(goals.length ? [`** Goals (${goals.length})`, ...goals.map((g) => `- ${g.title}: ${g.total ? `${g.done}/${g.total} done (${g.percent}%)` : "no tasks"}, ${goalWhen(g)}`)] : []),

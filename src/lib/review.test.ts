@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isoWeek, putReview, reviewBody, reviewEntry } from "./review.ts";
+import { isoWeek, pushedLine, putReview, reviewBody, reviewEntry } from "./review.ts";
 
 const t = (title: string, date: string, category = "work") => ({ title, category, date });
 
@@ -59,4 +59,12 @@ test("reviewBody lists goals between Hours and Overdue, and omits the section wi
   const i = body.indexOf("** Goals (4)");
   assert.deepEqual(body.slice(i - 1, i + 6), ["- no time tracked", "** Goals (4)", "- Launch: 2/3 done (67%), 8d left", "- Old: no tasks, 3d overdue", "- Idea: 1/1 done (100%), no target", "- Typo: 0/1 done (0%), bad target", "** Overdue (0)"]);
   assert.ok(!reviewBody([], [], [], [], 0).includes("Goals"));
+});
+
+test("reviewBody lists the top 3 most-pushed open tasks, capped, stable and shortened", () => {
+  const p = (title: string, pushed?: number) => ({ ...t(title, "2026-10-20"), pushed });
+  const body = reviewBody([], [], [], [], 0, [], 0, [p("a", 3), p("b", 5), p("c", 3), p("d", 4), p("x".repeat(50), 9), p("low", 2), p("none")]).split("\n");
+  assert.equal(body.find((l) => l.startsWith("Pushed:")), `Pushed: ${"x".repeat(39)}… (9x), b (5x), d (4x)`);
+  assert.equal(pushedLine([p("a", 3), p("c", 3)]), "Pushed: a (3x), c (3x)");
+  assert.ok(!reviewBody([], [], [], [], 0, [], 0, [p("low", 2)]).includes("Pushed"));
 });
