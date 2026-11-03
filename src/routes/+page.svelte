@@ -56,6 +56,7 @@
   import { feedsBlocked, feedsDue } from "$lib/feeds";
   import { dayTime, focusLeft, inactiveStamp, naive, overLong, parseWhen, worked, type WeekDay } from "$lib/clock";
   import { shutdownKeys, shutdownTasks, summarise, type ShutdownAction } from "$lib/shutdown";
+  import { stuckMenu, cancelKeyword, type StuckAction } from "$lib/pushed";
   import { morningKeys, planCandidates, planSummary, type MorningAction } from "$lib/morning";
   import { parseSession, type Entry } from "$lib/session";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
@@ -1344,6 +1345,13 @@
     flash(`Moved ${n} — u (or Space n u) undoes.`);
   }
 
+  /** Park (`:someday:` tag) or drop (CANCELLED) a stuck task (#1061) as one undo group. */
+  async function stuckApply(loc: Loc, a: StuckAction) {
+    const h = await heading(loc);
+    if (a === "drop") return recorded(() => edit(loc, "keyword", cancelKeyword(kw().done)!));
+    if (h) await recorded(() => edit(loc, "tags", [...h.tags, "someday"].join(":")));
+  }
+
   /** Evening shutdown (#757): today's open scheduled/due tasks one keypress each (done, tomorrow, next week, a date, leave),
    *  each step one undo group; Esc stops (applied steps stay). Ends with a summary that can go into today's journal. */
   async function shutdown() {
@@ -1353,11 +1361,23 @@
     const label = { done: "Done", tomorrow: "Tomorrow", week: "Next week (Monday)", date: "Pick a date…", skip: "Leave it" };
     const keyOf = Object.fromEntries(Object.entries(shutdownKeys).map(([k, a]) => [a, k]));
     const items = (Object.keys(label) as ShutdownAction[]).map((a) => ({ label: `${keyOf[a]}  ${label[a]}`, value: a }));
-    let done = 0, moved = 0, stopped = false;
+    let done = 0, moved = 0, parked = 0, dropped = 0, stopped = false;
     for (const [i, it] of tasks.entries()) {
-      const a: ShutdownAction | null = await pick({ prompt: `Shutdown ${i + 1}/${tasks.length}: ${it.title}`, items, keys: shutdownKeys, hint: `${it.plan === "DEADLINE" ? "due" : "scheduled"} · ${rel(it.path)}` });
+      const sm = stuckMenu(it.pushed, kw().done);
+      const a: ShutdownAction | StuckAction | null = await pick({ prompt: `Shutdown ${i + 1}/${tasks.length}: ${it.title}`, items: [...items, ...sm.items], keys: { ...shutdownKeys, ...sm.keys }, hint: `${it.plan === "DEADLINE" ? "due" : "scheduled"} · ${rel(it.path)}` });
       if (!a) { stopped = true; break; }
       if (a === "skip") continue;
+      if (a === "park" || a === "drop") {
+        const loc = { path: it.path, line: it.line }, before = (await textOf(it.path)).split("\n").length;
+        try {
+          if ((await heading(loc))?.title !== it.title) { flash(`⚠ “${it.title}” changed meanwhile; skipped.`); continue; }
+          await stuckApply(loc, a);
+          if (a === "park") parked++; else dropped++;
+        } catch (e) { flash(`⚠ ${e}; skipped.`); continue; }
+        const delta = (await textOf(it.path)).split("\n").length - before;
+        if (delta) for (const o of tasks.slice(i + 1)) if (o.path === it.path && o.line > it.line) o.line += delta;
+        continue;
+      }
       const input = a === "tomorrow" ? "tomorrow" : a === "week" ? "mon" : a === "date" ? await datePick(`Move “${it.title}” to`, false, it.plan, false) : null;
       if (a !== "done" && input == null) continue;
       const loc = { path: it.path, line: it.line }, before = (await textOf(it.path)).split("\n").length;
@@ -1371,7 +1391,7 @@
       if (delta) for (const o of tasks.slice(i + 1)) if (o.path === it.path && o.line > it.line) o.line += delta;
     }
     const tc = await call<{ week: WeekDay[] }>("tc_dashboard").catch(() => ({ week: [] as WeekDay[] }));
-    const sum = summarise(done, moved, worked(tc.week, today));
+    const sum = summarise(done, moved, worked(tc.week, today), parked, dropped);
     if (stopped) return flash(`Shutdown stopped: ${sum}`);
     if (!(await pick({ prompt: sum, items: [{ label: "Add to today's journal", value: true }, { label: "Close", value: false }] }))) return;
     const path: string = await call("capture_path", { file: journalFile(), journal: true });
@@ -1393,9 +1413,20 @@
     const why = { overdue: "overdue", soon: "due soon", undated: "no date" };
     let planned = 0, stopped = false;
     for (const [i, it] of tasks.entries()) {
-      const a: MorningAction | null = await pick({ prompt: `Plan ${i + 1}/${tasks.length}: ${it.title}`, items, keys: morningKeys, hint: `${it.label || why[it.why]} · ${rel(it.path)}` });
+      const sm = stuckMenu(it.pushed, kw().done);
+      const a: MorningAction | StuckAction | null = await pick({ prompt: `Plan ${i + 1}/${tasks.length}: ${it.title}`, items: [...items, ...sm.items], keys: { ...morningKeys, ...sm.keys }, hint: `${it.label || why[it.why]} · ${rel(it.path)}` });
       if (!a) { stopped = true; break; }
       if (a === "skip") continue;
+      if (a === "park" || a === "drop") {
+        const loc = { path: it.path, line: it.line }, before = (await textOf(it.path)).split("\n").length;
+        try {
+          if ((await heading(loc))?.title !== it.title) { flash(`⚠ “${it.title}” changed meanwhile; skipped.`); continue; }
+          await stuckApply(loc, a);
+        } catch (e) { flash(`⚠ ${e}; skipped.`); continue; }
+        const delta = (await textOf(it.path)).split("\n").length - before;
+        if (delta) for (const o of tasks.slice(i + 1)) if (o.path === it.path && o.line > it.line) o.line += delta;
+        continue;
+      }
       const input = a === "date" ? await datePick(`Schedule “${it.title}” for`, false, "SCHEDULED", false) : a;
       if (input == null) continue;
       const loc = { path: it.path, line: it.line }, before = (await textOf(it.path)).split("\n").length;

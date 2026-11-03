@@ -23,5 +23,5 @@ export function shutdownTasks<T extends Row>(items: T[], todo: string[]): (T & {
 }
 
 /** "Done 2, moved 1 · 6h 30m clocked of 8h 00m" (WORKED: today's hours and target, see clock.ts `worked`). */
-export const summarise = (done: number, moved: number, w: { hours: number; expected: number }) =>
-  `Done ${done}, moved ${moved} · ${hm(w.hours)} clocked${w.expected > 0 ? ` of ${hm(w.expected)}` : ""}`;
+export const summarise = (done: number, moved: number, w: { hours: number; expected: number }, parked = 0, dropped = 0) =>
+  `Done ${done}, moved ${moved}${parked ? `, parked ${parked}` : ""}${dropped ? `, dropped ${dropped}` : ""} · ${hm(w.hours)} clocked${w.expected > 0 ? ` of ${hm(w.expected)}` : ""}`;
