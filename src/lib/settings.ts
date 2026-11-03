@@ -11,6 +11,8 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "notes_dir", label: "Notes folder" },
     { key: "data_dir", label: "Time-tracking folder" },
     { key: "export_dir", label: "Export folder" },
+    { key: "publish_dir", label: "Publish folder", hint: "Space n E writes the notes tagged below here as a static site; empty = asked the first time; must be outside the notes folder" },
+    { key: "publish_tag", label: "Publish tag", hint: "notes with this file tag (#+filetags) are published" },
     { key: "daily_dir", label: "Journal folder", hint: rel },
     { key: "journal_template", label: "Journal template", kind: "multiline", hint: "org text added to each new journal entry, e.g. * Plan; %t and %u expand to that day's date, prompts and %? don't; empty = nothing" },
     { key: "metrics", label: "Daily metrics", kind: "list", hint: "one per line; offered by Space n j, which logs mood, energy, sleep… into the journal day's property drawer" },

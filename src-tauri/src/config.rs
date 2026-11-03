@@ -7,6 +7,9 @@ pub struct Config {
     pub notes_dir: String,
     pub data_dir: String,
     pub export_dir: String,
+    /// Where `Space n E` publishes the notes tagged `publish_tag` as a static site; empty = asked the first time.
+    pub publish_dir: String,
+    pub publish_tag: String,
     pub expected_daily_hours: f64,
     /// Expected hours Monday to Sunday (7 values), e.g. a 4-day week; empty = expected_daily_hours Mon–Fri.
     #[serde(deserialize_with = "weekday_hours")]
@@ -253,6 +256,8 @@ impl Default for Config {
             notes_dir: "~/notes".into(),
             data_dir: "~/timeclock".into(),
             export_dir: "~/Desktop".into(),
+            publish_dir: String::new(),
+            publish_tag: "publish".into(),
             expected_daily_hours: 8.0,
             weekday_hours: vec![],
             public_holidays: "se".into(),

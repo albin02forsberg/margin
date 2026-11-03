@@ -5,7 +5,7 @@
 use crate::org::{self, Kw, OrgFile};
 use regex::Regex;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::sync::LazyLock;
 
 static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\[\[([^\]]+)\](?:\[([^\]]*)\])?\]").unwrap());
@@ -14,6 +14,8 @@ static BLOCK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^\s*#\+begin_(
 static DRAWER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*:[A-Za-z_]+:\s*$").unwrap());
 /// Script, event-handler attribute or javascript: URL: an SVG with one is never embedded.
 static UNSAFE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)<script|javascript:|<[^>]*\son[a-z]+\s*=").unwrap());
+/// A URL scheme (two letters or more, so `C:\x` stays a path).
+static SCHEME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9+.-]+:").unwrap());
 
 #[derive(Debug, PartialEq)]
 pub struct Heading {
@@ -46,8 +48,20 @@ pub enum Block {
     Rule,
 }
 
-/// id → file name of the exported page holding it (or its `#p-N` section in a combined page).
-pub type Ids = HashMap<String, String>;
+/// Where an export's links go. IDS: id → file name of the exported page holding it (or its `#p-N` section in a
+/// combined page). SITE (a published site, #1037): local file (`norm`ed) → its page or copied asset; there any
+/// other local link is plain text and images aren't embedded, so no `file:///` path leaks.
+#[derive(Default)]
+pub struct Ids {
+    pub ids: HashMap<String, String>,
+    pub site: Option<HashMap<PathBuf, String>>,
+}
+
+impl Ids {
+    pub fn new() -> Ids {
+        Ids::default()
+    }
+}
 
 pub struct Doc {
     pub title: Option<String>,
@@ -267,14 +281,39 @@ fn is_image(t: &str) -> bool {
     [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"].iter().any(|e| t.ends_with(e))
 }
 
+/// T's local file path (a `file:` link, or a target with no URL scheme), minus any `::search`.
+fn local(t: &str) -> Option<&str> {
+    let p = t.strip_prefix("file:").or_else(|| (!SCHEME.is_match(t)).then_some(t))?;
+    Some(p.split("::").next().unwrap_or(p))
+}
+
+/// P with `.` and `..` folded away, lexically (the disk isn't touched).
+pub fn norm(p: &Path) -> PathBuf {
+    let mut o = PathBuf::new();
+    for c in p.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => _ = o.pop(),
+            c => o.push(c),
+        }
+    }
+    o
+}
+
 /// Resolve a link target: Ok(url) or Err(plain text) for id: links not in IDS (id → exported page). file: paths
-/// become absolute file:// URLs (relative to BASE, the note's folder).
+/// become absolute file:// URLs (relative to BASE, the note's folder); in a site, the local file's page or asset,
+/// else plain text (the description, or just the file name).
 fn target(t: &str, desc: Option<&str>, base: &Path, ids: &Ids) -> Result<String, String> {
     if let Some(id) = t.strip_prefix("id:") {
-        if let Some(page) = ids.get(id) {
+        if let Some(page) = ids.ids.get(id) {
             return Ok(page.clone());
         }
         return Err(desc.unwrap_or(id).to_string());
+    }
+    if let Some(site) = &ids.site {
+        let Some(p) = local(t) else { return Ok(t.to_string()) };
+        let text = || desc.map_or_else(|| Path::new(p).file_name().map_or(p.into(), |n| n.to_string_lossy().to_string()), String::from);
+        return site.get(&norm(&base.join(p))).cloned().ok_or_else(text);
     }
     match t.strip_prefix("file:") {
         Some(p) => {
@@ -291,11 +330,27 @@ pub fn free_name(name: &str, taken: impl Fn(&str) -> bool) -> String {
     std::iter::once(name.to_string()).chain((2..).map(|n| format!("{stem} ({n}){ext}"))).find(|n| !taken(n)).unwrap()
 }
 
+fn ids_of(f: &OrgFile) -> impl Iterator<Item = &String> {
+    f.id.iter().chain(f.headlines.iter().filter_map(|h| h.id.as_ref()))
+}
+
+/// PAGES, each with a unique `<stem>.<EXT>` name (never RESERVED), and the ids those pages hold.
+fn name_pages<'a>(pages: Vec<&'a OrgFile>, ext: &str, reserved: &str) -> (Vec<(&'a OrgFile, String)>, Ids) {
+    let mut out: Vec<(&OrgFile, String)> = vec![];
+    let mut ids = Ids::new();
+    for f in pages {
+        let stem = f.path.file_stem().map_or("note".into(), |s| s.to_string_lossy().to_string());
+        let name = free_name(&format!("{stem}.{ext}"), |n| n.eq_ignore_ascii_case(reserved) || out.iter().any(|(_, o)| o.eq_ignore_ascii_case(n)));
+        ids.ids.extend(ids_of(f).map(|id| (id.clone(), name.clone())));
+        out.push((f, name));
+    }
+    (out, ids)
+}
+
 /// ROOT plus the notes it reaches by id: links within DEPTH hops (from FILES, where ROOT's
 /// own entry is ignored), each with a unique `<stem>.<EXT>` name, and the ids those pages hold.
 pub fn bundle<'a>(files: &[&'a OrgFile], root: &'a OrgFile, depth: usize, ext: &str) -> (Vec<(&'a OrgFile, String)>, Ids) {
     let all: Vec<&OrgFile> = std::iter::once(root).chain(files.iter().copied().filter(|f| f.path != root.path)).collect();
-    let ids_of = |f: &'a OrgFile| f.id.iter().chain(f.headlines.iter().filter_map(|h| h.id.as_ref()));
     let by_id: HashMap<&str, &OrgFile> = all.iter().flat_map(|&f| ids_of(f).map(move |id| (id.as_str(), f))).collect();
     let mut pages = vec![root];
     let mut frontier = vec![root];
@@ -309,15 +364,7 @@ pub fn bundle<'a>(files: &[&'a OrgFile], root: &'a OrgFile, depth: usize, ext: &
         }
         frontier = next;
     }
-    let mut out: Vec<(&OrgFile, String)> = vec![];
-    let mut ids = Ids::new();
-    for f in pages {
-        let stem = f.path.file_stem().map_or("note".into(), |s| s.to_string_lossy().to_string());
-        let name = free_name(&format!("{stem}.{ext}"), |n| out.iter().any(|(_, o)| o.eq_ignore_ascii_case(n)));
-        ids.extend(ids_of(f).map(|id| (id.clone(), name.clone())));
-        out.push((f, name));
-    }
-    (out, ids)
+    name_pages(pages, ext, "")
 }
 
 /// Names in EXISTING ending in `.EXT` that aren't in KEEP: pages left over from an earlier export.
@@ -341,7 +388,7 @@ fn html_spans(s: &[Span], base: &Path, ids: &Ids) -> String {
             }
             Span::Link(t, d) => match target(t, d.as_deref(), base, ids) {
                 Err(text) => html_spans(&spans(&text), base, ids),
-                Ok(u) if d.is_none() && is_image(t) => format!("<img src=\"{}\" alt=\"\">", esc(&embed(t, base).unwrap_or(u))),
+                Ok(u) if d.is_none() && is_image(t) => format!("<img src=\"{}\" alt=\"\">", esc(&ids.site.is_none().then(|| embed(t, base)).flatten().unwrap_or(u))),
                 Ok(u) => format!("<a href=\"{}\">{}</a>", esc(&u), d.as_deref().map_or_else(|| esc(t), |d| html_spans(&spans(d), base, ids))),
             },
         })
@@ -437,6 +484,7 @@ hr { border: 0; border-top: 1px solid var(--line); }
 .kw { font: 600 .75em ui-monospace, monospace; } .kw.todo { color: var(--todo); } .kw.done { color: var(--done); }
 .prio { color: var(--dim); font-weight: 400; font-size: .8em; }
 .tags span { font-size: .6em; font-weight: 400; color: var(--dim); border: 1px solid var(--line); border-radius: 1em; padding: 0 .5em; margin-left: .3em; vertical-align: middle; }
+.index .date { color: var(--dim); font-size: .85em; margin-left: .5em; }
 li:has(> input[type=checkbox]) { list-style: none; margin-left: -1.3em; }
 section + section { border-top: 1px solid var(--line); break-before: page; }
 @media print { body { margin: 0; max-width: none; } a { color: inherit; } section + section { border: 0; } }
@@ -468,10 +516,129 @@ fn page(title: &str, body: &str, print: bool) -> String {
 /// PAGES (from `bundle`) as one print page: a `<section id="p-N">` per note, each on a new
 /// sheet, with IDS pointing at the sections instead of the page files and DIAGRAMS embedded in every note.
 pub fn combined(pages: &[(&OrgFile, String)], texts: &[String], ids: &Ids, kw: &Kw, diagrams: &HashMap<String, String>) -> String {
-    let ids: Ids = ids.iter().filter_map(|(id, name)| Some((id.clone(), format!("#p-{}", pages.iter().position(|(_, n)| n == name)?)))).collect();
+    let ids = Ids { ids: ids.ids.iter().filter_map(|(id, name)| Some((id.clone(), format!("#p-{}", pages.iter().position(|(_, n)| n == name)?)))).collect(), site: None };
     let docs: Vec<(Doc, String)> = pages.iter().zip(texts).map(|((f, _), t)| (parse(t, kw).with_diagrams(diagrams.clone()), f.path.file_stem().map_or("note".into(), |s| s.to_string_lossy().to_string()))).collect();
     let body: String = docs.iter().zip(pages).enumerate().map(|(i, ((d, stem), (f, _)))| format!("<section id=\"p-{i}\">\n{}</section>\n", html_body(d, stem, f.path.parent().unwrap_or(Path::new("")), &ids))).collect();
     page(docs[0].0.title.as_deref().unwrap_or(&docs[0].1), &body, true)
+}
+
+// ---------------------------------------------------------------- site (#1037)
+
+/// The site's list of generated files, so a later run only ever deletes what it wrote.
+pub const MANIFEST: &str = ".margin-publish";
+
+/// Every link target D renders (title, subtitle and blocks, not inside src/example blocks).
+fn doc_links(d: &Doc) -> Vec<String> {
+    fn text(s: &str, o: &mut Vec<String>) {
+        fn walk(s: &[Span], o: &mut Vec<String>) {
+            for sp in s {
+                match sp {
+                    Span::Link(t, _) => o.push(t.clone()),
+                    Span::Mark(_, inner) => walk(inner, o),
+                    Span::Text(_) => {}
+                }
+            }
+        }
+        walk(&spans(s), o)
+    }
+    fn blocks(bs: &[Block], o: &mut Vec<String>) {
+        for b in bs {
+            match b {
+                Block::Heading(h) => text(&h.title, o),
+                Block::Para(p) => text(p, o),
+                Block::List(_, items) => items.iter().for_each(|it| {
+                    it.term.iter().for_each(|t| text(t, o));
+                    text(&it.text, o);
+                    blocks(&it.children, o);
+                }),
+                Block::Table(g) => g.iter().flatten().flatten().for_each(|c| text(c, o)),
+                Block::Pre(kind, _, body) if kind == "verse" => body.lines().for_each(|l| text(l, o)),
+                Block::Quote(inner) => blocks(inner, o),
+                _ => {}
+            }
+        }
+    }
+    let mut o = vec![];
+    d.title.iter().chain(&d.subtitle).for_each(|t| text(t, &mut o));
+    blocks(&d.blocks, &mut o);
+    o
+}
+
+/// The site's index page: PAGES by title, each with its modified date and tags.
+fn site_index(pages: &[(&OrgFile, String)], title: &str) -> String {
+    let mut rows: Vec<&(&OrgFile, String)> = pages.iter().collect();
+    rows.sort_by_key(|(f, _)| f.title.to_lowercase());
+    let li: String = rows
+        .iter()
+        .map(|(f, n)| {
+            let date = f.mtime.map_or(String::new(), |t| format!(" <span class=\"date\">{}</span>", chrono::DateTime::<chrono::Local>::from(t).format("%Y-%m-%d")));
+            let tags = if f.tags.is_empty() { String::new() } else { format!(" <span class=\"tags\">{}</span>", f.tags.iter().map(|t| format!("<span>{}</span>", esc(t))).collect::<String>()) };
+            format!("<li><a href=\"{}\">{}</a>{date}{tags}</li>\n", esc(n), esc(&f.title))
+        })
+        .collect();
+    page(title, &format!("<h1>{}</h1>\n<ul class=\"index\">\n{li}</ul>\n", esc(title)), false)
+}
+
+/// The names in an earlier run's MANIFEST (one per line) that KEEP no longer has. Only a bare file name, or one
+/// under `assets/`, counts: a hand-edited manifest can't reach outside the site folder.
+fn manifest_stale(manifest: &str, keep: &[String]) -> Vec<String> {
+    let bare = |n: &str| !n.is_empty() && n != "." && n != ".." && !n.contains(['/', '\\', ':']);
+    manifest.lines().map(str::trim).filter(|n| bare(n.strip_prefix("assets/").unwrap_or(n)) && !keep.iter().any(|k| k == n)).map(String::from).collect()
+}
+
+/// Publish the notes in FILES tagged TAG (file tags) to DIR as a static site: a page per note (its text from
+/// TEXT_OF), links between them relative, `index.html`, and the other local files they link to under NOTES
+/// copied to `assets/`. Files of an earlier run (DIR's MANIFEST) no longer generated are deleted; a file in
+/// the way that no earlier run wrote is an error. Returns the number of pages.
+pub fn publish(dir: &Path, notes: &Path, files: &[&OrgFile], tag: &str, kw: &Kw, text_of: impl Fn(&OrgFile) -> String) -> Result<usize, String> {
+    let io = |e: std::io::Error| e.to_string();
+    let picked: Vec<&OrgFile> = files.iter().copied().filter(|f| f.tags.iter().any(|t| t.eq_ignore_ascii_case(tag))).collect();
+    if picked.is_empty() {
+        return Err(format!("No notes tagged :{tag}: to publish"));
+    }
+    let (pages, mut ids) = name_pages(picked, "html", "index.html");
+    let mut site: HashMap<PathBuf, String> = pages.iter().map(|(f, n)| (norm(&f.path), n.clone())).collect();
+    let docs: Vec<Doc> = pages.iter().map(|(f, _)| parse(&text_of(f), kw)).collect();
+    let (notes, mut assets) = (norm(notes), vec![]);
+    for ((f, _), d) in pages.iter().zip(&docs) {
+        let base = f.path.parent().unwrap_or(Path::new(""));
+        for p in doc_links(d).iter().filter_map(|t| local(t)).map(|p| norm(&base.join(p))) {
+            if site.contains_key(&p) || !p.starts_with(&notes) || !p.is_file() || p.extension().is_some_and(|e| e.eq_ignore_ascii_case("org")) {
+                continue;
+            }
+            let file = p.file_name().map_or("file".into(), |n| n.to_string_lossy().to_string());
+            let name = format!("assets/{}", free_name(&file, |n| site.values().any(|a| a.eq_ignore_ascii_case(&format!("assets/{n}")))));
+            site.insert(p.clone(), name.clone());
+            assets.push((p, name));
+        }
+    }
+    ids.site = Some(site);
+    let names: Vec<String> = pages.iter().map(|(_, n)| n).chain(assets.iter().map(|(_, n)| n)).cloned().chain(["index.html".to_string()]).collect();
+    let old = std::fs::read_to_string(dir.join(MANIFEST)).unwrap_or_default();
+    if let Some(n) = names.iter().find(|n| dir.join(n).exists() && !old.lines().any(|o| o.trim() == n.as_str())) {
+        return Err(format!("{} is in the way: an earlier publish didn't write it. Move it, or pick another folder.", dir.join(n).display()));
+    }
+    std::fs::create_dir_all(dir.join(if assets.is_empty() { "" } else { "assets" })).map_err(io)?;
+    // Old and new names first, so an interrupted run still owns everything it wrote.
+    let manifest = |names: &[String]| crate::config::write_atomic(&dir.join(MANIFEST), names.iter().map(|n| format!("{n}\n")).collect::<String>()).map_err(io);
+    manifest(&[names.clone(), manifest_stale(&old, &names)].concat())?;
+    for ((f, name), d) in pages.iter().zip(&docs) {
+        crate::config::write_atomic(&dir.join(name), html(d, &f.title, f.path.parent().unwrap_or(Path::new("")), &ids, false)).map_err(io)?;
+    }
+    for (src, name) in &assets {
+        crate::config::write_atomic(&dir.join(name), std::fs::read(src).map_err(io)?).map_err(io)?;
+    }
+    let title = dir.file_name().map_or("Notes".into(), |n| n.to_string_lossy().to_string());
+    crate::config::write_atomic(&dir.join("index.html"), site_index(&pages, &title)).map_err(io)?;
+    let root = std::fs::canonicalize(dir).map_err(io)?;
+    for n in manifest_stale(&old, &names) {
+        let p = dir.join(&n);
+        if p.is_file() && std::fs::canonicalize(&p).is_ok_and(|c| c.starts_with(&root)) {
+            std::fs::remove_file(&p).map_err(io)?;
+        }
+    }
+    manifest(&names)?;
+    Ok(pages.len())
 }
 
 // ---------------------------------------------------------------- Markdown
@@ -759,6 +926,86 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
         for want in ["<title>a</title>", "<section id=\"p-0\">\n<h1>a</h1>", "To <a href=\"#p-1\">B&#39;s heading</a>, lost, <a href=\"#p-0\">me</a>.", "On to <a href=\"#p-2\">", "<section id=\"p-2\">\n<h1>b</h1>"] {
             assert!(p.contains(want), "missing {want:?} in\n{p}");
         }
+    }
+
+    #[test]
+    fn manifest_names() {
+        let keep = vec!["a.html".to_string(), "index.html".into()];
+        let m = "a.html\nold.html\nassets/pic.png\n\n../x.html\n/abs.html\nsub/x.html\nassets/../x\nassets/sub/x\nC:x\n..\nassets/\n";
+        assert_eq!(manifest_stale(m, &keep), ["old.html", "assets/pic.png"]);
+    }
+
+    #[test]
+    fn publish_site() {
+        let root = std::env::temp_dir().join(format!("margin-publish-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (notes, dir) = (root.join("notes"), root.join("site"));
+        std::fs::create_dir_all(notes.join("img")).unwrap();
+        for (n, b) in [("img/pic.png", "png"), ("doc.pdf", "pdf"), ("../out.png", "out")] {
+            std::fs::write(notes.join(n), b).unwrap();
+        }
+        let p = |n: &str, text: &str| org::parse(&notes.join(n), text, &kw());
+        let a = p("a.org", "#+title: Alpha\n#+filetags: :publish:x:\nTo [[file:b.org::*H][B]], [[id:bid][B by id]], [[file:secret.org][Secret]], [[./sub/x/../index.org]] and [[https://x.org][web]].\n\n[[file:img/pic.png]] [[./doc.pdf][Doc]] [[file:missing.png]] [[file:../out.png]] [[file:/etc/hosts][hosts]]\n");
+        let b = p("b.org", ":PROPERTIES:\n:ID: bid\n:END:\n#+filetags: :Publish:\nBack to [[file:a.org][A]].\n");
+        let idx = p("sub/index.org", "#+filetags: :publish:\nI.\n");
+        let secret = p("secret.org", "Private.\n");
+        let files = [&a, &b, &idx, &secret];
+        let run = || publish(&dir, &notes, &files, "publish", &kw(), |f| f.text.clone());
+        assert_eq!(run(), Ok(3));
+        let read = |n: &str| std::fs::read_to_string(dir.join(n)).unwrap_or_default();
+        let h = read("a.html");
+        for want in [
+            "To <a href=\"b.html\">B</a>, <a href=\"b.html\">B by id</a>, Secret, <a href=\"index (2).html\">./sub/x/../index.org</a> and <a href=\"https://x.org\">web</a>.",
+            "<img src=\"assets/pic.png\" alt=\"\"> <a href=\"assets/doc.pdf\">Doc</a> missing.png out.png hosts",
+        ] {
+            assert!(h.contains(want), "missing {want:?} in\n{h}");
+        }
+        assert!(!h.contains("file:") && !h.contains(&*root.to_string_lossy()), "local path leaked\n{h}");
+        assert!(read("b.html").contains("Back to <a href=\"a.html\">A</a>."));
+        assert_eq!((read("assets/pic.png").as_str(), read("assets/doc.pdf").as_str(), read("secret.html").as_str()), ("png", "pdf", ""));
+        let i = read("index.html");
+        assert!(i.contains("<h1>site</h1>") && i.contains("<li><a href=\"a.html\">Alpha</a> <span class=\"tags\"><span>publish</span><span>x</span></span></li>") && i.find("Alpha") < i.find(">b<"), "{i}");
+        assert_eq!(read(MANIFEST), "a.html\nb.html\nindex (2).html\nassets/pic.png\nassets/doc.pdf\nindex.html\n");
+
+        // Re-run: stale names of the manifest go, foreign files and anything outside the folder stay.
+        std::fs::write(dir.join("old.html"), "").unwrap();
+        std::fs::write(dir.join("mine.txt"), "").unwrap();
+        std::fs::write(root.join("victim.html"), "").unwrap();
+        std::fs::write(dir.join(MANIFEST), read(MANIFEST) + "old.html\n../victim.html\nassets/../../victim.html\n" + &root.join("victim.html").to_string_lossy() + "\n").unwrap();
+        assert_eq!(run(), Ok(3));
+        assert!(!dir.join("old.html").exists() && dir.join("mine.txt").exists() && root.join("victim.html").exists());
+        assert!(!read(MANIFEST).contains("victim") && !read(MANIFEST).contains("old.html"));
+
+        // A file a run didn't write is never overwritten; nothing tagged is an error.
+        std::fs::remove_file(dir.join(MANIFEST)).unwrap();
+        assert!(run().is_err_and(|e| e.contains("a.html is in the way")));
+        assert!(publish(&dir, &notes, &[&secret], "publish", &kw(), |f| f.text.clone()).is_err_and(|e| e.contains("No notes tagged :publish:")));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn publish_site_links_everywhere() {
+        let root = std::env::temp_dir().join(format!("margin-publish2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (notes, dir) = (root.join("notes"), root.join("site"));
+        std::fs::create_dir_all(notes.join("x")).unwrap();
+        std::fs::create_dir_all(notes.join("y")).unwrap();
+        std::fs::write(notes.join("x/f.txt"), "1").unwrap();
+        std::fs::write(notes.join("y/f.txt"), "2").unwrap();
+        let text = "#+title: T\n#+filetags: :publish:\n* H [[x/f.txt][in head]]\n- term :: [[y/f.txt][in term]] *[[x/f.txt][bold]]*\n  - [[y/f.txt]]\n| [[x/f.txt]] |\n#+begin_quote\n[[y/f.txt]]\n#+end_quote\n#+begin_verse\n[[x/f.txt]]\n#+end_verse\n";
+        let mut a = org::parse(&notes.join("a.org"), text, &kw());
+        a.mtime = Some(std::time::SystemTime::now());
+        assert_eq!(publish(&dir, &notes, &[&a], "publish", &kw(), |f| f.text.clone()), Ok(1));
+        let h = std::fs::read_to_string(dir.join("a.html")).unwrap();
+        assert!(h.contains("assets/f.txt") && h.contains("assets/f (2).txt") || h.contains("assets/f.txt") && h.contains("assets/f.txt (2)"), "{h}");
+        assert!(dir.join("assets").is_dir());
+        let i = std::fs::read_to_string(dir.join("index.html")).unwrap();
+        assert!(i.contains("class=\"date\""), "{i}");
+        // Errors surface instead of panicking: DIR is a file; an asset vanishes before it is copied.
+        let file = root.join("file");
+        std::fs::write(&file, "").unwrap();
+        assert!(publish(&file, &notes, &[&a], "publish", &kw(), |f| f.text.clone()).is_err());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

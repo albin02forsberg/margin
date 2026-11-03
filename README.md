@@ -637,6 +637,7 @@ Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`) show l
 | Space n r | Rename this note (same folder, `.org` added if missing); `[[file:]]` links to it in other notes are updated after a backup, `[[id:]]` links need nothing |
 | Space n p | Pin or unpin this note: pinned notes come first in Ctrl+P (marked ★, in pin order); pins are kept per machine and follow renames and moves |
 | Space n P | Open one of the pinned notes |
+| Space n E | Publish the notes tagged `:publish:` as a static HTML site in `publish_dir` (see Export) |
 | Space n c | Duplicate this note (unsaved edits included) into a new note beside it; its properties and `:ID:`s are not copied, so `[[id:]]` links stay unambiguous |
 | Space n m | Move this note to another folder under the notes folder (pick one, or type a path like `archive/2026` to create it; not `.trash`, the attachments folder or the images folder). `[[file:]]` links to it are updated and its own relative links (attachments too) re-based, after a backup |
 | Space n v | Merge this note into another: pick a note; after a confirm (it says how many links follow) this note is appended to it as a top-level section titled with this note's title: its headings move one level down, its file `:ID:` and properties go on the section (so `[[id:]]` links keep working; an `:ID:` the target already has gets a fresh one), its `#+filetags` join the target's and file settings (`#+startup`, `#+options`, `#+author`…) are dropped. `[[file:]]` links to it point at the target (bare ones at the new section, `::*Heading` ones keep their heading), pins and bookmarks follow, and the note moves to `<notes>/.trash/` (Space n R restores it). All or nothing, after a backup |
@@ -1206,6 +1207,18 @@ work, or as one PDF (`export_dir/<note> (linked).html`) with a page break betwee
 notes and links jumping to the right section. Overwriting the folder moves pages
 (`.html` / `.md`) from an earlier export that are no longer included into its
 `old/` subfolder; other files in it stay.
+
+`Space n E` publishes a static site, like org-publish: every note whose file tags
+(`#+filetags:`) include `publish_tag` (default `publish`) becomes an HTML page in
+`publish_dir`, with an `index.html` listing them (title, modified date, tags).
+`file:` and `id:` links between published notes point at the sibling pages; local
+files they link to (images, PDFs…) inside the notes folder are copied to `assets/`;
+any other local link, such as an unpublished note, becomes plain text, so no local
+path ends up in the site. The first run asks for the folder (it must be outside the
+notes folder) and saves it as `publish_dir`. Margin lists what it wrote in
+`.margin-publish` there: a re-run deletes only its own pages and assets that are no
+longer published, leaves your other files alone, and refuses to overwrite a file it
+didn't write. Mermaid diagrams stay code blocks in the site.
 
 ### Importing Markdown
 
