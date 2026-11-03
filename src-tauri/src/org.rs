@@ -25,6 +25,8 @@ pub(crate) static TAGS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+(:[^\
 static STATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^\s*- State "([^"]+)"\s+from .*?\[(\d{4}-\d{2}-\d{2})"#).unwrap());
 /// A `- Rescheduled from "…"` line (see log_reschedule).
 static RESCHEDULED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^\s*- Rescheduled from ""#).unwrap());
+/// The `from` stamp (date 1) and `on` date (2) of a `- Rescheduled from` line.
+static RESCHED_PARTS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^- Rescheduled from "\[((\d{4}-\d{2}-\d{2})[^\]]*)\]" on \[(\d{4}-\d{2}-\d{2})"#).unwrap());
 static CLOSED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"CLOSED:\s*\[(\d{4}-\d{2}-\d{2})(?:\s+[^\s\]\d]+)?(?:\s+(\d{1,2}:\d{2}))?[^\]]*\]\s*").unwrap());
 /// An entry in a `:BLOCKER:` value: `[[id:x][desc]]` (id 1, desc 2) or a bare `x` (3).
 static BLOCKER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[id:([^\]]+)\](?:\[([^\]]*)\])?\]|(\S+)").unwrap());
@@ -2197,7 +2199,9 @@ pub fn move_planning(text: &str, line: usize, kind: &str, date: NaiveDate) -> St
 
 /// AFTER, plus `- Rescheduled from "[old]" on [now]` (org-log-reschedule) at the top of the
 /// task's LOGBOOK when its SCHEDULED day differs from BEFORE's; first scheduling, clearing and a
-/// time-only change log nothing. Unlike the repeater log, a missing LOGBOOK is created (below
+/// time-only change log nothing. A newest entry written today is coalesced instead (keeps its
+/// `from`, refreshes `on`; dropped, with an emptied LOGBOOK, when back on the `from` day), so
+/// repeated `>` presses count as one postponement. Unlike the repeater log, a missing LOGBOOK is created (below
 /// the planning line and PROPERTIES) so the count stays in one place.
 pub fn log_reschedule(before: &str, after: &str, line: usize, now: NaiveDateTime) -> String {
     let (Some(old), Some(new)) = (planning_ts(before, line, "SCHEDULED"), planning_ts(after, line, "SCHEDULED")) else { return after.to_string() };
@@ -2210,6 +2214,16 @@ pub fn log_reschedule(before: &str, after: &str, line: usize, now: NaiveDateTime
     let was = old.span().map_or(String::new(), |t| format!(" {t}"));
     let entry = format!("- Rescheduled from \"[{}{was}]\" on [{}]", old.date.format("%Y-%m-%d %a"), now.format("%Y-%m-%d %a %H:%M"));
     if lines.get(i).is_some_and(|l| l.trim().eq_ignore_ascii_case(":LOGBOOK:")) {
+        let prev = lines.get(i + 1).and_then(|l| RESCHED_PARTS.captures(l)).filter(|c| c[3] == now.format("%Y-%m-%d").to_string());
+        if let Some(c) = prev {
+            if c[2] == new.date.format("%Y-%m-%d").to_string() {
+                let empty = lines.get(i + 2).is_some_and(|l| l.trim().eq_ignore_ascii_case(":END:"));
+                lines.drain(i..i + if empty { 3 } else { 2 });
+            } else {
+                lines[i + 1] = format!("- Rescheduled from \"[{}]\" on [{}]", &c[1], now.format("%Y-%m-%d %a %H:%M"));
+            }
+            return join(lines, after);
+        }
         lines.insert(i + 1, entry);
     } else {
         lines.splice(i..i, [":LOGBOOK:".into(), entry, ":END:".into()]);
@@ -3028,6 +3042,25 @@ mod tests {
         let t = "* TODO A\nSCHEDULED: <2026-10-01 Thu>\n:PROPERTIES:\n:ID: x\n:END:\nbody";
         let s = shift_date(t, 0, "SCHEDULED", -1);
         assert_eq!(log_reschedule(t, &s, 5, at()), format!("* TODO A\nSCHEDULED: <2026-09-30 Wed>\n:PROPERTIES:\n:ID: x\n:END:\n:LOGBOOK:\n{e}\n:END:\nbody"));
+        // Same-day repeats coalesce; back on the original day drops the entry and its drawer.
+        let t = "* TODO A\nSCHEDULED: <2026-10-01 Thu>\nbody\n";
+        let mut s = t.to_string();
+        let mut cur = t.to_string();
+        for _ in 0..3 {
+            s = shift_date(&cur, 0, "SCHEDULED", 1);
+            s = lg(&cur, &s);
+            cur = s.clone();
+        }
+        assert_eq!(s, "* TODO A\nSCHEDULED: <2026-10-04 Sun>\n:LOGBOOK:\n- Rescheduled from \"[2026-10-01 Thu]\" on [2026-10-02 Fri 14:30]\n:END:\nbody\n");
+        for _ in 0..3 {
+            let n = shift_date(&cur, 0, "SCHEDULED", -1);
+            cur = lg(&cur, &n);
+        }
+        assert_eq!(cur, t);
+        // A later day adds a second entry.
+        let s2 = shift_date(&s, 0, "SCHEDULED", 1);
+        let later = NaiveDate::from_ymd_opt(2026, 10, 3).unwrap().and_hms_opt(9, 0, 0).unwrap();
+        assert_eq!(log_reschedule(&s, &s2, 0, later).matches("- Rescheduled").count(), 2);
         // First schedule, clearing, a time-only change and a deadline move log nothing.
         let u = "* TODO A\n";
         let s = set_planning(u, 0, "SCHEDULED", Some((d("2026-10-01"), None, None, None)));
