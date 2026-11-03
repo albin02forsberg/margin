@@ -111,6 +111,25 @@ fn blocks(lines: &[&str], kw: &Kw, doc: &mut Doc) -> Vec<Block> {
         let lower = t.to_lowercase();
         if let Some((level, k, prio, title, tags)) = org::split_headline(l, kw) {
             flush(&mut para, &mut out);
+            // `:noexport:` / `COMMENT` subtrees stay out (org's default exclusion); `#+begin_*` ranges are jumped so a `* ` line in a src block doesn't end the skip.
+            if tags.iter().any(|t| t.eq_ignore_ascii_case("noexport")) || title == "COMMENT" || title.starts_with("COMMENT ") {
+                i += 1;
+                while i < lines.len() {
+                    if let Some(c) = BLOCK.captures(lines[i]) {
+                        let end = format!("#+end_{}", c[1].to_lowercase());
+                        while i + 1 < lines.len() && lines[i + 1].trim().to_lowercase() != end {
+                            i += 1;
+                        }
+                        i += 2;
+                        continue;
+                    }
+                    if org::split_headline(lines[i], kw).is_some_and(|h| h.0 <= level) {
+                        break;
+                    }
+                    i += 1;
+                }
+                continue;
+            }
             out.push(Block::Heading(Heading { level, kw: k.map(|k| (k.clone(), kw.is_done(&k))), prio, title, tags }));
         } else if t.is_empty() || org::is_planning(l) || t == "#" || t.starts_with("# ") {
             flush(&mut para, &mut out);
@@ -926,6 +945,19 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
         for want in ["<title>a</title>", "<section id=\"p-0\">\n<h1>a</h1>", "To <a href=\"#p-1\">B&#39;s heading</a>, lost, <a href=\"#p-0\">me</a>.", "On to <a href=\"#p-2\">", "<section id=\"p-2\">\n<h1>b</h1>"] {
             assert!(p.contains(want), "missing {want:?} in\n{p}");
         }
+    }
+
+    #[test]
+    fn noexport_and_comment_subtrees_are_skipped() {
+        let t = "* Keep\nk1\n* Hidden :noexport:\nh1\n#+begin_src sh\n* not a heading\nh2\n#+end_src\n** Child\nh3\n* TODO COMMENT Gone\nh4\n* Commentary\nc1\n* After :Noexport:\nh5\n* Last\nl1\n";
+        let md = markdown(&parse(t, &kw()), "t", Path::new("."), &Ids::new());
+        for want in ["Keep", "k1", "Commentary", "c1", "Last", "l1"] {
+            assert!(md.contains(want), "missing {want:?} in\n{md}");
+        }
+        for no in ["Hidden", "h1", "h2", "h3", "Gone", "h4", "After", "h5", "not a heading"] {
+            assert!(!md.contains(no), "{no:?} leaked into\n{md}");
+        }
+        assert!(!markdown(&parse("* A\nx\n* B :noexport:\ny", &kw()), "t", Path::new("."), &Ids::new()).contains('y'));
     }
 
     #[test]
