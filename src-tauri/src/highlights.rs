@@ -17,6 +17,21 @@ pub struct Highlight {
     /// An org inactive timestamp, or the source's date text when it couldn't be read.
     pub added: String,
     pub note: String,
+    /// Org heading tags (Readwise `Tags` column), already sanitized.
+    pub tags: Vec<String>,
+}
+
+/// Readwise tags (`.fav, to read`) as org tags: split on comma/whitespace, leading `.` dropped,
+/// anything but `[A-Za-z0-9_@#%]` removed, empties and repeats skipped.
+fn org_tags(s: &str) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    for t in s.split(|c: char| c == ',' || c.is_whitespace()) {
+        let t: String = t.trim_start_matches('.').chars().filter(|c| c.is_ascii_alphanumeric() || "_@#%".contains(*c)).collect();
+        if !t.is_empty() && !out.contains(&t) {
+            out.push(t);
+        }
+    }
+    out
 }
 
 fn org_ts(t: NaiveDateTime) -> String {
@@ -97,7 +112,7 @@ pub fn parse_clippings(text: &str) -> Vec<Highlight> {
             out.push(Highlight { book, author, location, added, note: body, ..Default::default() });
             continue;
         }
-        out.push(Highlight { book, author, text: body, location, added, note: String::new() });
+        out.push(Highlight { book, author, text: body, location, added, ..Default::default() });
     }
     out
 }
@@ -111,6 +126,7 @@ pub fn parse_readwise_csv(text: &str) -> Result<Vec<Highlight>, String> {
     let hl = col(&["Highlight", "Text"]).ok_or("not a Readwise CSV: no Highlight column")?;
     let (title, author, note, ltype, loc, date) =
         (col(&["Book Title", "Title"]), col(&["Book Author", "Author"]), col(&["Note"]), col(&["Location Type"]), col(&["Location"]), col(&["Highlighted at", "Date"]));
+    let tags = col(&["Tags"]);
     let get = |r: &Vec<String>, c: Option<usize>| c.and_then(|c| r.get(c)).map_or(String::new(), |s| s.trim().to_string());
     Ok(rows
         .iter()
@@ -126,6 +142,7 @@ pub fn parse_readwise_csv(text: &str) -> Result<Vec<Highlight>, String> {
                 location,
                 added: if added.is_empty() { added } else { readwise_date(&added) },
                 note: get(r, note),
+                tags: org_tags(&get(r, tags)),
             }
         })
         .collect())
@@ -157,7 +174,8 @@ fn heading(h: &Highlight) -> String {
 
 /// One highlight as an org heading with its properties, quote and note.
 pub fn render(h: &Highlight) -> String {
-    let mut o = format!("* {}\n:PROPERTIES:\n:HIGHLIGHT_KEY: {}\n", heading(h), key(h));
+    let tags = if h.tags.is_empty() { String::new() } else { format!(" :{}:", h.tags.join(":")) };
+    let mut o = format!("* {}{tags}\n:PROPERTIES:\n:HIGHLIGHT_KEY: {}\n", heading(h), key(h));
     if !h.location.is_empty() {
         o += &format!(":LOCATION: {}\n", h.location);
     }
@@ -207,8 +225,8 @@ pub struct Summary {
 }
 
 /// Import the clippings/CSV file SRC into NOTES/Reading/<slug>.org (`-2`… for the same title by
-/// another author). DRY only reports. The caller holds the note-write lock.
-pub fn import(src: &Path, notes: &Path, dry: bool) -> Result<Summary, String> {
+/// another author). DRY only reports; DRILL also tags the newly added highlights `drill`. The caller holds the note-write lock.
+pub fn import(src: &Path, notes: &Path, dry: bool, drill: bool) -> Result<Summary, String> {
     if !src.is_absolute() || !src.is_file() {
         return Err(format!("{} must be an absolute path to a file", src.display()));
     }
@@ -253,7 +271,11 @@ pub fn import(src: &Path, notes: &Path, dry: bool) -> Result<Summary, String> {
                 continue;
             }
             add += "\n";
-            add += &render(h);
+            let mut h = h.clone();
+            if drill && !h.tags.iter().any(|t| t == "drill") {
+                h.tags.push("drill".into());
+            }
+            add += &render(&h);
             b.new += 1;
         }
         if !dry && b.new > 0 {
@@ -289,10 +311,10 @@ mod tests {
         csv += "text 0,Book 0,A,,,,,location,0,,\n"; // duplicate
         let src = dir.join("in.csv");
         std::fs::write(&src, csv).unwrap();
-        let s = import(&src, &dir, false).unwrap();
+        let s = import(&src, &dir, false, false).unwrap();
         assert_eq!((s.new, s.dupes), (3000, 1));
         assert_eq!(s.books.iter().map(|b| b.title.as_str()).collect::<Vec<_>>(), ["Book 0", "Book 1", "Book 2"]);
-        let s = import(&src, &dir, false).unwrap();
+        let s = import(&src, &dir, false, false).unwrap();
         assert_eq!((s.new, s.dupes), (0, 3001));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -301,7 +323,7 @@ mod tests {
     fn parses_clippings() {
         let hs = parse_clippings(CLIP);
         assert_eq!(hs.len(), 3); // the bookmark is skipped, the duplicate kept (dropped on import)
-        assert_eq!(hs[0], Highlight { book: "Dune".into(), author: "Frank Herbert".into(), text: "Fear is the mind-killer.\n* Not a heading".into(), location: "page 12, location 180-182".into(), added: "[2024-01-01 Mon 10:00]".into(), note: "Great line".into() });
+        assert_eq!(hs[0], Highlight { book: "Dune".into(), author: "Frank Herbert".into(), text: "Fear is the mind-killer.\n* Not a heading".into(), location: "page 12, location 180-182".into(), added: "[2024-01-01 Mon 10:00]".into(), note: "Great line".into(), tags: vec![] });
         assert_eq!(hs[2].book, "The Name of the Book");
         assert_eq!(hs[2].author, "Smith, J.");
         assert_eq!(hs[2].text, "First line\nsecond line");
@@ -327,6 +349,31 @@ mod tests {
     }
 
     #[test]
+    fn tags_and_drill() {
+        assert_eq!(org_tags(".fav, to read,fav, ,a-b!,#x"), ["fav", "to", "read", "ab", "#x"]);
+        let csv = "Highlight,Book Title,Book Author,Note,Tags,Location,Document tags\nOne: two:,B,A,,\".fav, deep\",1,ignored\nTwo,B,A,,,2,\n";
+        let hs = parse_readwise_csv(csv).unwrap();
+        assert_eq!((hs[0].tags.clone(), hs[1].tags.len()), (vec!["fav".to_string(), "deep".into()], 0));
+        assert!(render(&hs[0]).starts_with("* One: two :fav:deep:\n"));
+        let root = std::env::temp_dir().join(format!("margin-hl-drill-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let src = root.join("in.csv");
+        std::fs::write(&src, csv).unwrap();
+        assert_eq!(import(&src, &root, false, true).unwrap().new, 2);
+        let f = root.join("Reading/b.org");
+        let text = std::fs::read_to_string(&f).unwrap();
+        let kw = crate::org::Kw { todo: vec![], done: vec![] };
+        let cards = crate::org::drill_cards(&[std::sync::Arc::new(crate::org::parse(&f, &text, &kw))]);
+        assert_eq!(cards.iter().map(|c| c.title.as_str()).collect::<Vec<_>>(), ["One: two", "Two"]);
+        assert!(text.contains(":fav:deep:drill:"));
+        let again = import(&src, &root, false, true).unwrap();
+        assert_eq!((again.new, again.dupes), (0, 2));
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), text);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn renders_escaped_quote() {
         let h = &parse_clippings(CLIP)[0];
         assert_eq!(render(h), format!("* Fear is the mind-killer. * Not a heading\n:PROPERTIES:\n:HIGHLIGHT_KEY: {}\n:LOCATION: page 12, location 180-182\n:ADDED: [2024-01-01 Mon 10:00]\n:END:\n#+begin_quote\nFear is the mind-killer.\n,* Not a heading\n#+end_quote\nGreat line\n", key(h)));
@@ -341,10 +388,10 @@ mod tests {
         std::fs::create_dir_all(&notes).unwrap();
         let src = root.join("My Clippings.txt");
         std::fs::write(&src, CLIP).unwrap();
-        let dry = import(&src, &notes, true).unwrap();
+        let dry = import(&src, &notes, true, false).unwrap();
         assert_eq!((dry.new, dry.dupes, dry.books.len()), (2, 1, 2));
         assert!(!notes.join("Reading").exists()); // dry writes nothing
-        let s = import(&src, &notes, false).unwrap();
+        let s = import(&src, &notes, false, false).unwrap();
         assert_eq!((s.new, s.dupes), (2, 1));
         let dune = notes.join("Reading/dune.org");
         let text = std::fs::read_to_string(&dune).unwrap();
@@ -352,21 +399,21 @@ mod tests {
         assert_eq!(text.matches(":HIGHLIGHT_KEY:").count(), 1);
         // the user edits the note; a re-import adds nothing and keeps the edit
         std::fs::write(&dune, format!("{text}my own line")).unwrap();
-        let again = import(&src, &notes, false).unwrap();
+        let again = import(&src, &notes, false, false).unwrap();
         assert_eq!((again.new, again.dupes), (0, 3));
         assert_eq!(std::fs::read_to_string(&dune).unwrap(), format!("{text}my own line"));
         // a new highlight is appended after the edit
         let more = format!("{CLIP}Dune (Frank Herbert)\n- Your Highlight on page 99 | Location 900-901 | Added on Monday, January 1, 2024 11:00:00 AM\n\nNew one\n==========\nDune (Someone Else)\n- Your Highlight on page 1 | Location 1-2 | Added on Monday, January 1, 2024 11:00:00 AM\n\nOther dune\n==========\n");
         std::fs::write(&src, more).unwrap();
-        let s = import(&src, &notes, false).unwrap();
+        let s = import(&src, &notes, false, false).unwrap();
         assert_eq!(s.new, 2);
         let t = std::fs::read_to_string(&dune).unwrap();
         assert!(t.starts_with(&format!("{text}my own line\n\n* New one\n")));
         let other = std::fs::read_to_string(notes.join("Reading/dune-2.org")).unwrap();
         assert!(other.starts_with("#+title: Dune\n#+author: Someone Else\n") && other.contains("Other dune"));
         std::fs::write(&src, "").unwrap();
-        assert_eq!(import(&src, &notes, false).unwrap().books.len(), 0);
-        assert!(import(Path::new("rel.txt"), &notes, true).is_err());
+        assert_eq!(import(&src, &notes, false, false).unwrap().books.len(), 0);
+        assert!(import(Path::new("rel.txt"), &notes, true, false).is_err());
         std::fs::remove_dir_all(&root).unwrap();
     }
 }

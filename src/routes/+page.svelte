@@ -2461,9 +2461,9 @@
     if (!p.books.length) return flash(`No highlights in ${path}.`);
     if (!p.new) return flash(`Nothing new: all ${p.dupes} highlights are already imported.`);
     const books = p.books.filter((b) => b.new);
-    const go = await pick({ prompt: `Import ${p.new} highlight${p.new === 1 ? "" : "s"} into ${books.length} book note${books.length === 1 ? "" : "s"}? (${p.dupes} already there; notes are only appended to)`, body: books.map(line).join("\n"), items: [{ label: "Import", value: "go" }] });
-    if (go !== "go") return;
-    const r = await call<Summary>("highlights_import", { path, dry: false });
+    const go = await pick({ prompt: `Import ${p.new} highlight${p.new === 1 ? "" : "s"} into ${books.length} book note${books.length === 1 ? "" : "s"}? (${p.dupes} already there; notes are only appended to)`, body: books.map(line).join("\n"), items: [{ label: "Import", value: "go" }, { label: "Import as flashcards", value: "drill", detail: "also tags the newly imported highlights :drill: (ones already there are left alone)" }] });
+    if (go !== "go" && go !== "drill") return;
+    const r = await call<Summary>("highlights_import", { path, dry: false, drill: go === "drill" });
     const done = r.books.filter((b) => b.new);
     const open = await pick({ prompt: `✓ ${r.new} highlights imported`, items: done.map((b) => ({ label: b.title, value: b.file, detail: line(b) })) });
     if (open) await openFile(join(cfg.notes, open));
