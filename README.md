@@ -1271,6 +1271,9 @@ A Readwise CSV's `Tags` column becomes heading tags (`* Quote… :fav:deep:`). C
 flashcards* in the preview to also tag the newly imported highlights `:drill:`, so they show up
 as cards in the drill review; highlights already in a note are not retagged.
 
+A note you add to a highlight in Kindle or Readwise after it was imported is appended on the next
+import as its own `* Note: …` entry (once; notes already in the file are skipped).
+
 ## Reminders
 
 Timed entries (`SCHEDULED: <… 14:00>`, deadlines with a time, appointments)

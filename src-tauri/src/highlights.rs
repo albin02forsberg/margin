@@ -148,9 +148,30 @@ pub fn parse_readwise_csv(text: &str) -> Result<Vec<Highlight>, String> {
         .collect())
 }
 
+fn norm(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Key of a note added later to the highlight keyed K.
+fn note_key(k: &str, note: &str) -> String {
+    format!("{:x}", Sha256::digest(format!("{k}\nnote\n{}", norm(note))))[..16].to_string()
+}
+
+/// A note added to an already-imported highlight (key K, note key NK) as its own entry.
+fn render_note(h: &Highlight, nk: &str) -> String {
+    let mut o = format!("* Note: {}\n:PROPERTIES:\n:HIGHLIGHT_KEY: {nk}\n", heading(&Highlight { note: h.note.clone(), ..Default::default() }));
+    if !h.added.is_empty() {
+        o += &format!(":ADDED: {}\n", h.added);
+    }
+    o += ":END:\n";
+    for l in h.note.lines() {
+        o += &format!("{}{l}\n", if l.starts_with('*') { " " } else { "" });
+    }
+    o
+}
+
 /// The dedupe key: book, author, location and whitespace-normalized text, hashed.
 pub fn key(h: &Highlight) -> String {
-    let norm = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
     let d = Sha256::digest(format!("{}\n{}\n{}\n{}\n{}", norm(&h.book), norm(&h.author), h.location, norm(&h.text), norm(if h.text.is_empty() { &h.note } else { "" })));
     format!("{d:x}")[..16].to_string()
 }
@@ -263,11 +284,22 @@ pub fn import(src: &Path, notes: &Path, dry: bool, drill: bool) -> Result<Summar
         taken.push(path.clone());
         let mut seen: std::collections::HashSet<String> = old.as_deref().map_or(Default::default(), |t| t.lines().filter_map(|l| l.trim().strip_prefix(":HIGHLIGHT_KEY:")).map(|k| k.trim().to_string()).collect());
         let mut add = String::new();
+        let mut old_norm: Option<String> = None;
         let mut b = Book { title: title.clone(), author: author.clone(), file: path.strip_prefix(notes).unwrap().to_string_lossy().into_owned(), created: old.is_none(), ..Default::default() };
         for h in &hs {
             let k = key(h);
-            if !seen.insert(k) {
-                b.dupes += 1;
+            if !seen.insert(k.clone()) {
+                // a note added to a known highlight later becomes its own `* Note:` entry, once
+                let nk = note_key(&k, &h.note);
+                let fresh = !h.note.is_empty() && !h.text.is_empty() && !seen.contains(&nk) && !old_norm.get_or_insert_with(|| norm(old.as_deref().unwrap_or_default())).contains(&norm(&h.note));
+                if !fresh {
+                    seen.insert(nk);
+                    b.dupes += 1;
+                    continue;
+                }
+                seen.insert(nk.clone());
+                add += &format!("\n{}", render_note(h, &nk));
+                b.new += 1;
                 continue;
             }
             add += "\n";
@@ -370,6 +402,41 @@ mod tests {
         let again = import(&src, &root, false, true).unwrap();
         assert_eq!((again.new, again.dupes), (0, 2));
         assert_eq!(std::fs::read_to_string(&f).unwrap(), text);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn later_note_appends_once() {
+        let root = std::env::temp_dir().join(format!("margin-hl-note-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let src = root.join("in.csv");
+        let csv = |n: &str| format!("Highlight,Book Title,Book Author,Note,Tags,Location\nQuote one,B,A,,.x,1\nQuote two,B,A,{n},,2\n");
+        std::fs::write(&src, csv("")).unwrap();
+        assert_eq!(import(&src, &root, false, true).unwrap().new, 2);
+        std::fs::write(&src, csv("a new thought")).unwrap();
+        let f = root.join("Reading/b.org");
+        let before = std::fs::read_to_string(&f).unwrap();
+        assert_eq!(import(&src, &root, true, true).unwrap().new, 1); // dry run counts it, writes nothing
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), before);
+        let s = import(&src, &root, false, true).unwrap();
+        assert_eq!((s.new, s.dupes), (1, 1));
+        let t = std::fs::read_to_string(&f).unwrap();
+        assert!(t.starts_with(&before));
+        assert!(t.contains("* Note: a new thought\n:PROPERTIES:\n:HIGHLIGHT_KEY:") && t.contains(":END:\na new thought\n"));
+        assert!(!t.contains("* Note: a new thought :drill:"));
+        let s = import(&src, &root, false, true).unwrap();
+        assert_eq!((s.new, s.dupes), (0, 2));
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), t);
+        // a note that came inline on the first import is not appended again
+        let r2 = root.join("two");
+        std::fs::create_dir_all(&r2).unwrap();
+        let src2 = r2.join("in.csv");
+        std::fs::write(&src2, csv("inline note")).unwrap();
+        assert_eq!(import(&src2, &r2, false, false).unwrap().new, 2);
+        let s = import(&src2, &r2, false, false).unwrap();
+        assert_eq!((s.new, s.dupes), (0, 2));
+        assert!(!std::fs::read_to_string(r2.join("Reading/b.org")).unwrap().contains("* Note:"));
         let _ = std::fs::remove_dir_all(&root);
     }
 
