@@ -1271,6 +1271,8 @@ imported once. Importing again only appends highlights the note doesn't have yet
 is already in the note, your own edits included, is never changed. The source file is only read.
 When you extend a highlight in the Kindle, the clippings file holds both versions; only the latest
 (overlapping location, one text inside the other) is imported. Versions already in a note stay.
+Kindle clippings in German, French, Spanish, Italian, Portuguese, Dutch and Swedish are read too
+(notes attach to their highlight, bookmarks are skipped); dates in those languages are kept as written.
 
 A Readwise CSV's `Tags` column becomes heading tags (`* Quote… :fav:deep:`). Choose *Import as
 flashcards* in the preview to also tag the newly imported highlights `:drill:`, so they show up

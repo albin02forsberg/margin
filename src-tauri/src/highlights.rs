@@ -78,6 +78,37 @@ fn page_of(s: &str) -> Option<&str> {
     s.strip_prefix("page ")?.split(',').next().map(str::trim)
 }
 
+/// Kindle metadata-line phrases (lowercase) by locale, rewritten to the English form the parser
+/// reads (de, fr, es, it, pt, nl, sv; an unknown language is left as is). Longest phrases first.
+const LOCALIZED: &[(&str, &str)] = &[
+    ("ihre notiz", "Your Note"), ("votre note", "Your Note"), ("tu nota", "Your Note"), ("la tua nota", "Your Note"), ("sua nota", "Your Note"), ("uw notitie", "Your Note"), ("din anteckning", "Your Note"),
+    ("ihr lesezeichen", "Your Bookmark"), ("votre signet", "Your Bookmark"), ("tu marcador", "Your Bookmark"), ("il tuo segnalibro", "Your Bookmark"), ("seu marcador", "Your Bookmark"), ("uw bladwijzer", "Your Bookmark"), ("ditt bokmärke", "Your Bookmark"),
+    ("hinzugefügt am ", "Added on "), ("ajouté le ", "Added on "), ("añadido el ", "Added on "), ("aggiunto il ", "Added on "), ("adicionado: ", "Added on "), ("toegevoegd op ", "Added on "), ("tillagd den ", "Added on "),
+    ("bei position ", "location "), ("à l'emplacement ", "location "), ("en la posición ", "location "), ("alla posizione ", "location "), ("na posição ", "location "), ("op locatie ", "location "), ("på plats ", "location "),
+    ("auf seite ", "page "), ("sur la page ", "page "), ("en la página ", "page "), ("alla pagina ", "page "), ("na página ", "page "), ("op pagina ", "page "), ("på sidan ", "page "),
+];
+
+/// The metadata line META with the `LOCALIZED` phrases replaced (case-insensitively, char by char so
+/// non-ASCII text never shifts byte offsets).
+fn english_meta(meta: &str) -> String {
+    let (mut out, cs) = (String::new(), meta.chars().collect::<Vec<_>>());
+    let low: Vec<char> = cs.iter().map(|c| c.to_lowercase().next().unwrap_or(*c)).collect();
+    let mut i = 0;
+    'next: while i < cs.len() {
+        for (from, to) in LOCALIZED {
+            let f: Vec<char> = from.chars().collect();
+            if low[i..].starts_with(&f) {
+                out += to;
+                i += f.len();
+                continue 'next;
+            }
+        }
+        out.push(cs[i]);
+        i += 1;
+    }
+    out
+}
+
 /// The entries of a Kindle `My Clippings.txt`: bookmarks and empty highlights skipped, a note
 /// attached to the book's highlight at the same location (else kept on its own).
 pub fn parse_clippings(text: &str) -> Vec<Highlight> {
@@ -88,6 +119,7 @@ pub fn parse_clippings(text: &str) -> Vec<Highlight> {
         let (Some(head), Some(meta)) = (lines.next(), lines.next()) else { continue };
         let body = lines.collect::<Vec<_>>().join("\n").trim().to_string();
         let (book, author) = title_author(head);
+        let meta = &english_meta(meta);
         let lower = meta.to_lowercase();
         if lower.contains("bookmark") || body.is_empty() {
             continue;
@@ -340,6 +372,11 @@ pub fn import(src: &Path, notes: &Path, dry: bool, drill: bool) -> Result<Summar
         let mut b = Book { title: title.clone(), author: author.clone(), file: path.strip_prefix(notes).unwrap().to_string_lossy().into_owned(), created: old.is_none(), ..Default::default() };
         for h in &hs {
             let k = key(h);
+            // imported before localized metadata was read: no location in the old key
+            if !h.location.is_empty() && seen.contains(&key(&Highlight { location: String::new(), ..h.clone() })) {
+                b.dupes += 1;
+                continue;
+            }
             if !seen.insert(k.clone()) {
                 // a note added to a known highlight later becomes its own `* Note:` entry, once
                 let nk = note_key(&k, &h.note);
@@ -491,6 +528,42 @@ mod tests {
         assert_eq!(parse_clippings(&format!("{}{}", c("10-11", "alpha"), c("11-12", "beta"))).len(), 2);
         // a standalone note is never replaced
         assert_eq!(parse_clippings(&format!("{}{}", "B (A)\n- Your Note at location 10 | Added on Monday, January 1, 2024 10:00:00 AM\n\nn\n==========\n", c("10-11", "x"))).len(), 2);
+    }
+
+    #[test]
+    fn parses_localized_clippings() {
+        let cases = [
+            ("Ihre Markierung auf Seite 12 | bei Position 180-182 | Hinzugefügt am Montag, 1. Januar 2024 10:00:00", "Ihre Notiz auf Seite 12 | bei Position 182 | Hinzugefügt am Montag"),
+            ("Votre surlignement sur la page 12 | à l'emplacement 180-182 | Ajouté le lundi 1 janvier 2024", "Votre note sur la page 12 | à l'emplacement 182 | Ajouté le lundi"),
+            ("Tu subrayado en la página 12 | en la posición 180-182 | Añadido el lunes, 1 de enero de 2024", "Tu nota en la página 12 | en la posición 182 | Añadido el lunes"),
+            ("La tua evidenziazione alla pagina 12 | alla posizione 180-182 | Aggiunto il lunedì 1 gennaio 2024", "La tua nota alla pagina 12 | alla posizione 182 | Aggiunto il lunedì"),
+            ("Seu destaque na página 12 | na posição 180-182 | Adicionado: segunda-feira", "Sua nota na página 12 | na posição 182 | Adicionado: segunda-feira"),
+            ("Uw markering op pagina 12 | op locatie 180-182 | Toegevoegd op maandag 1 januari 2024", "Uw notitie op pagina 12 | op locatie 182 | Toegevoegd op maandag"),
+            ("Din markering på sidan 12 | på plats 180-182 | Tillagd den måndag 1 januari 2024", "Din anteckning på sidan 12 | på plats 182 | Tillagd den måndag"),
+        ];
+        for (hl, note) in cases {
+            let hs = parse_clippings(&format!("Bok (Au)\n- {hl}\n\nquote\n==========\nBok (Au)\n- {note}\n\nmine\n==========\nBok (Au)\n- Mi Marcador | x\n\n\n==========\n"));
+            assert_eq!(hs.len(), 1, "{hl}");
+            assert_eq!((hs[0].location.as_str(), hs[0].text.as_str(), hs[0].note.as_str()), ("page 12, location 180-182", "quote", "mine"), "{hl}");
+            assert!(hs[0].added.starts_with(char::is_alphabetic) || hs[0].added.starts_with('['), "{hl}");
+        }
+        let hs = parse_clippings("B (A)\n- Ihr Lesezeichen bei Position 5\n\ntext\n==========\n");
+        assert!(hs.is_empty());
+    }
+
+    #[test]
+    fn reimport_skips_legacy_locationless_keys() {
+        let dir = std::env::temp_dir().join(format!("margin-hl-lg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let old = Highlight { book: "Bok".into(), author: "Au".into(), text: "quote".into(), ..Default::default() };
+        std::fs::create_dir_all(dir.join("Reading")).unwrap();
+        std::fs::write(dir.join("Reading/bok.org"), format!("#+title: Bok\n#+author: Au\n\n{}", render(&old))).unwrap();
+        let src = dir.join("c.txt");
+        std::fs::write(&src, "Bok (Au)\n- Ihre Markierung bei Position 5-6 | Hinzugefügt am x\n\nquote\n==========\n").unwrap();
+        let s = import(&src, &dir, false, false).unwrap();
+        assert_eq!((s.new, s.dupes), (0, 1));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
