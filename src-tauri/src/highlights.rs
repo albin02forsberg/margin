@@ -121,10 +121,25 @@ pub fn parse_clippings(text: &str) -> Vec<Highlight> {
                 h.note = body;
                 continue;
             }
+            if out.iter().any(|h| h.book == book && h.author == author && h.location == location && norm(&h.note) == norm(&body)) {
+                continue; // the same note again (a repeated clipping)
+            }
             out.push(Highlight { book, author, location, added, note: body, ..Default::default() });
             continue;
         }
-        out.push(Highlight { book, author, text: body, location, added, ..Default::default() });
+        // a re-highlight that widened/shrank an earlier one (overlapping range, one text inside the other) replaces it in place
+        let nb = norm(&body);
+        let widened = loc_range(&location).and_then(|(a, b)| {
+            out.iter().position(|h| {
+                let t = norm(&h.text);
+                h.book == book && h.author == author && !t.is_empty() && !nb.is_empty() && (t.contains(&nb) || nb.contains(&t)) && loc_range(&h.location).is_some_and(|(c, d)| a <= d && c <= b)
+            })
+        });
+        let new = Highlight { book, author, text: body, location, added, ..Default::default() };
+        match widened {
+            Some(i) => out[i] = Highlight { note: std::mem::take(&mut out[i].note), ..new },
+            None => out.push(new),
+        }
     }
     out
 }
@@ -429,13 +444,13 @@ mod tests {
     #[test]
     fn parses_clippings() {
         let hs = parse_clippings(CLIP);
-        assert_eq!(hs.len(), 3); // the bookmark is skipped, the duplicate kept (dropped on import)
+        assert_eq!(hs.len(), 2); // the bookmark is skipped, the exact duplicate collapses
         assert_eq!(hs[0], Highlight { book: "Dune".into(), author: "Frank Herbert".into(), text: "Fear is the mind-killer.\n* Not a heading".into(), location: "page 12, location 180-182".into(), added: "[2024-01-01 Mon 10:00]".into(), note: "Great line".into(), tags: vec![] });
-        assert_eq!(hs[2].book, "The Name of the Book");
-        assert_eq!(hs[2].author, "Smith, J.");
-        assert_eq!(hs[2].text, "First line\nsecond line");
-        assert_eq!(hs[2].location, "location 5-6");
-        assert_eq!(hs[2].added, "[2024-01-02 Tue 08:30]");
+        assert_eq!(hs[1].book, "The Name of the Book");
+        assert_eq!(hs[1].author, "Smith, J.");
+        assert_eq!(hs[1].text, "First line\nsecond line");
+        assert_eq!(hs[1].location, "location 5-6");
+        assert_eq!(hs[1].added, "[2024-01-02 Tue 08:30]");
         assert!(parse_clippings("").is_empty());
         assert_eq!(kindle_date("Monday, January 6, 2025 9:12:00 PM"), "[2025-01-06 Mon 21:12]");
         assert_eq!(kindle_date("lundi 6 janvier 2025"), "lundi 6 janvier 2025"); // unreadable: kept as written
@@ -459,6 +474,23 @@ mod tests {
         let s = import(&src, &root, false, false).unwrap();
         assert_eq!((s.new, s.dupes), (0, 1));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn widened_highlight_replaces_earlier_one() {
+        let c = |loc: &str, t: &str| format!("B (A)\n- Your Highlight at location {loc} | Added on Monday, January 1, 2024 10:00:00 AM\n\n{t}\n==========\n");
+        let note = "B (A)\n- Your Note at location 10 | Added on Monday, January 1, 2024 10:00:00 AM\n\nmine\n==========\n";
+        // widened: later wins, order kept, note carried over
+        let hs = parse_clippings(&format!("{}{note}{}{}", c("10-11", "one two"), c("10-12", "one two three"), c("50", "other")));
+        assert_eq!(hs.iter().map(|h| (h.location.as_str(), h.text.as_str(), h.note.as_str())).collect::<Vec<_>>(), [("location 10-12", "one two three", "mine"), ("location 50", "other", "")]);
+        // shrunk
+        let hs = parse_clippings(&format!("{}{}", c("10-12", "one two three"), c("10-11", "one two")));
+        assert_eq!((hs.len(), hs[0].text.as_str()), (1, "one two"));
+        // same text at distant locations stays separate; overlapping but unrelated text too
+        assert_eq!(parse_clippings(&format!("{}{}", c("10-11", "same"), c("90-91", "same"))).len(), 2);
+        assert_eq!(parse_clippings(&format!("{}{}", c("10-11", "alpha"), c("11-12", "beta"))).len(), 2);
+        // a standalone note is never replaced
+        assert_eq!(parse_clippings(&format!("{}{}", "B (A)\n- Your Note at location 10 | Added on Monday, January 1, 2024 10:00:00 AM\n\nn\n==========\n", c("10-11", "x"))).len(), 2);
     }
 
     #[test]
@@ -551,10 +583,10 @@ mod tests {
         let src = root.join("My Clippings.txt");
         std::fs::write(&src, CLIP).unwrap();
         let dry = import(&src, &notes, true, false).unwrap();
-        assert_eq!((dry.new, dry.dupes, dry.books.len()), (2, 1, 2));
+        assert_eq!((dry.new, dry.dupes, dry.books.len()), (2, 0, 2));
         assert!(!notes.join("Reading").exists()); // dry writes nothing
         let s = import(&src, &notes, false, false).unwrap();
-        assert_eq!((s.new, s.dupes), (2, 1));
+        assert_eq!((s.new, s.dupes), (2, 0));
         let dune = notes.join("Reading/dune.org");
         let text = std::fs::read_to_string(&dune).unwrap();
         assert!(text.starts_with("#+title: Dune\n#+author: Frank Herbert\n\n* Fear is the mind-killer."));
@@ -562,7 +594,7 @@ mod tests {
         // the user edits the note; a re-import adds nothing and keeps the edit
         std::fs::write(&dune, format!("{text}my own line")).unwrap();
         let again = import(&src, &notes, false, false).unwrap();
-        assert_eq!((again.new, again.dupes), (0, 3));
+        assert_eq!((again.new, again.dupes), (0, 2));
         assert_eq!(std::fs::read_to_string(&dune).unwrap(), format!("{text}my own line"));
         // a new highlight is appended after the edit
         let more = format!("{CLIP}Dune (Frank Herbert)\n- Your Highlight on page 99 | Location 900-901 | Added on Monday, January 1, 2024 11:00:00 AM\n\nNew one\n==========\nDune (Someone Else)\n- Your Highlight on page 1 | Location 1-2 | Added on Monday, January 1, 2024 11:00:00 AM\n\nOther dune\n==========\n");

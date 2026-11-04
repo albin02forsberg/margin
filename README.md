@@ -1269,6 +1269,8 @@ or Readwise note below it (a Kindle note on a PDF, which only has page numbers, 
 imported once. Importing again only appends highlights the note doesn't have yet (matched by
 `:HIGHLIGHT_KEY:`), so you can re-import the whole clippings file after each reading session; what
 is already in the note, your own edits included, is never changed. The source file is only read.
+When you extend a highlight in the Kindle, the clippings file holds both versions; only the latest
+(overlapping location, one text inside the other) is imported. Versions already in a note stay.
 
 A Readwise CSV's `Tags` column becomes heading tags (`* Quote… :fav:deep:`). Choose *Import as
 flashcards* in the preview to also tag the newly imported highlights `:drill:`, so they show up
