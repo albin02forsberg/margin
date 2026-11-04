@@ -3244,7 +3244,7 @@
     profile: (n) => switchProfile(n), holidays: () => report("holidays", "Holidays"), daily: dailyReport,
     weekly: weeklyReport, monthly: monthlyReport, doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
     backupLog: () => report("backup", "Backup log"), rawLog: () => openFile(cfg.log_path), open: (loc) => openFile(loc.path, loc.line), import: importEmacs, acceptSuggestion, editSuggestion,
-    flex: async () => flash(await call("tc_report", { kind: "flex" })), leave: async () => flash(await call("tc_leave_time")), diary: () => openFile(cfg.diary_path),
+    flex: async () => flash(await call("tc_report", { kind: "flex" })), carry: async () => flash(await call("tc_report", { kind: "carry" })), leave: async () => flash(await call("tc_leave_time")), diary: () => openFile(cfg.diary_path),
     timeOff, logSession, estimates: () => estimateReport(),
     rhythm: async () => rhythm!.open((range, project) => call("tc_rhythm", { range, project }), Object.keys(await call<Record<string, unknown>>("tc_projects"))),
     activity: () => {
@@ -3485,6 +3485,7 @@
     { label: "Time: week report", leader: "t s", run: t("weekly") },
     { label: "Time: month report", leader: "t m", run: t("monthly") },
     { label: "Time: show flex balance", leader: "t f", run: t("flex") },
+    { label: "Time: show rounding carry-over", run: t("carry") },
     { label: "Time: when to leave today", leader: "t w", run: t("leave") },
     { label: "Time: public holidays", leader: "t h", run: t("holidays") },
     { label: "Time: export CSV…", leader: "t e", run: t("export") },

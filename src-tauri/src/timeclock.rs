@@ -807,21 +807,36 @@ pub fn round_hours(h: f64, resolution: Option<f64>, up: bool) -> f64 {
 /// Port of `albin/apply-time-carry`: round per project, carrying the remainder forward. The remainder is kept per
 /// customer (any case) for projects that name one, else per project (#1029). Returns the sessions and the carry left.
 pub fn apply_carry(sessions: &[Session], projects: &Projects) -> (Vec<Session>, f64) {
-    let mut carry: HashMap<(bool, String), f64> = HashMap::new();
+    let (out, carry) = carry_run(sessions, projects);
+    (out, carry.values().map(|c| c.1).sum())
+}
+
+/// Remainder still carried per customer (as first written) or project, non-zero only, sorted by name.
+pub fn carry_balances(sessions: &[Session], projects: &Projects) -> Vec<(String, f64)> {
+    let mut v: Vec<_> = carry_run(sessions, projects).1.into_values().filter(|c| c.1.abs() > 1e-9).collect();
+    v.sort_by_key(|c| c.0.to_lowercase());
+    v
+}
+
+type CarryMap = HashMap<(bool, String), (String, f64)>;
+
+fn carry_run(sessions: &[Session], projects: &Projects) -> (Vec<Session>, CarryMap) {
+    let mut carry = CarryMap::new();
     let out = sessions
         .iter()
         .map(|s| {
             let p = projects.get(&s.project);
             let (res, up) = p.map_or((Some(0.5), false), |p| (p.rounding, p.round_up));
-            let customer = p.map_or("", |p| p.customer.trim()).to_lowercase();
-            let c = carry.entry(if customer.is_empty() { (false, s.project.clone()) } else { (true, customer) }).or_default();
-            let exact = s.hours + *c;
+            let name = p.map_or("", |p| p.customer.trim());
+            let (key, name) = if name.is_empty() { ((false, s.project.clone()), s.project.as_str()) } else { ((true, name.to_lowercase()), name) };
+            let c = carry.entry(key).or_insert_with(|| (name.to_string(), 0.0));
+            let exact = s.hours + c.1;
             let rounded = round_hours(exact, res, up);
-            *c = exact - rounded;
+            c.1 = exact - rounded;
             Session { hours: rounded, ..s.clone() }
         })
         .collect();
-    (out, carry.values().sum())
+    (out, carry)
 }
 
 pub fn export_code(project: &str, projects: &Projects) -> String {
@@ -1605,6 +1620,18 @@ mod tests {
         assert_eq!(hours(&Projects::new(), &ss), per_project);
         // A customer named like a project without one doesn't share its carry.
         assert_eq!(hours(&Projects::from([("A".into(), of("B")), ("B".into(), of(""))]), &ss), per_project);
+    }
+
+    #[test]
+    fn carry_balances_are_signed_and_grouped() {
+        let s = |p: &str, h| Session { date: d("2026-10-01"), project: p.into(), desc: "x".into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None };
+        let of = |c: &str, up| Project { customer: c.into(), round_up: up, ..Project::new("") };
+        let projects = Projects::from([("A".into(), of("Globex", false)), ("B".into(), of(" globex ", false)), ("U".into(), of("", true)), ("Z".into(), of("", false))]);
+        // A+B share Globex: 0.4 -> 0.5 (-0.1), then 0.3 -> 0.5 (-0.2); U rounds 0.3 up to 0.5 (-0.2); Z's 0.5 is exact (left out).
+        let b = carry_balances(&[s("A", 0.4), s("B", 0.4), s("U", 0.3), s("Z", 0.5)], &projects);
+        assert_eq!(b.len(), 2);
+        assert_eq!((b[0].0.as_str(), b[1].0.as_str()), ("Globex", "U"));
+        assert!((b[0].1 + 0.2).abs() < 1e-9 && (b[1].1 + 0.2).abs() < 1e-9);
     }
 
     #[test]
