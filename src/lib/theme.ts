@@ -2,6 +2,10 @@
 export const effectiveTheme = (setting: unknown, systemLight: boolean): "light" | "dark" =>
   setting === "light" || setting === "dark" ? setting : systemLight ? "light" : "dark";
 
+/** Next in the cycle system -> light -> dark -> system (unknown counts as system); "" is system. */
+export const nextTheme = (current: unknown): "light" | "dark" | "" =>
+  current === "light" ? "dark" : current === "dark" ? "" : "light";
+
 /** Set (or, for system, clear) the override on the root; CSS follows, `margin-theme` tells the diagrams. */
 export function applyTheme(setting: unknown) {
   const el = document.documentElement;

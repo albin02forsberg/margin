@@ -1,6 +1,6 @@
 <script lang="ts">
   import "$lib/theme.css";
-  import { applyTheme } from "$lib/theme";
+  import { applyTheme, nextTheme } from "$lib/theme";
   import { onMount, tick, untrack } from "svelte";
   import { Channel, invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -3479,6 +3479,12 @@
     { label: "View: toggle outline (headings of this note)", leader: "v o", run: toggleOutline },
     { label: "View: zen mode (hide top bar and status bar)", leader: "v z", run: () => { zen = !zen; if (zen) closeDrawer(); } },
     { label: "Toggle monospace font for notes", leader: "v m", run: () => { monoFont = !monoFont; store("mono-font", monoFont ? "1" : "0"); } },
+    { label: "View: cycle theme (system / light / dark)", leader: "v d", run: async () => {
+      const next = nextTheme(cfg?.config.theme);
+      await ownCfg(() => call("save_config", { values: { theme: next }, reset: [] }));
+      cfg = await call("config");
+      flash(`Theme: ${next || "system"}`);
+    } },
     { label: "View: reset zoom (Ctrl/Cmd+= / - / 0 zoom in / out / reset)", leader: "v 0", run: resetZoom },
     { label: "Fold / unfold all headings (Tab folds one)", keys: ["Shift+Tab"], ctx: "normal", run: () => ed.orgShiftTab(view) },
 
