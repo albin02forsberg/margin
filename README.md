@@ -1265,7 +1265,7 @@ Book Author, Note, Location, Highlighted at), shows how many highlights each boo
 `#+author:`; the same title by another author gets `<title>-2.org`). Each highlight is a heading
 named after its first words, with `:LOCATION:`, `:ADDED:` (an inactive timestamp) and a
 `:HIGHLIGHT_KEY:` (plus a `:NOTE_KEY:` when it has a note) in its property drawer, the quote in a `#+begin_quote` block and your Kindle note
-or Readwise note below it. Kindle bookmarks are skipped and a highlight that appears twice is
+or Readwise note below it (a Kindle note on a PDF, which only has page numbers, joins the highlight on the same page). Kindle bookmarks are skipped and a highlight that appears twice is
 imported once. Importing again only appends highlights the note doesn't have yet (matched by
 `:HIGHLIGHT_KEY:`), so you can re-import the whole clippings file after each reading session; what
 is already in the note, your own edits included, is never changed. The source file is only read.

@@ -73,6 +73,11 @@ fn loc_range(s: &str) -> Option<(u32, u32)> {
     Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
 }
 
+/// The page in a LOCATION string (`page 5, location 1-2` gives `5`).
+fn page_of(s: &str) -> Option<&str> {
+    s.strip_prefix("page ")?.split(',').next().map(str::trim)
+}
+
 /// The entries of a Kindle `My Clippings.txt`: bookmarks and empty highlights skipped, a note
 /// attached to the book's highlight at the same location (else kept on its own).
 pub fn parse_clippings(text: &str) -> Vec<Highlight> {
@@ -104,7 +109,14 @@ pub fn parse_clippings(text: &str) -> Vec<Highlight> {
         let location = [page.map(|p| format!("page {p}")), loc.map(|l| format!("location {l}"))].into_iter().flatten().collect::<Vec<_>>().join(", ");
         if lower.contains("your note") {
             let at = loc_range(&location).map(|r| r.1);
-            let host = out.iter_mut().rev().find(|h| h.book == book && h.author == author && h.note.is_empty() && at.is_some_and(|n| loc_range(&h.location).is_some_and(|(a, b)| (a..=b).contains(&n))));
+            let pg = page_of(&location).filter(|_| at.is_none()); // page-only note (PDFs): match on the page
+            let host = out.iter_mut().rev().find(|h| {
+                h.book == book && h.author == author && h.note.is_empty() && !h.text.is_empty() && match (at, pg) {
+                    (Some(n), _) => loc_range(&h.location).is_some_and(|(a, b)| (a..=b).contains(&n)),
+                    (None, Some(p)) => page_of(&h.location) == Some(p),
+                    _ => false,
+                }
+            });
             if let Some(h) = host {
                 h.note = body;
                 continue;
@@ -316,7 +328,9 @@ pub fn import(src: &Path, notes: &Path, dry: bool, drill: bool) -> Result<Summar
             if !seen.insert(k.clone()) {
                 // a note added to a known highlight later becomes its own `* Note:` entry, once
                 let nk = note_key(&k, &h.note);
-                let fresh = !h.note.is_empty() && !h.text.is_empty() && !seen.contains(&nk) && !norms.get_or_insert_with(|| entry_norms(old.as_deref().unwrap_or_default())).get(&k).map_or("", String::as_str).contains(&norm(&h.note));
+                // an earlier import kept a page-only note as its own entry (empty text, same location)
+                let legacy = key(&Highlight { book: h.book.clone(), author: h.author.clone(), location: h.location.clone(), note: h.note.clone(), ..Default::default() });
+                let fresh = !h.note.is_empty() && !h.text.is_empty() && !seen.contains(&nk) && !seen.contains(&legacy) && !norms.get_or_insert_with(|| entry_norms(old.as_deref().unwrap_or_default())).get(&k).map_or("", String::as_str).contains(&norm(&h.note));
                 if !fresh {
                     seen.insert(nk);
                     b.dupes += 1;
@@ -425,6 +439,26 @@ mod tests {
         assert!(parse_clippings("").is_empty());
         assert_eq!(kindle_date("Monday, January 6, 2025 9:12:00 PM"), "[2025-01-06 Mon 21:12]");
         assert_eq!(kindle_date("lundi 6 janvier 2025"), "lundi 6 janvier 2025"); // unreadable: kept as written
+    }
+
+    #[test]
+    fn page_only_note_attaches_to_same_page_highlight() {
+        let c = |loc: &str| format!("B (A)\n- Your Highlight on page 5 | Added on Monday, January 1, 2024 10:00:00 AM\n\nquote\n==========\nB (A)\n- Your Note on page {loc} | Added on Monday, January 1, 2024 10:01:00 AM\n\nmine\n==========\n");
+        let hs = parse_clippings(&c("5"));
+        assert_eq!((hs.len(), hs[0].note.as_str()), (1, "mine"));
+        let hs = parse_clippings(&c("6"));
+        assert_eq!((hs.len(), hs[0].note.as_str(), hs[1].note.as_str()), (2, "", "mine"));
+        // re-import over a file that holds the note as a standalone entry adds nothing
+        let root = std::env::temp_dir().join(format!("margin-hl-pg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Reading")).unwrap();
+        let src = root.join("c.txt");
+        std::fs::write(&src, c("5")).unwrap();
+        let (host, note) = (Highlight { book: "B".into(), author: "A".into(), text: "quote".into(), location: "page 5".into(), ..Default::default() }, Highlight { book: "B".into(), author: "A".into(), location: "page 5".into(), note: "mine".into(), ..Default::default() });
+        std::fs::write(root.join("Reading/b.org"), format!("#+title: B\n#+author: A\n\n{}\n{}", render(&host), render(&note))).unwrap();
+        let s = import(&src, &root, false, false).unwrap();
+        assert_eq!((s.new, s.dupes), (0, 1));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
