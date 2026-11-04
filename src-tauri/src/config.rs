@@ -131,6 +131,8 @@ pub struct Config {
     pub hidden_areas: Vec<String>,
     /// Zen mode (`Space v z`) also makes the window fullscreen.
     pub zen_fullscreen: bool,
+    /// Colour theme: `light` or `dark`; anything else (empty) follows the system.
+    pub theme: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -323,6 +325,7 @@ impl Default for Config {
             ledger_currency: "EUR".into(),
             hidden_areas: vec![],
             zen_fullscreen: false,
+            theme: String::new(),
         }
     }
 }
@@ -669,6 +672,13 @@ mod tests {
         assert!(Config::default().spellcheck_languages.is_empty());
         let c = toml::from_str::<Config>("spellcheck_languages = [\"sv_SE\", \"en_US\"]").unwrap();
         assert_eq!(c.spellcheck_languages, ["sv_SE", "en_US"]);
+    }
+
+    #[test]
+    fn theme_optional() {
+        assert_eq!(Config::default().theme, "");
+        assert_eq!(toml::from_str::<Config>("theme = \"light\"").unwrap().theme, "light");
+        assert_eq!(toml::from_str::<Config>("").unwrap().theme, "");
     }
 
     #[test]

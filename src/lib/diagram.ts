@@ -4,6 +4,7 @@
 import { StateEffect, StateField, type EditorState, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet } from "@codemirror/view";
 import { diagramKey, srcBlocks } from "./babel";
+import { effectiveTheme } from "./theme";
 
 /** Characters of diagram source rendered at most. */
 const MAX = 20_000;
@@ -73,7 +74,7 @@ class Diagram extends WidgetType {
 function build(s: EditorState): DecorationSet {
   const t = s.doc.toString();
   if (!/#\+begin_src[ \t]+mermaid\b/i.test(t)) return Decoration.none;
-  const theme = matchMedia(LIGHT).matches ? "default" : "dark";
+  const theme = effectiveTheme(document.documentElement.dataset.theme, matchMedia(LIGHT).matches) === "light" ? "default" : "dark";
   return Decoration.set(srcBlocks(t).filter((b) => b.lang.toLowerCase() === "mermaid" && b.code.trim())
     .map((b) => Decoration.widget({ widget: new Diagram(b.code, theme), block: true, side: 1 }).range(b.end)));
 }
@@ -88,7 +89,8 @@ const field = StateField.define<DecorationSet>({
 const watch = ViewPlugin.define((v) => {
   const q = matchMedia(LIGHT), f = () => v.dispatch({ effects: retheme.of(null) });
   q.addEventListener("change", f);
-  return { destroy: () => q.removeEventListener("change", f) };
+  window.addEventListener("margin-theme", f);
+  return { destroy: () => (q.removeEventListener("change", f), window.removeEventListener("margin-theme", f)) };
 });
 
 const theme = EditorView.baseTheme({

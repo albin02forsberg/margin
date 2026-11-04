@@ -2,7 +2,7 @@ import { AREAS } from "./areas.ts";
 
 /** A config.toml setting on the settings page. KIND defaults to text; lists are edited one item per line,
  *  numbers (a list of them) on one line. WHEN: shown only while it holds for the saved config. */
-export type Field = { key: string; label: string; kind?: "text" | "number" | "numbers" | "bool" | "list" | "multiline"; hint?: string; step?: number | "any"; options?: string[]; when?: (config: Record<string, unknown>) => boolean };
+export type Field = { key: string; label: string; kind?: "text" | "number" | "numbers" | "bool" | "list" | "multiline" | "choice"; hint?: string; step?: number | "any"; options?: string[]; choices?: string[]; when?: (config: Record<string, unknown>) => boolean };
 export type Form = Record<string, string | boolean>;
 
 const rel = "relative to the notes folder";
@@ -43,6 +43,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "nightly_updates", label: "Nightly updates", kind: "bool", hint: "update to daily, untested builds of the latest code; switching back waits for the next stable release" },
   ] },
   { name: "Editor", fields: [
+    { key: "theme", label: "Theme", kind: "choice", choices: ["", "light", "dark"], hint: "system follows the OS light/dark setting; the window frame may still follow the OS" },
     { key: "spellcheck", label: "Spell check org notes", kind: "bool", hint: "underlines misspelled words with the system spell checker; on Linux the webview needs a system checker (hunspell/enchant) installed" },
     { key: "spellcheck_languages", label: "Spell check languages", kind: "list", hint: "Linux only; one per line, e.g. sv_SE or en_US; needs that hunspell dictionary installed; empty = system locale" },
     { key: "babel_languages", label: "Run code blocks", kind: "list", hint: "languages Ctrl+Enter / Space i r may run from a #+begin_src block, one per line: sh or shell (both run sh in the notes folder, 10 s limit); it asks first whenever the code is new or changed; empty = nothing runs (Windows: not available)" },
