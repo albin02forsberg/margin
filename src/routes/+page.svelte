@@ -164,7 +164,12 @@
     try { getCurrentWindow().setFullscreen(fs).catch(() => {}); } catch {}
   });
   // `theme` (#1089): light/dark override of the OS, applied on load and on every settings change.
-  $effect(() => applyTheme(cfg?.config.theme));
+  $effect(() => {
+    const t = cfg?.config.theme;
+    applyTheme(t);
+    // window frame (#1092): light/dark forces it, anything else hands it back to the OS
+    try { getCurrentWindow().setTheme(t === "light" || t === "dark" ? t : null).catch(() => {}); } catch {}
+  });
   const isText = (t?: Tab) => t?.kind === "file" || t?.kind === "report";
   const call = <T = any,>(cmd: string, args?: Record<string, unknown>) => invoke<T>(cmd, args);
   const pick = (o: PickOpts) => picker!.open(o);
