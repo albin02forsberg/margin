@@ -221,10 +221,26 @@ pub fn render(h: &Highlight) -> String {
     o
 }
 
-/// The normalized text of the entry holding `:HIGHLIGHT_KEY: K` (up to the next top-level heading).
-fn entry_norm(text: &str, k: &str) -> String {
-    let mut it = text.lines().skip_while(|l| l.trim().strip_prefix(":HIGHLIGHT_KEY:").map(str::trim) != Some(k)).skip(1);
-    norm(&it.by_ref().take_while(|l| !l.starts_with("* ")).collect::<Vec<_>>().join("\n"))
+/// Normalized body of each entry by its `:HIGHLIGHT_KEY:` (up to the next top-level heading); the first entry wins on a repeated key.
+fn entry_norms(text: &str) -> std::collections::HashMap<String, String> {
+    let mut m = std::collections::HashMap::new();
+    let mut cur: Option<(String, Vec<&str>)> = None;
+    let mut flush = |c: Option<(String, Vec<&str>)>| {
+        if let Some((k, b)) = c {
+            m.entry(k).or_insert_with(|| norm(&b.join("\n")));
+        }
+    };
+    for l in text.lines() {
+        if l.starts_with("* ") {
+            flush(cur.take());
+        } else if let Some((_, b)) = cur.as_mut() {
+            b.push(l);
+        } else if let Some(k) = l.trim().strip_prefix(":HIGHLIGHT_KEY:") {
+            cur = Some((k.trim().to_string(), vec![]));
+        }
+    }
+    flush(cur);
+    m
 }
 
 /// The value of the `#+KEY:` line of an org TEXT (any case), trimmed.
@@ -292,6 +308,7 @@ pub fn import(src: &Path, notes: &Path, dry: bool, drill: bool) -> Result<Summar
             .unwrap();
         taken.push(path.clone());
         let mut seen: std::collections::HashSet<String> = old.as_deref().map_or(Default::default(), |t| t.lines().filter_map(|l| l.trim().strip_prefix(":HIGHLIGHT_KEY:").or_else(|| l.trim().strip_prefix(":NOTE_KEY:"))).map(|k| k.trim().to_string()).collect());
+        let mut norms = None;
         let mut add = String::new();
         let mut b = Book { title: title.clone(), author: author.clone(), file: path.strip_prefix(notes).unwrap().to_string_lossy().into_owned(), created: old.is_none(), ..Default::default() };
         for h in &hs {
@@ -299,7 +316,7 @@ pub fn import(src: &Path, notes: &Path, dry: bool, drill: bool) -> Result<Summar
             if !seen.insert(k.clone()) {
                 // a note added to a known highlight later becomes its own `* Note:` entry, once
                 let nk = note_key(&k, &h.note);
-                let fresh = !h.note.is_empty() && !h.text.is_empty() && !seen.contains(&nk) && !entry_norm(old.as_deref().unwrap_or_default(), &k).contains(&norm(&h.note));
+                let fresh = !h.note.is_empty() && !h.text.is_empty() && !seen.contains(&nk) && !norms.get_or_insert_with(|| entry_norms(old.as_deref().unwrap_or_default())).get(&k).map_or("", String::as_str).contains(&norm(&h.note));
                 if !fresh {
                     seen.insert(nk);
                     b.dupes += 1;
@@ -385,6 +402,14 @@ mod tests {
         std::fs::write(&f, t).unwrap();
         assert_eq!(import(&src, &dir, false, false).unwrap().new, 0);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn entry_norms_per_key_first_wins() {
+        let m = entry_norms("#+title: t\n* a\n:PROPERTIES:\n:HIGHLIGHT_KEY: k1\n:END:\nFoo  Bar\n* b\n:HIGHLIGHT_KEY: k2\nx\n* c\n:HIGHLIGHT_KEY: k1\nother\n");
+        assert_eq!(m.len(), 2);
+        assert_eq!(m["k1"], norm(":END:\nFoo  Bar"));
+        assert_eq!(m["k2"], norm("x"));
     }
 
     #[test]
