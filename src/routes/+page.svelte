@@ -1,5 +1,6 @@
 <script lang="ts">
   import "$lib/theme.css";
+  import { applyTheme } from "$lib/theme";
   import { onMount, tick, untrack } from "svelte";
   import { Channel, invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -162,6 +163,8 @@
     zenFull = fs;
     try { getCurrentWindow().setFullscreen(fs).catch(() => {}); } catch {}
   });
+  // `theme` (#1089): light/dark override of the OS, applied on load and on every settings change.
+  $effect(() => applyTheme(cfg?.config.theme));
   const isText = (t?: Tab) => t?.kind === "file" || t?.kind === "report";
   const call = <T = any,>(cmd: string, args?: Record<string, unknown>) => invoke<T>(cmd, args);
   const pick = (o: PickOpts) => picker!.open(o);

@@ -330,6 +330,19 @@ describe("Margin", () => {
     assert.match(readFileSync(cfg, "utf8"), /^reminders = false$/m, "other settings lost");
   });
 
+  it("overrides the OS light/dark with the Theme setting (#1089)", async () => {
+    const bg = () => browser.execute(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim());
+    const sel = await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Theme")]]/select`);
+    const was = await bg();
+    const os = await browser.execute(() => matchMedia("(prefers-color-scheme: light)").matches);
+    await sel.selectByAttribute("value", os ? "dark" : "light");
+    await (await find(".settings button", "Save editor")).click();
+    await browser.waitUntil(async () => (await bg()) !== was, { timeoutMsg: "theme not applied" });
+    await sel.selectByAttribute("value", "");
+    await (await find(".settings button", "Save editor")).click();
+    await browser.waitUntil(async () => (await bg()) === was, { timeoutMsg: "theme not back to system" });
+  });
+
   it("registers a new quick-capture shortcut on save", async () => {
     const cfg = join(cfgDir, "config.toml");
     await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Quick-capture shortcut")]]/input`)).click();

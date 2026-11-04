@@ -220,7 +220,9 @@
               <span class="opts">{#each f.options as o (o)}<label class="check"><input type="checkbox" checked={!String(form[f.key]).split("\n").includes(o)} onchange={(e) => (form[f.key] = hide(String(form[f.key]), o, !e.currentTarget.checked))} /><span>{o[0].toUpperCase() + o.slice(1)}</span></label>{/each}</span>
             {:else}
               <span>{f.label}</span>
-              {#if f.kind === "list" || f.kind === "multiline"}
+              {#if f.choices}
+                <select value={form[f.key] as string} onchange={(e) => (form[f.key] = e.currentTarget.value)}>{#each f.choices as o (o)}<option value={o}>{o || "system"}</option>{/each}</select>
+              {:else if f.kind === "list" || f.kind === "multiline"}
                 <textarea rows={Math.max(2, String(form[f.key] ?? "").split("\n").length)} value={form[f.key] as string} oninput={(e) => (form[f.key] = text(e))}></textarea>
               {:else}
                 <input type={f.kind === "number" ? "number" : "text"} step={f.step} value={form[f.key] as string} oninput={(e) => (form[f.key] = text(e))} />
