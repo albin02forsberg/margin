@@ -371,18 +371,16 @@ pub fn import(src: &Path, notes: &Path, dry: bool, drill: bool) -> Result<Summar
         let mut add = String::new();
         let mut b = Book { title: title.clone(), author: author.clone(), file: path.strip_prefix(notes).unwrap().to_string_lossy().into_owned(), created: old.is_none(), ..Default::default() };
         for h in &hs {
-            let k = key(h);
             // imported before localized metadata was read: no location in the old key
-            if !h.location.is_empty() && seen.contains(&key(&Highlight { location: String::new(), ..h.clone() })) {
-                b.dupes += 1;
-                continue;
-            }
+            let legacy_k = key(&Highlight { location: String::new(), ..h.clone() });
+            let is_legacy = !h.location.is_empty() && seen.contains(&legacy_k);
+            let k = if is_legacy { legacy_k } else { key(h) };
             if !seen.insert(k.clone()) {
                 // a note added to a known highlight later becomes its own `* Note:` entry, once
                 let nk = note_key(&k, &h.note);
                 // an earlier import kept a page-only note as its own entry (empty text, same location)
                 let legacy = key(&Highlight { book: h.book.clone(), author: h.author.clone(), location: h.location.clone(), note: h.note.clone(), ..Default::default() });
-                let fresh = !h.note.is_empty() && !h.text.is_empty() && !seen.contains(&nk) && !seen.contains(&legacy) && !norms.get_or_insert_with(|| entry_norms(old.as_deref().unwrap_or_default())).get(&k).map_or("", String::as_str).contains(&norm(&h.note));
+                let fresh = !h.note.is_empty() && !h.text.is_empty() && !seen.contains(&nk) && !seen.contains(&legacy) && !(is_legacy && seen.contains(&key(&Highlight { book: h.book.clone(), author: h.author.clone(), text: h.note.clone(), ..Default::default() }))) && !norms.get_or_insert_with(|| entry_norms(old.as_deref().unwrap_or_default())).get(&k).map_or("", String::as_str).contains(&norm(&h.note));
                 if !fresh {
                     seen.insert(nk);
                     b.dupes += 1;
@@ -563,6 +561,19 @@ mod tests {
         std::fs::write(&src, "Bok (Au)\n- Ihre Markierung bei Position 5-6 | Hinzugefügt am x\n\nquote\n==========\n").unwrap();
         let s = import(&src, &dir, false, false).unwrap();
         assert_eq!((s.new, s.dupes), (0, 1));
+        // a later note on the legacy-keyed highlight is imported once
+        std::fs::write(&src, "Bok (Au)\n- Ihre Markierung bei Position 5-6 | Hinzugefügt am x\n\nquote\n==========\nBok (Au)\n- Ihre Notiz bei Position 6 | Hinzugefügt am x\n\nnew thought\n==========\n").unwrap();
+        let s = import(&src, &dir, false, false).unwrap();
+        assert_eq!(s.new, 1);
+        assert_eq!(std::fs::read_to_string(dir.join("Reading/bok.org")).unwrap().matches("* Note: new thought").count(), 1);
+        assert_eq!(import(&src, &dir, false, false).unwrap().new, 0);
+        // a note already imported pre-fix as its own quote entry is not written again
+        let nq = Highlight { book: "Bok".into(), author: "Au".into(), text: "old thought".into(), ..Default::default() };
+        let f = dir.join("Reading/bok.org");
+        std::fs::write(&f, format!("#+title: Bok\n#+author: Au\n\n{}\n{}", render(&old), render(&nq))).unwrap();
+        std::fs::write(&src, "Bok (Au)\n- Ihre Markierung bei Position 5-6 | Hinzugefügt am x\n\nquote\n==========\nBok (Au)\n- Ihre Notiz bei Position 6 | Hinzugefügt am x\n\nold thought\n==========\n").unwrap();
+        assert_eq!(import(&src, &dir, false, false).unwrap().new, 0);
+        assert_eq!(std::fs::read_to_string(&f).unwrap().matches("old thought").count(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
