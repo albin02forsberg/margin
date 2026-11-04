@@ -2983,7 +2983,7 @@ fn range_report(tc: &Tc, profile: &str, from: NaiveDate, to: NaiveDate) -> Strin
     timeclock::weekly_report(&tc.sessions(), &tc.projects(), (&leave, &tc.leave_codes().unwrap_or_default()), &tc.cal, from, to, profile)
 }
 
-/// Org-formatted report text. KIND: daily | weekly | monthly | holidays | flex | doctor | backup.
+/// Org-formatted report text. KIND: daily | weekly | monthly | holidays | flex | carry | doctor | backup.
 #[tauri::command]
 fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<String> {
     let tc = s.tc();
@@ -3006,6 +3006,10 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
             let week = week_range(None, t);
             let (total, period, days) = timeclock::flex(&tc.sessions(), &tc.projects(), &leave, &tc.cal, Some(week));
             format!("Flex ({profile}): total {total:+.2} h, last 7 days {period:+.2} h over {days} worked days")
+        }
+        "carry" => {
+            let b = timeclock::carry_balances(&timeclock::prepare_report_sessions(&tc.sessions()), &tc.projects());
+            if b.is_empty() { "Nothing carried over by rounding".into() } else { format!("Rounding carry-over: {}", b.iter().map(|(n, h)| format!("{n} {h:+.2} h")).collect::<Vec<_>>().join(", ")) }
         }
         "doctor" => {
             let mut issues = timeclock::doctor(&tc.read_log(), timeclock::now());

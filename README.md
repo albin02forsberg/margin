@@ -877,7 +877,8 @@ the HTML/PDF export) get Rate and Earned columns plus an "Earned" total per curr
 Rounding carries each session's remainder into the next one of the same project, so
 rounded totals stay close to the real ones. An optional customer (the Customer column,
 `customer = "Globex"` in `projects.toml`, any case) makes all of that customer's
-projects share one carry-over; the CSV export and reports keep their format.
+projects share one carry-over; "Time: show rounding carry-over" shows what is carried now (signed hours per
+customer or project); the CSV export and reports keep their format.
 `Space t I` (Time: invoice for project…) picks a project with a rate and a month and
 writes the note `invoices/<project>-<YYYY-MM>.org`: a `#+NAME: invoice` table of the
 month's billable hours per task (rounded like the month report, so the totals match),
