@@ -20,6 +20,9 @@ pub struct Config {
     /// Extra days off (ISO dates, e.g. "2026-12-24"), 0 expected hours like a holiday.
     #[serde(deserialize_with = "extra_days_off")]
     pub extra_days_off: Vec<String>,
+    /// First day of the week (week report, dashboard week, calendars): "monday", "sunday" or "saturday".
+    #[serde(deserialize_with = "week_start")]
+    pub week_start: String,
     pub profiles: Vec<String>,
     pub todo_keywords: Vec<String>,
     pub done_keywords: Vec<String>,
@@ -244,6 +247,15 @@ fn public_holidays<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::
     Ok(v)
 }
 
+/// `week_start`: "monday", "sunday" or "saturday".
+fn week_start<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let v = String::deserialize(d)?.trim().to_lowercase();
+    if !["monday", "sunday", "saturday"].contains(&v.as_str()) {
+        return Err(serde::de::Error::custom("week_start must be \"monday\", \"sunday\" or \"saturday\""));
+    }
+    Ok(v)
+}
+
 /// `extra_days_off`: ISO dates (YYYY-MM-DD).
 fn extra_days_off<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
     let v = Vec::<String>::deserialize(d)?;
@@ -266,6 +278,7 @@ impl Default for Config {
             weekday_hours: vec![],
             public_holidays: "se".into(),
             extra_days_off: vec![],
+            week_start: "monday".into(),
             profiles: v(&["Work", "Personal"]),
             todo_keywords: v(&["TODO", "NEXT", "WAIT"]),
             done_keywords: v(&["DONE", "CANCELLED"]),
@@ -362,6 +375,14 @@ impl Config {
     }
     pub fn data(&self) -> PathBuf {
         expand(&self.data_dir)
+    }
+    /// `week_start` as a weekday (validated on load, so anything else is Monday).
+    pub fn week_start(&self) -> chrono::Weekday {
+        match self.week_start.as_str() {
+            "sunday" => chrono::Weekday::Sun,
+            "saturday" => chrono::Weekday::Sat,
+            _ => chrono::Weekday::Mon,
+        }
     }
     /// <notes>/<templates_dir>, if that's a folder strictly inside the notes ("", ".", ".." or "/"
     /// would otherwise turn every note into a template and hide it from the agenda).
@@ -738,6 +759,9 @@ mod tests {
         let c = save(mine, t("public_holidays = \"none\"\nextra_days_off = [\"2026-12-24\"]"), &[]).unwrap().1;
         assert_eq!((c.public_holidays.as_str(), c.extra_days_off), ("none", vec!["2026-12-24".to_string()]));
         assert!(save(mine, t("public_holidays = \"us\""), &[]).unwrap_err().contains("\"se\" or \"none\""));
+        assert_eq!(Config::default().week_start(), chrono::Weekday::Mon);
+        assert_eq!(save(mine, t("week_start = \"Sunday\""), &[]).unwrap().1.week_start(), chrono::Weekday::Sun);
+        assert!(save(mine, t("week_start = \"friday\""), &[]).unwrap_err().contains("week_start must be"));
         assert!(save(mine, t("extra_days_off = [\"24/12\"]"), &[]).unwrap_err().contains("not a date"));
         assert!(save("profiles = [\n  \"A\",\n]\n", t("profiles = [\"B\"]"), &[]).is_err()); // multi-line: by hand
         assert!(toml::from_str::<Config>(mine).unwrap().hidden_areas.is_empty()); // old configs show every area

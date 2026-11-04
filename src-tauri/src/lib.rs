@@ -2101,7 +2101,7 @@ fn tc_leave_time(s: State<App>) -> String {
     leave_time(&tc, cur.is_some(), on_break.is_some(), today_h)
 }
 
-/// Everything the time dashboard shows, for the current week (Mon–Sun).
+/// Everything the time dashboard shows, for the current week (from config `week_start`).
 #[tauri::command]
 fn tc_dashboard(s: State<App>) -> Value {
     let tc = s.tc();
@@ -2109,7 +2109,7 @@ fn tc_dashboard(s: State<App>) -> Value {
     let leave_time = leave_time(&tc, cur.is_some(), on_break.is_some(), today_hours);
     dashboard(DashIn {
         today: today(), today_hours, sessions: tc.sessions(), projects: tc.projects(), leave: tc.leave(), cal: tc.cal.clone(),
-        status: (cur, on_break), profile: s.profile(), profiles: s.cfg().profiles, leave_time, backup_error: backup::last_failure(),
+        status: (cur, on_break), profile: s.profile(), profiles: s.cfg().profiles, leave_time, backup_error: backup::last_failure(), week_start: s.cfg().week_start(),
     })
 }
 
@@ -2170,18 +2170,19 @@ struct DashIn {
     profiles: Vec<String>,
     leave_time: String,
     backup_error: Option<String>,
+    week_start: chrono::Weekday,
 }
 
 fn dashboard(inp: DashIn) -> Value {
-    let DashIn { today: t, today_hours: today_h, sessions, projects, leave, cal, status: (cur, on_break), .. } = &inp;
+    let DashIn { today: t, today_hours: today_h, sessions, projects, leave, cal, status: (cur, on_break), week_start, .. } = &inp;
     let (t, today_h) = (*t, *today_h);
     let leave_only: Vec<_> = leave.iter().map(|x| x.1.clone()).collect();
-    let monday = t - Duration::days(t.weekday().num_days_from_monday() as i64);
-    let sunday = monday + Duration::days(6);
-    let in_week = |d: NaiveDate| monday <= d && d <= sunday;
+    let first = week_start_of(t, *week_start);
+    let last = first + Duration::days(6);
+    let in_week = |d: NaiveDate| first <= d && d <= last;
     let week: Vec<Value> = (0..7)
         .map(|i| {
-            let d = monday + Duration::days(i);
+            let d = first + Duration::days(i);
             let h: f64 = if d == t { today_h } else { sessions.iter().filter(|x| x.date == d).map(|x| x.hours).sum() };
             let e = timeclock::expected_hours(d, cal);
             let off = timeclock::leave_on(&leave_only, d, e, h);
@@ -2209,7 +2210,7 @@ fn dashboard(inp: DashIn) -> Value {
             "rate": projects.get(&p).and_then(|x| x.rate()), "currency": projects.get(&p).map_or("", |x| x.currency.trim()), "earned": earned(&p) }))
         .collect();
     per_project.sort_by(|a, b| b["worked"].as_f64().unwrap_or(0.0).total_cmp(&a["worked"].as_f64().unwrap_or(0.0)));
-    let (flex_total, flex_week, _) = timeclock::flex(sessions, projects, &leave_only, cal, Some((monday, t)));
+    let (flex_total, flex_week, _) = timeclock::flex(sessions, projects, &leave_only, cal, Some((first, t)));
     json!({
         "profile": inp.profile, "profiles": inp.profiles,
         "project": cur.as_ref().map(|c| &c.1), "since": cur.as_ref().map(|c| c.0), "task": cur.as_ref().map(|c| &c.2), "on_break": on_break,
@@ -2960,12 +2961,17 @@ fn ai_set(app: AppHandle, s: State<App>, backend: ai::Backend, model: String) ->
     reload_config(app, s)
 }
 
-/// Inclusive range of the week report: the Mon-Sun week containing PICKED, else the last 7 days ending TODAY.
-fn week_range(picked: Option<NaiveDate>, today: NaiveDate) -> (NaiveDate, NaiveDate) {
+/// The first day (a START weekday, config `week_start`) of the week containing D.
+fn week_start_of(d: NaiveDate, start: chrono::Weekday) -> NaiveDate {
+    d - Duration::days(d.weekday().days_since(start).into())
+}
+
+/// Inclusive range of the week report: the week starting on START containing PICKED, else the last 7 days ending TODAY.
+fn week_range(picked: Option<NaiveDate>, today: NaiveDate, start: chrono::Weekday) -> (NaiveDate, NaiveDate) {
     match picked {
         Some(d) => {
-            let mon = d - Duration::days(d.weekday().num_days_from_monday().into());
-            (mon, mon + Duration::days(6))
+            let first = week_start_of(d, start);
+            (first, first + Duration::days(6))
         }
         None => (today - Duration::days(6), today),
     }
@@ -2993,7 +2999,7 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
     Ok(match kind.as_str() {
         "daily" => timeclock::daily_report(&tc.sessions(), &tc.projects(), (&leave, &codes), &tc.cal, date(date_input.as_deref().unwrap_or(""))?, &profile),
         "weekly" => {
-            let (from, to) = week_range(date_input.as_deref().filter(|d| !d.trim().is_empty()).map(date).transpose()?, today());
+            let (from, to) = week_range(date_input.as_deref().filter(|d| !d.trim().is_empty()).map(date).transpose()?, today(), s.cfg().week_start());
             range_report(&tc, &profile, from, to)
         }
         "monthly" => {
@@ -3003,7 +3009,7 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
         "holidays" => timeclock::holidays_report(date(date_input.as_deref().unwrap_or(""))?.format("%Y").to_string().parse().unwrap(), &tc.cal),
         "flex" => {
             let t = today();
-            let week = week_range(None, t);
+            let week = week_range(None, t, chrono::Weekday::Mon); // the last 7 days: no week start
             let (total, period, days) = timeclock::flex(&tc.sessions(), &tc.projects(), &leave, &tc.cal, Some(week));
             format!("Flex ({profile}): total {total:+.2} h, last 7 days {period:+.2} h over {days} worked days")
         }
@@ -3024,7 +3030,7 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
 
 /// Options of a `#+BEGIN: clocktable` header after the name: `:block today|thisweek|thismonth|YYYY-MM` (required)
 /// and `:project NAME` ("quoted" for spaces). Any other option is an error, so Emacs-only blocks stay untouched.
-fn clocktable_opts(args: &str, today: NaiveDate) -> R<(Option<String>, NaiveDate, NaiveDate)> {
+fn clocktable_opts(args: &str, today: NaiveDate, start: chrono::Weekday) -> R<(Option<String>, NaiveDate, NaiveDate)> {
     let (mut project, mut range) = (None, None);
     for (key, val) in block_opts("clocktable", args)? {
         let val = val.as_str();
@@ -3033,7 +3039,7 @@ fn clocktable_opts(args: &str, today: NaiveDate) -> R<(Option<String>, NaiveDate
             ":block" => {
                 range = Some(match val {
                     "today" => (today, today),
-                    "thisweek" => week_range(Some(today), today),
+                    "thisweek" => week_range(Some(today), today, start),
                     "thismonth" => month_range(Some(today), today),
                     m => month_range(Some(NaiveDate::parse_from_str(&format!("{m}-01"), "%Y-%m-%d").map_err(|_| format!("clocktable: unknown :block {m}"))?), today),
                 })
@@ -3214,7 +3220,7 @@ fn columnview_block(s: State<App>, path: PathBuf, args: String) -> R<String> {
 /// Body of a clocktable block with header options ARGS (#693).
 #[tauri::command]
 fn tc_clocktable(s: State<App>, args: String) -> R<String> {
-    let (project, from, to) = clocktable_opts(&args, today())?;
+    let (project, from, to) = clocktable_opts(&args, today(), s.cfg().week_start())?;
     Ok(timeclock::clocktable(&s.tc().sessions(), project.as_deref(), from, to))
 }
 
@@ -3670,12 +3676,14 @@ mod tests {
     fn clocktable_options() {
         let d = |m, day| NaiveDate::from_ymd_opt(2026, m, day).unwrap();
         let t = d(10, 22); // a Thursday
-        assert_eq!(clocktable_opts(":block today", t), Ok((None, t, t)));
-        assert_eq!(clocktable_opts(":block thisweek", t), Ok((None, d(10, 19), d(10, 25))));
-        assert_eq!(clocktable_opts(" :project \"Big Co\"  :block thismonth ", t), Ok((Some("Big Co".into()), d(10, 1), d(10, 31))));
-        assert_eq!(clocktable_opts(":block 2026-02 :project Acme", t), Ok((Some("Acme".into()), d(2, 1), d(2, 28))));
+        let clocktable_opts_mon = |a: &str, t| clocktable_opts(a, t, chrono::Weekday::Mon);
+        assert_eq!(clocktable_opts(":block thisweek", t, chrono::Weekday::Sun), Ok((None, d(10, 18), d(10, 24))));
+        assert_eq!(clocktable_opts_mon(":block today", t), Ok((None, t, t)));
+        assert_eq!(clocktable_opts_mon(":block thisweek", t), Ok((None, d(10, 19), d(10, 25))));
+        assert_eq!(clocktable_opts_mon(" :project \"Big Co\"  :block thismonth ", t), Ok((Some("Big Co".into()), d(10, 1), d(10, 31))));
+        assert_eq!(clocktable_opts_mon(":block 2026-02 :project Acme", t), Ok((Some("Acme".into()), d(2, 1), d(2, 28))));
         for bad in [":scope file :block thismonth", ":block lastweek", ":block 2026-13", ":project Acme", ":block", ":project \"Acme :block today", ""] {
-            assert!(clocktable_opts(bad, t).is_err(), "{bad}");
+            assert!(clocktable_opts_mon(bad, t).is_err(), "{bad}");
         }
     }
 
@@ -3757,10 +3765,28 @@ mod tests {
     #[test]
     fn week_range_is_seven_inclusive_days() {
         let d = |m, day| NaiveDate::from_ymd_opt(2026, m, day).unwrap();
+        let week_range = |p, t| week_range(p, t, chrono::Weekday::Mon);
         assert_eq!(week_range(None, d(10, 20)), (d(10, 14), d(10, 20))); // 7 days, not 8
         assert_eq!(week_range(Some(d(10, 15)), d(10, 20)), (d(10, 12), d(10, 18))); // Thu -> Mon..Sun
         assert_eq!(week_range(Some(d(10, 18)), d(10, 20)), (d(10, 12), d(10, 18))); // Sunday
         assert_eq!(week_range(Some(d(10, 12)), d(10, 20)), (d(10, 12), d(10, 18))); // Monday
+    }
+
+    #[test]
+    fn week_start_of_each_start_day() {
+        use chrono::Weekday::{Mon, Sat, Sun};
+        let d = |y, m, day| NaiveDate::from_ymd_opt(y, m, day).unwrap();
+        // Thu 2026-10-15 and each start day's own first day.
+        assert_eq!(week_start_of(d(2026, 10, 15), Mon), d(2026, 10, 12));
+        assert_eq!(week_start_of(d(2026, 10, 15), Sun), d(2026, 10, 11));
+        assert_eq!(week_start_of(d(2026, 10, 15), Sat), d(2026, 10, 10));
+        assert_eq!(week_start_of(d(2026, 10, 11), Sun), d(2026, 10, 11)); // the start day itself
+        assert_eq!(week_start_of(d(2026, 10, 16), Sat), d(2026, 10, 10)); // Friday: the day before it starts again
+        // Across a year boundary: Fri 2027-01-01.
+        assert_eq!(week_start_of(d(2027, 1, 1), Mon), d(2026, 12, 28));
+        assert_eq!(week_start_of(d(2027, 1, 1), Sun), d(2026, 12, 27));
+        assert_eq!(week_start_of(d(2027, 1, 1), Sat), d(2026, 12, 26));
+        assert_eq!(week_range(Some(d(2027, 1, 1)), d(2027, 1, 1), Sun), (d(2026, 12, 27), d(2027, 1, 2)));
     }
 
     #[test]
@@ -4244,6 +4270,7 @@ mod tests {
             profiles: vec!["Work".into(), "Home".into()],
             leave_time: "7h 00m left today (not clocked in).".into(),
             backup_error: Some("disk full".into()),
+            week_start: chrono::Weekday::Mon,
         }
     }
 
@@ -4321,6 +4348,10 @@ mod tests {
         // Monday: the week's flex is that one day; Sunday: the whole week.
         assert_eq!(dashboard(dash_fixture("2026-01-05", (None, None)))["flex_week"], json!(-4.0));
         assert_eq!(dashboard(dash_fixture("2026-01-11", (None, None)))["flex_week"], json!(-16.0));
+        // week_start = "sunday": Sun 01-11 opens a new week (01-11..01-17), so its flex is that empty day, not the Monday week's -16.
+        let v = dashboard(DashIn { week_start: chrono::Weekday::Sun, ..dash_fixture("2026-01-11", (None, None)) });
+        assert_eq!((v["week"][0]["date"].clone(), v["week"][6]["date"].clone(), v["week"][0]["hours"].clone()), (json!("2026-01-11"), json!("2026-01-17"), json!(1.5)));
+        assert_eq!(v["flex_week"], json!(0.0));
     }
 
     #[test]
