@@ -19,6 +19,11 @@ test("weeks: Monday-first columns, null outside the year, leap years", () => {
   assert.ok(weeks(2024).flat().includes("2024-02-29"));
   assert.equal(weeks(2024)[0][0], "2024-01-01"); // a Monday: no leading blanks
   assert.ok(w.every((c) => c.length === 7));
+  const s = weeks(2026, "sunday"); // rows Sunday..Saturday
+  assert.deepEqual(s[0], [null, null, null, null, "2026-01-01", "2026-01-02", "2026-01-03"]);
+  assert.equal(s[1][0], "2026-01-04");
+  assert.equal(s.flat().filter(Boolean).length, 365);
+  assert.deepEqual(weeks(2026, "saturday")[0], [null, null, null, null, null, "2026-01-01", "2026-01-02"]);
 });
 
 test("streaks: longest in the year, current across New Year, empty", () => {

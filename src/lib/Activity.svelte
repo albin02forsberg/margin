@@ -3,6 +3,7 @@
   // GitHub-style; read-only, Enter opens a day's timeline.
   import { tick } from "svelte";
   import { addDays, label, levels, MEASURES, streaks, unit, weeks, type Measure } from "./activity";
+  import { weekDays } from "./week";
 
   const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   let active = $state(false);
@@ -15,7 +16,8 @@
   let prevFocus: HTMLElement | null = null;
   let load: (year: number, m: Measure) => Promise<Record<string, number>> = async () => ({});
   let onDay: (date: string) => unknown = () => {};
-  const cols = $derived(weeks(year));
+  let weekStart = $state<string>();
+  const cols = $derived(weeks(year, weekStart));
   const inYear = $derived(cols.flat().filter((d): d is string => !!d));
   const shade = $derived.by(() => { const l = levels(inYear.map((d) => days[d] ?? 0)); return Object.fromEntries(inYear.map((d, i) => [d, l[i]])); });
   const total = $derived(inYear.reduce((s, d) => s + (days[d] ?? 0), 0));
@@ -26,10 +28,11 @@
 
   export const isOpen = () => active;
 
-  /** Show the calendar; LOAD fetches a year's values per date for a measure (seconds for hours), ON_DAY opens a date's timeline. */
-  export async function open(l: typeof load, o: typeof onDay, now: string) {
+  /** Show the calendar; LOAD fetches a year's values per date for a measure (seconds for hours), ON_DAY opens a date's timeline.
+   *  WS: config `week_start`, the first row. */
+  export async function open(l: typeof load, o: typeof onDay, now: string, ws?: string) {
     prevFocus = document.activeElement as HTMLElement | null;
-    [load, onDay, today, measure] = [l, o, now, "hours"];
+    [load, onDay, today, measure, weekStart] = [l, o, now, "hours", ws];
     await show(+now.slice(0, 4), now);
     active = true;
     await tick();
@@ -67,7 +70,7 @@
     <div class="grid" role="grid" aria-label="{what} per day">
       <span></span>
       {#each cols as c}{@const first = c.find((d) => d?.endsWith("-01"))}<span class="mm">{first ? MONTHS[+first.slice(5, 7) - 1] : ""}</span>{/each}
-      {#each DAYS as day, r}
+      {#each weekDays(weekStart) as day, r}
         <span class="dd">{r % 2 ? "" : day}</span>
         {#each cols as c}
           {@const d = c[r]}

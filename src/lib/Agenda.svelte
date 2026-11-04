@@ -39,7 +39,6 @@
   export const iso = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const parse = (s: string) => new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
-  const monday = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7));
   const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
   const week = (d: Date) => {
     const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -88,17 +87,20 @@
   import { blocks, gapLabel, gaps, hhmm } from "./dayplan";
   import { marked, markKey, reresolve, type Mark } from "./bulk";
   import { visible } from "./blocked";
+  import { weekStartOf } from "./week";
 
   /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions.
-   *  LOGDONE: config `log_done` (the Done log needs its CLOSED: stamps). GOTO (agenda mode): show that day (month calendar, #1039). */
-  let { mode, api, active, reload, todo, done, query, title, time, logDone = false, goto = null }: {
-    mode: "agenda" | "todo"; api: AgendaApi; active: boolean; reload: number; todo: string[]; done: string[]; query?: string; title?: string; time?: TimeApi; logDone?: boolean; goto?: { day: string } | null;
+   *  LOGDONE: config `log_done` (the Done log needs its CLOSED: stamps). GOTO (agenda mode): show that day (month calendar, #1039).
+   *  WEEKSTART: config `week_start`, where the week view and the board's "this week" begin. */
+  let { mode, api, active, reload, todo, done, query, title, time, logDone = false, goto = null, weekStart }: {
+    mode: "agenda" | "todo"; api: AgendaApi; active: boolean; reload: number; todo: string[]; done: string[]; query?: string; title?: string; time?: TimeApi; logDone?: boolean; goto?: { day: string } | null; weekStart?: string;
   } = $props();
+  const firstOfWeek = (d: Date) => weekStartOf(d, weekStart);
 
   const stored = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
   const initialSpan = +stored("agenda-span", "1");
   let span = $state(initialSpan);
-  let start = $state(initialSpan === 7 ? monday(new Date()) : new Date());
+  let start = $state(initialSpan === 7 ? firstOfWeek(new Date()) : new Date());
   let items = $state.raw<AgendaItem[]>([]);
   let filter = $state("");
   let sel = $state(0);
@@ -174,7 +176,7 @@
   const heading = $derived(
     mode === "todo" ? (title ?? "Tasks")
     : span === 1 ? (iso(start) === today ? "Today" : fmtDay(start))
-    : `Week ${week(start)}`,
+    : `Week ${week(addDays(start, 3))}`, // the ISO week holding most of the span
   );
   const subheading = $derived(
     [mode === "todo" ? `${items.length} ${query != null ? "found" : "open"}${query ? ` · ${query}` : ""}`
@@ -205,9 +207,9 @@
 
   /** Update NOW; past midnight, a view on the old today (or its week) moves on to the new one. */
   function setNow() {
-    const was = now, at = (t: Date) => iso(span === 7 ? monday(t) : t);
+    const was = now, at = (t: Date) => iso(span === 7 ? firstOfWeek(t) : t);
     now = new Date();
-    if (iso(was) !== iso(now) && iso(start) === at(was)) start = span === 7 ? monday(now) : now;
+    if (iso(was) !== iso(now) && iso(start) === at(was)) start = span === 7 ? firstOfWeek(now) : now;
   }
 
   async function refresh() {
@@ -217,7 +219,7 @@
     // Done column: filtered on the backend (#437); the full DONE list only for tasks done here this session.
     if (boardOn && query == null && done[0]) {
       const [week, here] = await Promise.all([
-        invoke<AgendaItem[]>("search_todos", { query: `closed:>=${iso(monday(now))}` }),
+        invoke<AgendaItem[]>("search_todos", { query: `closed:>=${iso(firstOfWeek(now))}` }),
         doneHere.size ? invoke<AgendaItem[]>("search_todos", { query: `todo:"${done[0]}"` }) : [],
       ]);
       const ws = week.filter(isDone), seen = new Set(ws.map(keyOf));
@@ -252,7 +254,7 @@
 
   function setSpan(n: number) {
     span = n;
-    start = n === 7 ? monday(start) : (iso(monday(new Date())) === iso(start) ? new Date() : start);
+    start = n === 7 ? firstOfWeek(start) : (iso(firstOfWeek(new Date())) === iso(start) ? new Date() : start);
     try { localStorage.setItem("agenda-span", String(n)); } catch {}
   }
   function setLog(on: boolean) {
@@ -274,14 +276,14 @@
     root?.focus(); // so keys (".", arrows) work right after the picker closes
     if (!d) return;
     const t = parse(d);
-    start = span === 7 ? monday(t) : t;
+    start = span === 7 ? firstOfWeek(t) : t;
     sel = 0;
   }
   $effect(() => {
     const g = goto;
     if (g) untrack(() => { span = 1; start = parse(g.day); sel = 0; });
   });
-  const goToday = () => (start = span === 7 ? monday(new Date()) : new Date());
+  const goToday = () => (start = span === 7 ? firstOfWeek(new Date()) : new Date());
 
   function setBoard(on: boolean) {
     board = on;

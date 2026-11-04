@@ -51,7 +51,7 @@ the editor has vim keys.
   split), with the peak hour, the share after 17:00 and the total. `h/j/k/l`
   move between cells, and the sessions behind the selected cell are listed below.
   `Space t Y` (or *Activity calendar* in the Time view) is a year of clocked
-  hours as a GitHub-style grid (weeks as columns, Monday first; 5 shades by
+  hours as a GitHub-style grid (weeks as columns, starting on `week_start`; 5 shades by
   quartile), with the total, active days, the longest streak and the current
   one (streaks carry over New Year). `h/l` move a week, `j/k` a day, `[`/`]`
   change year; the selected day's hours show below, and `Enter` opens that
@@ -354,7 +354,7 @@ Tasks show it as a badge (`1h 30m`), and each day in Today shows the total of it
 tasks (`~5h 30m planned`, each task counted once) against the day's expected hours from the
 Time calendar, less leave (`~5h 30m / 7h 30m planned`, highlighted when overbooked or planned on a day off). Removing it drops the property drawer
 only when nothing else was in it.
-**Go to Month calendar** (`Space v k`) shows a month as a Monday-first grid: each day's open scheduled tasks and
+**Go to Month calendar** (`Space v k`) shows a month as a grid of full weeks (Monday first, or `week_start`): each day's open scheduled tasks and
 appointments (repeaters included), deadlines (`2 due`), the first titles and the planned effort (`~3h`), tinted when it
 overbooks the day's expected hours. `h`/`j`/`k`/`l` or the arrows move, `[`/`]` change month, `t` jumps to today, and
 `Enter` (or a click) opens that day in Today.

@@ -1,4 +1,5 @@
 // Yearly activity calendar (#916): a GitHub-style grid of per-day values, with shading levels and streaks.
+import { intoWeek } from "./week.ts";
 
 /** ISO date N days after ISO date D (UTC arithmetic, so no DST surprises). */
 export function addDays(d: string, n: number): string {
@@ -17,9 +18,9 @@ export function levels(values: number[]): number[] {
   });
 }
 
-/** YEAR as week columns, Monday first: 7 ISO dates each, null outside the year. */
-export function weeks(year: number): (string | null)[][] {
-  const jan1 = `${year}-01-01`, start = addDays(jan1, -((new Date(Date.UTC(year, 0, 1)).getUTCDay() + 6) % 7));
+/** YEAR as week columns starting on WS (config `week_start`; Monday by default): 7 ISO dates each, null outside the year. */
+export function weeks(year: number, ws?: string): (string | null)[][] {
+  const jan1 = `${year}-01-01`, start = addDays(jan1, -intoWeek(new Date(Date.UTC(year, 0, 1)).getUTCDay(), ws));
   const out: (string | null)[][] = [];
   for (let d = start; d.slice(0, 4) <= `${year}`; ) {
     const col: (string | null)[] = [];
