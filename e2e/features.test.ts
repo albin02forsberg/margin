@@ -1445,7 +1445,8 @@ describe("Week start", () => {
   after(close, { timeout: 30_000 });
 
   it("week_start = sunday puts Sunday first in the month calendar (#1091)", async () => {
-    await browser.keys(Key.Escape); await browser.keys(" "); await type("vk");
+    await find(".agenda h1", "Today"); // the page is listening before keys go in
+    await palette("Go to Month calendar");
     await find(".monthcal .wd", "Sun");
     assert.deepEqual(await texts(".monthcal .wd"), ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
     const first = await browser.execute(() => document.querySelector(".monthcal .day")?.getAttribute("data-day") ?? "");
