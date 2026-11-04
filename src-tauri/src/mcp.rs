@@ -254,7 +254,7 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
             let from = arg("from").map(crate::date).transpose()?;
             let (from, to) = match (from, arg("to").map(crate::date).transpose()?) {
                 (Some(f), Some(t)) => (f, t),
-                (f, _) => week_range(f, crate::today()),
+                (f, _) => week_range(f, crate::today(), c.week_start()),
             };
             if to < from {
                 return Err(format!("to ({to}) is before from ({from})"));

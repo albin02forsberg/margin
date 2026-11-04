@@ -820,13 +820,14 @@ billable hours, its share of the week, and **Track** to start the clock on it).
 "day done" reminder all use that day's hours; red days stay 0. `public_holidays` (`"se"`, the default,
 or `"none"`) picks which public holidays count as 0 hours, and `extra_days_off` (dates like `"2026-12-24"`,
 one per line in Settings → Time) adds your own; the holidays report lists them too. Changing either
-also changes the flex of past days. Keys:
+also changes the flex of past days. `week_start` (Settings → Time: `monday`, the default, `sunday` or
+`saturday`) sets where the week report, the dashboard week and its flex start; `weekday_hours` stays Monday first. Keys:
 `i` start, `p` pause, `r` resume, `c` switch project, `o` stop, `e` export CSV (import template: `Project` = export code, `Duration` in decimal hours, `1,5`; zero-hour rows are left out; a missing folder is created; a bare file name goes into the export folder; otherwise the path must be an absolute `.csv` path outside the app's data and config folders),
 `Space t s` / `Space t m` week / month report (month = the calendar month of the picked date, empty = this month), `E` export a report as HTML/PDF, `O` stopped earlier, `S` edit a session, `L` log time off.
 Space t … has every timeclock command (same letters as the old Emacs menu).
 `Space t u` updates the clock reports in the open note: each `#+BEGIN: clocktable :block thismonth` … `#+END:`
 block gets an org table of worked hours per project and task (the session description) with a total row.
-`:block` is `today`, `thisweek` (Mon-Sun), `thismonth` or a month like `2026-10`; `:project Acme` (or `"Big Co"`)
+`:block` is `today`, `thisweek` (from `week_start`, Mon-Sun by default), `thismonth` or a month like `2026-10`; `:project Acme` (or `"Big Co"`)
 limits it to one project. Only the text between the two lines changes, as one edit (`u` undoes it). Blocks with other
 options (Emacs's `:scope`, `:maxlevel`, …) are left alone. Emacs fills a plain `:block thismonth` block from the
 file's `CLOCK:` lines instead of Margin's time log, so the two can show different numbers.
