@@ -76,7 +76,7 @@ fn clean_env(vars: &[(&str, String)], roots: &[String], appimage: bool) -> Vec<(
 
 /// Env changes for git children: roots are `APPDIR` and the AppImage mount (`/tmp/.mount_*`)
 /// the running exe lives in, so a missing or odd `APPDIR` still cleans.
-fn git_env_changes() -> Vec<(String, Option<String>)> {
+pub(crate) fn git_env_changes() -> Vec<(String, Option<String>)> {
     let mut roots: Vec<String> = std::env::var("APPDIR").into_iter().collect();
     if let Ok(exe) = std::env::current_exe() {
         let top: PathBuf = exe.components().take(3).collect();
