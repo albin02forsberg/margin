@@ -1441,7 +1441,8 @@ describe("Day plan", () => {
 });
 
 describe("Week start", () => {
-  before(async () => { await launch({ config: ['week_start = "sunday"'] }); });
+  let d: Dirs;
+  before(async () => { d = await launch({ config: ['week_start = "sunday"'] }); });
   after(close, { timeout: 30_000 });
 
   it("week_start = sunday puts Sunday first in the month calendar (#1091)", async () => {
@@ -1451,6 +1452,17 @@ describe("Week start", () => {
     assert.deepEqual(await texts(".monthcal .wd"), ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
     const first = await browser.execute(() => document.querySelector(".monthcal .day")?.getAttribute("data-day") ?? "");
     assert.equal(new Date(`${first}T12:00`).getDay(), 0, `grid starts on ${first}`);
+  });
+
+  it("changing week_start re-aligns the open week view (#1101)", async () => {
+    await palette("Go to Today"); // back from the month calendar
+    await (await find(".agenda button", "Week")).click();
+    const first = async () => (await browser.execute(() => document.querySelector(".agenda .card h2")?.textContent ?? "")).trim();
+    const want = (dow: number) => { const t = new Date(); t.setDate(t.getDate() - ((t.getDay() - dow + 7) % 7)); return t.toDateString() === new Date().toDateString() ? "Today" : t.toLocaleDateString(undefined, { weekday: "long" }); };
+    await browser.waitUntil(async () => (await first()).startsWith(want(0)), { timeoutMsg: `week doesn't start on Sunday: ${await first()}` });
+    const cfg = join(d.cfgDir, "config.toml");
+    writeFileSync(cfg, readFileSync(cfg, "utf8").replace('week_start = "sunday"', 'week_start = "monday"'));
+    await browser.waitUntil(async () => (await first()).startsWith(want(1)), { timeoutMsg: `week didn't re-align to Monday: ${await first()}` });
   });
 });
 
