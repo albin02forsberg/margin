@@ -678,10 +678,10 @@ mod llama {
     fn load(backend: &LlamaBackend, m: &Model, path: &Path) -> Result<LlamaModel, String> {
         if let Some(free) = free_gb() {
             if free < f64::from(m.ram_gb) {
-                return Err(no_memory(m, free));
+                return Err(super::no_memory(m, free));
             }
         }
-        LlamaModel::load_from_file(backend, path, &LlamaModelParams::default()).map_err(|e| bad_file(m, &e.to_string()))
+        LlamaModel::load_from_file(backend, path, &LlamaModelParams::default()).map_err(|e| super::bad_file(m, &e.to_string()))
     }
 
     /// The model's answer to the chat MSGS, at most MAX_TOKENS long.
