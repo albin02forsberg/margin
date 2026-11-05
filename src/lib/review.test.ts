@@ -1,6 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isoWeek, pushedLine, putReview, reviewBody, reviewEntry } from "./review.ts";
+import { isoWeek, pushedLine, putReview, reviewBody, reviewEntry, reviewWeekLabel } from "./review.ts";
+
+test("reviewWeekLabel names the ISO week holding most of the span", () => {
+  assert.equal(reviewWeekLabel(new Date(2026, 9, 12)), "2026-W42"); // Monday
+  assert.equal(reviewWeekLabel(new Date(2026, 9, 11)), "2026-W42"); // Sunday start: not W41
+  assert.equal(reviewWeekLabel(new Date(2026, 9, 10)), "2026-W42"); // Saturday start
+  assert.equal(reviewWeekLabel(new Date(2026, 11, 28)), "2026-W53"); // year boundary
+  assert.equal(reviewWeekLabel(new Date(2026, 11, 27)), "2026-W53");
+});
 
 const t = (title: string, date: string, category = "work") => ({ title, category, date });
 
