@@ -1440,6 +1440,20 @@ describe("Day plan", () => {
   });
 });
 
+describe("Week start", () => {
+  before(async () => { await launch({ config: ['week_start = "sunday"'] }); });
+  after(close, { timeout: 30_000 });
+
+  it("week_start = sunday puts Sunday first in the month calendar (#1091)", async () => {
+    await find(".agenda h1", "Today"); // the page is listening before keys go in
+    await palette("Go to Month calendar");
+    await find(".monthcal .wd", "Sun");
+    assert.deepEqual(await texts(".monthcal .wd"), ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
+    const first = await browser.execute(() => document.querySelector(".monthcal .day")?.getAttribute("data-day") ?? "");
+    assert.equal(new Date(`${first}T12:00`).getDay(), 0, `grid starts on ${first}`);
+  });
+});
+
 describe("Insert commands", () => {
   let d: Dirs;
   before(async () => { d = await launch({ files: ({ notes }) => writeFileSync(join(notes, "ins.org"), "#+title: Ins\n") }); });

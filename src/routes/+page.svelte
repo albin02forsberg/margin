@@ -21,6 +21,7 @@
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
   import { type Goal, goalWhen, isoWeek, putReview, reviewBody, reviewEntry } from "$lib/review";
+  import { weekStartOf } from "$lib/week";
   import { calibrate, estimates, pct } from "$lib/estimates";
   import { fmtEffort } from "$lib/effort";
   import { buildTimeline, timelineMarkdown, type Entry as TimelineEntry } from "$lib/timeline";
@@ -2599,7 +2600,7 @@
   /** This week's review in today's journal entry (#670); a re-run replaces only its `# review-begin`..`# review-end` block. */
   async function weeklyReview() {
     const t = new Date(), day = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    const off = (n: number) => day(new Date(t.getFullYear(), t.getMonth(), t.getDate() - ((t.getDay() + 6) % 7) + n));
+    const w0 = weekStartOf(t, cfg?.config.week_start), off = (n: number) => day(new Date(w0.getFullYear(), w0.getMonth(), w0.getDate() + n));
     const q = (query: string) => call<AgendaItem[]>("search_todos", { query });
     const [closed, sched, due, next, inbox, dash, goals, someday, open] = await Promise.all([
       q(`closed:>=${off(0)} closed:<=${off(6)}`), q(`scheduled:<${day(t)} -tag:someday`), q(`due:<${day(t)} -tag:someday`), q(`scheduled:>=${off(7)} scheduled:<=${off(13)} -tag:someday`),
@@ -3258,7 +3259,7 @@
     activity: () => {
       const counts = new Map<number, Promise<Record<string, Record<string, number>>>>(); // one activity_counts call per year while open
       const of = (year: number) => counts.get(year) ?? counts.set(year, call("activity_counts", { year })).get(year)!;
-      return activity!.open((year, m) => (m === "hours" ? call("tc_activity", { year }) : of(year).then((c) => c[m])), (d) => act(() => dayTimeline(d)), new Date().toLocaleDateString("sv-SE"));
+      return activity!.open((year, m) => (m === "hours" ? call("tc_activity", { year }) : of(year).then((c) => c[m])), (d) => act(() => dayTimeline(d)), new Date().toLocaleDateString("sv-SE"), cfg?.config.week_start);
     },
   };
   const timeApi: TimeApi = { act, run: async (name, arg) => { await timeActions[name](arg); } };
@@ -3990,11 +3991,11 @@
               {:else if v.kind === "habits"}
                 <Habits api={timeApi} active={v === leftTab} {reload} />
               {:else if v.kind === "calendar"}
-                <MonthCalendar api={timeApi} active={v === leftTab} {reload} done={kw().done ?? []} open={(day) => { agendaGoto = { day }; act(async () => { await openView("agenda"); await tick(); agendaGoto = null; }); }} />
+                <MonthCalendar api={timeApi} active={v === leftTab} {reload} done={kw().done ?? []} weekStart={cfg.config.week_start} open={(day) => { agendaGoto = { day }; act(async () => { await openView("agenda"); await tick(); agendaGoto = null; }); }} />
               {:else if v.kind === "settings"}
                 <Settings {version} active={v === leftTab} {reload} config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} missing={cfg.config_missing} save={saveSettings} recreate={recreateConfig} edit={() => act(editConfig)} />
               {:else}
-                <Agenda mode={v.kind as "agenda" | "todo"} goto={v.kind === "agenda" ? agendaGoto : null} api={agendaApi} active={v === leftTab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} time={timeApi} logDone={!!cfg.config.log_done} />
+                <Agenda mode={v.kind as "agenda" | "todo"} goto={v.kind === "agenda" ? agendaGoto : null} api={agendaApi} active={v === leftTab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} time={timeApi} logDone={!!cfg.config.log_done} weekStart={cfg.config.week_start} />
               {/if}
             </div>
           {/each}

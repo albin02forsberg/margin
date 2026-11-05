@@ -6,19 +6,20 @@
   import { fmtEffort, overbooked, plannedLabel } from "./effort";
   import { monthName, shiftMonth } from "./ledger";
   import { addDays, bucket, monthGrid, type Day } from "./monthcal";
+  import { weekDays } from "./week";
 
-  /** The month's planned tasks (#1039): a Monday-first grid with each day's scheduled tasks, deadlines and planned
+  /** The month's planned tasks (#1039): a grid of full weeks (from WEEKSTART, config `week_start`) with each day's scheduled tasks, deadlines and planned
    *  effort, tinted when it overbooks the day's expected hours. h/j/k/l or arrows move, [ / ] change month, t today,
    *  Enter or a click opens the day in Today (OPEN). DONE: the done keywords. Reloads on RELOAD. */
-  let { api, active, reload, done, open }: { api: TimeApi; active: boolean; reload: number; done: string[]; open: (day: string) => void } = $props();
+  let { api, active, reload, done, open, weekStart }: { api: TimeApi; active: boolean; reload: number; done: string[]; open: (day: string) => void; weekStart?: string } = $props();
   const today = new Date().toLocaleDateString("sv-SE");
   let sel = $state(today);
   const month = $derived(sel.slice(0, 7));
-  const grid = $derived(monthGrid(month));
+  const grid = $derived(monthGrid(month, weekStart));
   let days = $state.raw<Record<string, Day>>({});
   let expected = $state.raw<Record<string, number>>({});
   let root = $state<HTMLDivElement>();
-  const WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const WEEK = $derived(weekDays(weekStart));
 
   $effect(() => {
     void reload;
@@ -36,7 +37,7 @@
   });
   /** Move the selection to the same day N months on (clamped to that month's end). */
   function shift(n: number) {
-    const m = shiftMonth(month, n), last = monthGrid(m).filter((d) => d.startsWith(m)).at(-1)!;
+    const m = shiftMonth(month, n), last = monthGrid(m, weekStart).filter((d) => d.startsWith(m)).at(-1)!;
     sel = `${m}-${sel.slice(8)}` > last ? last : `${m}-${sel.slice(8)}`;
   }
   const MOVES: Record<string, number> = { h: -1, ArrowLeft: -1, l: 1, ArrowRight: 1, k: -7, ArrowUp: -7, j: 7, ArrowDown: 7 };

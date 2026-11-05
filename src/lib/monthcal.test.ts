@@ -13,6 +13,15 @@ test("monthGrid: Monday-first full weeks, 4 to 6 rows", () => {
   assert.deepEqual(monthGrid("2028-02").slice(-2), ["2028-03-04", "2028-03-05"]); // leap year
 });
 
+test("monthGrid: a Sunday or Saturday week start rotates the grid", () => {
+  const nov = monthGrid("2026-11", "sunday"); // starts on a Sunday: no leading days, 5 rows
+  assert.deepEqual([nov[0], nov.length, nov.at(-1)], ["2026-11-01", 35, "2026-12-05"]);
+  const sat = monthGrid("2026-11", "saturday"); // one leading Saturday
+  assert.deepEqual([sat[0], sat[1], sat.length, sat.at(-1)], ["2026-10-31", "2026-11-01", 35, "2026-12-04"]);
+  assert.deepEqual(monthGrid("2026-11", "monday"), monthGrid("2026-11"));
+  assert.deepEqual(monthGrid("2027-01", "sunday").slice(0, 6), ["2026-12-27", "2026-12-28", "2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01"]); // year boundary
+});
+
 test("addDays: across DST and month / year ends", () => {
   assert.equal(addDays("2026-03-28", 2), "2026-03-30");
   assert.equal(addDays("2026-10-24", 7), "2026-10-31");

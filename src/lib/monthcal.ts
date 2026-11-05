@@ -1,5 +1,6 @@
-/** Month calendar helpers (#1039): a Monday-first grid of ISO days and the agenda's items bucketed per day. */
+/** Month calendar helpers (#1039): a grid of ISO days in full weeks and the agenda's items bucketed per day. */
 import { planned } from "./effort.ts";
+import { intoWeek } from "./week.ts";
 
 const utc = (d: string) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
 const isoOf = (t: number) => new Date(t).toISOString().slice(0, 10);
@@ -7,9 +8,9 @@ const isoOf = (t: number) => new Date(t).toISOString().slice(0, 10);
 /** ISO day D moved by N days (UTC math, so DST never shifts it). */
 export const addDays = (d: string, n: number) => isoOf(utc(d) + n * 86_400_000);
 
-/** The full weeks (Monday first) covering MONTH (`YYYY-MM`): 28 to 42 ISO days. */
-export function monthGrid(month: string) {
-  const first = `${month}-01`, lead = (new Date(utc(first)).getUTCDay() + 6) % 7;
+/** The full weeks (starting on WS, config `week_start`; Monday by default) covering MONTH (`YYYY-MM`): 28 to 42 ISO days. */
+export function monthGrid(month: string, ws?: string) {
+  const first = `${month}-01`, lead = intoWeek(new Date(utc(first)).getUTCDay(), ws);
   const len = new Date(Date.UTC(+month.slice(0, 4), +month.slice(5, 7), 0)).getUTCDate();
   const start = addDays(first, -lead);
   return Array.from({ length: Math.ceil((lead + len) / 7) * 7 }, (_, i) => addDays(start, i));
