@@ -82,7 +82,7 @@ describe("Margin", () => {
     const ex = async (s: string) => { await type(s); await browser.keys(Key.Enter); };
     await ex(":set noic");
     await ex("/first");
-    await find(".cm-vim-message", "Pattern not found");
+    await find(".cm-vim-message", "No match found");
     await ex(":set ic");
   });
 
