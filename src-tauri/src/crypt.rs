@@ -16,6 +16,7 @@ use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use chacha20poly1305::aead::{rand_core::RngCore, Aead, AeadCore, KeyInit, OsRng, Payload};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use std::ops::Range;
+use std::path::{Path, PathBuf};
 
 pub const BEGIN: &str = "-----BEGIN MARGIN ENCRYPTED-----";
 pub const END: &str = "-----END MARGIN ENCRYPTED-----";
@@ -111,6 +112,28 @@ pub fn decrypt_section(block: &str, pass: &str) -> Result<String, String> {
     String::from_utf8(pt).map_err(|_| "decrypted text is not UTF-8".into())
 }
 
+/// Where the pre-encryption copy of FILE lives: LOCAL is the app's local data dir, never the notes
+/// or data dir (those are committed by backups and synced, which would publish the plaintext).
+pub fn backup_path(local: &Path, file: &Path) -> PathBuf {
+    local.join("crypt-backup").join(format!("{:016x}.org", crate::embed::hash(&file.to_string_lossy())))
+}
+
+/// Call before the first ciphertext write to FILE. Checks that BLOCK decrypts back to PLAIN (the
+/// body being locked), then keeps a copy of ORIGINAL (the file as it is now) in `backup_path`
+/// unless one exists. Returns true when a new copy was made (show the one-time notice then).
+pub fn backup_before_lock(local: &Path, file: &Path, original: &str, plain: &str, block: &str, pass: &str) -> Result<bool, String> {
+    if decrypt_section(block, pass)? != plain {
+        return Err("encrypted block does not decrypt to the original text".into());
+    }
+    let dst = backup_path(local, file);
+    if dst.exists() {
+        return Ok(false);
+    }
+    std::fs::create_dir_all(dst.parent().unwrap()).map_err(|e| e.to_string())?;
+    std::fs::write(&dst, original).map_err(|e| format!("backup failed: {e}"))?;
+    Ok(true)
+}
+
 /// Byte range of the body of the heading starting at byte `start` of `text`:
 /// after the heading line, up to the next heading of the same or higher level
 /// (deeper sub-headings belong to the body). Empty if `start` isn't a heading.
@@ -136,6 +159,27 @@ mod tests {
     const FAST: (u32, u32, u32) = (64, 1, 1);
     fn enc(plain: &str, pass: &str) -> String {
         encrypt_with(plain, pass, FAST).unwrap()
+    }
+
+    #[test]
+    fn backup_is_local_verified_and_once() {
+        let d = std::env::temp_dir().join(format!("margin-crypt-bk-{}", std::process::id()));
+        let (local, notes, data) = (d.join("local"), d.join("notes"), d.join("data"));
+        let file = notes.join("a.org");
+        let orig = "* H\nsecret\n";
+        let block = enc("secret\n", "pw");
+        let p = backup_path(&local, &file);
+        assert!(!p.starts_with(&notes) && !p.starts_with(&data) && p.starts_with(&local));
+        // A block that doesn't decrypt to the text, or a wrong passphrase, makes no backup.
+        assert!(backup_before_lock(&local, &file, orig, "other\n", &block, "pw").is_err());
+        assert!(backup_before_lock(&local, &file, orig, "secret\n", &block, "bad").is_err());
+        assert!(!p.exists());
+        assert!(backup_before_lock(&local, &file, orig, "secret\n", &block, "pw").unwrap());
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), orig);
+        // Second lock keeps the first copy and reports no new backup.
+        assert!(!backup_before_lock(&local, &file, "* H\n(locked)\n", "secret\n", &block, "pw").unwrap());
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), orig);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

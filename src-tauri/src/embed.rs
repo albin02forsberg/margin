@@ -93,7 +93,7 @@ pub fn found(files: &[Arc<OrgFile>], hits: &[(PathBuf, usize, f32)]) -> Vec<Foun
     }).collect()
 }
 
-fn hash(text: &str) -> u64 {
+pub(crate) fn hash(text: &str) -> u64 {
     u64::from_le_bytes(Sha256::digest(text.as_bytes())[..8].try_into().unwrap())
 }
 
