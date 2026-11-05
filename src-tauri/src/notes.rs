@@ -1014,7 +1014,7 @@ pub fn search(files: &[Arc<OrgFile>], root: &Path, query: &str, limit: usize) ->
                 continue;
             }
         }
-        for (i, l) in f.text.lines().enumerate() {
+        for (i, l) in crate::crypt::strip(&f.text).lines().enumerate() {
             if m(l) {
                 out.push(Hit { path: f.path.clone(), title: f.title.clone(), line: i, text: l.trim().to_string() });
                 if out.len() >= limit {
@@ -1275,6 +1275,14 @@ mod tests {
         assert_eq!(occur(&f, "/^f.o\\s/").unwrap().len(), 3);
         assert!(occur(&f, "/(/").is_err());
         assert!(occur(&f, "").unwrap().is_empty());
+    }
+
+    #[test]
+    fn search_skips_encrypted_blocks() {
+        let kw = Kw { todo: vec![], done: vec![] };
+        let f = Arc::new(parse(Path::new("/n/a.org"), "* Vault :crypt:\n-----BEGIN MARGIN ENCRYPTED-----\nv=1 zebra\nzebra==\n-----END MARGIN ENCRYPTED-----\n* Open\nzebra here\n", &kw));
+        let lines: Vec<usize> = search(&[f], Path::new("/n"), "zebra", 10).unwrap().iter().map(|h| h.line).collect();
+        assert_eq!(lines, [6]);
     }
 
     #[test]

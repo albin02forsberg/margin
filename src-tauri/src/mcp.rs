@@ -223,7 +223,7 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
             if excluded(&f.path) {
                 return Err(format!("{} is excluded from the AI (ai_exclude)", rel(&f.path)));
             }
-            return Ok(format!("# {} ({})\n\n{}", f.title, rel(&f.path), cut(f.text.clone())));
+            return Ok(format!("# {} ({})\n\n{}", f.title, rel(&f.path), cut(crate::crypt::strip(&f.text).into_owned())));
         }
         "read_journal" => {
             let (p, day) = journal_path(&c, &root, arg("date"))?;
@@ -231,7 +231,7 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
                 return Err(format!("{} is excluded from the AI (ai_exclude)", rel(&p)));
             }
             return match std::fs::read_to_string(&p) {
-                Ok(text) => Ok(format!("# Journal {day} ({})\n\n{}", rel(&p), cut(text))),
+                Ok(text) => Ok(format!("# Journal {day} ({})\n\n{}", rel(&p), cut(crate::crypt::strip(&text).into_owned()))),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(format!("No journal entry for {day} ({} doesn't exist)", rel(&p))),
                 Err(e) => Err(e.to_string()),
             };
@@ -572,6 +572,15 @@ mod tests {
         }
         assert_eq!(rpc(&ctx, "prompts/get", json!({ "name": "nope" }))["error"]["code"], -32602);
         assert_eq!(rpc(&ctx, "prompts/get", json!({}))["error"]["code"], -32602);
+    }
+
+    #[test]
+    fn encrypted_blocks_stay_out() {
+        let (d, ctx) = setup();
+        std::fs::write(d.join("notes/v.org"), "#+title: Vault\n* Locked :crypt:\n-----BEGIN MARGIN ENCRYPTED-----\nv=1 zebra\nzebra==\n-----END MARGIN ENCRYPTED-----\nvisible\n").unwrap();
+        let (r, err) = tool(&ctx, "read_note", json!({ "title": "vault" }));
+        assert!(!err && r.contains("visible") && !r.contains("zebra") && !r.contains("ENCRYPTED"), "{r}");
+        assert_eq!(tool(&ctx, "search_notes", json!({ "query": "zebra" })).0, "[]");
     }
 
     #[test]

@@ -128,6 +128,24 @@ pub fn section_body(text: &str, start: usize) -> Range<usize> {
     from..pos
 }
 
+/// TEXT with every armoured block (an unterminated one runs to the end) blanked line by line, so
+/// line numbers hold. Readers that index, search, export or hand text to an AI use this (#1087).
+pub fn strip(text: &str) -> std::borrow::Cow<'_, str> {
+    if !text.contains(BEGIN) {
+        return text.into();
+    }
+    let mut open = false;
+    text.split_inclusive('\n')
+        .map(|l| {
+            let t = l.trim();
+            let hide = open || t == BEGIN;
+            open = hide && t != END;
+            if hide { l.trim_start_matches(|c| c != '\n') } else { l }
+        })
+        .collect::<String>()
+        .into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,6 +211,18 @@ mod tests {
         assert_eq!(err("plain text"), "not an encrypted block");
         assert_eq!(err(&b.replace("v=1 ", "v=2 ")), "unsupported encrypted block version 2");
         assert_eq!(err(&b.replace(" m=64 ", " m=99999999 ")), "bad m in encrypted block");
+    }
+
+    #[test]
+    fn strip_blanks_blocks_keeping_lines() {
+        let b = enc("secret", "pw");
+        let t = format!("* A :crypt:\n{b}\n* B\nplain\n");
+        let s = strip(&t);
+        assert!(!s.contains(BEGIN) && !s.contains("kdf=") && !s.contains(&b[b.len() - 20..]));
+        assert_eq!(s.lines().count(), t.lines().count());
+        assert_eq!(s.lines().last(), Some("plain"));
+        assert_eq!(strip("no block\n"), "no block\n");
+        assert_eq!(strip(&format!("x\n{BEGIN}\nabc\n")), "x\n\n\n");
     }
 
     #[test]

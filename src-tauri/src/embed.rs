@@ -38,7 +38,8 @@ pub struct Chunk {
 /// F split by headline: the text before the first one, then each section up to the next headline
 /// of any level, longer ones cut into CHUNK-sized runs of lines. Blank and meta-only parts are left out.
 pub fn chunks(f: &OrgFile) -> Vec<Chunk> {
-    let lines: Vec<&str> = f.text.lines().collect();
+    let text = crate::crypt::strip(&f.text);
+    let lines: Vec<&str> = text.lines().collect();
     let mut starts: Vec<usize> = std::iter::once(0).chain(f.headlines.iter().map(|h| h.line)).filter(|&l| l < lines.len()).collect();
     starts.dedup();
     let mut out = vec![];
@@ -390,6 +391,13 @@ mod tests {
         let got: Vec<_> = found(&[f], &hits).into_iter().map(|h| (h.title, h.heading, h.line, h.text, h.score)).collect();
         let s = String::from;
         assert_eq!(got, [(s("Alpha"), s("One"), 2, s("body one"), 0.9), (s("Alpha"), s(""), 1, s("intro"), 0.7), (s("Alpha"), s("Two"), 9, s(""), 0.6)]);
+    }
+
+    #[test]
+    fn chunks_skip_encrypted_blocks() {
+        let f = note("/n/a.org", "#+title: A\n* Vault :crypt:\n-----BEGIN MARGIN ENCRYPTED-----\nv=1 zebra\nzebra==\n-----END MARGIN ENCRYPTED-----\n* Open\nplain\n", 1);
+        let c = chunks(&f);
+        assert_eq!(c.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(), ["A\n* Vault :crypt:", "A\n* Open\nplain"]);
     }
 
     #[test]
