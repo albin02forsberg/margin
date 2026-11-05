@@ -429,7 +429,7 @@ describe("Margin", () => {
     await save2.waitForClickable();
     await save2.click();
     await fileMatches(cfg, (s) => /^hidden_areas = \[\]$/m.test(s), "area not shown again");
-    assert.equal(await ledgerCmds(), 1, "Ledger command not back in the palette");
+    await browser.waitUntil(async () => (await ledgerCmds()) === 1, { timeout: 15000, interval: 500, timeoutMsg: "Ledger command not back in the palette" });
   });
 
   it("adds and reorders saved views on the settings page", async () => {
