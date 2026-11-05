@@ -2617,6 +2617,16 @@ fn semantic_model(c: &Config) -> R<&str> {
     Ok(model)
 }
 
+/// semantic_model, but with the built-in backend also that its model can run: an index for another
+/// model would otherwise be dropped for an empty one that can't be filled (#1117).
+fn semantic_ready<'a>(c: &'a Config, dir: &Path) -> R<&'a str> {
+    let model = semantic_model(c)?;
+    if c.ai_backend == ai::Backend::Embedded {
+        ai::embed_ready(dir, model)?;
+    }
+    Ok(model)
+}
+
 /// The vector of TEXT (a question when QUERY, else a note section) from MODEL (from semantic_model).
 fn embed_text(app: &AppHandle, c: &Config, model: &str, query: bool, text: &str) -> R<Vec<f32>> {
     let text = embed::prefixed(model, query, text);
@@ -2630,7 +2640,7 @@ fn embed_text(app: &AppHandle, c: &Config, model: &str, query: bool, text: &str)
 /// being updated, Ollama down. The chat falls back to keywords on any error (#966, #1017).
 fn semantic_query(app: &AppHandle, c: &Config, text: &str, k: usize) -> R<Vec<(PathBuf, usize, f32)>> {
     const BUSY: &str = "The semantic index is empty or still building; try again in a moment.";
-    let model = semantic_model(c)?;
+    let model = semantic_ready(c, &models_dir(app)?)?;
     let path = index_file(app, c)?;
     // While a reindex round holds the index there are no hits; the text is embedded unlocked.
     let s = app.state::<App>();
@@ -2680,7 +2690,7 @@ fn ai_retrieve(app: AppHandle, s: State<App>, question: String, open: Option<Pat
 fn ai_related(app: AppHandle, s: State<App>, path: PathBuf, k: usize) -> R<Vec<embed::Found>> {
     s.check(&path)?;
     let c = s.cfg();
-    let model = semantic_model(&c)?;
+    let model = semantic_ready(&c, &models_dir(&app)?)?;
     let file = index_file(&app, &c)?;
     let hits: Vec<_> = match s.semantic_now() {
         Some(mut g) => index_in(&mut g, &file, model).ix.related(&path, k.clamp(1, 100)).into_iter().map(|(p, l, c)| (p.to_path_buf(), l, c)).collect(),
@@ -2899,7 +2909,7 @@ fn index_run(app: &AppHandle) -> R<usize> {
     if !c.ai_semantic {
         return Ok(0);
     }
-    let model = semantic_model(&c)?;
+    let model = semantic_ready(&c, &models_dir(app)?)?;
     let root = c.notes();
     let files: Vec<_> = s.files().into_iter().filter(|f| !retrieve::excluded(&f.path, &root, &c.ai_exclude)).collect();
     let path = index_file(app, &c)?;
@@ -2920,8 +2930,9 @@ fn ai_index_status(app: AppHandle, s: State<App>) -> R<Value> {
     let c = s.cfg();
     let path = index_file(&app, &c)?;
     // A run holds the lock for whole batches: don't wait for it, show the last counts as running.
-    let live = s.semantic_now().map(|mut g| {
-        let ix = &index_in(&mut g, &path, semantic_model(&c).unwrap_or("")).ix;
+    let model = models_dir(&app).ok().and_then(|d| semantic_ready(&c, &d).ok());
+    let live = s.semantic_now().zip(model).map(|(mut g, model)| {
+        let ix = &index_in(&mut g, &path, model).ix;
         let n = (ix.files.len(), ix.files.iter().map(|f| f.chunks.len()).sum());
         remember_counts(n.0, n.1);
         n
@@ -3592,6 +3603,16 @@ mod tests {
         assert!(semantic_model(&c).unwrap_err().contains("embedding model"));
         c.ai_backend = ai::Backend::Embedded;
         assert_eq!(semantic_model(&c), Ok(ai::EMBED_MODELS[0].id));
+    }
+
+    #[test]
+    fn semantic_ready_needs_the_builtin_model() {
+        let dir = Path::new("/nonexistent");
+        let mut c = Config { ai_semantic: true, ..Config::default() };
+        assert_eq!(semantic_ready(&c, dir), Ok("nomic-embed-text"));
+        c.ai_backend = ai::Backend::Embedded;
+        let err = semantic_ready(&c, dir).unwrap_err();
+        assert!(err.contains(if ai::RUNS { "Semantic index" } else { "can't run" }), "{err}");
     }
 
     #[test]

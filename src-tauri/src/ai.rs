@@ -88,21 +88,30 @@ fn normalized(mut v: Vec<f32>) -> Vec<f32> {
     v
 }
 
+/// Whether this build can run the built-in embedding model ID and its file in DIR is there, else why not.
+pub fn embed_ready(dir: &Path, id: &str) -> Result<(), String> {
+    let m = EMBED_MODELS.iter().find(|m| m.id == id).ok_or_else(|| format!("Unknown built-in embedding model {id}."))?;
+    if !RUNS {
+        return Err(format!("This build of Margin can't run {} itself; use Ollama for semantic search.", m.name));
+    }
+    if !m.path(dir).is_file() {
+        return Err(format!("{} isn't downloaded: download it in Settings → AI, under Semantic index.", m.name));
+    }
+    Ok(())
+}
+
 /// The vector of TEXT from the built-in embedding model ID (from EMBED_MODELS), its file in DIR.
 pub fn embed_local(dir: &Path, id: &str, text: &str) -> Result<Vec<f32>, String> {
-    let m = EMBED_MODELS.iter().find(|m| m.id == id).ok_or_else(|| format!("Unknown built-in embedding model {id}."))?;
+    embed_ready(dir, id)?;
     #[cfg(not(feature = "embedded-ai"))]
     {
-        let _ = (dir, text);
-        Err(format!("This build of Margin can't run {} itself; use Ollama for semantic search.", m.name))
+        let _ = text;
+        unreachable!("embed_ready fails without embedded-ai")
     }
     #[cfg(feature = "embedded-ai")]
     {
-        let path = m.path(dir);
-        if !path.is_file() {
-            return Err(format!("{} isn't downloaded: download it in Settings → AI chat.", m.name));
-        }
-        llama::embed(m, &path, text).map(normalized)
+        let m = EMBED_MODELS.iter().find(|m| m.id == id).expect("checked by embed_ready");
+        llama::embed(m, &m.path(dir), text).map(normalized)
     }
 }
 
