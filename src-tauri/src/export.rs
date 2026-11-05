@@ -88,6 +88,7 @@ fn indent(l: &str) -> usize {
 }
 
 pub fn parse(text: &str, kw: &Kw) -> Doc {
+    let text = crate::crypt::strip(text);
     let lines: Vec<&str> = text.lines().collect();
     let mut d = Doc { title: None, subtitle: None, blocks: vec![], diagrams: HashMap::new() };
     let b = blocks(&lines, kw, &mut d);
@@ -787,6 +788,14 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
 1. first\n2) second\n\n| Name | Qty |\n|------+-----|\n| <a> | 1 |\n|------+-----|\n| Sum | 1 |\n#+TBLFM: $2=vsum(@I..@II)\n\n\
 #+begin_src rust\nfn x() -> &'a str { \"<\" }\n#+end_src\n#+begin_quote\nQuoted /line/.\n#+end_quote\n#+BEGIN_EXAMPLE\n  <raw>\n#+END_EXAMPLE\n\
 ** DONE See [[id:abc][Other note]] and [[file:pic.png]] and [[file:doc.org][doc]]\n-----\n";
+
+    #[test]
+    fn export_skips_encrypted_blocks() {
+        let t = "* Vault :crypt:\n-----BEGIN MARGIN ENCRYPTED-----\nv=1 zebra\nzebra==\n-----END MARGIN ENCRYPTED-----\nafter\n";
+        let h = html(&parse(t, &kw()), "x", Path::new("/n"), &Ids::new(), false);
+        assert!(!h.contains("zebra") && !h.contains("ENCRYPTED") && h.contains("after"));
+        assert!(!markdown(&parse(t, &kw()), "x", Path::new("/n"), &Ids::new()).contains("zebra"));
+    }
 
     #[test]
     fn parses_blocks() {

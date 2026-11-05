@@ -84,7 +84,7 @@ pub fn skip_drawers<'a>(lines: impl Iterator<Item = (usize, &'a str)>) -> impl I
 /// F's score for TERMS (each counts 3 in the title, 2 in a heading, 1 in the text; more terms beat
 /// more repeats) and its best line, if any term occurs.
 fn score(f: &OrgFile, terms: &[String]) -> (usize, Option<usize>) {
-    let text = f.text.to_lowercase();
+    let text = crate::crypt::strip(&f.text).to_lowercase();
     let title = std::iter::once(&f.title).chain(&f.aliases).map(|t| t.to_lowercase()).collect::<Vec<_>>().join(" ");
     // Most notes match nothing: skip them before splitting into lines.
     if !terms.iter().any(|t| text.contains(t.as_str()) || title.contains(t.as_str())) {
@@ -120,7 +120,8 @@ fn score(f: &OrgFile, terms: &[String]) -> (usize, Option<usize>) {
 /// The excerpt of F around line AT (its start when None): the section holding it when that fits in
 /// EXCERPT bytes, else the lines around it that do. Returns (first line, text).
 fn excerpt(f: &OrgFile, at: Option<usize>) -> (usize, String) {
-    let lines: Vec<&str> = f.text.lines().collect();
+    let text = crate::crypt::strip(&f.text);
+    let lines: Vec<&str> = text.lines().collect();
     let at = at.unwrap_or_else(|| lines.iter().position(|l| !meta(l) && !l.trim().is_empty()).unwrap_or(0)).min(lines.len().saturating_sub(1));
     let head = f.headlines.iter().rfind(|h| h.line <= at);
     let start = head.map_or(0, |h| h.line);
@@ -346,7 +347,7 @@ pub fn tool_sources(files: &[Arc<OrgFile>], ctx: &ToolCtx, name: &str, args: &se
             }
         }),
         "open_note" => arg("title").and_then(note).map(|f| {
-            let text = f.text.lines().filter(|l| !meta(l)).collect::<Vec<_>>().join("\n");
+            let text = crate::crypt::strip(&f.text).lines().filter(|l| !meta(l)).collect::<Vec<_>>().join("\n");
             let s = Source { kind: note_kind(), path: f.path.clone(), title: f.title.clone(), line: 0, text: text.trim().into() };
             let out = label(&s) + &s.text;
             used = vec![Source { text: String::new(), ..s }];
@@ -485,6 +486,14 @@ mod tests {
     }
     fn names(s: &[Source]) -> Vec<&str> {
         s.iter().map(|s| s.title.as_str()).collect()
+    }
+
+    #[test]
+    fn retrieve_skips_encrypted_blocks() {
+        let files = [note("a", "#+title: A\n* Vault :crypt:\n-----BEGIN MARGIN ENCRYPTED-----\nv=1 zebra\nzebra==\n-----END MARGIN ENCRYPTED-----\n")];
+        for s in retrieve(&files, "zebra", None, 10_000, &[]) {
+            assert!(!s.text.contains("zebra") && !s.text.contains("BEGIN"), "{}", s.text);
+        }
     }
 
     #[test]
