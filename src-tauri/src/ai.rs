@@ -489,6 +489,25 @@ fn embedded(dir: &Path, model: &str, msgs: &[Msg], max_tokens: i32, on_piece: &m
     }
 }
 
+/// Where M is managed: the embedder under Semantic index, a chat model in AI drafts.
+#[cfg(any(test, feature = "embedded-ai"))]
+fn manage_where(m: &Model) -> &'static str {
+    if EMBED_MODELS.iter().any(|e| e.id == m.id) { "Settings → AI, under Semantic index" } else { "AI drafts: choose model…" }
+}
+
+/// Why M can't load with only FREE GB of memory free.
+#[cfg(any(test, feature = "embedded-ai"))]
+fn no_memory(m: &Model, free: f64) -> String {
+    let alt = if manage_where(m).starts_with("AI drafts") { ", or pick a smaller model" } else { "" };
+    format!("{} needs ~{} GB of free memory and only {free:.1} GB is free. Close some apps{alt}.", m.name, m.ram_gb)
+}
+
+/// Why M's file failed to load with E.
+#[cfg(any(test, feature = "embedded-ai"))]
+fn bad_file(m: &Model, e: &str) -> String {
+    format!("Couldn't load {}: {e}. Delete it and download it again ({}).", m.name, manage_where(m))
+}
+
 /// How much of BUF is whole UTF-8 chars: all of it but an unfinished char at the end.
 #[cfg(any(test, feature = "embedded-ai"))]
 fn whole(buf: &[u8]) -> usize {
@@ -659,10 +678,10 @@ mod llama {
     fn load(backend: &LlamaBackend, m: &Model, path: &Path) -> Result<LlamaModel, String> {
         if let Some(free) = free_gb() {
             if free < f64::from(m.ram_gb) {
-                return Err(format!("{} needs ~{} GB of free memory and only {free:.1} GB is free. Close some apps, or pick a smaller model.", m.name, m.ram_gb));
+                return Err(no_memory(m, free));
             }
         }
-        LlamaModel::load_from_file(backend, path, &LlamaModelParams::default()).map_err(|e| format!("Couldn't load {}: {e}. Delete it and download it again (AI drafts: choose model…).", m.name))
+        LlamaModel::load_from_file(backend, path, &LlamaModelParams::default()).map_err(|e| bad_file(m, &e.to_string()))
     }
 
     /// The model's answer to the chat MSGS, at most MAX_TOKENS long.
@@ -959,6 +978,9 @@ mod tests {
         std::fs::write(EMBED_MODELS[0].path(&tmp), "x").unwrap();
         assert_eq!(embed_check(&tmp, id, true), Ok(()));
         let _ = std::fs::remove_dir_all(&tmp);
+        let (chat, emb) = (&MODELS[0], &EMBED_MODELS[0]);
+        assert!(no_memory(chat, 1.0).contains("pick a smaller model") && bad_file(chat, "x").contains("AI drafts"));
+        assert!(!no_memory(emb, 0.1).contains("smaller") && bad_file(emb, "x").contains("under Semantic index"));
         assert_eq!(normalized(vec![3.0, 4.0]), [0.6, 0.8]);
         assert_eq!(normalized(vec![0.0, 0.0]), [0.0, 0.0]);
         let err = generate(Backend::Embedded, "", dir, MODELS[0].id, "p", true).unwrap_err();
