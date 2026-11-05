@@ -39,10 +39,13 @@ jobs:
           workspaces: src-tauri
       - if: steps.gate.outputs.run == 'true'
         name: System deps
-        timeout-minutes: 6
+        timeout-minutes: 10
         run: |
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf
+          for i in 1 2 3; do
+            [ $i -gt 1 ] && { sudo dpkg --configure -a || true; sleep 5; }
+            sudo timeout 150 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update && sudo timeout 150 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf && break
+            [ $i = 3 ] && exit 1
+          done
       - if: steps.gate.outputs.run == 'true'
         run: npm ci
       - if: steps.gate.outputs.run == 'true'
@@ -89,10 +92,13 @@ jobs:
           workspaces: src-tauri
       - if: steps.gate.outputs.run == 'true'
         name: System deps
-        timeout-minutes: 6
+        timeout-minutes: 10
         run: |
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf webkit2gtk-driver xvfb
+          for i in 1 2 3; do
+            [ $i -gt 1 ] && { sudo dpkg --configure -a || true; sleep 5; }
+            sudo timeout 150 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update && sudo timeout 150 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf webkit2gtk-driver xvfb && break
+            [ $i = 3 ] && exit 1
+          done
       - if: steps.gate.outputs.run == 'true'
         run: cargo install tauri-driver --locked
       - if: steps.gate.outputs.run == 'true'
@@ -192,10 +198,13 @@ jobs:
           key: coverage # instrumented artifacts differ from the test job's
       - if: steps.gate.outputs.run == 'true'
         name: System deps
-        timeout-minutes: 6
+        timeout-minutes: 10
         run: |
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf
+          for i in 1 2 3; do
+            [ $i -gt 1 ] && { sudo dpkg --configure -a || true; sleep 5; }
+            sudo timeout 150 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update && sudo timeout 150 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf && break
+            [ $i = 3 ] && exit 1
+          done
       - if: steps.gate.outputs.run == 'true'
         run: npm ci
       - if: steps.gate.outputs.run == 'true'
