@@ -90,8 +90,13 @@ fn normalized(mut v: Vec<f32>) -> Vec<f32> {
 
 /// Whether this build can run the built-in embedding model ID and its file in DIR is there, else why not.
 pub fn embed_ready(dir: &Path, id: &str) -> Result<(), String> {
+    embed_check(dir, id, RUNS)
+}
+
+/// `embed_ready` with RUNS passed in, so it is testable in every build.
+fn embed_check(dir: &Path, id: &str, runs: bool) -> Result<(), String> {
     let m = EMBED_MODELS.iter().find(|m| m.id == id).ok_or_else(|| format!("Unknown built-in embedding model {id}."))?;
-    if !RUNS {
+    if !runs {
         return Err(format!("This build of Margin can't run {} itself; use Ollama for semantic search.", m.name));
     }
     if !m.path(dir).is_file() {
@@ -946,6 +951,14 @@ mod tests {
         let err = embed_local(dir, EMBED_MODELS[0].id, "x").unwrap_err();
         assert!(err.contains(if RUNS { "isn't downloaded" } else { "can't run" }), "{err}");
         assert!(embed_local(dir, MODELS[0].id, "x").unwrap_err().contains("Unknown"));
+        let id = EMBED_MODELS[0].id;
+        assert!(embed_check(dir, id, false).unwrap_err().contains("can't run"));
+        assert!(embed_check(dir, id, true).unwrap_err().contains("Settings → AI"));
+        let tmp = std::env::temp_dir().join(format!("margin-embed-ready-{}", std::process::id()));
+        std::fs::create_dir_all(EMBED_MODELS[0].path(&tmp).parent().unwrap()).unwrap();
+        std::fs::write(EMBED_MODELS[0].path(&tmp), "x").unwrap();
+        assert_eq!(embed_check(&tmp, id, true), Ok(()));
+        let _ = std::fs::remove_dir_all(&tmp);
         assert_eq!(normalized(vec![3.0, 4.0]), [0.6, 0.8]);
         assert_eq!(normalized(vec![0.0, 0.0]), [0.0, 0.0]);
         let err = generate(Backend::Embedded, "", dir, MODELS[0].id, "p", true).unwrap_err();
