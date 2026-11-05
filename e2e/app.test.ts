@@ -78,6 +78,14 @@ describe("Margin", () => {
     await find(".cm-vim-message", "Unknown option: bogus");
   });
 
+  it(":set noignorecase makes / case-sensitive (#1111)", async () => {
+    const ex = async (s: string) => { await type(s); await browser.keys(Key.Enter); };
+    await ex(":set noic");
+    await ex("/first");
+    await find(".cm-vim-message", "No match found");
+    await ex(":set ic");
+  });
+
   it(":e opens a note by name, :x saves and closes it (#480)", async () => {
     await type(":e tasks");
     await browser.keys(Key.Enter);

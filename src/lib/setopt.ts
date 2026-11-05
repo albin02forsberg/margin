@@ -22,3 +22,6 @@ export function setArg(a: string, get: (name: string) => unknown): { set: [strin
   if (m[4] === undefined) return { msg: `  ${name}=${cur ?? ""}` };
   return { set: [name, m[4]] };
 }
+
+/** Whether a search for PATTERN ignores case: `ignorecase`, unless `smartcase` and it has an uppercase letter. */
+export const foldCase = (pattern: string, ic: boolean, scs: boolean) => ic && !(scs && /[A-Z]/.test(pattern));
