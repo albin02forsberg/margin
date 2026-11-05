@@ -1354,12 +1354,19 @@
     flash(`Moved ${n} — u (or Space n u) undoes.`);
   }
 
-  /** Park (`:someday:` tag) or drop (CANCELLED) a stuck task (#1061) as one undo group. */
-  async function stuckApply(loc: Loc, a: StuckAction) {
+  /** Park (`:someday:` tag), drop (CANCELLED) or split (prompt for a subtask title; added as last child) a stuck task (#1061, #1098) as one undo group; false if cancelled. */
+  async function stuckApply(loc: Loc, a: StuckAction): Promise<boolean> {
     const h = await heading(loc);
+    if (a === "split") {
+      const t = (await ask("Subtask title"))?.trim();
+      if (!t) return false;
+      await recorded(() => edit(loc, "child", t));
+      return true;
+    }
     // A done keyword on a repeating task advances it, so end the series first (no-op without a repeater).
-    if (a === "drop") return recorded(async () => { for (const k of ["SCHEDULED", "DEADLINE"]) await setDate(loc, k, "norepeat"); await edit(loc, "keyword", cancelKeyword(kw().done)!); });
-    if (h) await recorded(() => edit(loc, "tags", [...h.tags, "someday"].join(":")));
+    if (a === "drop") await recorded(async () => { for (const k of ["SCHEDULED", "DEADLINE"]) await setDate(loc, k, "norepeat"); await edit(loc, "keyword", cancelKeyword(kw().done)!); });
+    else if (h) await recorded(() => edit(loc, "tags", [...h.tags, "someday"].join(":")));
+    return true;
   }
 
   /** Evening shutdown (#757): today's open scheduled/due tasks one keypress each (done, tomorrow, next week, a date, leave),
@@ -1381,8 +1388,8 @@
         const loc = { path: it.path, line: it.line }, before = (await textOf(it.path)).split("\n").length;
         try {
           if ((await heading(loc))?.title !== it.title) { flash(`⚠ “${it.title}” changed meanwhile; skipped.`); continue; }
-          await stuckApply(loc, a);
-          if (a === "park") parked++; else dropped++;
+          if (!(await stuckApply(loc, a))) continue;
+          if (a === "park") parked++; else if (a === "drop") dropped++;
         } catch (e) { flash(`⚠ ${e}; skipped.`); continue; }
         const delta = (await textOf(it.path)).split("\n").length - before;
         if (delta) for (const o of tasks.slice(i + 1)) if (o.path === it.path && o.line > it.line) o.line += delta;
@@ -1431,7 +1438,7 @@
         const loc = { path: it.path, line: it.line }, before = (await textOf(it.path)).split("\n").length;
         try {
           if ((await heading(loc))?.title !== it.title) { flash(`⚠ “${it.title}” changed meanwhile; skipped.`); continue; }
-          await stuckApply(loc, a);
+          if (!(await stuckApply(loc, a))) continue;
         } catch (e) { flash(`⚠ ${e}; skipped.`); continue; }
         const delta = (await textOf(it.path)).split("\n").length - before;
         if (delta) for (const o of tasks.slice(i + 1)) if (o.path === it.path && o.line > it.line) o.line += delta;

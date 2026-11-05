@@ -909,7 +909,7 @@ fn org_heading(s: State<App>, text: String, line: usize) -> Option<org::Parts> {
 
 /// Headline edits. OP: cycle (VALUE ±1) | keyword (VALUE or none; leaving WAIT drops `:WAITING_ON:`/`:WAITING_SINCE:`)
 /// | waiting (VALUE: whom it waits on; see org::set_waiting) | priority (letter or none)
-/// | priority-cycle (±1) | tags ("a:b") | title (new text) | shift ("SCHEDULED 1")
+/// | priority-cycle (±1) | tags ("a:b") | title (new text) | child (title of a new last-child TODO) | shift ("SCHEDULED 1")
 /// | effort ("0:30", "2h"; empty clears) | prop (a "KEY VALUE" per line; no VALUE removes KEY) | move ("SCHEDULED tomorrow": absolute date, keeps time and repeater)
 /// | blocker ("ID TITLE": append to `:BLOCKER:`) | unblocker (ID: drop from `:BLOCKER:`) | ordered (toggle `:ORDERED:`).
 #[tauri::command]
@@ -936,6 +936,8 @@ fn org_edit_op(text: &str, line: usize, op: &str, value: Option<String>, kw: &or
         "priority-cycle" => org::cycle_priority(text, line, kw, n()?),
         "title" if v.trim().is_empty() => return Err("A task needs a title.".into()),
         "title" => org::set_title(text, line, kw, &v),
+        "child" if v.trim().is_empty() => return Err("A task needs a title.".into()),
+        "child" => org::add_child(text, line, kw, &v),
         "note" if v.trim().is_empty() => return Err("The note is empty.".into()),
         "note" => org::add_note(text, line, &v, now),
         "effort" => org::set_effort(text, line, opt().map(|e| org::parse_effort(e).ok_or_else(|| format!("Not a duration: {e} (try 0:30, 2h or 45min)"))).transpose()?),
@@ -3858,6 +3860,12 @@ mod tests {
     fn edit(text: &str, op: &str, v: Option<&str>) -> R<String> {
         let now = "2026-01-08T09:00:00".parse::<NaiveDateTime>().unwrap();
         org_edit_op(text, 0, op, v.map(String::from), &kw(), now, false)
+    }
+
+    #[test]
+    fn child_op_adds_last_child_and_rejects_empty() {
+        assert_eq!(edit("* TODO a\n** b\n", "child", Some("x")).unwrap(), "* TODO a\n** b\n** TODO x\n");
+        assert!(edit("* TODO a\n", "child", Some("  ")).is_err());
     }
 
     #[test]
