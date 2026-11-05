@@ -60,6 +60,52 @@ pub const MODELS: &[Model] = &[
     },
 ];
 
+/// The built-in embedding model for the semantic index (#997): never offered as a chat model.
+/// intfloat/multilingual-e5-small (MIT, ~100 languages, 384 dims) in a GGUF with llama.cpp's own
+/// XLM-R (SentencePiece) tokenizer; other conversions on the Hub load with the wrong one or not at all.
+pub const EMBED_MODELS: &[Model] = &[Model {
+    id: "multilingual-e5-small-q8",
+    name: "Multilingual E5 Small (Q8)",
+    url: "https://huggingface.co/TwinSunsLLC/multilingual-e5-small-gguf/resolve/b6cac9615d4ecce28d7f22539b7322d695fc2886/multilingual-e5-small-q8_0.gguf",
+    size: 132_439_008,
+    sha256: "e011debc1208e31bf7b6aebee2d9fc8bd2ca11694a77ed66ac9d0c9d0a877c93",
+    ram_gb: 1,
+    licence: "MIT",
+}];
+
+/// The chat or embedding model ID.
+pub fn model(id: &str) -> Option<&'static Model> {
+    MODELS.iter().chain(EMBED_MODELS).find(|m| m.id == id)
+}
+
+/// V scaled to length 1 (as is when it is all zeros), so stored vectors compare by dot product too.
+#[cfg(any(test, feature = "embedded-ai"))]
+fn normalized(mut v: Vec<f32>) -> Vec<f32> {
+    let n = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if n > 0.0 {
+        v.iter_mut().for_each(|x| *x /= n);
+    }
+    v
+}
+
+/// The vector of TEXT from the built-in embedding model ID (from EMBED_MODELS), its file in DIR.
+pub fn embed_local(dir: &Path, id: &str, text: &str) -> Result<Vec<f32>, String> {
+    let m = EMBED_MODELS.iter().find(|m| m.id == id).ok_or_else(|| format!("Unknown built-in embedding model {id}."))?;
+    #[cfg(not(feature = "embedded-ai"))]
+    {
+        let _ = (dir, text);
+        Err(format!("This build of Margin can't run {} itself; use Ollama for semantic search.", m.name))
+    }
+    #[cfg(feature = "embedded-ai")]
+    {
+        let path = m.path(dir);
+        if !path.is_file() {
+            return Err(format!("{} isn't downloaded: download it in Settings → AI chat.", m.name));
+        }
+        llama::embed(m, &path, text).map(normalized)
+    }
+}
+
 impl Model {
     /// Where the model lives in DIR once downloaded and checked.
     pub fn path(&self, dir: &Path) -> PathBuf {
@@ -473,12 +519,18 @@ fn vm_stat_gb(out: &str) -> Option<f64> {
     Some((pages("Pages free:")? + pages("Pages inactive:")? + pages("Pages speculative:").unwrap_or(0.0)) * page / 1024.0 / 1024.0 / 1024.0)
 }
 
+/// Free the loaded built-in models before the app exits: on macOS, Metal aborts the exit while one is loaded.
+pub fn unload() {
+    #[cfg(feature = "embedded-ai")]
+    llama::unload();
+}
+
 /// Built-in models run by llama.cpp on the CPU (GPU through Metal on Apple Silicon). The model
 /// loads on the first draft and stays loaded until IDLE passes without one.
 #[cfg(feature = "embedded-ai")]
 mod llama {
     use super::{Model, Msg};
-    use llama_cpp_2::context::params::LlamaContextParams;
+    use llama_cpp_2::context::params::{LlamaContextParams, LlamaPoolingType};
     use llama_cpp_2::llama_backend::LlamaBackend;
     use llama_cpp_2::llama_batch::LlamaBatch;
     use llama_cpp_2::model::params::LlamaModelParams;
@@ -496,6 +548,62 @@ mod llama {
     static BACKEND: OnceLock<Result<LlamaBackend, String>> = OnceLock::new();
     /// The loaded model (by id) and when it was last used. Drafts take turns on this lock.
     static LOADED: Mutex<Option<(&str, Instant, LlamaModel)>> = Mutex::new(None);
+    /// The embedding model, in its own slot so reindexing never evicts the chat model (#997).
+    static EMBED_LOADED: Mutex<Option<(&str, Instant, LlamaModel)>> = Mutex::new(None);
+
+    fn backend() -> Result<&'static LlamaBackend, String> {
+        // Release builds compile llama.cpp for AVX2 (release.yml); without it, it would crash.
+        #[cfg(target_arch = "x86_64")]
+        if !std::is_x86_feature_detected!("avx2") {
+            return Err("Built-in models need a processor with AVX2 (most from 2013 on). Use Ollama instead.".into());
+        }
+        BACKEND.get_or_init(|| LlamaBackend::init().map(|mut b| { b.void_logs(); b }).map_err(|e| e.to_string())).as_ref().map_err(Clone::clone)
+    }
+
+    /// Drop the loaded models unless one is busy (see ai::unload).
+    pub fn unload() {
+        for slot in [&LOADED, &EMBED_LOADED] {
+            if let Ok(mut s) = slot.try_lock() {
+                *s = None;
+            }
+        }
+    }
+
+    /// Drop SLOT's model once IDLE passes without use; checks again while it's in use.
+    fn unload_when_idle(slot: &'static Mutex<Option<(&'static str, Instant, LlamaModel)>>) {
+        std::thread::spawn(move || loop {
+            std::thread::sleep(IDLE);
+            let mut s = slot.lock().unwrap_or_else(|e| e.into_inner());
+            match s.as_ref() {
+                Some((_, used, _)) if used.elapsed() < IDLE => {}
+                _ => return *s = None,
+            }
+        });
+    }
+
+    /// M's pooled (mean) embedding of TEXT, cut to the model's training context; not normalised.
+    pub fn embed(m: &'static Model, path: &Path, text: &str) -> Result<Vec<f32>, String> {
+        let backend = backend()?;
+        let mut slot = EMBED_LOADED.lock().unwrap_or_else(|e| e.into_inner());
+        if slot.as_ref().is_none_or(|(id, ..)| *id != m.id) {
+            *slot = None;
+            *slot = Some((m.id, Instant::now(), load(backend, m, path)?));
+            unload_when_idle(&EMBED_LOADED);
+        }
+        let (_, used, model) = slot.as_mut().expect("loaded above");
+        *used = Instant::now();
+        let e = |e: &dyn std::fmt::Display| format!("The built-in embedding model failed: {e}");
+        let n = model.n_ctx_train().clamp(64, 8192);
+        let mut tokens = model.vocab().tokenize(text.as_bytes(), true, false);
+        tokens.truncate(n as usize);
+        let threads = std::thread::available_parallelism().map_or(4, |n| n.get().min(8)) as i32;
+        let params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(n)).with_n_batch(n).with_n_ubatch(n).with_n_threads(threads).with_n_threads_batch(threads).with_embeddings(true).with_pooling_type(LlamaPoolingType::Mean);
+        let mut ctx = model.new_context(backend, params).map_err(|x| e(&x))?;
+        let mut batch = LlamaBatch::new(n as usize, 1);
+        batch.add_sequence(&tokens, 0, false).map_err(|x| e(&x))?;
+        ctx.decode(&mut batch).map_err(|x| e(&x))?;
+        Ok(ctx.embeddings_seq_ith(0).map_err(|x| e(&x))?.to_vec())
+    }
 
     /// GB of memory the OS can hand out, or None when it can't tell (then the check is skipped).
     #[allow(unreachable_code)]
@@ -525,12 +633,7 @@ mod llama {
 
     /// The model's answer to the chat MSGS, at most MAX_TOKENS long.
     pub fn generate(m: &'static Model, path: &Path, msgs: &[Msg], max_tokens: i32, on_piece: &mut dyn FnMut(&str)) -> Result<String, String> {
-        // Release builds compile llama.cpp for AVX2 (release.yml); without it, it would crash.
-        #[cfg(target_arch = "x86_64")]
-        if !std::is_x86_feature_detected!("avx2") {
-            return Err("Built-in models need a processor with AVX2 (most from 2013 on). Use Ollama instead.".into());
-        }
-        let backend = BACKEND.get_or_init(|| LlamaBackend::init().map(|mut b| { b.void_logs(); b }).map_err(|e| e.to_string())).as_ref()?;
+        let backend = backend()?;
         let ticket = super::ticket();
         let mut slot = LOADED.lock().unwrap_or_else(|e| e.into_inner());
         super::RUNNING.store(ticket, Ordering::SeqCst);
@@ -800,11 +903,19 @@ mod tests {
     #[test]
     fn models_and_dispatch() {
         assert_eq!(serde_json::to_string(&Backend::default()).unwrap(), "\"ollama\"");
-        for m in MODELS {
-            assert!(m.url.starts_with("https://") && m.url.ends_with(".gguf") && m.sha256.len() == 64 && m.size > 0, "{}", m.id);
+        for m in MODELS.iter().chain(EMBED_MODELS) {
+            assert!(m.url.starts_with("https://") && m.url.ends_with(".gguf") && m.sha256.len() == 64 && m.sha256.bytes().all(|b| b.is_ascii_hexdigit()) && m.size > 0, "{}", m.id);
+            assert!(!m.url.contains("/resolve/main/"), "{} is pinned to a commit", m.id);
+            assert_eq!(model(m.id).unwrap().url, m.url);
         }
         assert!(MODELS[0].id.starts_with("qwen2.5-3b"), "default model");
+        assert!(model("nope").is_none() && !MODELS.iter().any(|m| m.id == EMBED_MODELS[0].id), "the embedder is never a chat model");
         let dir = Path::new("/nonexistent");
+        let err = embed_local(dir, EMBED_MODELS[0].id, "x").unwrap_err();
+        assert!(err.contains(if RUNS { "isn't downloaded" } else { "can't run" }), "{err}");
+        assert!(embed_local(dir, MODELS[0].id, "x").unwrap_err().contains("Unknown"));
+        assert_eq!(normalized(vec![3.0, 4.0]), [0.6, 0.8]);
+        assert_eq!(normalized(vec![0.0, 0.0]), [0.0, 0.0]);
         let err = generate(Backend::Embedded, "", dir, MODELS[0].id, "p", true).unwrap_err();
         assert!(err.contains(if RUNS { "isn't downloaded" } else { "can't run" }), "{err}");
         // Embedded never talks to ai_url (which would be refused as not local).
@@ -841,6 +952,24 @@ mod tests {
             println!("{d}");
             assert!(!d.trim().is_empty() && (!one_line || !d.contains('\n')), "{d:?}");
         }
+    }
+
+    /// Real embeddings: `MARGIN_MODELS=<dir holding the e5 model> cargo test --features embedded-ai -- --ignored`.
+    #[cfg(feature = "embedded-ai")]
+    #[test]
+    #[ignore]
+    fn embedded_embeddings() {
+        let dir = PathBuf::from(std::env::var("MARGIN_MODELS").expect("MARGIN_MODELS"));
+        let m = EMBED_MODELS[0].id;
+        let e = |q: bool, t: &str| embed_local(&dir, m, &crate::embed::prefixed(m, q, t)).unwrap();
+        let q = e(true, "När släpps appen?");
+        let (near, far) = (e(false, "Launch plan\nThe app ships on May 3."), e(false, "Recipe\nMix flour, eggs and milk."));
+        let dot = |a: &[f32], b: &[f32]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f32>();
+        assert_eq!(q.len(), 384);
+        assert!((dot(&q, &q) - 1.0).abs() < 1e-4);
+        assert!(dot(&q, &near) > dot(&q, &far), "{} vs {}", dot(&q, &near), dot(&q, &far));
+        assert_eq!(e(false, &"word ".repeat(2000)).len(), 384, "long text is cut to the context");
+        unload(); // else Metal aborts the test binary's exit
     }
 
     /// Answers one connection per reply in turn; returns the base URL and the request heads.

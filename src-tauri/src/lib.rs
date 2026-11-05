@@ -2601,19 +2601,29 @@ fn ai_excluded(s: State<App>, path: PathBuf) -> bool {
     retrieve::excluded(&path, &c.notes(), &c.ai_exclude)
 }
 
-/// C's embedding model, or why semantic search can't run.
+/// C's embedding model (the index is keyed by it), or why semantic search can't run: Ollama's
+/// `ai_embed_model`, or the built-in one with the built-in backend (#997).
 fn semantic_model(c: &Config) -> R<&str> {
     let model = c.ai_embed_model.trim();
     if !c.ai_semantic {
         return Err("Semantic search is off: turn it on in Settings → AI.".into());
     }
-    if c.ai_backend != ai::Backend::Ollama {
-        return Err("Semantic search needs the Ollama backend (Space f a).".into());
+    if c.ai_backend == ai::Backend::Embedded {
+        return Ok(ai::EMBED_MODELS[0].id);
     }
     if model.is_empty() {
         return Err("Set the embedding model in Settings → AI, e.g. nomic-embed-text.".into());
     }
     Ok(model)
+}
+
+/// The vector of TEXT (a question when QUERY, else a note section) from MODEL (from semantic_model).
+fn embed_text(app: &AppHandle, c: &Config, model: &str, query: bool, text: &str) -> R<Vec<f32>> {
+    let text = embed::prefixed(model, query, text);
+    match c.ai_backend {
+        ai::Backend::Ollama => ai::embed(&c.ai_url, model, &text),
+        ai::Backend::Embedded => ai::embed_local(&models_dir(app)?, model, &text),
+    }
 }
 
 /// The index's K best sections for TEXT (path, line, similarity), or why not: off, index empty or
@@ -2627,7 +2637,7 @@ fn semantic_query(app: &AppHandle, c: &Config, text: &str, k: usize) -> R<Vec<(P
     if s.semantic_now().is_none_or(|mut g| index_in(&mut g, &path, model).ix.files.is_empty()) {
         return Err(BUSY.into());
     }
-    let q = ai::embed(&c.ai_url, model, &embed::prefixed(model, true, text))?;
+    let q = embed_text(app, c, model, true, text)?;
     let Some(mut g) = s.semantic_now() else { return Err(BUSY.into()) };
     Ok(index_in(&mut g, &path, model).ix.top_k(&q, k).into_iter().map(|(p, l, c)| (p.to_path_buf(), l, c)).collect())
 }
@@ -2732,7 +2742,7 @@ fn models_dir(app: &AppHandle) -> R<PathBuf> {
 }
 
 fn model_file(app: &AppHandle, id: &str) -> R<(&'static ai::Model, PathBuf)> {
-    let m = ai::MODELS.iter().find(|m| m.id == id).ok_or_else(|| format!("unknown built-in model {id}"))?;
+    let m = ai::model(id).ok_or_else(|| format!("unknown built-in model {id}"))?;
     Ok((m, m.path(&models_dir(app)?)))
 }
 
@@ -2748,15 +2758,23 @@ struct LocalModel {
     runs: bool,
 }
 
-/// The models Margin can download and run itself, and how much of each is here.
+fn local_model(app: &AppHandle, m: &'static ai::Model) -> R<LocalModel> {
+    let (_, path) = model_file(app, m.id)?;
+    let ready = path.is_file();
+    let have = if ready { m.size } else { std::fs::metadata(ai::part(&path)).map(|x| x.len()).unwrap_or(0) };
+    Ok(LocalModel { model: m, path, have, ready, runs: ai::RUNS })
+}
+
+/// The chat models Margin can download and run itself, and how much of each is here.
 #[tauri::command]
 fn ai_models(app: AppHandle) -> R<Vec<LocalModel>> {
-    ai::MODELS.iter().map(|m| {
-        let (_, path) = model_file(&app, m.id)?;
-        let ready = path.is_file();
-        let have = if ready { m.size } else { std::fs::metadata(ai::part(&path)).map(|x| x.len()).unwrap_or(0) };
-        Ok(LocalModel { model: m, path, have, ready, runs: ai::RUNS })
-    }).collect()
+    ai::MODELS.iter().map(|m| local_model(&app, m)).collect()
+}
+
+/// The built-in embedding model for the semantic index, as in ai_models (#997).
+#[tauri::command]
+fn ai_embed_local(app: AppHandle) -> R<LocalModel> {
+    local_model(&app, &ai::EMBED_MODELS[0])
 }
 
 static DOWNLOADING: AtomicBool = AtomicBool::new(false);
@@ -2778,6 +2796,9 @@ async fn ai_download(app: AppHandle, id: String) -> R<()> {
         }
     }).await;
     DOWNLOADING.store(false, Ordering::SeqCst);
+    if r.is_ok() && ai::EMBED_MODELS.iter().any(|e| e.id == m.id) {
+        reindex(&app);
+    }
     r
 }
 
@@ -2871,27 +2892,21 @@ fn reindex(app: &AppHandle) {
     });
 }
 
-/// One run of reindex: the notes minus `ai_exclude`, embedded by `ai_embed_model` through Ollama.
+/// One run of reindex: the notes minus `ai_exclude`, embedded by semantic_model.
 fn index_run(app: &AppHandle) -> R<usize> {
     let s = app.state::<App>();
     let c = s.cfg();
     if !c.ai_semantic {
         return Ok(0);
     }
-    if c.ai_backend != ai::Backend::Ollama {
-        return Err("Semantic search needs the Ollama backend (Space f a); keyword search is used meanwhile.".into());
-    }
-    let model = c.ai_embed_model.trim();
-    if model.is_empty() {
-        return Err("Set the embedding model, e.g. nomic-embed-text.".into());
-    }
+    let model = semantic_model(&c)?;
     let root = c.notes();
     let files: Vec<_> = s.files().into_iter().filter(|f| !retrieve::excluded(&f.path, &root, &c.ai_exclude)).collect();
     let path = index_file(app, &c)?;
     // Held for the whole run: `update` embeds as it goes; questions meanwhile use keywords.
     let mut g = s.semantic();
     let ix = index_in(&mut g, &path, model);
-    let r = ix.update(&files, &|t| ai::embed(&c.ai_url, model, &embed::prefixed(model, false, t)), INDEX_CAP);
+    let r = ix.update(&files, &|t| embed_text(app, &c, model, false, t), INDEX_CAP);
     remember_counts(ix.ix.files.len(), ix.ix.files.iter().map(|f| f.chunks.len()).sum());
     INDEX_PENDING.store(ix.ix.pending, Ordering::SeqCst);
     ix.save_if(INDEX_SAVE)?;
@@ -2906,7 +2921,7 @@ fn ai_index_status(app: AppHandle, s: State<App>) -> R<Value> {
     let path = index_file(&app, &c)?;
     // A run holds the lock for whole batches: don't wait for it, show the last counts as running.
     let live = s.semantic_now().map(|mut g| {
-        let ix = &index_in(&mut g, &path, c.ai_embed_model.trim()).ix;
+        let ix = &index_in(&mut g, &path, semantic_model(&c).unwrap_or("")).ix;
         let n = (ix.files.len(), ix.files.iter().map(|f| f.chunks.len()).sum());
         remember_counts(n.0, n.1);
         n
@@ -3528,7 +3543,7 @@ pub fn run() {
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, people_last, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
-            tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_set, ai_download, ai_download_cancel, ai_model_delete, ai_index_status, ai_index_rebuild, semantic_search, ai_related, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
+            tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_embed_local, ai_set, ai_download, ai_download_cancel, ai_model_delete, ai_index_status, ai_index_rebuild, semantic_search, ai_related, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, publish_site, export_report, export_open, quit::quit_reply, weblink::fetch_title, fetch_feeds, feeds_opml, mark_feeds_seen, feeds_last, babel::babel_run
         ])
         .build(tauri::generate_context!())
@@ -3544,6 +3559,7 @@ pub fn run() {
                     watcher::flush(&app.state::<App>().cfg().data().join("activity"));
                     app.state::<App>().backup()
                 }
+                RunEvent::Exit => ai::unload(),
                 #[cfg(target_os = "macos")]
                 RunEvent::Reopen { .. } => tray::show(app), // dock icon click after hiding to tray
                 _ => {}
@@ -3575,7 +3591,7 @@ mod tests {
         c.ai_embed_model = " ".into();
         assert!(semantic_model(&c).unwrap_err().contains("embedding model"));
         c.ai_backend = ai::Backend::Embedded;
-        assert!(semantic_model(&c).unwrap_err().contains("Ollama"));
+        assert_eq!(semantic_model(&c), Ok(ai::EMBED_MODELS[0].id));
     }
 
     #[test]
