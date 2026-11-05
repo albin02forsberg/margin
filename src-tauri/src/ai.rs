@@ -521,8 +521,29 @@ fn vm_stat_gb(out: &str) -> Option<f64> {
 
 /// Free the loaded built-in models before the app exits: on macOS, Metal aborts the exit while one is loaded.
 pub fn unload() {
+    QUITTING.store(true, Ordering::SeqCst);
+    cancel_draft(); // a running draft stops at its next token and frees the lock
     #[cfg(feature = "embedded-ai")]
     llama::unload();
+}
+
+/// Set once the app is exiting: the built-in models refuse to (re)load, so nothing revives one after `unload`.
+static QUITTING: AtomicBool = AtomicBool::new(false);
+
+/// Empty every slot, waiting up to WAIT in total for busy ones (a section being embedded) to free up.
+#[cfg(any(test, feature = "embedded-ai"))]
+fn drain<T>(slots: &[&std::sync::Mutex<Option<T>>], wait: std::time::Duration) {
+    let end = std::time::Instant::now() + wait;
+    for slot in slots {
+        loop {
+            match slot.try_lock() {
+                Ok(mut s) => break *s = None,
+                Err(std::sync::TryLockError::Poisoned(e)) => break *e.into_inner() = None,
+                Err(_) if std::time::Instant::now() < end => std::thread::sleep(std::time::Duration::from_millis(10)),
+                Err(_) => break, // still busy: skip rather than hang quit
+            }
+        }
+    }
 }
 
 /// Built-in models run by llama.cpp on the CPU (GPU through Metal on Apple Silicon). The model
@@ -562,11 +583,7 @@ mod llama {
 
     /// Drop the loaded models unless one is busy (see ai::unload).
     pub fn unload() {
-        for slot in [&LOADED, &EMBED_LOADED] {
-            if let Ok(mut s) = slot.try_lock() {
-                *s = None;
-            }
-        }
+        super::drain(&[&LOADED, &EMBED_LOADED], Duration::from_secs(2));
     }
 
     /// Drop SLOT's model once IDLE passes without use; checks again while it's in use.
@@ -585,6 +602,9 @@ mod llama {
     pub fn embed(m: &'static Model, path: &Path, text: &str) -> Result<Vec<f32>, String> {
         let backend = backend()?;
         let mut slot = EMBED_LOADED.lock().unwrap_or_else(|e| e.into_inner());
+        if super::QUITTING.load(Ordering::SeqCst) {
+            return Err("quitting".into());
+        }
         if slot.as_ref().is_none_or(|(id, ..)| *id != m.id) {
             *slot = None;
             *slot = Some((m.id, Instant::now(), load(backend, m, path)?));
@@ -637,6 +657,9 @@ mod llama {
         let ticket = super::ticket();
         let mut slot = LOADED.lock().unwrap_or_else(|e| e.into_inner());
         super::RUNNING.store(ticket, Ordering::SeqCst);
+        if super::QUITTING.load(Ordering::SeqCst) {
+            return Err("quitting".into());
+        }
         if slot.as_ref().is_none_or(|(id, ..)| *id != m.id) {
             *slot = None; // free the old model before loading another
             *slot = Some((m.id, Instant::now(), load(backend, m, path)?));
@@ -952,6 +975,24 @@ mod tests {
             println!("{d}");
             assert!(!d.trim().is_empty() && (!one_line || !d.contains('\n')), "{d:?}");
         }
+    }
+
+    #[test]
+    fn drain_waits_for_busy_slot_but_not_forever() {
+        use std::sync::{Arc, Mutex};
+        use std::time::Duration;
+        let slot = Arc::new(Mutex::new(Some(1)));
+        let g = slot.lock().unwrap();
+        let s2 = slot.clone();
+        let t = std::thread::spawn(move || drain(&[&*s2], Duration::from_millis(50)));
+        t.join().unwrap(); // times out while held, without hanging
+        assert!(g.is_some());
+        let s3 = slot.clone();
+        let t = std::thread::spawn(move || drain(&[&*s3], Duration::from_secs(5)));
+        std::thread::sleep(Duration::from_millis(50));
+        drop(g); // freed mid-wait: drained
+        t.join().unwrap();
+        assert!(slot.lock().unwrap().is_none());
     }
 
     /// Real embeddings: `MARGIN_MODELS=<dir holding the e5 model> cargo test --features embedded-ai -- --ignored`.
