@@ -101,6 +101,8 @@
   const initialSpan = +stored("agenda-span", "1");
   let span = $state(initialSpan);
   let start = $state(initialSpan === 7 ? firstOfWeek(new Date()) : new Date());
+  // A changed week_start re-aligns the week view (keeping the browsed week), so the midnight roll check in setNow() still matches (#1101).
+  $effect(() => { void weekStart; untrack(() => { const a = firstOfWeek(start); if (span === 7 && iso(a) !== iso(start)) start = a; }); });
   let items = $state.raw<AgendaItem[]>([]);
   let filter = $state("");
   let sel = $state(0);
