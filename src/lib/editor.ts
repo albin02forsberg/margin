@@ -10,11 +10,11 @@ import { acceptCompletion, autocompletion, closeCompletion, completionStatus, mo
 import { codeFolding, foldService, foldAll, unfoldAll, toggleFold, foldedRanges, foldEffect, LanguageDescription, type Language } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { highlightTree, classHighlighter } from "@lezer/highlight";
-import { vim, Vim, getCM } from "@replit/codemirror-vim";
+import { vim, Vim, getCM, CodeMirror as CM5 } from "@replit/codemirror-vim";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import * as tbl from "./orgtable";
 import { renumber, itemSwap } from "./list";
-import { setArg, type NumOpts } from "./setopt";
+import { setArg, foldCase, type NumOpts } from "./setopt";
 import { changeList, changeStep } from "./changelist";
 import { EMPH, toggleEmphasis } from "./emphasis";
 import { FN, addFootnote, footnoteTarget } from "./footnote";
@@ -100,13 +100,25 @@ Vim.defineEx("help", "h", () => hooks.help());
 
 // `:set number` / `relativenumber` / `wrap`: session-wide vim options, a compartment per view.
 // Global only: the callback ignores per-editor (cm) calls, so codemirror-vim keeps no stale local copies.
-const vimOpts = { number: false, relativenumber: false, wrap: true };
-for (const [name, alias] of [["number", "nu"], ["relativenumber", "rnu"], ["wrap", "wrap"]] as const)
+const vimOpts = { number: false, relativenumber: false, wrap: true, ignorecase: true, smartcase: true };
+for (const [name, alias] of [["number", "nu"], ["relativenumber", "rnu"], ["wrap", "wrap"], ["ignorecase", "ic"], ["smartcase", "scs"]] as const)
   Vim.defineOption(name, undefined, "boolean", [alias], (v?: boolean, cm?: unknown) => {
     if (cm) return undefined;
     if (v === undefined) return vimOpts[name];
     vimOpts[name] = v;
   });
+// ignorecase/smartcase: the library hard-codes case folding, so re-derive the `i` flag from the options for every search and its highlight.
+const recase = (q: any) => {
+  if (!(q instanceof RegExp)) return q;
+  const flags = q.flags.replace("i", "") + (foldCase(q.source, vimOpts.ignorecase, vimOpts.smartcase) ? "i" : "");
+  return new RegExp(q.source, flags);
+};
+for (const m of ["getSearchCursor", "addOverlay"] as const) {
+  const orig = (CM5.prototype as any)[m];
+  (CM5.prototype as any)[m] = function (this: unknown, q: any, ...rest: unknown[]) {
+    return m === "addOverlay" ? orig.call(this, { ...q, query: recase(q.query) }, ...rest) : orig.call(this, recase(q), ...rest);
+  };
+}
 const numConf = new Compartment();
 const wrapConf = new Compartment();
 const wrapExt = () => (vimOpts.wrap ? EditorView.lineWrapping : []);

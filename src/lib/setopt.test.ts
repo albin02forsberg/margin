@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { setArg } from "./setopt.ts";
+import { setArg, foldCase } from "./setopt.ts";
 
 const opts: Record<string, unknown> = { number: false, nu: false, wrap: true, textwidth: 80, tw: 80 };
 const get = (n: string) => (n in opts ? opts[n] : new Error(`Unknown option: ${n}`));
@@ -22,4 +22,16 @@ test("setArg: values and unknown options", () => {
   assert.deepEqual(setArg("ignorecase", get), { msg: "Unknown option: ignorecase" });
   assert.deepEqual(setArg("nobogus", get), { msg: "Unknown option: nobogus" });
   assert.deepEqual(setArg("a b", get), { msg: "Invalid argument: a b" });
+});
+
+test("foldCase: ignorecase and smartcase", () => {
+  assert.equal(foldCase("foo", true, true), true);
+  assert.equal(foldCase("Foo", true, true), false);
+  assert.equal(foldCase("Foo", true, false), true);
+  assert.equal(foldCase("foo", false, true), false);
+});
+test("the vim library still exposes the search methods editor.ts wraps", async () => {
+  const { CodeMirror } = await import("@replit/codemirror-vim");
+  assert.equal(typeof CodeMirror.prototype.getSearchCursor, "function");
+  assert.equal(typeof CodeMirror.prototype.addOverlay, "function");
 });
