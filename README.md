@@ -430,7 +430,7 @@ at a time, one key each: `x` done, `t` tomorrow, `w` next week (Monday), `s` pic
 space leave it, `Esc` stops (what you already did stays). Moves keep time and repeater; each step is
 its own undo (`Space n u`). At the end it shows `Done 2, moved 1 · 6h 30m clocked of 8h 00m` and
 can add that line to today's journal. Tasks rescheduled 3+ times (the `pushed Nx` chip) also get `p` park
-(adds `:someday:`) and `d` drop (marks `CANCELLED`/`CANCELED`, when that done keyword exists), here and in plan the day.
+(adds `:someday:`), `b` break down (asks for a subtask title and adds it as the last `TODO` child, then the walk continues) and `d` drop (marks `CANCELLED`/`CANCELED`, when that done keyword exists), here and in plan the day.
 
 `Space t g` (**Today: plan the day**) is its morning twin: it walks overdue tasks, then tasks
 scheduled or due in the next 3 days, then open `[#A]`/`[#B]` tasks with no date (blocked tasks,

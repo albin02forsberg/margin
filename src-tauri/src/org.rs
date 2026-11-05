@@ -1487,6 +1487,16 @@ pub fn add_note(text: &str, line: usize, note: &str, now: NaiveDateTime) -> Stri
     join(lines, text)
 }
 
+/// Append `** TODO TITLE` (one level below the headline at LINE) as its last child, after the whole subtree.
+pub fn add_child(text: &str, line: usize, kw: &Kw, title: &str) -> String {
+    let mut lines = to_lines(text);
+    let Some(hl) = headline_at(&lines, line) else { return text.to_string() };
+    let (_, end) = subtree_range(&lines, hl);
+    let lvl = heading_level(&lines[hl]).unwrap_or(1);
+    lines.insert(end, format!("{} {} {}", "*".repeat(lvl + 1), kw.todo.first().map_or("TODO", |s| s.as_str()), title.trim()));
+    join(lines, text)
+}
+
 /// Move the KIND (SCHEDULED/DEADLINE) date of the headline at LINE by DAYS.
 pub fn shift_date(text: &str, line: usize, kind: &str, days: i64) -> String {
     let mut lines = to_lines(text);
@@ -3069,6 +3079,16 @@ mod tests {
         for s in [set_planning(t, 0, "SCHEDULED", None), set_planning(t, 0, "SCHEDULED", Some((d("2026-10-01"), Some("10:00".into()), None, None))), shift_date(t, 0, "DEADLINE", 1)] {
             assert_eq!(lg(t, &s), s);
         }
+    }
+
+    #[test]
+    fn add_child_is_last_child() {
+        let k = kw();
+        assert_eq!(add_child("* A\nbody\n* B\n", 0, &k, " x "), "* A\nbody\n** TODO x\n* B\n");
+        assert_eq!(add_child("* A\n** TODO c1\nnote\n*** g\n* B\n", 0, &k, "n"), "* A\n** TODO c1\nnote\n*** g\n** TODO n\n* B\n");
+        assert_eq!(add_child("** A\nSCHEDULED: <2026-10-02 Fri>\n:PROPERTIES:\n:ID: 1\n:END:\n", 0, &k, "n"), "** A\nSCHEDULED: <2026-10-02 Fri>\n:PROPERTIES:\n:ID: 1\n:END:\n*** TODO n\n");
+        assert_eq!(add_child("* A", 0, &k, "n"), "* A\n** TODO n");
+        assert_eq!(add_child("no heading\n", 0, &k, "n"), "no heading\n");
     }
 
     #[test]
