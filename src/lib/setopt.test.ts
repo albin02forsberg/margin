@@ -29,6 +29,9 @@ test("foldCase: ignorecase and smartcase", () => {
   assert.equal(foldCase("Foo", true, true), false);
   assert.equal(foldCase("Foo", true, false), true);
   assert.equal(foldCase("foo", false, true), false);
+  assert.equal(foldCase("foo\\S", true, true), true);
+  assert.equal(foldCase("foo\\\\S", true, true), false);
+  assert.equal(foldCase("foo", false, false), false);
 });
 test("the vim library still exposes the search methods editor.ts wraps", async () => {
   const { CodeMirror } = await import("@replit/codemirror-vim");
