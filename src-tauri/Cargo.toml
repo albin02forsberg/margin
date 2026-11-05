@@ -34,6 +34,9 @@ tauri-plugin-process = "2"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 sha2 = "0.10"
+# Encrypted headings (#1084): pure Rust, no gpg/age binary needed on any OS.
+chacha20poly1305 = { version = "0.10", features = ["getrandom"] }
+argon2 = "0.5"
 # Runs built-in models inside Margin (#132); needs cmake and a C++ compiler, so it is opt-in.
 llama-cpp-2 = { version = "0.1.158", default-features = false, optional = true }
 

@@ -4,6 +4,8 @@ mod attach;
 mod babel;
 mod backup;
 mod config;
+#[allow(dead_code)] // wired up by the editor lock/unlock (#1086)
+mod crypt;
 mod embed;
 mod export;
 mod feeds;
