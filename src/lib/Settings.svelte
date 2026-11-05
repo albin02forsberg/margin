@@ -135,9 +135,38 @@
       errors.index = String(e);
     }
   }
+  /** The built-in embedding model (#997), and its download in progress (bytes so far). */
+  type EmbedModel = { id: string; name: string; size: number; licence: string; path: string; have: number; ready: boolean; runs: boolean };
+  let embedder = $state<EmbedModel | null>(null);
+  let fetching = $state<number | null>(null);
+  const mb = (n: number) => `${Math.round(n / 1e6)} MB`;
+  async function loadEmbedder() {
+    embedder = await invoke<EmbedModel>("ai_embed_local").catch(() => null);
+  }
+  async function downloadEmbedder() {
+    if (!embedder) return;
+    const { id } = embedder;
+    fetching = embedder.have;
+    const un = await listen<{ id: string; have: number }>("ai-download", (e) => { if (e.payload.id === id) fetching = e.payload.have; });
+    try {
+      await invoke("ai_download", { id });
+      errors.embedder = "";
+    } catch (e) {
+      errors.embedder = String(e);
+    } finally {
+      un();
+      fetching = null;
+      await loadEmbedder();
+    }
+  }
+  async function deleteEmbedder() {
+    if (embedder) await invoke("ai_model_delete", { id: embedder.id }).then(() => (errors.embedder = ""), (e) => (errors.embedder = String(e)));
+    await loadEmbedder();
+  }
   $effect(() => {
     void reload;
     if (active && config.ai_semantic) untrack(() => loadIndex());
+    if (active && config.ai_semantic && config.ai_backend === "embedded") untrack(() => loadEmbedder());
   });
   $effect(() => {
     const offs = ["ai-index", "ai-index-progress"].map((e) => listen(e, () => loadIndex()));
@@ -233,6 +262,21 @@
               <button type="button" class="link reset" title="Default: {String(toForm(f, defaults[f.key])).replaceAll("\n", ", ") || "empty"}" onclick={() => reset(g.name, f)}>Reset to default</button>
             {/if}
           </svelte:element>
+          {#if f.key === "ai_semantic" && base.ai_semantic && config.ai_backend === "embedded" && embedder}
+            <p class="dim embedder">
+              Embedding model: {embedder.name} ({embedder.licence}),
+              {#if embedder.ready}downloaded.
+                <button type="button" class="link" onclick={deleteEmbedder}>Delete</button>
+              {:else if fetching !== null}downloading, {Math.floor((fetching / embedder.size) * 100)}%.
+                <button type="button" class="link" onclick={() => invoke("ai_download_cancel")}>Cancel</button>
+              {:else}{mb(embedder.size - embedder.have)} to download{embedder.have ? ` (${Math.floor((embedder.have / embedder.size) * 100)}% is here)` : ""}, kept in Margin's local data folder.
+                <button type="button" class="link" onclick={downloadEmbedder}>Download</button>
+                {#if embedder.have}<button type="button" class="link" onclick={deleteEmbedder}>Delete</button>{/if}
+              {/if}
+              {#if !embedder.runs}This build can't run it; use Ollama.{/if}
+            </p>
+            {#if errors.embedder}<p class="error">⚠ {errors.embedder}</p>{/if}
+          {/if}
           {#if f.key === "ai_semantic" && base.ai_semantic}
             <p class="dim">
               {#if index}Index: {index.sections} sections of {index.notes} notes, {(index.bytes / 1048576).toFixed(1)} MB{index.running ? (index.pending > 0 ? ` (updating, ${index.pending} to go)` : " (updating…)") : ""}.{/if}

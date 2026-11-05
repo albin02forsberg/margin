@@ -1058,16 +1058,20 @@ click one to open it at that line, and *No note matched* means nothing was sent.
 Matching is by keyword, not meaning, so use the words your notes use. As with
 everything else here, the model runs on this machine (`ai_url` must be localhost).
 
-**Semantic index of my notes** (`ai_semantic`, off by default; Ollama only) prepares
+**Semantic index of my notes** (`ai_semantic`, off by default) prepares
 matching by meaning: Margin keeps a vector of every note section, made by Ollama's
 embedding model **Embedding model** (`ai_embed_model`, default `nomic-embed-text`;
-run `ollama pull nomic-embed-text` first), up to date in the background as notes
+run `ollama pull nomic-embed-text` first) or, when drafts use a built-in model,
+by a small built-in one (Multilingual E5 Small, 132 MB, MIT licence, about 100
+languages): Settings shows a **Download** link under the switch, and nothing is
+downloaded until you click it (a pinned file, checked by its SHA-256; a paused
+download resumes). The vectors are kept up to date in the background as notes
 change, a batch of sections at a time (Settings shows how many are still to go). Only changed sections are sent again, notes
 in **Notes the AI never sees** are left out, and the index is kept in Margin's
 local data folder (never in the notes or the time-tracking folder) and in memory
 while Margin runs, written to disk at most every 30 seconds while it builds. Under the
 switch, Settings shows its size and why it can't be built (Ollama not running,
-the model not pulled, or the built-in backend picked), and **Rebuild** starts it
+the model not pulled or not downloaded yet), and **Rebuild** starts it
 over; changing the model rebuilds it too. With the index ready, **Use my notes**
 also embeds your question and adds the sections closest in meaning, so a note
 without your words can still be found; if Ollama or the index is unavailable the

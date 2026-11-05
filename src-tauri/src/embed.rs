@@ -17,14 +17,17 @@ const MAGIC: &[u8; 8] = b"MRGNEMB\0";
 /// 2: nomic models embed with `search_document: ` / `search_query: ` prefixes (see `prefixed`).
 const VERSION: u32 = 2;
 
-/// TEXT as MODEL wants it embedded: the nomic-embed models are trained with a task prefix on
-/// documents (QUERY false) and questions (QUERY true); other models take the text as is.
+/// TEXT as MODEL wants it embedded: the nomic-embed and e5 models are trained with a task prefix
+/// on documents (QUERY false) and questions (QUERY true); other models take the text as is.
 pub fn prefixed(model: &str, query: bool, text: &str) -> String {
-    match (model.contains("nomic-embed"), query) {
-        (false, _) => text.into(),
-        (true, true) => format!("search_query: {text}"),
-        (true, false) => format!("search_document: {text}"),
-    }
+    let (q, d) = if model.contains("nomic-embed") {
+        ("search_query: ", "search_document: ")
+    } else if model.contains("e5-") {
+        ("query: ", "passage: ")
+    } else {
+        ("", "")
+    };
+    format!("{}{text}", if query { q } else { d })
 }
 
 /// A piece of a note to embed: LINE (0-based) is where it starts; TEXT is the note's title and
@@ -365,6 +368,8 @@ mod tests {
         assert_eq!(prefixed("nomic-embed-text:latest", true, "q"), "search_query: q");
         assert_eq!(prefixed("nomic-embed-text", false, "d"), "search_document: d");
         assert_eq!(prefixed("mxbai-embed-large", true, "q"), "q");
+        assert_eq!(prefixed(crate::ai::EMBED_MODELS[0].id, true, "q"), "query: q");
+        assert_eq!(prefixed("multilingual-e5-small-q8", false, "d"), "passage: d");
     }
 
     use super::*;
