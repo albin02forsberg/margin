@@ -23,5 +23,5 @@ export function setArg(a: string, get: (name: string) => unknown): { set: [strin
   return { set: [name, m[4]] };
 }
 
-/** Whether a search for PATTERN ignores case: `ignorecase`, unless `smartcase` and it has an uppercase letter. */
-export const foldCase = (pattern: string, ic: boolean, scs: boolean) => ic && !(scs && /[A-Z]/.test(pattern));
+/** Whether a search for PATTERN ignores case: `ignorecase`, unless `smartcase` and it has an uppercase letter (not a backslash-escaped one like `\\S`). */
+export const foldCase = (pattern: string, ic: boolean, scs: boolean) => ic && !(scs && /[A-Z]/.test(pattern.replace(/\\./g, "")));
