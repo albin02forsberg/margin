@@ -14,8 +14,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 /// A section longer than this is split on line boundaries.
 const CHUNK: usize = 1500;
 const MAGIC: &[u8; 8] = b"MRGNEMB\0";
-/// 2: nomic models embed with `search_document: ` / `search_query: ` prefixes (see `prefixed`).
-const VERSION: u32 = 2;
+/// 3: e5 models embed with `passage: ` / `query: ` prefixes too (2: nomic's `search_document: ` /
+/// `search_query: `; see `prefixed`). Older indexes are rejected and rebuilt once.
+const VERSION: u32 = 3;
 
 /// TEXT as MODEL wants it embedded: the nomic-embed and e5 models are trained with a task prefix
 /// on documents (QUERY false) and questions (QUERY true); other models take the text as is.
@@ -583,6 +584,10 @@ mod tests {
         let mut old = b.clone();
         old[8] = 0;
         assert!(Index::from_bytes(&old, "nomic").is_none());
+        let mut v2 = ix.to_bytes();
+        v2[MAGIC.len()..MAGIC.len() + 4].copy_from_slice(&2u32.to_le_bytes()); // e5 vectors from before the prefixes
+        assert_eq!(VERSION, 3);
+        assert!(Index::from_bytes(&v2, "nomic").is_none());
         assert_eq!(Index::load(&dir.join("missing.bin"), "nomic"), Index::new("nomic"));
         std::fs::remove_dir_all(&dir).unwrap();
     }
