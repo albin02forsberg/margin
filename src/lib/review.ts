@@ -53,6 +53,12 @@ export function reviewBody(done: Task[], hours: Hours[], overdue: Task[], next: 
 }
 
 /** A new section for WEEK: heading, BODY and the headings to fill in (outside the markers, so a re-run keeps them). */
+/** Heading label for a review of the 7-day span from START: the ISO week holding most of it (start + 3 days), so Sunday/Saturday starts aren't labelled by the week they end in (#1100). */
+export const reviewWeekLabel = (start: Date) => {
+  const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 3);
+  return isoWeek(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+};
+
 export const reviewEntry = (week: string, body: string) => [`* Weekly review ${week}`, body, "** Went well", "** To change"].join("\n");
 
 /** TEXT with its BEGIN..END span replaced by BODY, or null if it has no such span (then file a reviewEntry). */

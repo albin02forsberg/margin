@@ -20,7 +20,7 @@
   import { bareTitle, bracketRetitle, findTarget, linkHeadings, linkTarget, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
-  import { type Goal, goalWhen, isoWeek, putReview, reviewBody, reviewEntry } from "$lib/review";
+  import { type Goal, goalWhen, putReview, reviewBody, reviewEntry, reviewWeekLabel } from "$lib/review";
   import { weekStartOf } from "$lib/week";
   import { calibrate, estimates, pct } from "$lib/estimates";
   import { fmtEffort } from "$lib/effort";
@@ -2613,7 +2613,7 @@
     let path = "";
     for (const f of weekJournals(await call<string[]>("list_files"), cfg.config.daily_dir, off(0), day(t))) if (putReview(await textOf(f), body) !== null) { path = f; break; }
     if (!path) path = await call("capture_path", { file: journalFile(), journal: true });
-    await recorded(() => toFile(path, async (text) => putReview(text, body) ?? call("capture_insert", { text, heading: null, entry: reviewEntry(isoWeek(day(t)), body) })));
+    await recorded(() => toFile(path, async (text) => putReview(text, body) ?? call("capture_insert", { text, heading: null, entry: reviewEntry(reviewWeekLabel(w0), body) })));
     await journal();
     flash(`Weekly review written to ${base(path)}; a re-run replaces the marked block (Space n u to undo).`);
   }
