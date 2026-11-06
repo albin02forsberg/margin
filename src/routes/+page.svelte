@@ -1214,6 +1214,64 @@
     flash(`Extracted into ${base(path)}`);
   }
 
+  /** Run crypt command CMD, asking for the passphrase when none is cached (NEW: typed twice). Null when cancelled. */
+  async function withPass<T>(cmd: string, args: Record<string, unknown>, fresh = false): Promise<T | null> {
+    try { return await call<T>(cmd, args); } catch (e) { if (e !== "passphrase-needed") throw e; }
+    const pass = await pick({ prompt: fresh ? "New passphrase for this heading" : "Passphrase", secret: true, hint: "kept in memory until you're idle" });
+    if (!pass) return null;
+    if (fresh && (await pick({ prompt: "Type the passphrase again", secret: true })) !== pass) return (flash("⚠ The passphrases don't match; nothing was locked."), null);
+    return call<T>(cmd, { ...args, pass });
+  }
+
+  const CRYPT_NOTICE = [
+    "The heading's body is encrypted with your passphrase. If you lose the passphrase, the text cannot be recovered: Margin keeps no copy of it.",
+    "Before the first lock of a note, a copy of the note as it is now is kept on this computer only (the app's local data folder, never synced).",
+    "Text that a backup already committed to git history stays readable there.",
+  ].join("\n\n");
+
+  /** Space n q (#1086): encrypt the body of the heading at the cursor on disk; the tab then shows only the locked block. */
+  async function cryptLock() {
+    const t = tab, line = inFile() ? ed.headingAtCursor(view.state) : -1;
+    if (line < 0) return flash("Open a note and put the cursor on a heading first.");
+    if (stored("crypt-notice", "") !== "1") {
+      if (!(await pick({ prompt: "Lock this heading?", body: CRYPT_NOTICE, items: [{ label: "I understand, lock it", value: true }] }))) return;
+      store("crypt-notice", "1");
+    }
+    // In the tab's save queue, so no autosave runs between the lock and the tab taking the locked text.
+    await saveQueue(t.key, async () => {
+      let r: [string, string | null] | null;
+      try {
+        r = await withPass("crypt_lock", { path: t.path, text: stateOf(t).doc.toString(), line, expect: t.saved }, true);
+      } catch (e) {
+        return flash(e === "changed-on-disk" ? "⚠ The note changed on disk; nothing was locked. Try again." : `⚠ ${e}`);
+      }
+      if (!r) return;
+      clearTimeout(saveTimers.get(t.key));
+      // A fresh state: the plaintext leaves the buffer and its undo history (u can't bring it back to be autosaved).
+      const st = newState(t.key, r[0], t.path);
+      Object.assign(t, { state: st, saved: r[0], dirty: false, conflict: false });
+      const v = viewOf(t);
+      if (v) {
+        v.setState(st);
+        v.dispatch({ selection: { anchor: st.doc.line(line + 1).from } });
+        watchMode(v);
+        if (v === view) mode = "normal";
+      }
+      reload++;
+      flash(r[1] ? `🔒 Locked. Pre-encryption copy: ${r[1]}` : "🔒 Locked.");
+    });
+  }
+
+  /** Space n Q: show the locked heading at the cursor decrypted, in a read-only tab (never in the note's buffer). */
+  async function cryptView() {
+    const line = inFile() ? ed.headingAtCursor(view.state) : -1;
+    if (line < 0) return flash("Open a note and put the cursor on a locked heading first.");
+    const plain = await withPass<string>("crypt_unlock", { text: view.state.doc.toString(), line });
+    if (plain == null) return;
+    const title = view.state.doc.line(line + 1).text.replace(/^\*+\s+/, "").replace(/\s+:[\w@#%:]+:\s*$/, "");
+    await openReport(`crypt:${tab.path}:${line}`, `🔓 ${title}`, plain);
+  }
+
   function atCursor(op: string, arg?: number) {
     const loc = editorLoc();
     if (!loc) return flash("Open a note and put the cursor on a task first.");
@@ -3359,6 +3417,8 @@
     }) },
     { label: "Today's journal", keys: ["Ctrl+J"], leader: "j", run: () => journal() },
     { label: "Note: extract heading at cursor into a new note, leaving a link", leader: "n x", run: () => act(extractNote) },
+    { label: "Note: lock (encrypt) the heading at cursor with a passphrase", leader: "n q", run: () => act(cryptLock) },
+    { label: "Note: read a locked heading (decrypted, read-only)", leader: "n Q", run: () => act(cryptView) },
     { label: "Journal for another day…", leader: "n J", run: journalPick },
     { label: "Journal: on this day…", leader: "n t", run: journalOnThisDay },
     { label: "Journal: previous entry", leader: "n [", run: () => journalStep(-1) },

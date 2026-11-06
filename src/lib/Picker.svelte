@@ -11,6 +11,8 @@
     /** Text shown in full above the list, e.g. what is about to be sent somewhere. */
     body?: string;
     initial?: string;
+    /** Mask the typed text (a passphrase). */
+    secret?: boolean;
     allowCustom?: boolean;
     /** Single keys that pick a value while the query is empty (one-keypress prompts). */
     keys?: Record<string, unknown>;
@@ -102,6 +104,7 @@
   function done(v: unknown) {
     if (!active) return;
     active = false;
+    if (o.secret) query = "";
     prevFocus?.focus();
     const r = resolve;
     resolve = null;
@@ -136,7 +139,7 @@
   <div class="picker">
     <label>
       <span>{o.prompt}</span>
-      <input bind:this={input} bind:value={query} oninput={() => (sel = 0)} onkeydown={key} onblur={() => document.hasFocus() && done(null)} spellcheck="false" />
+      <input bind:this={input} bind:value={query} type={o.secret ? "password" : "text"} autocomplete="off" oninput={() => (sel = 0)} onkeydown={key} onblur={() => document.hasFocus() && done(null)} spellcheck="false" />
     </label>
     {#if o.body}<pre class="body">{o.body}</pre>{/if}
     {#if previewText}<div class="preview" class:bad={previewText.startsWith("✗")}>{previewText}</div>{/if}

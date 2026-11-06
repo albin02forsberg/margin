@@ -4,7 +4,6 @@ mod attach;
 mod babel;
 mod backup;
 mod config;
-#[allow(dead_code)] // wired up by the editor lock/unlock (#1086)
 mod crypt;
 mod embed;
 mod export;
@@ -51,6 +50,8 @@ struct App {
     watcher: Mutex<Option<Debouncer<notify::RecommendedWatcher>>>,
     /// The semantic index in memory (#1010), loaded on first use; see `index_in`.
     semantic: Mutex<Option<embed::Cached>>,
+    /// The passphrase of the last lock/unlock (#1086), in memory only; see `crypt_pass`.
+    crypt: PassSlot,
 }
 
 impl App {
@@ -1400,6 +1401,62 @@ fn note_extract(s: State<App>, path: PathBuf, text: String, line: usize) -> R<[S
         Ok(id)
     })?;
     Ok([src, new.to_string_lossy().into_owned()])
+}
+
+type PassSlot = Mutex<Option<(String, std::time::Instant)>>;
+
+/// GIVEN, else the cached passphrase unless it went unused for IDLE minutes (then it is dropped:
+/// "passphrase-needed").
+fn crypt_pass(slot: &PassSlot, given: Option<String>, idle: i64) -> R<String> {
+    if let Some(p) = given.filter(|p| !p.is_empty()) {
+        return Ok(p);
+    }
+    let mut c = slot.lock().unwrap_or_else(|e| e.into_inner());
+    let ttl = std::time::Duration::from_secs(idle.max(1) as u64 * 60);
+    *c = c.take().filter(|(_, t)| t.elapsed() < ttl);
+    Ok(c.as_ref().ok_or("passphrase-needed")?.0.clone())
+}
+
+/// Cache PASS after it worked, restarting its idle clock.
+fn crypt_remember(slot: &PassSlot, pass: String) {
+    *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some((pass, std::time::Instant::now()));
+}
+
+/// Lock the heading on LINE of TEXT (the live text of PATH): keeps the local pre-encryption copy
+/// first (crypt::backup_before_lock), then writes like write_file with EXPECT. Returns the new text
+/// and, when this made the first copy of PATH, where it is.
+fn crypt_lock_in(local: &Path, path: &Path, text: &str, line: usize, expect: &str, pass: &str, kw: &org::Kw) -> R<(String, Option<PathBuf>)> {
+    let (new, plain, block) = crypt::lock(text, line, pass, kw)?;
+    let _lock = note_writes();
+    if !may_overwrite(std::fs::read_to_string(path).ok().as_deref(), Some(expect), &new) {
+        return Err("changed-on-disk".into());
+    }
+    let first = crypt::backup_before_lock(local, path, text, &plain, &block, pass)?;
+    config::write_atomic(path, &new).map_err(|e| e.to_string())?;
+    Ok((new, first.then(|| crypt::backup_path(local, path))))
+}
+
+/// Space n q (#1086): encrypt the body of the heading on LINE of TEXT (PATH's live text, last
+/// saved as EXPECT). PASS omitted uses the cached passphrase.
+#[tauri::command(async)]
+fn crypt_lock(app: AppHandle, s: State<App>, path: PathBuf, text: String, line: usize, expect: String, pass: Option<String>) -> R<(String, Option<PathBuf>)> {
+    s.check(&path)?;
+    let pass = crypt_pass(&s.crypt, pass, s.cfg().idle_threshold_minutes)?;
+    let local = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let r = crypt_lock_in(&local, &path, &text, line, &expect, &pass, &s.kw())?;
+    crypt_remember(&s.crypt, pass);
+    Ok(r)
+}
+
+/// Space n Q: the plaintext of the locked heading on LINE of TEXT. Takes no path, so it can't
+/// write a file. A cached passphrase that doesn't fit asks for one ("passphrase-needed").
+#[tauri::command(async)]
+fn crypt_unlock(s: State<App>, text: String, line: usize, pass: Option<String>) -> R<String> {
+    let given = pass.as_ref().is_some_and(|p| !p.is_empty());
+    let p = crypt_pass(&s.crypt, pass, s.cfg().idle_threshold_minutes)?;
+    let plain = crypt::unlock(&text, line, &p).map_err(|e| if given || !e.starts_with("wrong passphrase") { e } else { "passphrase-needed".into() })?;
+    crypt_remember(&s.crypt, p);
+    Ok(plain)
 }
 
 /// Copy the live TEXT of note PATH into a new note TITLE beside it (fresh IDs;
@@ -3515,7 +3572,7 @@ pub fn run() {
                 }
             };
             let profile = saved_profile(&cfg);
-            app.manage(App { cfg_path, cfg: Mutex::new(cfg), cfg_error: Mutex::new(cfg_error), profile: Mutex::new(profile), cache: Default::default(), watcher: Mutex::new(None), semantic: Mutex::new(None) });
+            app.manage(App { cfg_path, cfg: Mutex::new(cfg), cfg_error: Mutex::new(cfg_error), profile: Mutex::new(profile), cache: Default::default(), watcher: Mutex::new(None), semantic: Mutex::new(None), crypt: Mutex::new(None) });
             watch(app.handle());
             {
                 let c = app.state::<App>().cfg();
@@ -3558,6 +3615,7 @@ pub fn run() {
                 if app.state::<App>().cfg().close_to_tray && tray::tracking(app) {
                     api.prevent_close();
                     let _ = w.hide();
+                    *app.state::<App>().crypt.lock().unwrap_or_else(|e| e.into_inner()) = None; // hidden to the tray: forget the passphrase
                 } else if !quit::confirmed() {
                     // A real close: the webview holding unsaved edits goes with it, so ask first (#281).
                     api.prevent_close();
@@ -3569,7 +3627,7 @@ pub fn run() {
             watcher::gnome_extension, watcher::screen_recording, remind::remind_snooze,
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, md_import, highlights_import, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
-            org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
+            org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, crypt_lock, crypt_unlock, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, people_last, waiting_for, inbox_count, inbox_entries, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_embed_local, ai_set, ai_download, ai_download_cancel, ai_model_delete, ai_index_status, ai_index_rebuild, semantic_search, ai_related, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
@@ -3599,6 +3657,45 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn crypt_lock_writes_only_ciphertext() {
+        let d = std::env::temp_dir().join(format!("margin-crypt-lock-{}", std::process::id()));
+        let (local, notes) = (d.join("local"), d.join("notes"));
+        std::fs::create_dir_all(&notes).unwrap();
+        let f = notes.join("v.org");
+        let kw = org::Kw { todo: vec!["TODO".into()], done: vec!["DONE".into()] };
+        let orig = "* Open\nfine\n* Vault\nsecret words\n";
+        std::fs::write(&f, orig).unwrap();
+        // The disk moved on since the tab last saw it: nothing is written.
+        assert_eq!(crypt_lock_in(&local, &f, orig, 2, "older", "pw", &kw).unwrap_err(), "changed-on-disk");
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), orig);
+        assert!(!crypt::backup_path(&local, &f).exists());
+        let (new, bk) = crypt_lock_in(&local, &f, orig, 2, orig, "pw", &kw).unwrap();
+        let disk = std::fs::read_to_string(&f).unwrap();
+        assert_eq!(disk, new);
+        assert!(!disk.contains("secret") && disk.contains("* Vault :crypt:\n-----BEGIN MARGIN ENCRYPTED-----"));
+        // The pre-encryption copy is outside the notes folder, and unlocking the disk text gets the body back.
+        let bk = bk.unwrap();
+        assert!(bk.starts_with(&local) && !bk.starts_with(&notes));
+        assert_eq!(std::fs::read_to_string(&bk).unwrap(), orig);
+        assert_eq!(crypt::unlock(&disk, 2, "pw").unwrap(), "secret words\n");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn crypt_pass_cache() {
+        let slot: PassSlot = Mutex::new(None);
+        assert_eq!(crypt_pass(&slot, None, 10).unwrap_err(), "passphrase-needed");
+        assert_eq!(crypt_pass(&slot, Some("a".into()), 10).unwrap(), "a");
+        assert!(crypt_pass(&slot, None, 10).is_err()); // only a pass that worked is remembered
+        crypt_remember(&slot, "a".into());
+        assert_eq!(crypt_pass(&slot, Some(String::new()), 10).unwrap(), "a");
+        // Unused past the idle threshold: dropped.
+        *slot.lock().unwrap() = Some(("a".into(), std::time::Instant::now() - std::time::Duration::from_secs(601)));
+        assert!(crypt_pass(&slot, None, 10).is_err());
+        assert!(slot.lock().unwrap().is_none());
+    }
 
     #[test]
     fn index_status_falls_back_to_last_counts_while_busy() {

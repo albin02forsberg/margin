@@ -2320,3 +2320,38 @@ describe("Publish notes as a site", () => {
     assert.equal(read(join(site, "CNAME")), "notes.example");
   });
 });
+
+describe("Locked headings (#1086)", () => {
+  let d: Dirs;
+  before(async () => { d = await launch({ files: ({ notes }) => writeFileSync(join(notes, "vault.org"), "* Vault\nsecret words\n* Open\nplain\n") }); await find(".agenda h1", "Today"); }); // app mounted before the first key
+  after(close);
+
+  it("Space n q encrypts the body on disk, the reopened note shows it locked, Space n Q reads it", async () => {
+    const f = join(d.notes, "vault.org");
+    const ex = async (s: string) => { await type(s); await browser.keys(Key.Enter); };
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "vault");
+    await find(".status .file", "vault.org");
+    await browser.keys(Key.Escape);
+    await browser.keys(" ");
+    await type("nq");
+    await find(".picker label span", "Lock this heading"); // the one-time notice
+    await browser.keys(Key.Enter);
+    await answer("New passphrase", "pw");
+    await answer("Type the passphrase again", "pw");
+    await fileMatches(f, (s) => s.startsWith("* Vault :crypt:\n-----BEGIN MARGIN ENCRYPTED-----\n") && !s.includes("secret") && s.endsWith("* Open\nplain\n"), "body not encrypted on disk");
+    await find(".cm-editor .cm-org-crypt", "locked");
+    // Reopen: the note still reads locked.
+    await browser.keys(Key.Escape);
+    await ex(":bd");
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "vault");
+    await find(".cm-editor .cm-org-crypt", "locked");
+    await browser.keys(Key.Escape);
+    await browser.keys(" ");
+    await type("nQ"); // the passphrase is cached from the lock
+    await find(".tabs .tab.cur button", "Vault");
+    await find(".cm-editor .cm-content", "secret words");
+    assert.ok(!read(f).includes("secret"), "reading wrote the plaintext");
+  });
+});
