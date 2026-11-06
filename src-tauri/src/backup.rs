@@ -49,7 +49,7 @@ pub fn last_failure() -> Option<String> {
 /// Env changes that keep a child process off the AppImage's bundled libs:
 /// `(key, Some(new))` sets, `(key, None)` removes. Only entries under a ROOT (the AppImage mount) go,
 /// symlinked paths into it included. APPIMAGE: running from an AppImage, so `LD_LIBRARY_PATH` and
-/// `LD_PRELOAD` go entirely (system git needs neither, and the filter alone failed in the field, #818).
+/// every `LD_*` var goes entirely (loader vars: AUDIT, RUN_PATH ...; system git needs neither, and the filter alone failed in the field, #818).
 fn clean_env(vars: &[(&str, String)], roots: &[String], appimage: bool) -> Vec<(String, Option<String>)> {
     let roots: Vec<PathBuf> = roots.iter().filter(|r| !r.is_empty()).flat_map(|r| [Some(PathBuf::from(r)), std::fs::canonicalize(r).ok()]).flatten().collect();
     let under = |p: &str| {
@@ -59,8 +59,8 @@ fn clean_env(vars: &[(&str, String)], roots: &[String], appimage: bool) -> Vec<(
     let mut out = Vec::new();
     for (k, v) in vars {
         match *k {
-            "LD_LIBRARY_PATH" | "LD_PRELOAD" if appimage => out.push((k.to_string(), None)),
-            "LD_LIBRARY_PATH" | "LD_PRELOAD" => {
+            k if k.starts_with("LD_") && appimage => out.push((k.to_string(), None)),
+            "LD_LIBRARY_PATH" | "LD_PRELOAD" | "PATH" => {
                 let all: Vec<&str> = v.split(':').filter(|p| !p.is_empty()).collect();
                 let kept: Vec<&str> = all.iter().copied().filter(|p| !under(p)).collect();
                 if kept.len() != all.len() {
@@ -88,9 +88,11 @@ pub(crate) fn git_env_changes() -> Vec<(String, Option<String>)> {
     if !appimage {
         return vec![];
     }
-    let vars: Vec<(&str, String)> = ["LD_LIBRARY_PATH", "LD_PRELOAD", "GIT_EXEC_PATH", "GIT_SSL_CAINFO", "GIT_SSL_CAPATH", "GIT_TEMPLATE_DIR", "PERLLIB"]
-        .into_iter()
-        .filter_map(|k| std::env::var(k).ok().map(|v| (k, v)))
+    let all: Vec<(String, String)> = std::env::vars().collect();
+    let vars: Vec<(&str, String)> = all
+        .iter()
+        .filter(|(k, _)| k.starts_with("LD_") || ["PATH", "GIT_EXEC_PATH", "GIT_SSL_CAINFO", "GIT_SSL_CAPATH", "GIT_TEMPLATE_DIR", "PERLLIB"].contains(&k.as_str()))
+        .map(|(k, v)| (k.as_str(), v.clone()))
         .collect();
     clean_env(&vars, &roots, appimage)
 }
@@ -769,5 +771,11 @@ mod tests {
         let r = clean_env(&vars, &[], true);
         assert_eq!(r, vec![("LD_LIBRARY_PATH".to_string(), None), ("LD_PRELOAD".to_string(), None)]);
         assert!(clean_env(&vars, &[], false).is_empty());
+    }
+
+    #[test]
+    fn appimage_drops_any_ld_var_and_filters_path() {
+        let r = clean_env(&[v("LD_AUDIT", "/x.so"), v("LD_RUN_PATH", "/y"), v("PATH", "/tmp/.mount_X/usr/bin:/usr/bin")], &r("/tmp/.mount_X"), true);
+        assert_eq!(r, vec![("LD_AUDIT".into(), None), ("LD_RUN_PATH".into(), None), ("PATH".into(), Some("/usr/bin".into()))]);
     }
 }
