@@ -1,6 +1,6 @@
 // CodeMirror 6 setup: vim, org styling (decorations that hide markup except on
 // the line being edited), folding, tables, blocks and the structure-editing ops.
-import { Compartment, EditorState, Facet, Prec, StateEffect, type Extension, type Range, type TransactionSpec } from "@codemirror/state";
+import { Compartment, EditorState, Facet, Prec, StateEffect, StateField, type Extension, type Range, type TransactionSpec } from "@codemirror/state";
 import {
   Decoration, EditorView, GutterMarker, ViewPlugin, WidgetType, drawSelection, gutter, highlightActiveLine, keymap, lineNumbers, showPanel, type DecorationSet, type Panel, type ViewUpdate,
 } from "@codemirror/view";
@@ -14,7 +14,7 @@ import { vim, Vim, getCM, CodeMirror as CM5 } from "@replit/codemirror-vim";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import * as tbl from "./orgtable";
 import { renumber, itemSwap } from "./list";
-import { setArg, foldCase, type NumOpts } from "./setopt";
+import { scopedArg, foldCase, type NumOpts, type LocalOpts } from "./setopt";
 import { changeList, changeStep } from "./changelist";
 import { EMPH, toggleEmphasis } from "./emphasis";
 import { FN, addFootnote, footnoteTarget } from "./footnote";
@@ -98,8 +98,8 @@ Vim.defineEx("close", "clo", () => hooks.closePane());
 Vim.defineEx("saveas", "sav", (_cm: unknown, p: ExP) => hooks.saveAs((p.argString ?? "").trim()));
 Vim.defineEx("help", "h", () => hooks.help());
 
-// `:set number` / `relativenumber` / `wrap`: session-wide vim options, a compartment per view.
-// Global only: the callback ignores per-editor (cm) calls, so codemirror-vim keeps no stale local copies.
+// `:set number` / `relativenumber` / `wrap`: session-wide vim options, a compartment per view; `:setlocal` overrides
+// them for one buffer (#1112, bufOpts below). The option callbacks are global only: the callback ignores per-editor (cm) calls, so codemirror-vim keeps no stale local copies.
 const vimOpts = { number: false, relativenumber: false, wrap: true, ignorecase: true, smartcase: true };
 for (const [name, alias] of [["number", "nu"], ["relativenumber", "rnu"], ["wrap", "wrap"], ["ignorecase", "ic"], ["smartcase", "scs"]] as const)
   Vim.defineOption(name, undefined, "boolean", [alias], (v?: boolean, cm?: unknown) => {
@@ -121,7 +121,21 @@ for (const m of ["getSearchCursor", "addOverlay"] as const) {
 }
 const numConf = new Compartment();
 const wrapConf = new Compartment();
-const wrapExt = () => (vimOpts.wrap ? EditorView.lineWrapping : []);
+const wrapExt = (o: { wrap: boolean }) => (o.wrap ? EditorView.lineWrapping : []);
+/** Effective `nu`/`rnu`/`wrap`: the buffer's `:setlocal` overrides over the global options. */
+const eff = (l: Partial<LocalOpts>): LocalOpts => ({ number: l.number ?? vimOpts.number, relativenumber: l.relativenumber ?? vimOpts.relativenumber, wrap: l.wrap ?? vimOpts.wrap });
+/** A buffer's `:setlocal` overrides, and the options its numConf/wrapConf show (to spot a stale tab state on setState). */
+type BufOpts = { local: Partial<LocalOpts>; shown: LocalOpts };
+const setBufOpts = StateEffect.define<BufOpts>();
+const bufOpts = StateField.define<BufOpts>({
+  create: () => ({ local: {}, shown: eff({}) }),
+  update: (v, tr) => tr.effects.reduce((v, e) => (e.is(setBufOpts) ? e.value : v), v),
+});
+/** Point V's number/wrap compartments at its buffer's effective options, storing LOCAL as its overrides, in one transaction. */
+function applyOpts(v: EditorView, local = v.state.field(bufOpts, false)?.local ?? {}) {
+  const o = eff(local);
+  v.dispatch({ effects: [setBufOpts.of({ local, shown: o }), numConf.reconfigure(numExt(o)), wrapConf.reconfigure(wrapExt(o))] });
+}
 const views = new Set<EditorView>();
 // `spellcheck` setting: org notes only; one session-wide flag, a compartment per view.
 let spellOn = false;
@@ -150,19 +164,29 @@ function numExt(o: NumOpts): Extension {
   });
 }
 const trackViews = ViewPlugin.fromClass(class {
-  constructor(readonly v: EditorView) { views.add(v); }
+  // Re-created on setState: a tab's stored state may show stale options (a `:set` since), so re-apply them, after
+  // setState itself, which can't dispatch.
+  constructor(readonly v: EditorView) {
+    views.add(v);
+    const f = v.state.field(bufOpts, false), o = f && eff(f.local);
+    if (o && (["number", "relativenumber", "wrap"] as const).some((k) => o[k] !== f.shown[k])) queueMicrotask(() => views.has(v) && applyOpts(v));
+  }
   destroy() { views.delete(this.v); }
 });
-// Replaces codemirror-vim's `:set` (one arg only) so `:set nu rnu` works; its own options (`tw`, …) still go through setOption.
-Vim.defineEx("set", "se", (cm: any, p: ExP) => {
-  if (!p.args) return say(cm, "Argument required");
-  for (const a of p.args) {
-    const r = setArg(a, (n) => Vim.getOption(n, cm));
-    const err = "set" in r ? Vim.setOption(r.set[0], r.set[1], cm) : undefined;
-    if ("msg" in r || err) { say(cm, "msg" in r ? r.msg : err!.message); break; }
-  }
-  for (const v of views) v.dispatch({ effects: [numConf.reconfigure(numExt(vimOpts)), wrapConf.reconfigure(wrapExt())] });
-});
+// Replaces codemirror-vim's `:set`/`:setlocal`/`:setglobal` (one arg only, no buffer-local options) so `:set nu rnu` works;
+// its own options (`tw`, …) still go through setOption. `:set` sets the global value and this buffer's, as in vim.
+for (const [name, alias, scope] of [["set", "se", "set"], ["setlocal", "setl", "local"], ["setglobal", "setg", "global"]] as const)
+  Vim.defineEx(name, alias, (cm: any, p: ExP) => {
+    if (!p.args) return say(cm, "Argument required");
+    const v: EditorView | undefined = cm.cm6, local = { ...v?.state.field(bufOpts, false)?.local };
+    for (const a of p.args) {
+      const r = scopedArg(a, scope, local, (n) => Vim.getOption(n, cm));
+      const err = "set" in r && r.set ? Vim.setOption(r.set[0], r.set[1], cm) : undefined;
+      if ("msg" in r || err) { say(cm, "msg" in r ? r.msg : err!.message); break; }
+    }
+    if (v && views.has(v)) applyOpts(v, local);
+    if (scope !== "local") for (const w of views) if (w !== v) applyOpts(w);
+  });
 /** Show MSG in the vim status bar, like vim's own messages. */
 function say(cm: { openNotification?: (n: Node, o: object) => unknown }, msg: string) {
   const el = Object.assign(document.createElement("div"), { className: "cm-vim-message", textContent: msg });
@@ -1278,14 +1302,15 @@ export const peekState = (doc: string, opts: { todo: string[]; done: string[]; p
 export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; path?: string; onChange: () => void; onUpdate?: (s: EditorState, docChanged: boolean) => void }) {
   const ext: Extension[] = [
     vim({ status: true }),
-    numConf.of(numExt(vimOpts)),
+    numConf.of(numExt(eff({}))),
+    bufOpts,
     trackViews,
     history(),
     changeList,
     drawSelection(),
     highlightActiveLine(),
     highlightSelectionMatches(),
-    wrapConf.of(wrapExt()),
+    wrapConf.of(wrapExt(eff({}))),
     codeFolding({ placeholderText: "⋯" }),
     keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
     theme,

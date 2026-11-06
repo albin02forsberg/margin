@@ -133,4 +133,29 @@ describe("Split view", () => {
     await fileMatches(join(notes, "gamma.org"), (s) => s.includes("Alpha text."), ":sav didn't rename the note");
     assert.ok(!existsSync(join(notes, "alpha.org")), "alpha.org still there");
   });
+
+  it(":setl nu numbers one buffer only, and it stays with the buffer across panes and tabs (#1112)", async () => {
+    const ex = async (s: string) => { await type(s); await browser.keys(Key.Enter); };
+    const nums = (css: string, on: boolean) => browser.waitUntil(async () => (await shown(`${css} .cm-lineNumbers`)) === on, { timeoutMsg: `${css}: line numbers ${on ? "missing" : "shown"}` });
+    await ex(":vs beta");
+    await find(".status .file", "beta.org");
+    await ex(":setl nu");
+    await nums(".editor.split", true);
+    await nums(".pane .editor", false); // gamma, in the left pane
+    await ex(":only"); // beta moves to the left pane's view
+    await browser.waitUntil(async () => !(await shown(".editor.split")), { timeoutMsg: ":only left the split open" });
+    await nums(".pane .editor", true);
+    await ex(":b gamma");
+    await find(".status .file", "gamma.org");
+    await nums(".pane .editor", false);
+    await ex(":b beta");
+    await find(".status .file", "beta.org");
+    await nums(".pane .editor", true);
+    await ex(":setg nu"); // global on, then gamma shows numbers too
+    await ex(":setl nonu");
+    await nums(".pane .editor", false);
+    await ex(":b gamma");
+    await nums(".pane .editor", true);
+    await ex(":set nonu");
+  });
 });
