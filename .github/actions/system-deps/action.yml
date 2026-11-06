@@ -22,6 +22,9 @@ runs:
             sudo dpkg --configure -a || true; sleep 5
             # 24.04 keeps the mirror in deb822 ubuntu.sources, 22.04 in sources.list
             sudo sed -i 's#http://azure\.archive\.ubuntu\.com#http://archive.ubuntu.com#' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
+            # 24.04 resolves the host via mirror+file:/etc/apt/apt-mirrors.txt
+            [ -f /etc/apt/apt-mirrors.txt ] && sudo sed -i 's#http://azure\.archive\.ubuntu\.com#http://archive.ubuntu.com#' /etc/apt/apt-mirrors.txt
+            echo "apt mirrors now:"; grep -rhE '^(URIs:|deb |http)' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list /etc/apt/apt-mirrors.txt 2>/dev/null | head -5
           fi
           sudo timeout 240 apt-get $opts update && sudo timeout 240 apt-get $opts install -y $flag libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf $EXTRA && exit 0
         done
