@@ -2627,12 +2627,13 @@ fn semantic_ready<'a>(c: &'a Config, dir: &Path) -> R<&'a str> {
     Ok(model)
 }
 
-/// The vector of TEXT (a question when QUERY, else a note section) from MODEL (from semantic_model).
-fn embed_text(app: &AppHandle, c: &Config, model: &str, query: bool, text: &str) -> R<Vec<f32>> {
-    let text = embed::prefixed(model, query, text);
+/// The vectors of TEXTS (questions when QUERY, else note sections) from MODEL (from
+/// semantic_model), in one call; DIR holds the built-in models.
+fn embed_texts(c: &Config, dir: &Path, model: &str, query: bool, texts: &[String]) -> R<Vec<Vec<f32>>> {
+    let texts: Vec<String> = texts.iter().map(|t| embed::prefixed(model, query, t)).collect();
     match c.ai_backend {
-        ai::Backend::Ollama => ai::embed(&c.ai_url, model, &text),
-        ai::Backend::Embedded => ai::embed_local(&models_dir(app)?, model, &text),
+        ai::Backend::Ollama => ai::embed(&c.ai_url, model, &texts),
+        ai::Backend::Embedded => ai::embed_local(dir, model, &texts),
     }
 }
 
@@ -2640,14 +2641,15 @@ fn embed_text(app: &AppHandle, c: &Config, model: &str, query: bool, text: &str)
 /// being updated, Ollama down. The chat falls back to keywords on any error (#966, #1017).
 fn semantic_query(app: &AppHandle, c: &Config, text: &str, k: usize) -> R<Vec<(PathBuf, usize, f32)>> {
     const BUSY: &str = "The semantic index is empty or still building; try again in a moment.";
-    let model = semantic_ready(c, &models_dir(app)?)?;
+    let dir = models_dir(app)?;
+    let model = semantic_ready(c, &dir)?;
     let path = index_file(app, c)?;
     // While a reindex round holds the index there are no hits; the text is embedded unlocked.
     let s = app.state::<App>();
     if s.semantic_now().is_none_or(|mut g| index_in(&mut g, &path, model).ix.files.is_empty()) {
         return Err(BUSY.into());
     }
-    let q = embed_text(app, c, model, true, text)?;
+    let q = embed_texts(c, &dir, model, true, &[text.into()])?.pop().ok_or("Got no embedding.")?;
     let Some(mut g) = s.semantic_now() else { return Err(BUSY.into()) };
     Ok(index_in(&mut g, &path, model).ix.top_k(&q, k).into_iter().map(|(p, l, c)| (p.to_path_buf(), l, c)).collect())
 }
@@ -2909,14 +2911,15 @@ fn index_run(app: &AppHandle) -> R<usize> {
     if !c.ai_semantic {
         return Ok(0);
     }
-    let model = semantic_ready(&c, &models_dir(app)?)?;
+    let dir = models_dir(app)?;
+    let model = semantic_ready(&c, &dir)?;
     let root = c.notes();
     let files: Vec<_> = s.files().into_iter().filter(|f| !retrieve::excluded(&f.path, &root, &c.ai_exclude)).collect();
     let path = index_file(app, &c)?;
     // Held for the whole run: `update` embeds as it goes; questions meanwhile use keywords.
     let mut g = s.semantic();
     let ix = index_in(&mut g, &path, model);
-    let r = ix.update(&files, &|t| embed_text(app, &c, model, false, t), INDEX_CAP);
+    let r = ix.update(&files, &|ts| embed_texts(&c, &dir, model, false, ts), INDEX_CAP);
     remember_counts(ix.ix.files.len(), ix.ix.files.iter().map(|f| f.chunks.len()).sum());
     INDEX_PENDING.store(ix.ix.pending, Ordering::SeqCst);
     ix.save_if(INDEX_SAVE)?;

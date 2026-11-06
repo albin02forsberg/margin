@@ -105,18 +105,18 @@ fn embed_check(dir: &Path, id: &str, runs: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// The vector of TEXT from the built-in embedding model ID (from EMBED_MODELS), its file in DIR.
-pub fn embed_local(dir: &Path, id: &str, text: &str) -> Result<Vec<f32>, String> {
+/// The vectors of TEXTS from the built-in embedding model ID (from EMBED_MODELS), its file in DIR.
+pub fn embed_local(dir: &Path, id: &str, texts: &[String]) -> Result<Vec<Vec<f32>>, String> {
     embed_ready(dir, id)?;
     #[cfg(not(feature = "embedded-ai"))]
     {
-        let _ = text;
+        let _ = texts;
         unreachable!("embed_ready fails without embedded-ai")
     }
     #[cfg(feature = "embedded-ai")]
     {
         let m = EMBED_MODELS.iter().find(|m| m.id == id).expect("checked by embed_ready");
-        llama::embed(m, &m.path(dir), text).map(normalized)
+        Ok(llama::embed(m, &m.path(dir), texts)?.into_iter().map(normalized).collect())
     }
 }
 
@@ -323,21 +323,22 @@ pub fn parse(status: u16, body: &str, model: &str) -> Result<String, String> {
     }
 }
 
-/// The vector of TEXT from Ollama's embedding MODEL at URL (`POST /api/embed`, #965).
-pub fn embed(url: &str, model: &str, text: &str) -> Result<Vec<f32>, String> {
-    let body = serde_json::json!({ "model": model, "input": text }).to_string();
+/// The vectors of TEXTS from Ollama's embedding MODEL at URL, in one `POST /api/embed` (#965, #1127).
+pub fn embed(url: &str, model: &str, texts: &[String]) -> Result<Vec<Vec<f32>>, String> {
+    let body = serde_json::json!({ "model": model, "input": texts }).to_string();
     let (status, resp) = request("Ollama", "ai_url", url, "POST", "/api/embed", Some(&body), WAIT).map_err(|e| unreachable(url, e))?;
     parse_embed(status, &resp, model)
 }
 
-/// Ollama's /api/embed answer (HTTP STATUS, BODY) → the first embedding, or an error as in parse.
-pub fn parse_embed(status: u16, body: &str, model: &str) -> Result<Vec<f32>, String> {
+/// Ollama's /api/embed answer (HTTP STATUS, BODY) → its embeddings, or an error as in parse.
+pub fn parse_embed(status: u16, body: &str, model: &str) -> Result<Vec<Vec<f32>>, String> {
     if status != 200 {
         return parse(status, body, model).map(|_| vec![]);
     }
     let v: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
-    let e = v["embeddings"][0].as_array().ok_or("Ollama sent no embedding")?;
-    e.iter().map(|x| x.as_f64().map(|x| x as f32).ok_or_else(|| "Ollama sent a malformed embedding".to_string())).collect()
+    let es = v["embeddings"].as_array().filter(|es| !es.is_empty()).ok_or("Ollama sent no embedding")?;
+    let bad = || "Ollama sent a malformed embedding".to_string();
+    es.iter().map(|e| e.as_array().ok_or_else(bad)?.iter().map(|x| x.as_f64().map(|x| x as f32).ok_or_else(bad)).collect()).collect()
 }
 
 /// A model's raw TEXT → org text: no reasoning, `*` bullets as `-` so they don't become
@@ -631,8 +632,10 @@ mod llama {
         });
     }
 
-    /// M's pooled (mean) embedding of TEXT, cut to the model's training context; not normalised.
-    pub fn embed(m: &'static Model, path: &Path, text: &str) -> Result<Vec<f32>, String> {
+    /// M's pooled (mean) embeddings of TEXTS, each cut to the model's training context; not
+    /// normalised. One context for all of them (#1127); stops when the app quits, so the 2 s
+    /// drain in `unload` waits for one text at most.
+    pub fn embed(m: &'static Model, path: &Path, texts: &[String]) -> Result<Vec<Vec<f32>>, String> {
         let backend = backend()?;
         let mut slot = EMBED_LOADED.lock().unwrap_or_else(|e| e.into_inner());
         if super::QUITTING.load(Ordering::SeqCst) {
@@ -647,15 +650,24 @@ mod llama {
         *used = Instant::now();
         let e = |e: &dyn std::fmt::Display| format!("The built-in embedding model failed: {e}");
         let n = model.n_ctx_train().clamp(64, 8192);
-        let mut tokens = model.vocab().tokenize(text.as_bytes(), true, false);
-        tokens.truncate(n as usize);
         let threads = std::thread::available_parallelism().map_or(4, |n| n.get().min(8)) as i32;
         let params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(n)).with_n_batch(n).with_n_ubatch(n).with_n_threads(threads).with_n_threads_batch(threads).with_embeddings(true).with_pooling_type(LlamaPoolingType::Mean);
         let mut ctx = model.new_context(backend, params).map_err(|x| e(&x))?;
         let mut batch = LlamaBatch::new(n as usize, 1);
-        batch.add_sequence(&tokens, 0, false).map_err(|x| e(&x))?;
-        ctx.decode(&mut batch).map_err(|x| e(&x))?;
-        Ok(ctx.embeddings_seq_ith(0).map_err(|x| e(&x))?.to_vec())
+        let mut out = Vec::with_capacity(texts.len());
+        for text in texts {
+            if super::QUITTING.load(Ordering::SeqCst) {
+                return Err("quitting".into());
+            }
+            let mut tokens = model.vocab().tokenize(text.as_bytes(), true, false);
+            tokens.truncate(n as usize);
+            ctx.clear_kv_cache();
+            batch.clear();
+            batch.add_sequence(&tokens, 0, false).map_err(|x| e(&x))?;
+            ctx.decode(&mut batch).map_err(|x| e(&x))?;
+            out.push(ctx.embeddings_seq_ith(0).map_err(|x| e(&x))?.to_vec());
+        }
+        Ok(out)
     }
 
     /// GB of memory the OS can hand out, or None when it can't tell (then the check is skipped).
@@ -967,9 +979,10 @@ mod tests {
         assert!(MODELS[0].id.starts_with("qwen2.5-3b"), "default model");
         assert!(model("nope").is_none() && !MODELS.iter().any(|m| m.id == EMBED_MODELS[0].id), "the embedder is never a chat model");
         let dir = Path::new("/nonexistent");
-        let err = embed_local(dir, EMBED_MODELS[0].id, "x").unwrap_err();
+        let x = ["x".to_string()];
+        let err = embed_local(dir, EMBED_MODELS[0].id, &x).unwrap_err();
         assert!(err.contains(if RUNS { "isn't downloaded" } else { "can't run" }), "{err}");
-        assert!(embed_local(dir, MODELS[0].id, "x").unwrap_err().contains("Unknown"));
+        assert!(embed_local(dir, MODELS[0].id, &x).unwrap_err().contains("Unknown"));
         let id = EMBED_MODELS[0].id;
         assert!(embed_check(dir, id, false).unwrap_err().contains("can't run"));
         assert!(embed_check(dir, id, true).unwrap_err().contains("Settings → AI"));
@@ -1046,7 +1059,7 @@ mod tests {
     fn embedded_embeddings() {
         let dir = PathBuf::from(std::env::var("MARGIN_MODELS").expect("MARGIN_MODELS"));
         let m = EMBED_MODELS[0].id;
-        let e = |q: bool, t: &str| embed_local(&dir, m, &crate::embed::prefixed(m, q, t)).unwrap();
+        let e = |q: bool, t: &str| embed_local(&dir, m, &[crate::embed::prefixed(m, q, t)]).unwrap().remove(0);
         let q = e(true, "När släpps appen?");
         let (near, far) = (e(false, "Launch plan\nThe app ships on May 3."), e(false, "Recipe\nMix flour, eggs and milk."));
         let dot = |a: &[f32], b: &[f32]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f32>();
@@ -1054,6 +1067,18 @@ mod tests {
         assert!((dot(&q, &q) - 1.0).abs() < 1e-4);
         assert!(dot(&q, &near) > dot(&q, &far), "{} vs {}", dot(&q, &near), dot(&q, &far));
         assert_eq!(e(false, &"word ".repeat(2000)).len(), 384, "long text is cut to the context");
+        // A batch (one context, cache cleared between texts) gives each text's own vector (#1127).
+        let two = ["Launch plan\nThe app ships on May 3.", "Recipe\nMix flour, eggs and milk."].map(|t| crate::embed::prefixed(m, false, t));
+        let both = embed_local(&dir, m, &two).unwrap();
+        assert!(dot(&both[0], &near) > 0.9999 && dot(&both[1], &far) > 0.9999);
+        // Timing: one call per section (as before #1127) against batches of 16.
+        let texts: Vec<String> = (0..256).map(|i| format!("passage: Note {i}\n* Section {i}\nSome text about topic {} and more words here.", i % 17)).collect();
+        let t = std::time::Instant::now();
+        texts.iter().for_each(|x| drop(embed_local(&dir, m, std::slice::from_ref(x)).unwrap()));
+        let one = t.elapsed();
+        let t = std::time::Instant::now();
+        texts.chunks(16).for_each(|b| drop(embed_local(&dir, m, b).unwrap()));
+        eprintln!("256 sections: one per call {one:?}, 16 per call {:?}", t.elapsed());
         unload(); // else Metal aborts the test binary's exit
     }
 
@@ -1140,7 +1165,7 @@ mod tests {
     #[test]
     fn embed_http() {
         // Answers one request per reply in turn, reading each up to its Content-Length; returns them.
-        let replies = ["200 OK\r\n\r\n{\"model\":\"nomic-embed-text\",\"embeddings\":[[0.5,-1,2e-3]]}", "404 Not Found\r\n\r\n{\"error\":\"model \\\"nomic-embed-text\\\" not found, try pulling it first\"}", "200 OK\r\n\r\n{\"embeddings\":[]}"];
+        let replies = ["200 OK\r\n\r\n{\"model\":\"nomic-embed-text\",\"embeddings\":[[0.5,-1,2e-3],[1,0,0]]}","404 Not Found\r\n\r\n{\"error\":\"model \\\"nomic-embed-text\\\" not found, try pulling it first\"}", "200 OK\r\n\r\n{\"embeddings\":[]}"];
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let base = format!("http://{}", l.local_addr().unwrap());
         let srv = std::thread::spawn(move || {
@@ -1157,15 +1182,18 @@ mod tests {
             })
         });
         let base = base.as_str();
-        assert_eq!(embed(base, "nomic-embed-text", "Plan\n* Launch"), Ok(vec![0.5, -1.0, 0.002]));
-        assert!(embed(base, "nomic-embed-text", "x").unwrap_err().contains("ollama pull nomic-embed-text"));
-        assert_eq!(embed(base, "m", "x").unwrap_err(), "Ollama sent no embedding");
+        let s = |t: &str| vec![t.to_string()];
+        let two = ["Plan\n* Launch".to_string(), "b".into()];
+        assert_eq!(embed(base, "nomic-embed-text", &two), Ok(vec![vec![0.5, -1.0, 0.002], vec![1.0, 0.0, 0.0]]));
+        assert!(embed(base, "nomic-embed-text", &s("x")).unwrap_err().contains("ollama pull nomic-embed-text"));
+        assert_eq!(embed(base, "m", &s("x")).unwrap_err(), "Ollama sent no embedding");
         let reqs = srv.join().unwrap();
-        assert!(reqs[0].starts_with("POST /api/embed HTTP/1.0\r\n") && reqs[0].ends_with(r#"{"input":"Plan\n* Launch","model":"nomic-embed-text"}"#), "{}", reqs[0]);
+        assert!(reqs[0].starts_with("POST /api/embed HTTP/1.0\r\n") && reqs[0].ends_with(r#"{"input":["Plan\n* Launch","b"],"model":"nomic-embed-text"}"#), "{}", reqs[0]);
         assert_eq!(parse_embed(500, r#"{"error":"out of memory"}"#, "m").unwrap_err(), "Ollama: out of memory");
         assert!(parse_embed(200, r#"{"embeddings":[["x"]]}"#, "m").unwrap_err().contains("malformed"));
+        assert!(parse_embed(200, r#"{"embeddings":[[1],"x"]}"#, "m").unwrap_err().contains("malformed"));
         let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap();
-        assert!(embed(&format!("http://{free}"), "m", "x").unwrap_err().contains("isn't running"));
+        assert!(embed(&format!("http://{free}"), "m", &s("x")).unwrap_err().contains("isn't running"));
     }
 
     #[test]
