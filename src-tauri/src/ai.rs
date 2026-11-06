@@ -107,12 +107,11 @@ fn embed_check(dir: &Path, id: &str, runs: bool) -> Result<(), String> {
 
 /// The vectors of TEXTS from the built-in embedding model ID (from EMBED_MODELS), its file in DIR.
 pub fn embed_local(dir: &Path, id: &str, texts: &[String]) -> Result<Vec<Vec<f32>>, String> {
-    embed_ready(dir, id)?;
+    // One line: embed_ready always fails without embedded-ai, so nothing after it can run there.
     #[cfg(not(feature = "embedded-ai"))]
-    {
-        let _ = texts;
-        unreachable!("embed_ready fails without embedded-ai")
-    }
+    return embed_ready(dir, id).and_then(|()| unreachable!("embed_ready fails without embedded-ai ({} texts)", texts.len()));
+    #[cfg(feature = "embedded-ai")]
+    embed_ready(dir, id)?;
     #[cfg(feature = "embedded-ai")]
     {
         let m = EMBED_MODELS.iter().find(|m| m.id == id).expect("checked by embed_ready");
