@@ -2673,14 +2673,21 @@ fn ai_excluded(s: State<App>, path: PathBuf) -> bool {
     retrieve::excluded(&path, &c.notes(), &c.ai_exclude)
 }
 
+/// Which backend embeds C's semantic index: the built-in one with the built-in drafts backend
+/// (#997) or when `ai_embed_model` names a built-in embedder, e.g. with Ollama chat (#1148).
+pub(crate) fn embed_backend(c: &Config) -> ai::Backend {
+    let builtin = c.ai_backend == ai::Backend::Embedded || ai::EMBED_MODELS.iter().any(|m| m.id == c.ai_embed_model.trim());
+    if builtin { ai::Backend::Embedded } else { ai::Backend::Ollama }
+}
+
 /// C's embedding model (the index is keyed by it), or why semantic search can't run: Ollama's
-/// `ai_embed_model`, or the built-in one with the built-in backend (#997).
+/// `ai_embed_model`, or the built-in one (embed_backend).
 pub(crate) fn semantic_model(c: &Config) -> R<&str> {
     let model = c.ai_embed_model.trim();
     if !c.ai_semantic {
         return Err("Semantic search is off: turn it on in Settings → AI.".into());
     }
-    if c.ai_backend == ai::Backend::Embedded {
+    if embed_backend(c) == ai::Backend::Embedded {
         return Ok(ai::EMBED_MODELS[0].id);
     }
     if model.is_empty() {
@@ -2689,11 +2696,11 @@ pub(crate) fn semantic_model(c: &Config) -> R<&str> {
     Ok(model)
 }
 
-/// semantic_model, but with the built-in backend also that its model can run: an index for another
+/// semantic_model, but with the built-in embedder also that its model can run: an index for another
 /// model would otherwise be dropped for an empty one that can't be filled (#1117).
 fn semantic_ready<'a>(c: &'a Config, dir: &Path) -> R<&'a str> {
     let model = semantic_model(c)?;
-    if c.ai_backend == ai::Backend::Embedded {
+    if embed_backend(c) == ai::Backend::Embedded {
         ai::embed_ready(dir, model)?;
     }
     Ok(model)
@@ -2703,7 +2710,7 @@ fn semantic_ready<'a>(c: &'a Config, dir: &Path) -> R<&'a str> {
 /// semantic_model), in one call; DIR holds the built-in models.
 fn embed_texts(c: &Config, dir: &Path, model: &str, query: bool, texts: &[String]) -> R<Vec<Vec<f32>>> {
     let texts: Vec<String> = texts.iter().map(|t| embed::prefixed(model, query, t)).collect();
-    match c.ai_backend {
+    match embed_backend(c) {
         ai::Backend::Ollama => ai::embed(&c.ai_url, model, &texts),
         ai::Backend::Embedded => ai::embed_local(dir, model, &texts),
     }
@@ -3714,9 +3721,16 @@ mod tests {
         assert!(semantic_model(&c).unwrap_err().contains("is off"));
         c.ai_semantic = true;
         assert_eq!(semantic_model(&c), Ok("nomic-embed-text"));
+        assert_eq!(embed_backend(&c), ai::Backend::Ollama);
+        // Ollama chat with the built-in embedder (#1148).
+        c.ai_embed_model = format!(" {} ", ai::EMBED_MODELS[0].id);
+        assert_eq!((semantic_model(&c), embed_backend(&c)), (Ok(ai::EMBED_MODELS[0].id), ai::Backend::Embedded));
         c.ai_embed_model = " ".into();
         assert!(semantic_model(&c).unwrap_err().contains("embedding model"));
+        // The built-in drafts backend ignores ai_embed_model.
         c.ai_backend = ai::Backend::Embedded;
+        assert_eq!((semantic_model(&c), embed_backend(&c)), (Ok(ai::EMBED_MODELS[0].id), ai::Backend::Embedded));
+        c.ai_embed_model = "nomic-embed-text".into();
         assert_eq!(semantic_model(&c), Ok(ai::EMBED_MODELS[0].id));
     }
 
@@ -3725,9 +3739,15 @@ mod tests {
         let dir = Path::new("/nonexistent");
         let mut c = Config { ai_semantic: true, ..Config::default() };
         assert_eq!(semantic_ready(&c, dir), Ok("nomic-embed-text"));
+        let not_here = |c: &Config| {
+            let err = semantic_ready(c, dir).unwrap_err();
+            assert!(err.contains(if ai::RUNS { "Semantic index" } else { "can't run" }), "{err}");
+        };
+        c.ai_embed_model = ai::EMBED_MODELS[0].id.into();
+        not_here(&c);
+        c.ai_embed_model = "nomic-embed-text".into();
         c.ai_backend = ai::Backend::Embedded;
-        let err = semantic_ready(&c, dir).unwrap_err();
-        assert!(err.contains(if ai::RUNS { "Semantic index" } else { "can't run" }), "{err}");
+        not_here(&c);
     }
 
     #[test]

@@ -1070,9 +1070,11 @@ everything else here, the model runs on this machine (`ai_url` must be localhost
 **Semantic index of my notes** (`ai_semantic`, off by default) prepares
 matching by meaning: Margin keeps a vector of every note section, made by Ollama's
 embedding model **Embedding model** (`ai_embed_model`, default `nomic-embed-text`;
-run `ollama pull nomic-embed-text` first) or, when drafts use a built-in model,
-by a small built-in one (Multilingual E5 Small, 132 MB, MIT licence, about 100
-languages): Settings shows a **Download** link under the switch, and nothing is
+run `ollama pull nomic-embed-text` first) or by a small built-in one
+(Multilingual E5 Small, 132 MB, MIT licence, about 100 languages), which needs no
+Ollama model: pick **Built-in: Multilingual E5 Small** in **Embedding model**
+(`multilingual-e5-small-q8`), so Ollama can still answer the chat; when drafts use
+a built-in model the index always uses it. With the built-in one Settings shows a **Download** link under the switch, and nothing is
 downloaded until you click it (a pinned file, checked by its SHA-256; a paused
 download resumes). The vectors are kept up to date in the background as notes
 change, a batch of sections at a time (Settings shows how many are still to go). Only changed sections are sent again, notes
@@ -1138,9 +1140,9 @@ the path filled in (the AppImage itself on Linux) and a Copy button; for Claude 
   closest in meaning to one note, from the index the app keeps (no embedding call, and the index is
   only read): path, title, heading, line and first text of each one's best section, and the
   similarity. It's an error while the index is empty or was built for another model; open Margin to index.
-- `search_by_meaning` (query, k; default 10): with semantic search on and the Ollama backend, the
+- `search_by_meaning` (query, k; default 10): with semantic search on and an Ollama embedding model, the
   note sections closest in meaning to the query, from the same index, answered the same way (the
-  query is embedded with `ai_embed_model` through Ollama). With the built-in backend it isn't
+  query is embedded with `ai_embed_model` through Ollama). With the built-in embedder it isn't
   offered, so the MCP server never loads the 132 MB model; search by meaning in the app (`~`) instead.
 
 It also offers three prompts, which Claude clients show as ready-made commands: `daily_plan` (agenda,

@@ -433,6 +433,23 @@ async function pngs() {
     await shot("semantic-index");
   }
 
+  if (want("builtin-embedder")) { // #1148: Ollama drafts, the built-in embedder picked for the index
+    await (await find(".settings .chips button", "AI chat")).click();
+    const on = await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Semantic index of my notes")]]/input`);
+    if (!(await on.isSelected())) {
+      await on.click();
+      await (await find(".settings button", "Save ai chat")).click();
+      await find(".status .msg", "Settings saved");
+    }
+    await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Embedding model")]]/input`)).click();
+    await browser.keys([Key.Ctrl, "a"]);
+    await type("multilingual-e5-small-q8");
+    await (await find(".settings button", "Save ai chat")).click();
+    const dl = await find(".settings .embedder button", "Download");
+    await dl.scrollIntoView({ block: "center" });
+    await shot("builtin-embedder");
+  }
+
   if (want("long-session")) { // #970: the demo clock has run 2h 20m, past a 2 h limit; last, as it tints the chip
     await (await find(".settings .chips button", "Time")).click();
     await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Ask if still working after")]]/input`)).click();

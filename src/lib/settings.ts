@@ -1,11 +1,17 @@
 import { AREAS } from "./areas.ts";
 
 /** A config.toml setting on the settings page. KIND defaults to text; lists are edited one item per line,
- *  numbers (a list of them) on one line. WHEN: shown only while it holds for the saved config. */
-export type Field = { key: string; label: string; kind?: "text" | "number" | "numbers" | "bool" | "list" | "multiline" | "choice"; hint?: string; step?: number | "any"; options?: string[]; choices?: string[]; when?: (config: Record<string, unknown>) => boolean };
+ *  numbers (a list of them) on one line. SUGGEST: picks offered for a text field, which stays free.
+ *  WHEN: shown only while it holds for the saved config. */
+export type Field = { key: string; label: string; kind?: "text" | "number" | "numbers" | "bool" | "list" | "multiline" | "choice"; hint?: string; step?: number | "any"; options?: string[]; choices?: string[]; suggest?: [value: string, label: string][]; when?: (config: Record<string, unknown>) => boolean };
 export type Form = Record<string, string | boolean>;
 
 const rel = "relative to the notes folder";
+/** The built-in embedding model's id (ai::EMBED_MODELS). */
+export const BUILTIN_EMBED = "multilingual-e5-small-q8";
+/** Whether config C's semantic index uses the built-in embedder, as lib.rs embed_backend: always
+ *  with the built-in drafts backend, else when the embedding model is its id (#1148). */
+export const builtinEmbedder = (c: Record<string, unknown>) => c.ai_backend === "embedded" || String(c.ai_embed_model ?? "").trim() === BUILTIN_EMBED;
 export const GROUPS: { name: string; fields: Field[] }[] = [
   { name: "Folders", fields: [
     { key: "notes_dir", label: "Notes folder" },
@@ -80,8 +86,8 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "ai_source_tasks", label: "Send open tasks and the agenda", kind: "bool", hint: "when the question asks about tasks, today, the week, deadlines or meetings" },
     { key: "ai_source_time", label: "Send the time log", kind: "bool", hint: "the last 7 days, when the question asks about hours, time or projects" },
     { key: "ai_tools", label: "Let the model look things up itself", kind: "bool", when: (c) => c.ai_backend === "ollama", hint: "Ollama only, while “Use my notes” is on: the model may search notes, open one by title and look up its links (with Send matching notes), list tasks and read the agenda (with Send open tasks) and read the time log (with Send the time log), all read-only, before it answers; needs a model that can use tools, e.g. llama3.2 or qwen3, and the chat says when it can't" },
-    { key: "ai_semantic", label: "Semantic index of my notes", kind: "bool", hint: "keeps vectors of every note section up to date in the background, stored in Margin's local data folder, not in the notes, so the chat and search can find notes by meaning; with Ollama from the embedding model below, with a built-in model from a small multilingual one Margin downloads (below); keyword matching is used while the index is missing or the model is unavailable" },
-    { key: "ai_embed_model", label: "Embedding model", when: (c) => !!c.ai_semantic && c.ai_backend !== "embedded", hint: "an Ollama embedding model, e.g. nomic-embed-text (ollama pull nomic-embed-text); changing it rebuilds the index" },
+    { key: "ai_semantic", label: "Semantic index of my notes", kind: "bool", hint: "keeps vectors of every note section up to date in the background, stored in Margin's local data folder, not in the notes, so the chat and search can find notes by meaning; from the embedding model below, or with a built-in drafts model always from the small multilingual one Margin downloads (below); keyword matching is used while the index is missing or the model is unavailable" },
+    { key: "ai_embed_model", label: "Embedding model", when: (c) => !!c.ai_semantic && c.ai_backend !== "embedded", suggest: [[BUILTIN_EMBED, "Built-in: Multilingual E5 Small"], ["nomic-embed-text", "Ollama: nomic-embed-text"]], hint: "the built-in one (no Ollama model to pull; Margin downloads it, below) or an Ollama embedding model, e.g. nomic-embed-text (ollama pull nomic-embed-text); changing it rebuilds the index" },
     { key: "ai_exclude", label: "Notes the AI never sees", kind: "list", hint: "one per line; a note whose path in the notes folder contains one (any case, e.g. private/ or diary) is never sent: not as a match, a linked note, the open note or for tasks" },
     { key: "mcp_write", label: "Let Claude (MCP) edit notes", kind: "bool", hint: "margin --mcp may then create notes, append to them, add to-dos and change their state, through the same checks as the editor; excluded notes stay untouched. Off: read-only" },
   ] },
