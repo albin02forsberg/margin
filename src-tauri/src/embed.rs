@@ -17,6 +17,11 @@ const MAGIC: &[u8; 8] = b"MRGNEMB\0";
 /// 3: e5 models embed with `passage: ` / `query: ` prefixes too (2: nomic's `search_document: ` /
 /// `search_query: `; see `prefixed`). Older indexes are rejected and rebuilt once.
 const VERSION: u32 = 3;
+/// Sections per call to the embedder (#1127): one Ollama request, one built-in model context.
+const EMBED_BATCH: usize = 16;
+
+/// Embeds a batch of texts: one vector per text, in order.
+pub type Embed<'a> = dyn Fn(&[String]) -> Result<Vec<Vec<f32>>, String> + 'a;
 
 /// TEXT as MODEL wants it embedded: the nomic-embed and e5 models are trained with a task prefix
 /// on documents (QUERY false) and questions (QUERY true); other models take the text as is.
@@ -146,16 +151,17 @@ impl Index {
     /// Bring the index up to date with FILES (already filtered by `ai_exclude`): notes no longer
     /// listed lose their vectors, unchanged ones (same scanned mtime) are kept, and changed or new
     /// sections are embedded, reusing any vector of the same text (so a moved note costs nothing).
-    /// At most CAP sections are embedded per run; a note left short is retried next run. Returns
-    /// how many were embedded (`pending` = how many are left); on an embedder error the work so far is kept and the error returned.
-    pub fn update(&mut self, files: &[Arc<OrgFile>], embed: &dyn Fn(&str) -> Result<Vec<f32>, String>, cap: usize) -> Result<usize, String> {
+    /// At most CAP sections are embedded per run, EMBED_BATCH per call to EMBED; a note left short
+    /// is retried next run. Returns how many were embedded (`pending` = how many are left); on an
+    /// embedder error the work so far is kept and the error returned.
+    pub fn update(&mut self, files: &[Arc<OrgFile>], embed: &Embed, cap: usize) -> Result<usize, String> {
         self.sync(files, embed, cap).0
     }
 
     /// `update`, plus whether the index changed at all (a note redone or dropped), so a no-op
     /// round isn't saved (#1126). Unchanged notes are moved back, not copied; vectors are reused
     /// only from the notes that changed or went away (not across unchanged ones).
-    fn sync(&mut self, files: &[Arc<OrgFile>], embed: &dyn Fn(&str) -> Result<Vec<f32>, String>, cap: usize) -> (Result<usize, String>, bool) {
+    fn sync(&mut self, files: &[Arc<OrgFile>], embed: &Embed, cap: usize) -> (Result<usize, String>, bool) {
         let mut old: HashMap<PathBuf, Indexed> = std::mem::take(&mut self.files).into_iter().map(|f| (f.path.clone(), f)).collect();
         // The scanned text's mtime, so a note edited while indexing is redone next run.
         let kept: Vec<Option<Indexed>> = files
@@ -166,45 +172,47 @@ impl Index {
             })
             .collect();
         let changed = !old.is_empty() || kept.iter().any(Option::is_none);
-        let known: HashMap<u64, Vec<f32>> = old.into_values().flat_map(|f| f.chunks).map(|c| (c.hash, c.vec)).collect();
-        let (mut done, mut err, mut pending) = (0, None, 0);
-        for (f, k) in files.iter().zip(kept) {
-            if let Some(o) = k {
-                self.files.push(o);
+        let mut known: HashMap<u64, Vec<f32>> = old.into_values().flat_map(|f| f.chunks).map(|c| (c.hash, c.vec)).collect();
+        let redo: Vec<Option<Vec<(u64, Chunk)>>> = files.iter().zip(&kept).map(|(f, k)| k.is_none().then(|| chunks(f).into_iter().map(|c| (hash(&c.text), c)).collect())).collect();
+        // Texts without a vector, each once, in scan order, at most CAP (#1127).
+        let mut seen = std::collections::HashSet::new();
+        let (hs, texts): (Vec<u64>, Vec<String>) = redo.iter().flatten().flatten().filter(|(h, _)| !known.contains_key(h) && seen.insert(*h)).take(cap).map(|(h, c)| (*h, c.text.clone())).unzip();
+        let (mut done, mut err) = (0, None);
+        'batches: for (hs, texts) in hs.chunks(EMBED_BATCH).zip(texts.chunks(EMBED_BATCH)) {
+            let vs = match embed(texts) {
+                Ok(vs) if vs.len() == texts.len() => vs,
+                Ok(vs) => {
+                    err = Some(format!("got {} embeddings for {} sections", vs.len(), texts.len()));
+                    break;
+                }
+                Err(e) => {
+                    err = Some(e);
+                    break;
+                }
+            };
+            for (h, v) in hs.iter().zip(vs) {
+                if v.is_empty() || (self.dim != 0 && v.len() != self.dim) {
+                    err = Some(format!("embedding has {} dimensions, expected {}", v.len(), self.dim));
+                    break 'batches;
+                }
+                self.dim = v.len();
+                known.insert(*h, v);
+                done += 1;
+            }
+        }
+        let mut pending = 0;
+        for (f, (k, r)) in files.iter().zip(kept.into_iter().zip(redo)) {
+            let Some(r) = r else {
+                self.files.extend(k);
                 continue;
-            }
+            };
+            // A note short of a vector keeps mtime 0, so the next run redoes it.
             let mut ix = Indexed { path: f.path.clone(), mtime: nanos(f.mtime), chunks: vec![] };
-            for c in chunks(f) {
-                let h = hash(&c.text);
-                let vec = match known.get(&h) {
-                    Some(v) => v.clone(),
-                    None if done < cap && err.is_none() => match embed(&c.text) {
-                        Ok(v) if v.is_empty() || (self.dim != 0 && v.len() != self.dim) => {
-                            err = Some(format!("embedding has {} dimensions, expected {}", v.len(), self.dim));
-                            pending += 1;
-                            continue;
-                        }
-                        Ok(v) => {
-                            done += 1;
-                            self.dim = v.len();
-                            v
-                        }
-                        Err(e) => {
-                            err = Some(e);
-                            pending += 1;
-                            continue;
-                        }
-                    },
-                    None => {
-                        ix.mtime = 0;
-                        pending += 1;
-                        continue;
-                    }
-                };
-                ix.chunks.push(Vector { line: c.line, hash: h, vec });
-            }
-            if err.is_some() {
-                ix.mtime = 0;
+            for (h, c) in r {
+                match known.get(&h) {
+                    Some(v) => ix.chunks.push(Vector { line: c.line, hash: h, vec: v.clone() }),
+                    None => (ix.mtime, pending) = (0, pending + 1),
+                }
             }
             self.files.push(ix);
         }
@@ -357,7 +365,7 @@ impl Cached {
     }
 
     /// One background run (#965): `Index::update`, marked dirty when anything changed.
-    pub fn update(&mut self, files: &[Arc<OrgFile>], embed: &dyn Fn(&str) -> Result<Vec<f32>, String>, cap: usize) -> Result<usize, String> {
+    pub fn update(&mut self, files: &[Arc<OrgFile>], embed: &Embed, cap: usize) -> Result<usize, String> {
         let (r, changed) = self.ix.sync(files, embed, cap);
         self.dirty |= changed || r != Ok(0);
         r
@@ -394,11 +402,14 @@ mod tests {
         Arc::new(f)
     }
     /// A fake embedder: counts of a, e and o, recording what it was asked.
-    fn fake(log: &RefCell<Vec<String>>) -> impl Fn(&str) -> Result<Vec<f32>, String> + '_ {
-        move |t: &str| {
-            log.borrow_mut().push(t.to_string());
-            Ok("aeo".chars().map(|c| t.matches(c).count() as f32).collect())
+    fn fake(log: &RefCell<Vec<String>>) -> impl Fn(&[String]) -> Result<Vec<Vec<f32>>, String> + '_ {
+        move |ts: &[String]| {
+            log.borrow_mut().extend(ts.iter().cloned());
+            Ok(ts.iter().map(|t| "aeo".chars().map(|c| t.matches(c).count() as f32).collect()).collect())
         }
+    }
+    fn fail(_: &[String]) -> Result<Vec<Vec<f32>>, String> {
+        Err("down".into())
     }
 
     #[test]
@@ -518,12 +529,47 @@ mod tests {
         assert_eq!(ix.pending, 0);
         assert_eq!((ix.files[0].chunks.len(), ix.files[0].mtime), (3, nanos(a.mtime)));
         let b = note("/n/b.org", "* New\nx\n", 1);
-        let fail = |_: &str| Err::<Vec<f32>, String>("down".into());
         assert_eq!(ix.update(&[a.clone(), b.clone()], &fail, 9), Err("down".into()));
         assert_eq!((ix.files[0].chunks.len(), ix.files[1].chunks.len(), ix.files[1].mtime), (3, 0, 0));
         assert_eq!(ix.pending, 1);
-        let wrong = |_: &str| Ok(vec![1.0]);
-        assert!(ix.update(&[a, b], &wrong, 9).unwrap_err().contains("dimensions"));
+        let wrong = |ts: &[String]| Ok(vec![vec![1.0]; ts.len()]);
+        assert!(ix.update(&[a.clone(), b.clone()], &wrong, 9).unwrap_err().contains("dimensions"));
+        let short = |_: &[String]| Ok(vec![]);
+        assert!(ix.update(&[a, b], &short, 9).unwrap_err().contains("0 embeddings for 1"));
+    }
+
+    #[test]
+    fn embeds_in_batches_once_per_text() {
+        let sizes = RefCell::new(vec![]);
+        let log = RefCell::new(vec![]);
+        let f = fake(&log);
+        let batch = |ts: &[String]| {
+            sizes.borrow_mut().push(ts.len());
+            f(ts)
+        };
+        // 40 sections, 2 of them the same text: 39 to embed, cut to a cap of 37 = 16 + 16 + 5.
+        let body: String = (0..40).map(|i| format!("* S{}\n{}\n", i.min(38), "a".repeat(i.min(38)))).collect();
+        let a = note("/n/a.org", &body, 1);
+        let mut ix = Index::new("m");
+        assert_eq!(ix.update(std::slice::from_ref(&a), &batch, 37), Ok(37));
+        assert_eq!(*sizes.borrow(), [16, 16, 5]);
+        assert_eq!((ix.files[0].chunks.len(), ix.files[0].mtime, ix.pending), (37, 0, 3));
+        // The rest next run; nothing embedded twice.
+        assert_eq!(ix.update(std::slice::from_ref(&a), &batch, 37), Ok(2));
+        assert_eq!((ix.files[0].chunks.len(), ix.files[0].mtime, ix.pending), (40, 1, 0));
+        let mut all = log.borrow().clone();
+        all.sort();
+        all.dedup();
+        assert_eq!((log.borrow().len(), all.len()), (39, 39));
+        // An error in a later batch keeps the earlier ones.
+        let calls = RefCell::new(0);
+        let flaky = |ts: &[String]| {
+            *calls.borrow_mut() += 1;
+            if *calls.borrow() == 2 { fail(ts) } else { f(ts) }
+        };
+        let b = note("/n/b.org", &body.replace("* S", "* T"), 1);
+        assert_eq!(ix.update(&[a.clone(), b], &flaky, 64), Err("down".into()));
+        assert_eq!((ix.files[1].chunks.len(), ix.files[1].mtime, ix.pending), (16, 0, 24));
     }
 
     #[test]
@@ -533,13 +579,12 @@ mod tests {
         let p = index_path(&dir, Path::new("/n"));
         let a = note("/n/a.org", "* One\naaa\n* Two\neee\n", 1);
         // A run saved right away, from a fresh load each time, as a lone reindex round does.
-        let sync = |files: &[Arc<OrgFile>], embed: &dyn Fn(&str) -> Result<Vec<f32>, String>, cap| {
+        let sync = |files: &[Arc<OrgFile>], embed: &Embed, cap| {
             let mut c = Cached::open(&p, "m");
             let r = c.update(files, embed, cap);
             c.save_if(Duration::ZERO).unwrap();
             r
         };
-        let fail = |_: &str| Err::<Vec<f32>, String>("down".into());
         assert_eq!(sync(std::slice::from_ref(&a), &fail, 9), Err("down".into()));
         assert!(p.exists() && Index::load(&p, "m").files[0].chunks.is_empty());
         assert_eq!(sync(std::slice::from_ref(&a), &fake(&log), 1), Ok(1));
