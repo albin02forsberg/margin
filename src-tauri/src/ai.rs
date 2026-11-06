@@ -632,8 +632,9 @@ mod llama {
     }
 
     /// M's pooled (mean) embeddings of TEXTS, each cut to the model's training context; not
-    /// normalised. One context for all of them (#1127); stops when the app quits, so the 2 s
-    /// drain in `unload` waits for one text at most.
+    /// normalised. One context for all of them (#1127), sections packed several to a decode as
+    /// separate sequences (#1142); stops between packs when the app quits, so the 2 s drain in
+    /// `unload` waits for one pack at most.
     pub fn embed(m: &'static Model, path: &Path, texts: &[String]) -> Result<Vec<Vec<f32>>, String> {
         let backend = backend()?;
         let mut slot = EMBED_LOADED.lock().unwrap_or_else(|e| e.into_inner());
@@ -650,21 +651,38 @@ mod llama {
         let e = |e: &dyn std::fmt::Display| format!("The built-in embedding model failed: {e}");
         let n = model.n_ctx_train().clamp(64, 8192);
         let threads = std::thread::available_parallelism().map_or(4, |n| n.get().min(8)) as i32;
-        let params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(n)).with_n_batch(n).with_n_ubatch(n).with_n_threads(threads).with_n_threads_batch(threads).with_embeddings(true).with_pooling_type(LlamaPoolingType::Mean);
+        let tokens: Vec<_> = texts.iter().map(|t| {
+            let mut t = model.vocab().tokenize(t.as_bytes(), true, false);
+            t.truncate(n as usize);
+            t
+        }).collect();
+        // A pack: at most SEQS sections (each keeps n tokens of the n_ctx) and BUDGET tokens (one
+        // ubatch, as the encoder needs; its attention buffer grows with the square of it). Both
+        // shrink to TEXTS, down to n, so a lone query costs as before. llama.cpp aborts unless
+        // the ubatch is at least n and splits evenly into SEQS (e5's n is 511).
+        let seqs = (8192 / n).clamp(1, 16).min(texts.len() as u32).max(1);
+        let total = tokens.iter().map(Vec::len).sum::<usize>() as u32;
+        let budget = total.clamp(n, n.max(2048).min(seqs * n)).div_ceil(seqs) * seqs;
+        let params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(seqs * n)).with_n_seq_max(seqs).with_n_batch(budget).with_n_ubatch(budget).with_n_threads(threads).with_n_threads_batch(threads).with_embeddings(true).with_pooling_type(LlamaPoolingType::Mean);
         let mut ctx = model.new_context(backend, params).map_err(|x| e(&x))?;
-        let mut batch = LlamaBatch::new(n as usize, 1);
+        let mut batch = LlamaBatch::new(budget as usize, 1);
         let mut out = Vec::with_capacity(texts.len());
-        for text in texts {
+        let mut tokens = tokens.into_iter().peekable();
+        while tokens.peek().is_some() {
             if super::QUITTING.load(Ordering::SeqCst) {
                 return Err("quitting".into());
             }
-            let mut tokens = model.vocab().tokenize(text.as_bytes(), true, false);
-            tokens.truncate(n as usize);
             ctx.clear_kv_cache();
             batch.clear();
-            batch.add_sequence(&tokens, 0, false).map_err(|x| e(&x))?;
+            let mut k = 0;
+            while let Some(t) = tokens.next_if(|t| k == 0 || (k < seqs as i32 && batch.n_tokens() as usize + t.len() <= budget as usize)) {
+                batch.add_sequence(&t, k, false).map_err(|x| e(&x))?;
+                k += 1;
+            }
             ctx.decode(&mut batch).map_err(|x| e(&x))?;
-            out.push(ctx.embeddings_seq_ith(0).map_err(|x| e(&x))?.to_vec());
+            for i in 0..k {
+                out.push(ctx.embeddings_seq_ith(i).map_err(|x| e(&x))?.to_vec());
+            }
         }
         Ok(out)
     }
@@ -1070,14 +1088,22 @@ mod tests {
         let two = ["Launch plan\nThe app ships on May 3.", "Recipe\nMix flour, eggs and milk."].map(|t| crate::embed::prefixed(m, false, t));
         let both = embed_local(&dir, m, &two).unwrap();
         assert!(dot(&both[0], &near) > 0.9999 && dot(&both[1], &far) > 0.9999);
-        // Timing: one call per section (as before #1127) against batches of 16.
+        // Packed (#1142): sections over the context among short ones, past the pack's token budget.
+        let long = |w: &str| crate::embed::prefixed(m, false, &format!("{w} ").repeat(2000));
+        let mixed = [two[0].clone(), long("word"), two[1].clone(), long("ord"), long("note"), long("text"), long("margin")];
+        let dots: Vec<f32> = mixed.iter().zip(embed_local(&dir, m, &mixed).unwrap()).map(|(x, p)| dot(&p, &embed_local(&dir, m, std::slice::from_ref(x)).unwrap()[0])).collect();
+        eprintln!("packed vs alone, short and long sections: {dots:?}");
+        assert!(dots.iter().all(|d| *d > 0.9999));
+        // Timing: one call per section (as before #1127) against batches of 16, each the same vector.
         let texts: Vec<String> = (0..256).map(|i| format!("passage: Note {i}\n* Section {i}\nSome text about topic {} and more words here.", i % 17)).collect();
         let t = std::time::Instant::now();
-        texts.iter().for_each(|x| drop(embed_local(&dir, m, std::slice::from_ref(x)).unwrap()));
+        let ones: Vec<_> = texts.iter().map(|x| embed_local(&dir, m, std::slice::from_ref(x)).unwrap().remove(0)).collect();
         let one = t.elapsed();
         let t = std::time::Instant::now();
-        texts.chunks(16).for_each(|b| drop(embed_local(&dir, m, b).unwrap()));
-        eprintln!("256 sections: one per call {one:?}, 16 per call {:?}", t.elapsed());
+        let packed: Vec<_> = texts.chunks(16).flat_map(|b| embed_local(&dir, m, b).unwrap()).collect();
+        let low = ones.iter().zip(&packed).map(|(a, b)| dot(a, b)).fold(1.0, f32::min);
+        eprintln!("256 sections: one per call {one:?}, 16 per call {:?}, lowest dot {low}", t.elapsed());
+        assert!(low > 0.9999);
         unload(); // else Metal aborts the test binary's exit
     }
 
