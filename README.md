@@ -1102,7 +1102,7 @@ note (the chat says so instead of offering it) or for its tasks.
 
 With Ollama, **Let the model look things up itself** (`ai_tools`, off by default; shown
 when the backend is Ollama) also gives the model read-only tools while *Use my notes*
-is on: with *Send matching notes*, search the notes (by words, and by meaning when the semantic index is on), open one by title, and list the
+is on: with *Send matching notes*, search the notes, open one by title, and list the
 notes linked to or from one; with *Send open tasks and the agenda*, list the tasks (by
 state or project tag) and read the agenda for any range of days; with *Send the time
 log*, read the time tracked over any range with per-project totals. So "What's due
@@ -1136,6 +1136,10 @@ the path filled in (the AppImage itself on Linux) and a Copy button; for Claude 
   closest in meaning to one note, from the index the app keeps (no embedding call, and the index is
   only read): path, title, heading, line and first text of each one's best section, and the
   similarity. It's an error while the index is empty or was built for another model; open Margin to index.
+- `search_by_meaning` (query, k; default 10): with semantic search on and the Ollama backend, the
+  note sections closest in meaning to the query, from the same index, answered the same way (the
+  query is embedded with `ai_embed_model` through Ollama). With the built-in backend it isn't
+  offered, so the MCP server never loads the 132 MB model; search by meaning in the app (`~`) instead.
 
 It also offers three prompts, which Claude clients show as ready-made commands: `daily_plan` (agenda,
 clock status and yesterday's journal, then a plan for today), `weekly_review` (time report, done,
