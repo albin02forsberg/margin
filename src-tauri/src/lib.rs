@@ -2618,7 +2618,7 @@ fn ai_excluded(s: State<App>, path: PathBuf) -> bool {
 
 /// C's embedding model (the index is keyed by it), or why semantic search can't run: Ollama's
 /// `ai_embed_model`, or the built-in one with the built-in backend (#997).
-fn semantic_model(c: &Config) -> R<&str> {
+pub(crate) fn semantic_model(c: &Config) -> R<&str> {
     let model = c.ai_embed_model.trim();
     if !c.ai_semantic {
         return Err("Semantic search is off: turn it on in Settings → AI.".into());
@@ -3477,8 +3477,8 @@ fn capture(app: &AppHandle) {
 
 /// `margin --mcp`: the read-only MCP server on stdin/stdout (#929), without starting the app.
 pub fn mcp() {
-    let Some(cfg) = mcp::config_path() else { return eprintln!("margin --mcp: can't find the config folder") };
-    mcp::serve(&mcp::Ctx::new(cfg));
+    let (Some(cfg), Some(local)) = (mcp::config_path(), mcp::local_data_dir()) else { return eprintln!("margin --mcp: can't find the config folder") };
+    mcp::serve(&mcp::Ctx::new(cfg, local));
 }
 
 /// The command that starts this binary as an MCP server, for the settings snippet (an AppImage
