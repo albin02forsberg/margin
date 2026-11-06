@@ -348,6 +348,13 @@ async function pngs() {
     await browser.keys(Key.Escape);
   }
 
+  if (want("inbox-process")) { // #1137: Esc stops the walk without touching the inbox
+    await command("Inbox: process");
+    await find(".picker label span", "Inbox 1/2: ");
+    await shot("inbox-process");
+    await browser.keys(Key.Escape);
+  }
+
   await command("Notes: replace text in all notes"); // the preview only: Esc writes nothing
   await type("Harbor");
   await browser.keys(Key.Enter);

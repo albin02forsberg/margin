@@ -1874,8 +1874,8 @@ fn tag_rename_undo(s: State<App>, folder: PathBuf, skip: Vec<PathBuf>) -> R<Rena
 }
 
 /// Open top-level inbox entries: level-1 headlines that aren't done, archived or someday (plain notes count).
-fn open_entries(f: &org::OrgFile, kw: &org::Kw) -> usize {
-    f.headlines.iter().filter(|h| h.level == 1 && !h.archived() && !h.someday() &&!h.keyword.as_deref().is_some_and(|k| kw.is_done(k))).count()
+fn open_entries<'a>(f: &'a org::OrgFile, kw: &'a org::Kw) -> impl Iterator<Item = &'a org::Headline> {
+    f.headlines.iter().filter(|h| h.level == 1 && !h.archived() && !h.someday() && !h.keyword.as_deref().is_some_and(|k| kw.is_done(k)))
 }
 
 /// Entries waiting in the inbox (for the nav badge). Reads the file directly, so an absolute inbox path outside the notes dir counts too.
@@ -1883,7 +1883,22 @@ fn open_entries(f: &org::OrgFile, kw: &org::Kw) -> usize {
 fn inbox_count(s: State<App>) -> usize {
     let c = s.cfg();
     let path = c.notes().join(&c.inbox);
-    std::fs::read_to_string(&path).map_or(0, |t| open_entries(&org::parse(&path, &t, &s.kw()), &s.kw()))
+    std::fs::read_to_string(&path).map_or(0, |t| open_entries(&org::parse(&path, &t, &s.kw()), &s.kw()).count())
+}
+
+#[derive(serde::Serialize)]
+struct InboxEntry {
+    title: String,
+    line: usize,
+    keyword: Option<String>,
+    tags: Vec<String>,
+}
+
+/// The open entries of inbox TEXT in file order (oldest first), with the badge's filter, for Inbox: process (#1137).
+#[tauri::command]
+fn inbox_entries(s: State<App>, text: String) -> Vec<InboxEntry> {
+    let kw = s.kw();
+    open_entries(&org::parse(Path::new("inbox.org"), &text, &kw), &kw).map(|h| InboxEntry { title: h.title.clone(), line: h.line, keyword: h.keyword.clone(), tags: h.tags.clone() }).collect()
 }
 
 #[tauri::command(async)]
@@ -3555,7 +3570,7 @@ pub fn run() {
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, md_import, highlights_import, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
-            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, people_last, waiting_for, inbox_count, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
+            notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, people_last, waiting_for, inbox_count, inbox_entries, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_embed_local, ai_set, ai_download, ai_download_cancel, ai_model_delete, ai_index_status, ai_index_rebuild, semantic_search, ai_related, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
             export_note, export_markdown, export_html_fragment, export_linked, publish_site, export_report, export_open, quit::quit_reply, weblink::fetch_title, fetch_feeds, feeds_opml, mark_feeds_seen, feeds_last, babel::babel_run
@@ -3893,8 +3908,9 @@ mod tests {
     #[test]
     fn inbox_entries_skip_done_nested_and_archived() {
         let t = "* TODO a\n** TODO nested\n* DONE b\n* plain note\n* TODO old :ARCHIVE:\n* NEXT c\n* TODO later :someday:\n";
-        assert_eq!(open_entries(&org::parse(Path::new("inbox.org"), t, &kw()), &kw()), 3);
-        assert_eq!(open_entries(&org::parse(Path::new("inbox.org"), "", &kw()), &kw()), 0);
+        let f = org::parse(Path::new("inbox.org"), t, &kw());
+        assert_eq!(open_entries(&f, &kw()).map(|h| (h.title.as_str(), h.line)).collect::<Vec<_>>(), [("a", 0), ("plain note", 3), ("NEXT c", 5)]);
+        assert_eq!(open_entries(&org::parse(Path::new("inbox.org"), "", &kw()), &kw()).count(), 0);
     }
 
     fn edit(text: &str, op: &str, v: Option<&str>) -> R<String> {

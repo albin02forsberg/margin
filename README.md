@@ -440,6 +440,13 @@ as it is) and is its own undo. It ends with `Planned 2 for today · 3h 30m estim
 (the `:EFFORT:` of today's open tasks against your expected hours; once 3 estimated tasks of the last 90 days
 have been clocked and you run 5% or more off, it adds `(~4h 54m at your usual 140%)`), which can go into today's journal.
 
+`Space v p` (**Inbox: process**) empties the Inbox the same way: it walks the open top-level
+entries (the ones the badge counts) oldest first, one key each: `t` schedule today, `m` tomorrow,
+`s` pick a date (a plain note becomes a `TODO` first), `r` refile (the **Move to…** picker), `g` tags,
+`p` park (adds `:someday:`), `d` drop (`CANCELLED` when that keyword exists, else archive), `n` or space
+leave it, `Esc` stops. Each step is its own undo; cancelling a picker stays on the entry. It ends
+with `Processed 4: 2 scheduled, 1 refiled, 1 dropped`, which can go into today's journal.
+
 `*` in Today or Tasks marks the selected task (and moves down), like org agenda's marks;
 the header shows how many are marked and `Esc` clears them. While tasks are marked, `x`
 (done), `>`/`<` (reschedule), `+`/`-` (priority), `A` (archive), the board's `H`/`L`, and
