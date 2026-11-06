@@ -266,6 +266,22 @@ function drawerRange(state: EditorState, n: number) {
   return null;
 }
 
+/** 0-based line of the heading at or above the cursor, or -1. */
+export const headingAtCursor = (s: EditorState) => headingAt(s, s.doc.lineAt(s.selection.main.head).number) - 1;
+
+/** First line of a locked heading's body (crypt.rs `BEGIN`, #1086). */
+export const CRYPT_BEGIN = "-----BEGIN MARGIN ENCRYPTED-----";
+
+/** The armoured block opening on line N, folded like a drawer: only the BEGIN line (shown as "locked") stays. */
+function cryptRange(state: EditorState, n: number) {
+  const line = state.doc.line(n);
+  if (line.text.trim() !== CRYPT_BEGIN) return null;
+  for (let i = n + 1; i <= state.doc.lines && !level(state.doc.line(i).text); i++) {
+    if (state.doc.line(i).text.trim() === "-----END MARGIN ENCRYPTED-----") return { from: line.to, to: state.doc.line(i).to };
+  }
+  return null;
+}
+
 const orgFold = foldService.of((state, from) => {
   const line = state.doc.lineAt(from);
   if (!level(line.text)) {
@@ -276,7 +292,7 @@ const orgFold = foldService.of((state, from) => {
         if (endRe.test(state.doc.line(j).text)) return { from: line.to, to: state.doc.line(j).to };
       }
     }
-    return drawerRange(state, line.number);
+    return drawerRange(state, line.number) ?? cryptRange(state, line.number);
   }
   const end = state.doc.line(subtreeEnd(state, line.number));
   return end.number > line.number ? { from: line.to, to: end.to } : null;
@@ -499,6 +515,10 @@ function decorate(view: EditorView, blocks: Block[], tables: Tbl[]): DecorationS
         continue;
       }
 
+      if (t.trim() === CRYPT_BEGIN) {
+        if (!active) out.push(Decoration.replace({ widget: new Glyph("🔒 locked · Space n Q to read", "cm-org-crypt") }).range(from, ln.to));
+        continue;
+      }
       if (/^\s*#\+title:/i.test(t)) {
         out.push(line("cm-org-title").range(from));
         const k = t.indexOf(":") + 1;
@@ -1293,6 +1313,7 @@ const theme = EditorView.theme({
   ".cm-org-table-head": { fontWeight: "700" },
   ".cm-org-table-sep": { color: "var(--border)" },
   ".cm-org-pipe": { color: "var(--border)" },
+  ".cm-org-crypt": { color: "var(--dim)", fontStyle: "italic" },
 });
 
 /** A read-only, org-styled state for the link peek panel (#849): no vim, so ex commands there can't act on the open tab. */
@@ -1330,10 +1351,10 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
   } else ext.push(EditorView.contentAttributes.of({ class: "cm-plain" }));
   let state = EditorState.create({ doc, extensions: ext });
   if (opts.org) {
-    // Start with property/logbook drawers folded, like org.
+    // Start with property/logbook drawers and locked bodies folded, like org.
     const effects = [];
     for (let i = 1; i <= state.doc.lines; i++) {
-      const r = drawerRange(state, i);
+      const r = drawerRange(state, i) ?? cryptRange(state, i);
       if (r) effects.push(foldEffect.of(r));
     }
     if (effects.length) state = state.update({ effects }).state;

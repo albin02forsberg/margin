@@ -36,11 +36,7 @@ fn key(pass: &str, salt: &[u8], (m, t, p): (u32, u32, u32)) -> Result<[u8; 32], 
     Ok(k)
 }
 
-/// Encrypt a section body into an armoured block (no trailing newline).
-pub fn encrypt_section(plain: &str, pass: &str) -> Result<String, String> {
-    encrypt_with(plain, pass, KDF)
-}
-
+/// Encrypt a section body into an armoured block (no trailing newline) at argon2 cost KDF (`KDF` for real blocks).
 fn encrypt_with(plain: &str, pass: &str, kdf: (u32, u32, u32)) -> Result<String, String> {
     if pass.is_empty() {
         return Err("empty passphrase".into());
@@ -151,6 +147,48 @@ pub fn section_body(text: &str, start: usize) -> Range<usize> {
     from..pos
 }
 
+/// Byte range of the body of the heading on line LINE (0-based) of TEXT; Err if that line isn't a heading.
+fn body_at(text: &str, line: usize) -> Result<Range<usize>, String> {
+    let start: usize = text.split_inclusive('\n').take(line).map(str::len).sum();
+    if crate::org::heading_level(&text[start..]).is_none() {
+        return Err("put the cursor on a heading first".into());
+    }
+    Ok(section_body(text, start))
+}
+
+/// Lock the heading on LINE of TEXT: its body becomes an armoured block and the heading gets the
+/// `crypt` tag. Returns (new text, the plaintext body, the block) for `backup_before_lock`.
+pub fn lock(text: &str, line: usize, pass: &str, kw: &crate::org::Kw) -> Result<(String, String, String), String> {
+    lock_with(text, line, pass, kw, KDF)
+}
+
+fn lock_with(text: &str, line: usize, pass: &str, kw: &crate::org::Kw, kdf: (u32, u32, u32)) -> Result<(String, String, String), String> {
+    let r = body_at(text, line)?;
+    let plain = &text[r.clone()];
+    if plain.trim_start().starts_with(BEGIN) {
+        return Err("this heading is already locked".into());
+    }
+    if plain.trim().is_empty() {
+        return Err("nothing to lock under this heading".into());
+    }
+    let block = encrypt_with(plain, pass, kdf)?;
+    let out = format!("{}{block}\n{}", &text[..r.start], &text[r.end..]);
+    let mut tags = crate::org::heading(&out, line, kw).map(|p| p.tags).unwrap_or_default();
+    if !tags.iter().any(|t| t == "crypt") {
+        tags.push("crypt".into());
+    }
+    Ok((crate::org::set_tags(&out, line, kw, tags), plain.to_string(), block))
+}
+
+/// The plaintext body of the locked heading on LINE of TEXT.
+pub fn unlock(text: &str, line: usize, pass: &str) -> Result<String, String> {
+    let body = &text[body_at(text, line)?];
+    if !body.trim_start().starts_with(BEGIN) {
+        return Err("this heading isn't locked".into());
+    }
+    decrypt_section(body, pass)
+}
+
 /// TEXT with every armoured block (an unterminated one runs to the end) blanked line by line, so
 /// line numbers hold. Readers that index, search, export or hand text to an AI use this (#1087).
 pub fn strip(text: &str) -> std::borrow::Cow<'_, str> {
@@ -201,6 +239,26 @@ mod tests {
     }
 
     #[test]
+    fn lock_unlock_heading() {
+        let kw = crate::org::Kw { todo: vec!["TODO".into()], done: vec!["DONE".into()] };
+        let t = "#+title: N\n* Open\nfine\n* TODO Vault :work:\nsecret\n** Sub\nmore\n* After\nb\n";
+        let (out, plain, block) = lock_with(t, 3, "pw", &kw, FAST).unwrap();
+        assert_eq!(plain, "secret\n** Sub\nmore\n");
+        assert!(!out.contains("secret") && !out.contains("** Sub") && out.contains(&block));
+        assert!(out.starts_with("#+title: N\n* Open\nfine\n* TODO Vault :work:crypt:\n-----BEGIN") && out.ends_with("-----END MARGIN ENCRYPTED-----\n* After\nb\n"));
+        assert_eq!(unlock(&out, 3, "pw").unwrap(), plain);
+        assert_eq!(unlock(&out, 3, "nope").unwrap_err(), "wrong passphrase or tampered block");
+        assert_eq!(lock_with(&out, 3, "pw", &kw, FAST).unwrap_err(), "this heading is already locked");
+        assert_eq!(unlock(&out, 1, "pw").unwrap_err(), "this heading isn't locked");
+        assert!(lock_with(t, 2, "pw", &kw, FAST).unwrap_err().contains("heading"));
+        assert_eq!(lock_with("* Empty\n* Next\n", 0, "pw", &kw, FAST).unwrap_err(), "nothing to lock under this heading");
+        // Last heading without a trailing newline keeps the text exact; an existing crypt tag isn't doubled.
+        let (o2, p2, _) = lock_with("* V :crypt:\nend", 0, "pw", &kw, FAST).unwrap();
+        assert!(o2.starts_with("* V :crypt:\n-----BEGIN") && o2.ends_with(&format!("{END}\n")), "{o2}");
+        assert_eq!((p2.as_str(), unlock(&o2, 0, "pw").unwrap().as_str()), ("end", "end"));
+    }
+
+    #[test]
     fn round_trip() {
         for plain in ["", "secret", "line 1\n** Sub heading\n* top-level star\nåäö 🔒\n", &"x".repeat(1000)] {
             let b = enc(plain, "pw");
@@ -215,7 +273,7 @@ mod tests {
 
     #[test]
     fn default_params_round_trip() {
-        let b = encrypt_section("body", "pw").unwrap();
+        let b = encrypt_with("body", "pw", KDF).unwrap();
         assert!(b.lines().nth(1).unwrap().starts_with("v=1 kdf=argon2id m=65536 t=3 p=1 "));
         assert_eq!(decrypt_section(&b, "pw").unwrap(), "body");
     }

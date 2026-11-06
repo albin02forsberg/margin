@@ -355,6 +355,16 @@ async function pngs() {
     await browser.keys(Key.Escape);
   }
 
+  if (want("crypt-notice")) { // #1086: the one-time notice before the first lock; Esc locks nothing
+    await open("Harbor app", "harbor.org");
+    await browser.keys(Key.Escape);
+    await type("G"); // under a heading
+    await command("Note: lock (encrypt)");
+    await find(".picker label span", "Lock this heading");
+    await shot("crypt-notice");
+    await browser.keys(Key.Escape);
+  }
+
   await command("Notes: replace text in all notes"); // the preview only: Esc writes nothing
   await type("Harbor");
   await browser.keys(Key.Enter);
