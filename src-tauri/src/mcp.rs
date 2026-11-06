@@ -3,7 +3,7 @@
 // (#930). JSON-RPC 2.0, one message per line; stdout carries only responses, anything else goes to stderr.
 
 use crate::config::Config;
-use crate::{capture_file, check_in, files_of, journal_file, kw_of, new_day_file, notes, org, org_edit_op, range_report, retrieve, saved_profile, tc_of, timeclock, week_range, write_checked};
+use crate::{capture_file, check_in, embed, files_of, journal_file, kw_of, new_day_file, notes, org, org_edit_op, range_report, retrieve, saved_profile, semantic_model, tc_of, timeclock, week_range, write_checked};
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -14,12 +14,14 @@ const MAX_NOTE: usize = 100_000;
 
 pub struct Ctx {
     pub cfg_path: PathBuf,
+    /// The app's local data dir (Tauri's `app_local_data_dir`), where the semantic index lives.
+    pub local_dir: PathBuf,
     cache: org::Cache,
 }
 
 impl Ctx {
-    pub fn new(cfg_path: PathBuf) -> Self {
-        Ctx { cfg_path, cache: Default::default() }
+    pub fn new(cfg_path: PathBuf, local_dir: PathBuf) -> Self {
+        Ctx { cfg_path, local_dir, cache: Default::default() }
     }
 }
 
@@ -58,6 +60,19 @@ pub fn config_path() -> Option<PathBuf> {
     Some(base.join("dev.albin.margin").join("config.toml"))
 }
 
+/// The OS local data dir Tauri's `app_local_data_dir` uses, plus the app identifier.
+pub fn local_data_dir() -> Option<PathBuf> {
+    let env = |k| std::env::var_os(k).map(PathBuf::from).filter(|p| p.is_absolute());
+    let base = if cfg!(target_os = "macos") {
+        std::env::home_dir()?.join("Library/Application Support")
+    } else if cfg!(windows) {
+        env("LOCALAPPDATA")?
+    } else {
+        env("XDG_DATA_HOME").or_else(|| std::env::home_dir().map(|h| h.join(".local/share")))?
+    };
+    Some(base.join("dev.albin.margin"))
+}
+
 /// Serve CTX on stdin/stdout until stdin closes.
 pub fn serve(ctx: &Ctx) {
     let (stdin, mut out) = (std::io::stdin(), std::io::stdout());
@@ -94,7 +109,7 @@ pub fn handle(ctx: &Ctx, line: &str) -> Option<String> {
             },
         }),
         "ping" => json!({}),
-        "tools/list" => json!({ "tools": tools(load(ctx).mcp_write) }),
+        "tools/list" => json!({ "tools": tools(&load(ctx)) }),
         "prompts/list" => json!({ "prompts": PROMPTS.iter().map(|(name, desc, _)| json!({ "name": name, "description": desc })).collect::<Vec<_>>() }),
         "prompts/get" => {
             let name = params["name"].as_str().unwrap_or("");
@@ -117,8 +132,8 @@ fn error(id: Value, code: i64, message: &str) -> String {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } }).to_string()
 }
 
-/// The tool list; WRITE adds WRITE_TOOLS.
-fn tools(write: bool) -> Value {
+/// The tool list for C: `ai_semantic` adds related_notes, `mcp_write` WRITE_TOOLS.
+fn tools(c: &Config) -> Value {
     let obj = |props: Value, req: &[&str]| json!({ "type": "object", "properties": props, "required": req });
     let s = |d: &str| json!({ "type": "string", "description": d });
     let note = obj(json!({ "path": s("Path relative to the notes folder, as listed by the other tools"), "title": s("Note title (when no path is given)") }), &[]);
@@ -146,7 +161,14 @@ fn tools(write: bool) -> Value {
         { "name": "agenda", "description": "What's on the agenda over FROM..TO (default today and the next 7 days, at most 62): overdue tasks first (when today is in the window), then per day the SCHEDULED and DEADLINE tasks, timestamped events and habits, with time, state, priority, effort, project, a blocked flag and path:line. Done tasks are left out.",
           "inputSchema": obj(json!({ "from": s("Start day: YYYY-MM-DD, or relative like -1 or +3 (default today)"), "to": s("End day, same forms (default FROM + 7 days)") }), &[]) },
     ]);
-    if write {
+    if c.ai_semantic {
+        let k = json!({ "type": "integer", "description": "Max notes (default 10, max 50)" });
+        let mut p = note["properties"].clone();
+        p["k"] = k;
+        v.as_array_mut().unwrap().push(json!({ "name": "related_notes", "description": "The notes closest in meaning to one note, from Margin's semantic index: path, title, heading, line and first text of each one's best section, and its similarity (0..1), best first.",
+            "inputSchema": obj(p, &[]) }));
+    }
+    if c.mcp_write {
         let w = v.as_array_mut().unwrap();
         w.push(json!({ "name": "create_note", "description": "Create a new note (an org-roam file with an ID) titled TITLE holding BODY (org text).",
             "inputSchema": obj(json!({ "title": s("Note title"), "body": s("Org text below the title"), "folder": s("Subfolder of the notes folder (default: the notes folder)") }), &["title"]) }));
@@ -200,7 +222,7 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
     }
     let root = c.notes();
     let rel = |p: &Path| p.strip_prefix(&root).unwrap_or(p).to_string_lossy().replace('\\', "/");
-    let notes_tool = write || matches!(name, "search_notes" | "read_note" | "list_notes" | "list_tasks" | "neighbors" | "read_journal" | "agenda");
+    let notes_tool = write || matches!(name, "search_notes" | "read_note" | "list_notes" | "list_tasks" | "neighbors" | "read_journal" | "agenda" | "related_notes");
     if notes_tool && !root.is_dir() {
         return Err(format!("the notes folder {} doesn't exist", root.display()));
     }
@@ -274,6 +296,22 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
             let linked: Vec<_> = notes::graph(&files, &f.path, 1).nodes.into_iter().filter(|n| n.hops == 1).map(|n| json!({ "path": rel(&n.path), "title": n.title })).collect();
             let back: Vec<_> = notes::backlinks(&files, &f.path).into_iter().map(|h| json!({ "path": rel(&h.path), "title": h.title, "line": h.line + 1, "text": h.text })).collect();
             json!({ "linked": linked, "backlinks": back })
+        }
+        "related_notes" => {
+            let model = semantic_model(&c)?;
+            let f = find(&all, &root, arg("path"), arg("title"))?;
+            if excluded(&f.path) {
+                return Err(format!("{} is excluded from the AI (ai_exclude)", rel(&f.path)));
+            }
+            // Read-only: the app alone writes the index (atomically, so a load never sees half a file).
+            let ix = embed::Index::load(&embed::index_path(&ctx.local_dir, &root), model);
+            if ix.files.is_empty() {
+                return Err("The semantic index is empty, still building or made by another model: open Margin with semantic search on and let it index.".into());
+            }
+            let k = args.get("k").and_then(Value::as_u64).unwrap_or(10).clamp(1, 50) as usize;
+            let hits: Vec<_> = ix.related(&f.path, usize::MAX).into_iter().map(|(p, l, s)| (p.to_path_buf(), l, s)).collect();
+            // found drops notes not in FILES, so excluded ones too.
+            json!(embed::found(&files, &hits).iter().take(k).map(|h| json!({ "path": rel(&h.path), "title": h.title, "heading": h.heading, "line": h.line + 1, "text": h.text, "score": (h.score as f64 * 1000.0).round() / 1000.0 })).collect::<Vec<_>>())
         }
         n => return Err(format!("unknown tool {n}")),
     };
@@ -526,7 +564,7 @@ mod tests {
         let cfg = d.join("config.toml");
         let c = Config { notes_dir: n.to_string_lossy().into(), data_dir: d.join("data").to_string_lossy().into(), ai_exclude: vec!["/private/".into()], ..Config::default() };
         std::fs::write(&cfg, toml::to_string(&c).unwrap()).unwrap();
-        (d, Ctx::new(cfg))
+        (d.clone(), Ctx::new(cfg, d.join("local")))
     }
 
     fn rpc(ctx: &Ctx, method: &str, params: Value) -> Value {
@@ -777,6 +815,41 @@ mod tests {
         assert_eq!(tool(&ctx, "clock_out", json!({ "note": "Wrote tools" })), ("⏱ Clocked out. Task: Wrote tools".to_string(), false));
         assert_eq!(tc_of(&load(&ctx), "Work").current(), None);
         assert!(d.join("data/work/.timelog.lock").exists());
+    }
+
+    #[test]
+    fn related_notes_tool() {
+        let (d, ctx) = setup();
+        let n = d.join("notes");
+        let listed = |ctx: &Ctx| rpc(ctx, "tools/list", json!({}))["result"]["tools"].as_array().unwrap().iter().any(|t| t["name"] == "related_notes");
+        // Off by default: hidden and refused.
+        assert!(!listed(&ctx));
+        let (e, err) = tool(&ctx, "related_notes", json!({ "path": "a.org" }));
+        assert!(err && e.contains("Semantic search is off"), "{e}");
+        let mut c = Config::load(&ctx.cfg_path).unwrap();
+        c.ai_semantic = true;
+        std::fs::write(&ctx.cfg_path, toml::to_string(&c).unwrap()).unwrap();
+        assert!(listed(&ctx));
+        // No index yet (or one by another model).
+        let (e, err) = tool(&ctx, "related_notes", json!({ "path": "a.org" }));
+        assert!(err && e.contains("index is empty"), "{e}");
+        let file = embed::index_path(&ctx.local_dir, &c.notes());
+        let v = |path: &str, vec: Vec<f32>| embed::Indexed { path: n.join(path), mtime: 1, chunks: vec![embed::Vector { line: 5, hash: 0, vec }] };
+        let mut ix = embed::Index::new("other-model");
+        ix.dim = 2;
+        ix.files = vec![v("a.org", vec![1.0, 0.0]), v("b.org", vec![0.6, 0.8]), v("private/s.org", vec![1.0, 0.1])];
+        ix.save(&file).unwrap();
+        assert!(tool(&ctx, "related_notes", json!({ "path": "a.org" })).0.contains("index is empty"));
+        ix.model = "nomic-embed-text".into();
+        ix.save(&file).unwrap();
+        // B is found, the excluded note (closer) is skipped, and the index file is left alone.
+        let before = std::fs::read(&file).unwrap();
+        let (r, err) = tool(&ctx, "related_notes", json!({ "title": "alpha", "k": 5 }));
+        assert!(!err, "{r}");
+        assert_eq!(serde_json::from_str::<Value>(&r).unwrap(), json!([{ "path": "b.org", "title": "Beta", "heading": "", "line": 6, "text": "More apples here.", "score": 0.6 }]));
+        assert_eq!(std::fs::read(&file).unwrap(), before);
+        assert!(tool(&ctx, "related_notes", json!({ "path": "private/s.org" })).0.contains("ai_exclude"));
+        assert!(tool(&ctx, "related_notes", json!({ "path": "../outside.org" })).0.contains("isn't in the notes folder"));
     }
 
     #[test]

@@ -1132,6 +1132,10 @@ the path filled in (the AppImage itself on Linux) and a Copy button; for Claude 
 - `agenda` (from, to: dates or `-1`, `+3`, …; default today and the next 7 days, at most 62): overdue
   tasks first, then per day the scheduled and deadline tasks, events and habits, with time, state,
   priority, effort, project, whether a task is blocked, and its `path:line`. Done tasks are left out.
+- `related_notes` (path or title, k; default 10): with semantic search on (`ai_semantic`), the notes
+  closest in meaning to one note, from the index the app keeps (no embedding call, and the index is
+  only read): path, title, heading, line and first text of each one's best section, and the
+  similarity. It's an error while the index is empty or was built for another model; open Margin to index.
 
 It also offers three prompts, which Claude clients show as ready-made commands: `daily_plan` (agenda,
 clock status and yesterday's journal, then a plan for today), `weekly_review` (time report, done,
