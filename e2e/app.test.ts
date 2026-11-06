@@ -267,7 +267,12 @@ describe("Margin", () => {
     await find(".projects td", "Acme");
     await find(".projects .pcard h3", "Acme"); // a card per project, with its open tasks (category = file name)
     await find(".projects .pcard li", "Acme fixture task");
-    await browser.$(`select[aria-label="Rounding for Acme"]`).selectByVisibleText("Quarter hour");
+    // The acme.org refresh can re-render the rows and drop the choice (#1133): re-select until it sticks.
+    const round = browser.$(`select[aria-label="Rounding for Acme"]`);
+    await browser.waitUntil(async () => {
+      await round.selectByVisibleText("Quarter hour");
+      return (await round.getValue()) === "0.25";
+    }, { timeoutMsg: "rounding choice didn't stick" });
     await browser.$(`input[aria-label="Budget hours for Acme"]`).click();
     await type("20");
     await browser.$(`input[aria-label="Export code for Acme"]`).click();
