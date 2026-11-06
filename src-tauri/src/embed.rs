@@ -149,22 +149,35 @@ impl Index {
     /// At most CAP sections are embedded per run; a note left short is retried next run. Returns
     /// how many were embedded (`pending` = how many are left); on an embedder error the work so far is kept and the error returned.
     pub fn update(&mut self, files: &[Arc<OrgFile>], embed: &dyn Fn(&str) -> Result<Vec<f32>, String>, cap: usize) -> Result<usize, String> {
-        let old = std::mem::take(&mut self.files);
-        let known: HashMap<u64, &Vec<f32>> = old.iter().flat_map(|f| &f.chunks).map(|c| (c.hash, &c.vec)).collect();
-        let by_path: HashMap<&Path, &Indexed> = old.iter().map(|f| (f.path.as_path(), f)).collect();
+        self.sync(files, embed, cap).0
+    }
+
+    /// `update`, plus whether the index changed at all (a note redone or dropped), so a no-op
+    /// round isn't saved (#1126). Unchanged notes are moved back, not copied; vectors are reused
+    /// only from the notes that changed or went away (not across unchanged ones).
+    fn sync(&mut self, files: &[Arc<OrgFile>], embed: &dyn Fn(&str) -> Result<Vec<f32>, String>, cap: usize) -> (Result<usize, String>, bool) {
+        let mut old: HashMap<PathBuf, Indexed> = std::mem::take(&mut self.files).into_iter().map(|f| (f.path.clone(), f)).collect();
+        // The scanned text's mtime, so a note edited while indexing is redone next run.
+        let kept: Vec<Option<Indexed>> = files
+            .iter()
+            .map(|f| {
+                let mtime = nanos(f.mtime);
+                if old.get(&f.path).is_some_and(|o| mtime != 0 && o.mtime == mtime) { old.remove(&f.path) } else { None }
+            })
+            .collect();
+        let changed = !old.is_empty() || kept.iter().any(Option::is_none);
+        let known: HashMap<u64, Vec<f32>> = old.into_values().flat_map(|f| f.chunks).map(|c| (c.hash, c.vec)).collect();
         let (mut done, mut err, mut pending) = (0, None, 0);
-        for f in files {
-            // The scanned text's mtime, so a note edited while indexing is redone next run.
-            let mtime = nanos(f.mtime);
-            if let Some(o) = by_path.get(f.path.as_path()).filter(|o| mtime != 0 && o.mtime == mtime) {
-                self.files.push((*o).clone());
+        for (f, k) in files.iter().zip(kept) {
+            if let Some(o) = k {
+                self.files.push(o);
                 continue;
             }
-            let mut ix = Indexed { path: f.path.clone(), mtime, chunks: vec![] };
+            let mut ix = Indexed { path: f.path.clone(), mtime: nanos(f.mtime), chunks: vec![] };
             for c in chunks(f) {
                 let h = hash(&c.text);
                 let vec = match known.get(&h) {
-                    Some(v) => (*v).clone(),
+                    Some(v) => v.clone(),
                     None if done < cap && err.is_none() => match embed(&c.text) {
                         Ok(v) if v.is_empty() || (self.dim != 0 && v.len() != self.dim) => {
                             err = Some(format!("embedding has {} dimensions, expected {}", v.len(), self.dim));
@@ -196,7 +209,7 @@ impl Index {
             self.files.push(ix);
         }
         self.pending = pending;
-        err.map_or(Ok(done), Err)
+        (err.map_or(Ok(done), Err), changed)
     }
 
     /// The K sections most like QUERY by cosine similarity, best first: (path, line, score).
@@ -345,10 +358,8 @@ impl Cached {
 
     /// One background run (#965): `Index::update`, marked dirty when anything changed.
     pub fn update(&mut self, files: &[Arc<OrgFile>], embed: &dyn Fn(&str) -> Result<Vec<f32>, String>, cap: usize) -> Result<usize, String> {
-        let shape = |ix: &Index| ix.files.iter().map(|f| (f.path.clone(), f.mtime, f.chunks.len())).collect::<Vec<_>>();
-        let before = shape(&self.ix);
-        let r = self.ix.update(files, embed, cap);
-        self.dirty |= r != Ok(0) || before != shape(&self.ix);
+        let (r, changed) = self.ix.sync(files, embed, cap);
+        self.dirty |= changed || r != Ok(0);
         r
     }
 
@@ -564,6 +575,30 @@ mod tests {
         assert_eq!(c.update(std::slice::from_ref(&a), &fake(&log), 1), Ok(0));
         c.save_if(Duration::ZERO).unwrap();
         assert_eq!(std::fs::metadata(&p).unwrap().modified().unwrap(), t, "no-op round: not rewritten");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn dirty_only_when_something_changed() {
+        let log = RefCell::new(vec![]);
+        let dir = std::env::temp_dir().join(format!("margin-dirty-{}", std::process::id()));
+        let p = index_path(&dir, Path::new("/n"));
+        let (a, b) = (note("/n/a.org", "* One\naaa\n", 1), note("/n/b.org", "* Two\neee\n", 1));
+        let mut c = Cached::open(&p, "m");
+        c.update(&[a.clone(), b.clone()], &fake(&log), 9).unwrap();
+        c.save_if(Duration::ZERO).unwrap();
+        assert_eq!(c.update(&[a.clone(), b.clone()], &fake(&log), 9), Ok(0));
+        assert!(!c.dirty, "no-op round");
+        // Touched (new mtime, same text): nothing embedded, but the new mtime must be saved.
+        log.borrow_mut().clear();
+        let a2 = note("/n/a.org", &a.text, 2);
+        assert_eq!(c.update(&[a2.clone(), b.clone()], &fake(&log), 9), Ok(0));
+        assert!(c.dirty && log.borrow().is_empty());
+        assert_eq!(c.ix.files[0].mtime, 2);
+        c.save_if(Duration::ZERO).unwrap();
+        // A note dropped from the list.
+        assert_eq!(c.update(std::slice::from_ref(&b), &fake(&log), 9), Ok(0));
+        assert!(c.dirty);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
