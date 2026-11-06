@@ -23,5 +23,20 @@ export function setArg(a: string, get: (name: string) => unknown): { set: [strin
   return { set: [name, m[4]] };
 }
 
+/** The vim options `:setlocal` sets per buffer (#1112), by name and alias. */
+export type LocalOpts = NumOpts & { wrap: boolean };
+const LOCAL: Record<string, keyof LocalOpts> = { number: "number", nu: "number", relativenumber: "relativenumber", rnu: "relativenumber", wrap: "wrap" };
+export type SetScope = "set" | "local" | "global";
+/** One `:set` / `:setlocal` / `:setglobal` arg: like setArg, but the buffer-local options read their effective value
+ *  (LOCAL's override, else GET's global one) and write it into LOCAL, except for `:setglobal`, which only touches the global value.
+ *  Returns the global option to set (none for `:setlocal` of a buffer-local option) or a message. */
+export function scopedArg(a: string, scope: SetScope, local: Partial<LocalOpts>, get: (name: string) => unknown): { set?: [string, unknown] } | { msg: string } {
+  const r = setArg(a, (n) => (scope !== "global" && local[LOCAL[n]] !== undefined ? local[LOCAL[n]] : get(n)));
+  if (!("set" in r)) return r;
+  const k = LOCAL[r.set[0]];
+  if (k && scope !== "global") local[k] = r.set[1] as boolean;
+  return k && scope === "local" ? {} : r;
+}
+
 /** Whether a search for PATTERN ignores case: `ignorecase`, unless `smartcase` and it has an uppercase letter (not a backslash-escaped one like `\\S`). */
 export const foldCase = (pattern: string, ic: boolean, scs: boolean) => ic && !(scs && /[A-Z]/.test(pattern.replace(/\\./g, "")));
