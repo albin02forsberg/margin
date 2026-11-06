@@ -1102,7 +1102,7 @@ note (the chat says so instead of offering it) or for its tasks.
 
 With Ollama, **Let the model look things up itself** (`ai_tools`, off by default; shown
 when the backend is Ollama) also gives the model read-only tools while *Use my notes*
-is on: with *Send matching notes*, search the notes, open one by title, and list the
+is on: with *Send matching notes*, search the notes (by words, and by meaning when the semantic index is on), open one by title, and list the
 notes linked to or from one; with *Send open tasks and the agenda*, list the tasks (by
 state or project tag) and read the agenda for any range of days; with *Send the time
 log*, read the time tracked over any range with per-project totals. So "What's due
