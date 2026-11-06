@@ -1,0 +1,28 @@
+name: System deps
+description: apt-get install the Tauri Linux build deps; from attempt 2 on, fall back to the official archive.ubuntu.com mirror (the default Azure mirror is sometimes very slow).
+inputs:
+  extra:
+    description: Extra packages to install
+    default: ""
+  recommends:
+    description: Install recommended packages too ("true"/"false")
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        EXTRA: ${{ inputs.extra }}
+        RECOMMENDS: ${{ inputs.recommends }}
+      run: |
+        opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30"
+        flag=--no-install-recommends; [ "$RECOMMENDS" = true ] && flag=
+        for i in 1 2 3; do
+          if [ $i -gt 1 ]; then
+            sudo dpkg --configure -a || true; sleep 5
+            # 24.04 keeps the mirror in deb822 ubuntu.sources, 22.04 in sources.list
+            sudo sed -i 's#http://azure\.archive\.ubuntu\.com#http://archive.ubuntu.com#' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
+          fi
+          sudo timeout 240 apt-get $opts update && sudo timeout 240 apt-get $opts install -y $flag libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxss-dev patchelf $EXTRA && exit 0
+        done
+        exit 1
