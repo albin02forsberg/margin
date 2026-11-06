@@ -2323,7 +2323,7 @@ describe("Publish notes as a site", () => {
 
 describe("Locked headings (#1086)", () => {
   let d: Dirs;
-  before(async () => { d = await launch({ files: ({ notes }) => writeFileSync(join(notes, "vault.org"), "* Vault\nsecret words\n* Open\nplain\n") }); });
+  before(async () => { d = await launch({ files: ({ notes }) => writeFileSync(join(notes, "vault.org"), "* Vault\nsecret words\n* Open\nplain\n") }); await find(".agenda h1", "Today"); }); // app mounted before the first key
   after(close);
 
   it("Space n q encrypts the body on disk, the reopened note shows it locked, Space n Q reads it", async () => {
