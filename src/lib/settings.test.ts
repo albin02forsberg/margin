@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changes, checkFeeds, checkSnippets, checkTemplates, checkViews, GROUPS, hide, needsMacPrompt, refresh, refreshRows, shows, type Field } from "./settings.ts";
+import { BUILTIN_EMBED, builtinEmbedder, changes, checkFeeds, checkSnippets, checkTemplates, checkViews, GROUPS, hide, needsMacPrompt, refresh, refreshRows, shows, type Field } from "./settings.ts";
 
 const config = { notes_dir: "~/notes", expected_daily_hours: 8, profiles: ["Work", "Home"], reminders: true };
 const fields: Field[] = GROUPS.flatMap((g) => g.fields).filter((f) => f.key in config);
@@ -97,4 +97,16 @@ test("hide adds or drops one area of a list field, keeping the others", () => {
   assert.equal(hide("ledger\nhabits", "ledger", false), "habits");
   assert.equal(hide("habits", "habits", false), "");
   assert.equal(hide("ledger", "ledger", true), "ledger"); // no duplicate
+});
+
+test("the built-in embedder: with the built-in drafts backend, or chosen by id with Ollama (#1148)", () => {
+  const embed = GROUPS.flatMap((g) => g.fields).find((f) => f.key === "ai_embed_model")!;
+  assert.equal(builtinEmbedder({ ai_backend: "ollama", ai_embed_model: "nomic-embed-text" }), false);
+  assert.equal(builtinEmbedder({ ai_backend: "ollama", ai_embed_model: ` ${BUILTIN_EMBED} ` }), true);
+  assert.equal(builtinEmbedder({ ai_backend: "embedded", ai_embed_model: "nomic-embed-text" }), true);
+  assert.ok(embed.suggest?.some(([v]) => v === BUILTIN_EMBED));
+  // The model field only matters (and shows) with the index on and Ollama drafts.
+  assert.equal(embed.when!({ ai_semantic: true, ai_backend: "ollama" }), true);
+  assert.equal(embed.when!({ ai_semantic: false, ai_backend: "ollama" }), false);
+  assert.equal(embed.when!({ ai_semantic: true, ai_backend: "embedded" }), false);
 });

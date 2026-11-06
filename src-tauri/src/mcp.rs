@@ -3,7 +3,7 @@
 // (#930). JSON-RPC 2.0, one message per line; stdout carries only responses, anything else goes to stderr.
 
 use crate::config::Config;
-use crate::{ai, capture_file, check_in, embed, files_of, journal_file, kw_of, new_day_file, notes, org, org_edit_op, range_report, retrieve, saved_profile, semantic_model, tc_of, timeclock, week_range, write_checked};
+use crate::{ai, capture_file, check_in, embed, embed_backend, files_of, journal_file, kw_of, new_day_file, notes, org, org_edit_op, range_report, retrieve, saved_profile, semantic_model, tc_of, timeclock, week_range, write_checked};
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -132,8 +132,8 @@ fn error(id: Value, code: i64, message: &str) -> String {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } }).to_string()
 }
 
-/// The tool list for C: `ai_semantic` adds related_notes (and search_by_meaning with Ollama, which
-/// embeds the query; the built-in embedder isn't loaded here), `mcp_write` WRITE_TOOLS.
+/// The tool list for C: `ai_semantic` adds related_notes (and search_by_meaning when Ollama embeds
+/// the index, as it embeds the query; the built-in embedder isn't loaded here), `mcp_write` WRITE_TOOLS.
 fn tools(c: &Config) -> Value {
     let obj = |props: Value, req: &[&str]| json!({ "type": "object", "properties": props, "required": req });
     let s = |d: &str| json!({ "type": "string", "description": d });
@@ -168,7 +168,7 @@ fn tools(c: &Config) -> Value {
         p["k"] = k.clone();
         v.as_array_mut().unwrap().push(json!({ "name": "related_notes", "description": "The notes closest in meaning to one note, from Margin's semantic index: path, title, heading, line and first text of each one's best section, and its similarity (0..1), best first.",
             "inputSchema": obj(p, &[]) }));
-        if c.ai_backend == ai::Backend::Ollama {
+        if embed_backend(c) == ai::Backend::Ollama {
             v.as_array_mut().unwrap().push(json!({ "name": "search_by_meaning", "description": "The note sections closest in meaning to QUERY (not just its words), from Margin's semantic index: path, title, heading, line, first text and similarity (0..1), best first.",
                 "inputSchema": obj(json!({ "query": s("What to look for, in any words"), "k": k }), &["query"]) }));
         }
@@ -307,7 +307,7 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
             // The note related_notes starts from, or search_by_meaning's query.
             let from = match name {
                 "related_notes" => Ok(find(&all, &root, arg("path"), arg("title"))?),
-                _ if c.ai_backend != ai::Backend::Ollama => return Err("search_by_meaning needs Ollama (ai_backend = \"ollama\"); with the built-in model, search by meaning in Margin (~ in Search all notes).".into()),
+                _ if embed_backend(&c) != ai::Backend::Ollama => return Err("search_by_meaning needs an Ollama embedding model (ai_backend = \"ollama\" and an Ollama ai_embed_model); with the built-in one, search by meaning in Margin (~ in Search all notes).".into()),
                 _ => Err(arg("query").ok_or("query is required")?),
             };
             if let Some(f) = from.as_ref().ok().filter(|f| excluded(&f.path)) {
@@ -893,11 +893,19 @@ mod tests {
         // Not offered with the built-in backend (no e5 model load in this process).
         let names = |ctx: &Ctx| rpc(ctx, "tools/list", json!({}))["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect::<Vec<_>>();
         assert!(names(&ctx).contains(&"search_by_meaning".into()));
+        // Nor with Ollama chat and the built-in embedder (#1148): its id is never sent to Ollama (the
+        // stub has quit, so a call would fail some other way).
+        let builtin = |c: &mut Config| {
+            std::fs::write(&ctx.cfg_path, toml::to_string(c).unwrap()).unwrap();
+            assert!(listed(&ctx) && !names(&ctx).contains(&"search_by_meaning".into()));
+            let (e, err) = tool(&ctx, "search_by_meaning", json!({ "query": "fruit" }));
+            assert!(err && e.contains("needs an Ollama embedding model"), "{e}");
+        };
+        c.ai_embed_model = crate::ai::EMBED_MODELS[0].id.into();
+        builtin(&mut c);
+        c.ai_embed_model = "nomic-embed-text".into();
         c.ai_backend = crate::ai::Backend::Embedded;
-        std::fs::write(&ctx.cfg_path, toml::to_string(&c).unwrap()).unwrap();
-        assert!(listed(&ctx) && !names(&ctx).contains(&"search_by_meaning".into()));
-        let (e, err) = tool(&ctx, "search_by_meaning", json!({ "query": "fruit" }));
-        assert!(err && e.contains("needs Ollama"), "{e}");
+        builtin(&mut c);
     }
 
     #[test]

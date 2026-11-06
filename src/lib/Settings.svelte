@@ -2,7 +2,7 @@
   import { tick, untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { CATEGORIES, changes, checkFeeds, checkSnippets, checkTemplates, checkViews, GROUPS, hide, needsMacPrompt, refresh, refreshRows, shows, toForm, type Field, type Form, type Row } from "$lib/settings";
+  import { builtinEmbedder, CATEGORIES, changes, checkFeeds, checkSnippets, checkTemplates, checkViews, GROUPS, hide, needsMacPrompt, refresh, refreshRows, shows, toForm, type Field, type Form, type Row } from "$lib/settings";
 
   type List = "views" | "templates" | "snippets" | "feeds";
   /** The config.toml settings as a form, saved per group; unsaved fields survive a reload of CONFIG. */
@@ -166,7 +166,7 @@
   $effect(() => {
     void reload;
     if (active && config.ai_semantic) untrack(() => loadIndex());
-    if (active && config.ai_semantic && config.ai_backend === "embedded") untrack(() => loadEmbedder());
+    if (active && config.ai_semantic && builtinEmbedder(config)) untrack(() => loadEmbedder());
   });
   $effect(() => {
     const offs = ["ai-index", "ai-index-progress"].map((e) => listen(e, () => loadIndex()));
@@ -254,7 +254,8 @@
               {:else if f.kind === "list" || f.kind === "multiline"}
                 <textarea rows={Math.max(2, String(form[f.key] ?? "").split("\n").length)} value={form[f.key] as string} oninput={(e) => (form[f.key] = text(e))}></textarea>
               {:else}
-                <input type={f.kind === "number" ? "number" : "text"} step={f.step} value={form[f.key] as string} oninput={(e) => (form[f.key] = text(e))} />
+                <input type={f.kind === "number" ? "number" : "text"} step={f.step} list={f.suggest && `suggest-${f.key}`} value={form[f.key] as string} oninput={(e) => (form[f.key] = text(e))} />
+                {#if f.suggest}<datalist id="suggest-{f.key}">{#each f.suggest as [v, l] (v)}<option value={v} label={l}></option>{/each}</datalist>{/if}
               {/if}
             {/if}
             {#if f.hint}<small>{f.hint}</small>{/if}
@@ -262,7 +263,7 @@
               <button type="button" class="link reset" title="Default: {String(toForm(f, defaults[f.key])).replaceAll("\n", ", ") || "empty"}" onclick={() => reset(g.name, f)}>Reset to default</button>
             {/if}
           </svelte:element>
-          {#if f.key === "ai_semantic" && base.ai_semantic && config.ai_backend === "embedded" && embedder}
+          {#if f.key === "ai_semantic" && base.ai_semantic && builtinEmbedder(config) && embedder}
             <p class="dim embedder">
               Embedding model: {embedder.name} ({embedder.licence}),
               {#if embedder.ready}downloaded.
