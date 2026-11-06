@@ -36,7 +36,7 @@ pub fn in_use() -> Option<bool> {
     }
     #[cfg(target_os = "linux")]
     {
-        Some(linux::camera(Path::new("/proc")) || linux::alsa_capture(Path::new("/proc/asound")) || linux::pactl())
+        Some(linux::alsa_capture(Path::new("/proc/asound")) || linux::camera(Path::new("/proc"), Path::new("/dev")) || linux::pactl())
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
@@ -49,8 +49,16 @@ mod linux {
     use std::path::Path;
 
     /// Whether any process under PROC (`/proc`) has a `/dev/video*` open. Other users' fds are
-    /// unreadable and skipped, which is fine: a call app runs as the user.
-    pub fn camera(proc: &Path) -> bool {
+    /// unreadable and skipped, which is fine: a call app runs as the user. Skips the walk when
+    /// DEV (`/dev`) has no `video*` node (`v4l-subdev*` doesn't count); an unreadable DEV still walks.
+    pub fn camera(proc: &Path, dev: &Path) -> bool {
+        let none = match std::fs::read_dir(dev) {
+            Ok(d) => !d.flatten().any(|n| n.file_name().to_string_lossy().starts_with("video")),
+            Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+        };
+        if none {
+            return false;
+        }
         let Ok(pids) = std::fs::read_dir(proc) else { return false };
         pids.flatten().filter(|p| p.file_name().to_string_lossy().bytes().all(|b| b.is_ascii_digit())).any(|p| {
             std::fs::read_dir(p.path().join("fd")).into_iter().flatten().flatten().any(|fd| std::fs::read_link(fd.path()).is_ok_and(|l| l.to_string_lossy().starts_with("/dev/video")))
@@ -202,11 +210,15 @@ mod tests {
         w("asound/card0/pcm0p/sub0/status", "state: RUNNING\n"); // playback
         w("asound/card0/pcm0c/sub0/status", "closed\n");
         w("asound/card0/pcm0c/info", "");
-        assert!(!linux::camera(&proc) && !linux::alsa_capture(&asound));
+        let dev = root.join("dev");
+        w("dev/v4l-subdev0", "");
+        assert!(!linux::camera(&proc, &dev) && !linux::alsa_capture(&asound));
         ln("/dev/video2", "proc/40/fd/7");
+        assert!(!linux::camera(&proc, &dev), "no video node: skip the walk");
+        w("dev/video2", "");
         w("asound/card1/pcm0c/sub1/status", "state: RUNNING\nowner_pid   : 40\n");
-        assert!(linux::camera(&proc) && linux::alsa_capture(&asound));
-        assert!(!linux::camera(&root.join("nope")) && !linux::alsa_capture(&root.join("nope")));
+        assert!(linux::camera(&proc, &dev) && linux::alsa_capture(&asound));
+        assert!(!linux::camera(&root.join("nope"), &dev) && !linux::alsa_capture(&root.join("nope")));
         assert!(linux::recording("42\t57\t89\tPipeWire\tfloat32le 1ch 48000Hz\n") && !linux::recording("") && !linux::recording("\n"));
         std::fs::remove_dir_all(&root).unwrap();
     }
