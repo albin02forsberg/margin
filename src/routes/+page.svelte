@@ -59,6 +59,7 @@
   import { dayTime, focusLeft, inactiveStamp, naive, overLong, parseWhen, worked, type WeekDay } from "$lib/clock";
   import { shutdownKeys, shutdownTasks, summarise, type ShutdownAction } from "$lib/shutdown";
   import { stuckMenu, cancelKeyword, type StuckAction } from "$lib/pushed";
+  import { entryKeys, inboxKeys, summariseInbox, type InboxAction, type InboxCounts } from "$lib/inbox";
   import { morningKeys, planCandidates, planSummary, type MorningAction } from "$lib/morning";
   import { parseSession, type Entry } from "$lib/session";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
@@ -1414,6 +1415,51 @@
     const path: string = await call("capture_path", { file: journalFile(), journal: true });
     await recorded(() => toFile(path, (text) => call("capture_insert", { text, heading: null, entry: `* ${pad(t.getHours())}:${pad(t.getMinutes())} Shutdown: ${sum}` })));
     flash("Shutdown summary added to today's journal.");
+  }
+
+  /** Inbox: process (#1137): the open top-level inbox entries oldest first, one key each (see inbox.ts), each step one undo
+   *  group; Esc stops. The list is re-read after every step (refiles and new keywords/dates move lines); a step that leaves
+   *  the file as it was (a cancelled picker) stays on the entry. Ends with a summary that can go into today's journal. */
+  async function processInbox() {
+    const path: string = await call("capture_path", { file: cfg.config.inbox });
+    const entries = async () => entryKeys(await call<{ title: string; line: number; keyword: string | null; tags: string[] }[]>("inbox_entries", { text: await textOf(path) }));
+    const label = { today: "Today", tomorrow: "Tomorrow", date: "Pick a date…", refile: "Refile…", tags: "Tags…", park: "Park (someday)", drop: cancelKeyword(kw().done) ? "Drop (cancel)" : "Drop (archive)", skip: "Leave it" };
+    const keyOf = Object.fromEntries(Object.entries(inboxKeys).map(([k, a]) => [a, k]));
+    const items = (Object.keys(label) as InboxAction[]).map((a) => ({ label: `${keyOf[a]}  ${label[a]}`, value: a }));
+    const n: InboxCounts = { scheduled: 0, refiled: 0, tagged: 0, parked: 0, dropped: 0 }, seen = new Set<string>();
+    let left = (await entries()).filter((e) => !seen.has(e.key)), stopped = false;
+    if (!left.length) return flash("Inbox is empty.");
+    for (; left.length; left = (await entries()).filter((e) => !seen.has(e.key))) {
+      const it = left[0], loc = { path, line: it.line };
+      const a: InboxAction | null = await pick({ prompt: `Inbox ${seen.size + 1}/${seen.size + left.length}: ${it.title}`, items, keys: inboxKeys, hint: [it.keyword, ...it.tags.map((t) => `:${t}:`)].filter(Boolean).join(" ") || "note" });
+      if (!a) { stopped = true; break; }
+      if (a === "skip") { seen.add(it.key); continue; }
+      const before = await textOf(path);
+      try {
+        if ((await heading(loc))?.title !== it.title) { flash(`⚠ “${it.title}” changed meanwhile; skipped.`); seen.add(it.key); continue; }
+        if (a === "today" || a === "tomorrow" || a === "date") {
+          const input = a === "date" ? await datePick(`Schedule “${it.title}” for`, false, "SCHEDULED", false) : a;
+          if (input == null) continue;
+          // a plain note becomes a task first, so it shows in the agenda
+          await recorded(async () => { if (!it.keyword) await edit(loc, "keyword", kw().todo[0]); await setDate(loc, "SCHEDULED", input); });
+        } else if (a === "refile") {
+          const t = await askTarget([loc]);
+          if (!t) continue;
+          await recorded(() => refile(loc, t));
+        } else if (a === "tags") await recorded(() => editTags(loc));
+        else if (a === "drop" && !cancelKeyword(kw().done)) await recorded(() => archiveTask(loc));
+        else await stuckApply(loc, a);
+      } catch (e) { flash(`⚠ ${e}; skipped.`); seen.add(it.key); continue; }
+      if ((await textOf(path)) === before) continue;
+      seen.add(it.key);
+      n[({ today: "scheduled", tomorrow: "scheduled", date: "scheduled", refile: "refiled", tags: "tagged", park: "parked", drop: "dropped" } as const)[a]]++;
+    }
+    const sum = summariseInbox(n);
+    if (stopped) return flash(`Inbox stopped: ${sum}`);
+    if (!(await pick({ prompt: sum, items: [{ label: "Add to today's journal", value: true }, { label: "Close", value: false }] }))) return;
+    const t = new Date(), journal: string = await call("capture_path", { file: journalFile(), journal: true });
+    await recorded(() => toFile(journal, (text) => call("capture_insert", { text, heading: null, entry: `* ${pad(t.getHours())}:${pad(t.getMinutes())} Inbox: ${sum}` })));
+    flash("Inbox summary added to today's journal.");
   }
 
   /** Morning plan (#846), shutdown's twin: overdue, due-soon (3 days) and undated A/B tasks one keypress each (today,
@@ -3353,6 +3399,7 @@
     { label: "Go to Today", keys: ["Ctrl+1"], leader: "v t", run: () => openView("agenda") },
     { label: "Go to All tasks", keys: ["Ctrl+2"], leader: "v a", run: () => openView("todo") },
     { label: "Go to Inbox", keys: ["Ctrl+3"], leader: "v i", run: openInbox },
+    { label: "Inbox: process (walk the entries: schedule, refile, tag, park, drop…)", leader: "v p", run: () => act(processInbox) },
     { label: "Go to Time tracking", keys: ["Ctrl+4"], leader: "v c", run: () => openView("time") },
     { label: "Search tasks…", leader: "v f", run: searchTasks },
     { label: "Today: move overdue scheduled tasks to…", run: () => act(moveOverdue) },

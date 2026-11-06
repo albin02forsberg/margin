@@ -852,6 +852,7 @@ describe("Journal, archive and move", () => {
         writeFileSync(join(notes, "clone.org"), "* DONE Check-in\nCLOSED: [2026-10-01 Thu 10:00] SCHEDULED: <2026-10-01 Thu>\n* After\n");
         writeFileSync(join(notes, "shutdown.org"), `* TODO Wrap report\nSCHEDULED: <${orgDay(new Date())}>\n* TODO Call vendor\nSCHEDULED: <${orgDay(new Date())} +1w>\n`);
         writeFileSync(join(notes, "morning.org"), "* TODO [#A] Draft budget\n* TODO [#A] Renew passport\n");
+        writeFileSync(join(notes, "inbox.org"), "* Call plumber\n* TODO Old idea\n* DONE Filed already\n");
       },
     });
   });
@@ -951,6 +952,18 @@ describe("Journal, archive and move", () => {
     await find(".picker label span", "Planned 1 for today");
     await browser.keys(Key.Escape);
     await fileMatches(f("morning.org"), (s) => s === `* TODO [#A] Draft budget\nSCHEDULED: <${orgDay(new Date())}>\n* TODO [#A] Renew passport\n`, "undated task not scheduled for today");
+  });
+
+  it("Space v p walks the inbox one key each (t today, d drop) and adds the summary to the journal (#1137)", async () => {
+    await leader("vp");
+    await find(".picker label span", "Inbox 1/2: Call plumber");
+    await browser.keys("t");
+    await find(".picker label span", "Inbox 2/2: Old idea");
+    await browser.keys("d");
+    await find(".picker label span", "Processed 2: 1 scheduled, 1 dropped");
+    await browser.keys(Key.Enter);
+    await fileMatches(f("inbox.org"), (s) => s.startsWith(`* TODO Call plumber\nSCHEDULED: <${orgDay(new Date())}>\n* CANCELLED Old idea\n`) && s.includes("* DONE Filed already"), "plain note not scheduled as a task / entry not dropped");
+    await fileMatches(f(join("daily", `${isoDay(new Date())}.org`)), (s) => /\n\* \d\d:\d\d Inbox: Processed 2: 1 scheduled, 1 dropped\n/.test(s), "summary not in today's journal");
   });
 
   it("Space n J opens the journal for a chosen past date, creating it with a title", async () => {
