@@ -277,7 +277,7 @@ pub fn tools(ctx: &ToolCtx) -> serde_json::Value {
     let (from, to) = (("from", "First day, e.g. 2026-11-02, today, mon or -7d"), ("to", "Last day, same forms"));
     let mut out = vec![];
     if ctx.notes {
-        out.push(tool("search_notes", "Excerpts of the user's notes that best match QUERY, plus notes linked to them.", &[("query", "Search words")], true));
+        out.push(tool("search_notes", "Excerpts of the user's notes that best match QUERY by words or meaning, plus notes linked to them.", &[("query", "Search words")], true));
         out.push(tool("open_note", "The text of one note, by its title.", &[("title", "The note's title, as search_notes labels it")], true));
         out.push(tool("neighbors", "The titles of the notes linked to or from one note.", &[("title", "The note's title")], true));
     }
@@ -327,10 +327,13 @@ fn listing(kind: &str, title: &str, lines: impl Iterator<Item = String>, empty: 
     l + if text.is_empty() { empty } else { &text }
 }
 
+/// A semantic hit: note path, line, cosine.
+type Hit = (PathBuf, usize, f32);
+
 /// The result of tool NAME with ARGS over FILES (already without `ai_exclude`d notes), if CTX
-/// offers it, at most TOOL_RESULT bytes; errors are told to the model as text.
+/// offers it, at most TOOL_RESULT bytes (SEMANTIC gives search_notes the index's hits for a query, #1145); errors are told to the model as text.
 /// Also the notes it used (open_note's, search_notes' hits, texts emptied) for the chat's source list.
-pub fn tool_sources(files: &[Arc<OrgFile>], ctx: &ToolCtx, name: &str, args: &serde_json::Value) -> (String, Vec<Source>) {
+pub fn tool_sources(files: &[Arc<OrgFile>], ctx: &ToolCtx, name: &str, args: &serde_json::Value, semantic: &dyn Fn(&str) -> Vec<Hit>) -> (String, Vec<Source>) {
     let mut used = vec![];
     let opt = |k: &str| args.get(k).and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty());
     let arg = |k: &str| opt(k).ok_or(format!("Error: {name} needs a {k}."));
@@ -340,7 +343,7 @@ pub fn tool_sources(files: &[Arc<OrgFile>], ctx: &ToolCtx, name: &str, args: &se
     let out = match name {
         _ if !offered.iter().any(|n| n == name) => Err(format!("Error: unknown tool {name}. Use {}.", offered.join(", "))),
         "search_notes" => arg("query").map(|q| {
-            used = retrieve(files, q, None, TOOL_RESULT, &[]);
+            used = retrieve(files, q, None, TOOL_RESULT, &semantic(q));
             match pack(&used) {
                 p if p.is_empty() => format!("No note matches {q}."),
                 p => p,
@@ -642,13 +645,17 @@ mod tests {
         ];
         let kept: Vec<_> = files.iter().filter(|f| !excluded(&f.path, Path::new("/n"), &["secret".to_string()])).cloned().collect();
         let ctx = ToolCtx { kw: Kw { todo: vec![], done: vec![] }, today: NaiveDate::from_ymd_opt(2026, 10, 18).unwrap(), notes: true, tasks: false, sessions: None };
-        let run = |name: &str, args: serde_json::Value| tool_sources(&kept, &ctx, name, &args).0;
+        let run = |name: &str, args: serde_json::Value| tool_sources(&kept, &ctx, name, &args, &|_| vec![]).0;
         assert_eq!(tool_names(&ctx), ["search_notes", "open_note", "neighbors"]);
         assert_eq!(tool_note(&ctx), "If the context above doesn't answer it, use the tools to search and read more of the user's notes.");
         // search: the matching note, not the excluded one
         let got = run("search_notes", serde_json::json!({ "query": "launch" }));
         assert!(got.starts_with("[note: Plan | plan.org:1]\nlaunch soon") && !got.contains("codes"), "{got}");
         assert_eq!(run("search_notes", serde_json::json!({ "query": "zebra" })), "No note matches zebra.");
+        // search by meaning: a semantic hit on a note without the word is found; an excluded note's isn't
+        let hits = |q: &str| tool_sources(&kept, &ctx, "search_notes", &serde_json::json!({ "query": q }), &|_| vec![(PathBuf::from("/n/budget.org"), 2, 0.9), (PathBuf::from("/n/secret.org"), 2, 0.9)]);
+        let (got, srcs) = hits("cash");
+        assert!(got.contains("We spend 10k.") && !got.contains("codes") && srcs.iter().any(|s| s.title == "Budget"), "{got}");
         // open: any case, without drawers or keywords; excluded and unknown titles aren't found
         assert_eq!(run("open_note", serde_json::json!({ "title": "budget" })), "[note: Budget | budget.org:1]\nWe spend 10k.");
         for t in ["Secret", "Nope"] {
@@ -662,7 +669,7 @@ mod tests {
         assert!(big.len() <= TOOL_RESULT && big.len() > TOOL_RESULT - 4 && big.starts_with("[note: Big"));
         assert!(run("search_notes", serde_json::json!({ "query": "ålpha" })).len() <= TOOL_RESULT);
         // the notes a call used, for the source list
-        let used = |name: &str, args: serde_json::Value| tool_sources(&kept, &ctx, name, &args).1.iter().map(|s| (s.title.clone(), s.text.is_empty())).collect::<Vec<_>>();
+        let used = |name: &str, args: serde_json::Value| tool_sources(&kept, &ctx, name, &args, &|_| vec![]).1.iter().map(|s| (s.title.clone(), s.text.is_empty())).collect::<Vec<_>>();
         assert_eq!(used("open_note", serde_json::json!({ "title": "Big" })), [("Big".to_string(), true)]);
         assert!(used("open_note", serde_json::json!({ "title": "Nope" })).is_empty());
         assert!(used("neighbors", serde_json::json!({ "title": "Big" })).is_empty());
@@ -700,7 +707,7 @@ mod tests {
             line: None,
         };
         let ctx = ToolCtx { kw: kw.clone(), today: day, notes: false, tasks: true, sessions: Some(vec![t(5, "Old"), t(16, "Acme"), t(18, "Acme")]) };
-        let run = |name: &str, args: serde_json::Value| tool_sources(&kept, &ctx, name, &args).0;
+        let run = |name: &str, args: serde_json::Value| tool_sources(&kept, &ctx, name, &args, &|_| vec![]).0;
         // notes off: only the task, agenda and time tools; tasks off and no time log: none of them
         assert_eq!(tool_names(&ctx), ["list_tasks", "agenda", "time_report"]);
         assert!(run("search_notes", serde_json::json!({ "query": "ship" })).starts_with("Error: unknown tool search_notes."));
@@ -726,7 +733,7 @@ mod tests {
         assert_eq!(run("time_report", serde_json::json!({ "to": "2026-10-01" })), "[time: 2026-09-25..2026-10-01]\nNothing tracked then.");
         // a long result stays in TOOL_RESULT, on whole lines; these tools use no notes
         let many = ToolCtx { sessions: Some((0..200).map(|_| t(18, "Acme")).collect()), ..ctx };
-        let (big, used) = tool_sources(&kept, &many, "time_report", &serde_json::json!({}));
+        let (big, used) = tool_sources(&kept, &many, "time_report", &serde_json::json!({}), &|_| vec![]);
         assert!(big.len() <= TOOL_RESULT && big.ends_with(": 1h 30m") && used.is_empty());
     }
 

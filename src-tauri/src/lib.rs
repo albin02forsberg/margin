@@ -2745,7 +2745,7 @@ fn ai_chat(app: AppHandle, s: State<App>, messages: Vec<ai::Msg>, note: Option<(
         let mut with = msgs.clone();
         with[0].content += &format!("\n\n{}", retrieve::tool_note(&ctx));
         let mut run = |name: &str, args: &serde_json::Value| {
-            let (out, used) = retrieve::tool_sources(&files, &ctx, name, args);
+            let (out, used) = retrieve::tool_sources(&files, &ctx, name, args, &|q| semantic_query(&app, &c, q, 8).unwrap_or_default());
             let _ = on_tool.send(json!({ "name": name, "args": args, "sources": used }));
             out
         };
