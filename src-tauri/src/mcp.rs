@@ -3,7 +3,7 @@
 // (#930). JSON-RPC 2.0, one message per line; stdout carries only responses, anything else goes to stderr.
 
 use crate::config::Config;
-use crate::{capture_file, check_in, embed, files_of, journal_file, kw_of, new_day_file, notes, org, org_edit_op, range_report, retrieve, saved_profile, semantic_model, tc_of, timeclock, week_range, write_checked};
+use crate::{ai, capture_file, check_in, embed, files_of, journal_file, kw_of, new_day_file, notes, org, org_edit_op, range_report, retrieve, saved_profile, semantic_model, tc_of, timeclock, week_range, write_checked};
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -132,7 +132,8 @@ fn error(id: Value, code: i64, message: &str) -> String {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } }).to_string()
 }
 
-/// The tool list for C: `ai_semantic` adds related_notes, `mcp_write` WRITE_TOOLS.
+/// The tool list for C: `ai_semantic` adds related_notes (and search_by_meaning with Ollama, which
+/// embeds the query; the built-in embedder isn't loaded here), `mcp_write` WRITE_TOOLS.
 fn tools(c: &Config) -> Value {
     let obj = |props: Value, req: &[&str]| json!({ "type": "object", "properties": props, "required": req });
     let s = |d: &str| json!({ "type": "string", "description": d });
@@ -162,11 +163,15 @@ fn tools(c: &Config) -> Value {
           "inputSchema": obj(json!({ "from": s("Start day: YYYY-MM-DD, or relative like -1 or +3 (default today)"), "to": s("End day, same forms (default FROM + 7 days)") }), &[]) },
     ]);
     if c.ai_semantic {
-        let k = json!({ "type": "integer", "description": "Max notes (default 10, max 50)" });
+        let k = json!({ "type": "integer", "description": "Max hits (default 10, max 50)" });
         let mut p = note["properties"].clone();
-        p["k"] = k;
+        p["k"] = k.clone();
         v.as_array_mut().unwrap().push(json!({ "name": "related_notes", "description": "The notes closest in meaning to one note, from Margin's semantic index: path, title, heading, line and first text of each one's best section, and its similarity (0..1), best first.",
             "inputSchema": obj(p, &[]) }));
+        if c.ai_backend == ai::Backend::Ollama {
+            v.as_array_mut().unwrap().push(json!({ "name": "search_by_meaning", "description": "The note sections closest in meaning to QUERY (not just its words), from Margin's semantic index: path, title, heading, line, first text and similarity (0..1), best first.",
+                "inputSchema": obj(json!({ "query": s("What to look for, in any words"), "k": k }), &["query"]) }));
+        }
     }
     if c.mcp_write {
         let w = v.as_array_mut().unwrap();
@@ -222,7 +227,7 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
     }
     let root = c.notes();
     let rel = |p: &Path| p.strip_prefix(&root).unwrap_or(p).to_string_lossy().replace('\\', "/");
-    let notes_tool = write || matches!(name, "search_notes" | "read_note" | "list_notes" | "list_tasks" | "neighbors" | "read_journal" | "agenda" | "related_notes");
+    let notes_tool = write || matches!(name, "search_notes" | "read_note" | "list_notes" | "list_tasks" | "neighbors" | "read_journal" | "agenda" | "related_notes" | "search_by_meaning");
     if notes_tool && !root.is_dir() {
         return Err(format!("the notes folder {} doesn't exist", root.display()));
     }
@@ -297,10 +302,15 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
             let back: Vec<_> = notes::backlinks(&files, &f.path).into_iter().map(|h| json!({ "path": rel(&h.path), "title": h.title, "line": h.line + 1, "text": h.text })).collect();
             json!({ "linked": linked, "backlinks": back })
         }
-        "related_notes" => {
+        "related_notes" | "search_by_meaning" => {
             let model = semantic_model(&c)?;
-            let f = find(&all, &root, arg("path"), arg("title"))?;
-            if excluded(&f.path) {
+            // The note related_notes starts from, or search_by_meaning's query.
+            let from = match name {
+                "related_notes" => Ok(find(&all, &root, arg("path"), arg("title"))?),
+                _ if c.ai_backend != ai::Backend::Ollama => return Err("search_by_meaning needs Ollama (ai_backend = \"ollama\"); with the built-in model, search by meaning in Margin (~ in Search all notes).".into()),
+                _ => Err(arg("query").ok_or("query is required")?),
+            };
+            if let Some(f) = from.as_ref().ok().filter(|f| excluded(&f.path)) {
                 return Err(format!("{} is excluded from the AI (ai_exclude)", rel(&f.path)));
             }
             // Read-only: the app alone writes the index (atomically, so a load never sees half a file).
@@ -309,7 +319,14 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
                 return Err("The semantic index is empty, still building or made by another model: open Margin with semantic search on and let it index.".into());
             }
             let k = args.get("k").and_then(Value::as_u64).unwrap_or(10).clamp(1, 50) as usize;
-            let hits: Vec<_> = ix.related(&f.path, usize::MAX).into_iter().map(|(p, l, s)| (p.to_path_buf(), l, s)).collect();
+            let hits = match from {
+                Ok(f) => ix.related(&f.path, usize::MAX),
+                Err(query) => {
+                    let q = ai::embed(&c.ai_url, model, &[embed::prefixed(model, true, query)])?.pop().ok_or("Got no embedding.")?;
+                    ix.top_k(&q, usize::MAX)
+                }
+            };
+            let hits: Vec<_> = hits.into_iter().map(|(p, l, s)| (p.to_path_buf(), l, s)).collect();
             // found drops notes not in FILES, so excluded ones too.
             json!(embed::found(&files, &hits).iter().take(k).map(|h| json!({ "path": rel(&h.path), "title": h.title, "heading": h.heading, "line": h.line + 1, "text": h.text, "score": (h.score as f64 * 1000.0).round() / 1000.0 })).collect::<Vec<_>>())
         }
@@ -850,6 +867,37 @@ mod tests {
         assert_eq!(std::fs::read(&file).unwrap(), before);
         assert!(tool(&ctx, "related_notes", json!({ "path": "private/s.org" })).0.contains("ai_exclude"));
         assert!(tool(&ctx, "related_notes", json!({ "path": "../outside.org" })).0.contains("isn't in the notes folder"));
+
+        // search_by_meaning embeds the query through Ollama (a stub here), with the model's query prefix.
+        use std::io::Read;
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        c.ai_url = format!("http://{}", l.local_addr().unwrap());
+        std::fs::write(&ctx.cfg_path, toml::to_string(&c).unwrap()).unwrap();
+        let srv = std::thread::spawn(move || {
+            let (mut s, _) = l.accept().unwrap();
+            let (mut req, mut buf) = (vec![], [0; 4096]);
+            while !String::from_utf8_lossy(&req).contains("}") {
+                let n = s.read(&mut buf).unwrap();
+                req.extend_from_slice(&buf[..n]);
+            }
+            let body = r#"{"embeddings":[[0.0,1.0]]}"#;
+            write!(s, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+            String::from_utf8_lossy(&req).into_owned()
+        });
+        let (r, err) = tool(&ctx, "search_by_meaning", json!({ "query": "fruit" }));
+        assert!(!err, "{r}");
+        assert_eq!(serde_json::from_str::<Value>(&r).unwrap(), json!([{ "path": "b.org", "title": "Beta", "heading": "", "line": 6, "text": "More apples here.", "score": 0.8 },
+            { "path": "a.org", "title": "Alpha", "heading": "", "line": 6, "text": "Apples and pears.", "score": 0.0 }]));
+        assert!(srv.join().unwrap().contains(r#""input":["search_query: fruit"]"#));
+        assert!(tool(&ctx, "search_by_meaning", json!({})).0.contains("query is required"));
+        // Not offered with the built-in backend (no e5 model load in this process).
+        let names = |ctx: &Ctx| rpc(ctx, "tools/list", json!({}))["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        assert!(names(&ctx).contains(&"search_by_meaning".into()));
+        c.ai_backend = crate::ai::Backend::Embedded;
+        std::fs::write(&ctx.cfg_path, toml::to_string(&c).unwrap()).unwrap();
+        assert!(listed(&ctx) && !names(&ctx).contains(&"search_by_meaning".into()));
+        let (e, err) = tool(&ctx, "search_by_meaning", json!({ "query": "fruit" }));
+        assert!(err && e.contains("needs Ollama"), "{e}");
     }
 
     #[test]
