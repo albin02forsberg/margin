@@ -249,6 +249,29 @@ fn relock_with(text: &str, line: usize, prev: &str, plain: &str, pass: &str, kdf
     Ok((swap_block(text, line, &block)?, block))
 }
 
+/// Headings tagged `crypt` (own tag) whose body isn't locked, in FILES outside TRASH (#1169). Same rule
+/// as `cryptUnlocked` in narrow.ts: the first non-blank line before any heading isn't BEGIN.
+pub fn unlocked(files: &[std::sync::Arc<crate::org::OrgFile>], trash: &Path) -> Vec<crate::notes::Hit> {
+    let plain = |text: &str, line: usize| {
+        for l in text.lines().skip(line + 1) {
+            if crate::org::heading_level(l).is_some() {
+                return false;
+            }
+            if !l.trim().is_empty() {
+                return l.trim() != BEGIN;
+            }
+        }
+        false
+    };
+    let mut v = vec![];
+    for f in files.iter().filter(|f| !f.path.starts_with(trash)) {
+        for h in f.headlines.iter().filter(|h| h.tags.iter().any(|t| t == "crypt") && plain(&f.text, h.line)) {
+            v.push(crate::notes::Hit { path: f.path.clone(), title: f.title.clone(), line: h.line, text: h.title.clone() });
+        }
+    }
+    v
+}
+
 /// TEXT with every armoured block (an unterminated one runs to the end) blanked line by line, so
 /// line numbers hold. Readers that index, search, export or hand text to an AI use this (#1087).
 pub fn strip(text: &str) -> std::borrow::Cow<'_, str> {
@@ -371,6 +394,22 @@ mod tests {
         assert_eq!(unlock(&out, 0, "new").unwrap(), "secret\n");
         let cut = with_child.replace(END, "");
         assert_eq!(unlock(&cut, 0, "old").unwrap_err(), "truncated encrypted block");
+    }
+
+    #[test]
+    fn lists_unlocked_crypt_headings() {
+        let kw = crate::org::Kw { todo: vec!["TODO".into()], done: vec![] };
+        let b = enc("x", "pw");
+        let f = |p: &str, t: &str| std::sync::Arc::new(crate::org::parse(Path::new(p), t, &kw));
+        let note = format!("* Plain :crypt:\n\nsecret\n* Locked :crypt:\n\n{b}\n* Untagged\ntext\n* Parent :crypt:\n** Child\ninherited only\n* Empty :crypt:\n  \n* TODO Last :a:crypt:\nbody");
+        let files = [
+            f("/n/a.org", &note),
+            f("/n/journal/2026-11-07.org", "* Diary :crypt:\ndear diary\n"),
+            f("/n/.trash/old.org", "* Gone :crypt:\nold\n"),
+        ];
+        let got: Vec<_> = unlocked(&files, Path::new("/n/.trash")).into_iter().map(|h| (h.path.to_string_lossy().into_owned(), h.line, h.text)).collect();
+        let want = [("/n/a.org", 0, "Plain"), ("/n/a.org", 16, "Last"), ("/n/journal/2026-11-07.org", 0, "Diary")];
+        assert_eq!(got, want.map(|(p, l, t)| (p.to_string(), l, t.to_string())));
     }
 
     #[test]

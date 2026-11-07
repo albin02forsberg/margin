@@ -376,6 +376,22 @@ async function pngs() {
     await type("Gu"); // undo
   }
 
+  if (want("crypt-unlocked-list")) { // #1169: every :crypt: heading whose body isn't locked, across notes
+    await open("Harbor app", "harbor.org");
+    await browser.keys(Key.Escape);
+    await type("Go* Secrets :crypt:\nplain text");
+    await browser.keys(Key.Escape);
+    await type(":w");
+    await browser.keys(Key.Enter);
+    await pause(500);
+    await command("Notes: find :crypt: headings that aren't locked");
+    await find(".picker li", "Secrets");
+    await shot("crypt-unlocked-list");
+    await browser.keys(Key.Escape);
+    await type("u:w"); // undo and save, so later shots see the demo note as it was
+    await browser.keys(Key.Enter);
+  }
+
   await command("Notes: replace text in all notes"); // the preview only: Esc writes nothing
   await type("Harbor");
   await browser.keys(Key.Enter);
