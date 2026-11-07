@@ -365,6 +365,16 @@ async function pngs() {
     await browser.keys(Key.Escape);
   }
 
+  if (want("crypt-remove")) { // #1168: the confirm before a locked heading goes back to plain text; Esc changes nothing
+    await open("Harbor app", "harbor.org");
+    await browser.keys(Key.Escape);
+    await type("G"); // under a heading
+    await command("Note: remove the encryption");
+    await find(".picker label span", "Remove the encryption");
+    await shot("crypt-remove");
+    await browser.keys(Key.Escape);
+  }
+
   if (want("crypt-unlocked")) { // #1157: a :crypt:-tagged heading whose body isn't locked is marked
     await open("Harbor app", "harbor.org");
     await browser.keys(Key.Escape);

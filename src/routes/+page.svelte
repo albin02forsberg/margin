@@ -1325,6 +1325,31 @@
     });
   }
 
+  /** Palette (#1168): decrypt the locked heading at the cursor back into the note as plain text and drop its `crypt` tag. */
+  async function cryptRemove() {
+    const t = tab, line = inFile() ? ed.headingAtCursor(view.state) : -1;
+    if (line < 0) return flash("Open a note and put the cursor on a locked heading first.");
+    const ct = tabs.find((c) => c.key === `crypt:${t.path}:${line}`);
+    if (ct?.dirty) return flash("⚠ The decrypted tab has unsaved edits; save (:w) or close it first.");
+    const body = "The heading's text is written back into the note unencrypted: readable on disk, in sync and in git backups again.";
+    if (!(await pick({ prompt: "Remove the encryption from this heading?", body, items: [{ label: "Yes, store it as plain text", value: true }] }))) return;
+    let done = false;
+    await saveQueue(t.key, async () => {
+      let r: string | null;
+      try {
+        r = await withPass<string>("crypt_remove", { path: t.path, text: stateOf(t).doc.toString(), line, expect: t.saved });
+      } catch (e) {
+        return flash(e === "changed-on-disk" ? "⚠ The note changed on disk; nothing was changed. Try again." : `⚠ ${e}`);
+      }
+      if (r == null) return;
+      takeWritten(t, r, line);
+      done = true;
+    });
+    if (!done) return;
+    if (ct && tabs.includes(ct)) await detachTab(ct); // its text is in the note now
+    flash("🔓 Encryption removed.");
+  }
+
   /** :w / Ctrl+S in decrypted tab T (#1154): encrypt its text back into the locked heading, in the note tab's save
    *  queue. Fails with nothing written if the heading no longer decrypts to what T opened with. */
   async function cryptSave(t: Tab) {
@@ -3514,6 +3539,7 @@
     { label: "Note: extract heading at cursor into a new note, leaving a link", leader: "n x", run: () => act(extractNote) },
     { label: "Note: lock (encrypt) the heading at cursor with a passphrase", leader: "n q", run: () => act(cryptLock) },
     { label: "Note: change the passphrase of the locked heading", leader: "n K", run: () => act(cryptRekey) },
+    { label: "Note: remove the encryption from the locked heading", run: () => act(cryptRemove) },
     { label: "Note: read or edit a locked heading (decrypted; :w locks it again)", leader: "n Q", run: () => act(cryptView) },
     { label: "Journal for another day…", leader: "n J", run: journalPick },
     { label: "Journal: on this day…", leader: "n t", run: journalOnThisDay },

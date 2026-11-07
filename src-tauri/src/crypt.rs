@@ -231,6 +231,19 @@ fn swap_block(text: &str, line: usize, block: &str) -> Result<String, String> {
     Ok(format!("{}{block}\n{}", &text[..r.start + b.start], &text[r.start + b.end..]))
 }
 
+/// TEXT with the locked heading on LINE decrypted back in place and its own `crypt` tag dropped
+/// (#1168, org-decrypt-entry); children after the block and other tags stay.
+pub fn decrypt_in_place(text: &str, line: usize, pass: &str, kw: &crate::org::Kw) -> Result<String, String> {
+    let plain = unlock(text, line, pass)?;
+    let r = body_at(text, line)?;
+    let b = block_range(&text[r.clone()]);
+    let rest = &text[r.start + b.end..];
+    let sep = if plain.ends_with('\n') || rest.is_empty() { "" } else { "\n" };
+    let out = format!("{}{plain}{sep}{rest}", &text[..r.start + b.start]);
+    let tags = crate::org::heading(&out, line, kw).map(|p| p.tags).unwrap_or_default();
+    Ok(crate::org::set_tags(&out, line, kw, tags.into_iter().filter(|t| t != "crypt").collect()))
+}
+
 /// Encrypt PLAIN under PASS into the locked heading on LINE of TEXT (#1154). PREV is what the block
 /// decrypted to when the edit began; a block that now decrypts to anything else (the heading moved or
 /// was changed elsewhere) is left alone. Returns (new text, the block).
@@ -381,6 +394,24 @@ mod tests {
         assert!(relock_with(&locked, b, "secret\n", "x", "pw", FAST).unwrap_err().starts_with("the locked heading changed"));
         assert!(relock_with(&locked, 0, "secret\n", " \n", "pw", FAST).unwrap_err().starts_with("nothing to lock"));
         assert_eq!(relock_with("* H\nplain\n", 0, "plain\n", "x", "pw", FAST).unwrap_err(), "this heading isn't locked");
+    }
+
+    #[test]
+    fn decrypt_heading_in_place() {
+        let kw = crate::org::Kw { todo: vec!["TODO".into()], done: vec![] };
+        let t = "* Open\nfine\n* TODO Vault :work:\nsecret\n** Sub\nmore\n* After\nb\n";
+        let (locked, _, _) = lock_with(t, 2, "pw", &kw, FAST).unwrap();
+        let (both, _, _) = lock_with(&locked, locked.lines().position(|l| l == "* After").unwrap(), "pw", &kw, FAST).unwrap();
+        let out = decrypt_in_place(&both, 2, "pw", &kw).unwrap();
+        assert_eq!(&out[..out.find("* After").unwrap()], &t[..t.find("* After").unwrap()]); // other tags stay, crypt goes
+        assert_eq!(&out[out.find("* After").unwrap()..], &both[both.find("* After").unwrap()..]); // the sibling stays locked
+        assert_eq!(decrypt_in_place(&locked, 2, "pw", &kw).unwrap(), t);
+        assert_eq!(decrypt_in_place(&locked, 2, "bad", &kw).unwrap_err(), "wrong passphrase or tampered block");
+        assert_eq!(decrypt_in_place(t, 2, "pw", &kw).unwrap_err(), "this heading isn't locked");
+        // A tag-only heading, a body without a trailing newline and a plaintext child added after the block.
+        let (l2, _, _) = lock_with("* V\nend", 0, "pw", &kw, FAST).unwrap();
+        assert_eq!(decrypt_in_place(&l2, 0, "pw", &kw).unwrap(), "* V\nend");
+        assert_eq!(decrypt_in_place(&format!("{l2}** c\nkid\n"), 0, "pw", &kw).unwrap(), "* V\nend\n** c\nkid\n");
     }
 
     #[test]
