@@ -11,7 +11,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { EditorView } from "@codemirror/view";
-  import type { EditorState } from "@codemirror/state";
+  import type { ChangeSet, ChangeSpec, EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
   import { linkFor, asUrl, asWebUrl } from "$lib/weblink";
   import { srcAt, resultsChange } from "$lib/babel";
@@ -72,7 +72,7 @@
   import { addBookmark, bookmarkAt, mergeBookmarks, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, retitleBookmarks, type Bookmark } from "$lib/bookmarks";
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
   import { pushRecent, sortByRecent, parseRecents } from "$lib/recents";
-  import { isCryptKey, saveRoute } from "$lib/crypttabs";
+  import { cryptKey, findCryptTab, isCryptKey, remapLine, saveRoute } from "$lib/crypttabs";
 
   type View = "agenda" | "todo" | "time" | "projects" | "ledger" | "habits" | "calendar" | "settings";
   /** SAVED: the text last read from / written to disk, to tell our own writes from outside changes.
@@ -280,9 +280,10 @@
       ...kw(),
       path,
       onUpdate: countWords,
-      onChange: () => {
-        if (syncing) return;
+      onChange: (u) => {
         const t = tabs.find((x) => x.key === key);
+        if (t?.kind === "file") remapCrypt(t.path, u); // synced edits move its headings too
+        if (syncing) return;
         if (t?.crypt) t.dirty = true; // a decrypted tab only saves on :w (cryptSave)
         if (t?.kind !== "file") return;
         t.dirty = true;
@@ -294,6 +295,17 @@
         }
       },
     });
+  }
+
+  /** Keep the decrypted tabs of note PATH on their heading's line as the note changes by U (#1172). */
+  function remapCrypt(path: string | undefined, u: { changes: ChangeSet; startState: EditorState; state: EditorState }) {
+    for (const { crypt: c } of tabs) if (c && c.path === path) c.line = remapLine(c.line, u.startState.doc, u.changes, u.state.doc);
+  }
+  /** Tab T's state (shown in no view) with CHANGES applied. */
+  function updateOff(t: Tab, changes: ChangeSpec) {
+    const tr = stateOf(t).update({ changes });
+    remapCrypt(t.path, tr);
+    return tr.state;
   }
 
   async function show(i: number) {
@@ -983,7 +995,7 @@
     }
     const v = viewOf(t);
     if (v) ed.applyText(v, next);
-    else t.state = t.state!.update({ changes: ed.diffChange(old, next) }).state;
+    else t.state = updateOff(t, ed.diffChange(old, next));
     t.dirty = true;
     await saveTab(t);
   }
@@ -1263,6 +1275,7 @@
    *  the plaintext leaves the buffer and its undo history (u can't bring it back to be autosaved). */
   function takeWritten(t: Tab, text: string, line: number) {
     clearTimeout(saveTimers.get(t.key));
+    updateOff(t, ed.diffChange(stateOf(t).doc.toString(), text)); // only to move the decrypted tabs of its other headings
     const st = newState(t.key, text, t.path);
     Object.assign(t, { state: st, saved: text, dirty: false, conflict: false });
     const v = viewOf(t);
@@ -1329,7 +1342,7 @@
   async function cryptRemove() {
     const t = tab, line = inFile() ? ed.headingAtCursor(view.state) : -1;
     if (line < 0) return flash("Open a note and put the cursor on a locked heading first.");
-    const ct = tabs.find((c) => c.key === `crypt:${t.path}:${line}`);
+    const ct = findCryptTab(tabs, t.path!, line);
     if (ct?.dirty) return flash("⚠ The decrypted tab has unsaved edits; save (:w) or close it first.");
     const body = "The heading's text is written back into the note unencrypted: readable on disk, in sync and in git backups again.";
     if (!(await pick({ prompt: "Remove the encryption from this heading?", body, items: [{ label: "Yes, store it as plain text", value: true }] }))) return;
@@ -1359,6 +1372,7 @@
     if (plain === c.plain) return ((t.dirty = false), flash("No changes to lock."));
     await saveQueue(note.key, async () => {
       let r: string | null;
+      if (c.line < 0) return flash("⚠ The locked heading was deleted from the note; nothing was saved. Copy your edits out of this tab.");
       try {
         r = await withPass<string>("crypt_relock", { path: c.path, text: stateOf(note).doc.toString(), line: c.line, expect: note.saved, edit: [c.plain, plain] });
       } catch (e) {
@@ -1376,12 +1390,12 @@
   async function cryptView() {
     const line = inFile() ? ed.headingAtCursor(view.state) : -1;
     if (line < 0) return flash("Open a note and put the cursor on a locked heading first.");
-    const open = tabs.findIndex((t) => t.key === `crypt:${tab.path}:${line}` && t.dirty);
-    if (open >= 0) return show(open); // unsaved edits there: don't replace them with the disk's text
+    const ct = findCryptTab(tabs, tab.path!, line);
+    if (ct?.dirty) return show(tabs.indexOf(ct)); // unsaved edits there: don't replace them with the disk's text
     const plain = await withPass<string>("crypt_unlock", { text: view.state.doc.toString(), line });
     if (plain == null) return;
     const title = view.state.doc.line(line + 1).text.replace(/^\*+\s+/, "").replace(/\s+:[\w@#%:]+:\s*$/, "");
-    await openReport(`crypt:${tab.path}:${line}`, `🔓 ${title}`, plain, undefined, { path: tab.path!, line, plain });
+    await openReport(ct?.key ?? cryptKey(tabs, tab.path!, line), `🔓 ${title}`, plain, undefined, { path: tab.path!, line, plain });
   }
 
   function atCursor(op: string, arg?: number) {
@@ -3854,7 +3868,7 @@
     try {
       const v = viewOf(t);
       if (v) ed.applyText(v, text);
-      else t.state = st.update({ changes: ed.diffChange(old, text) }).state;
+      else t.state = updateOff(t, ed.diffChange(old, text));
     } finally {
       syncing = false;
     }
@@ -3906,7 +3920,7 @@
     try {
       const v = viewOf(t);
       if (v) v.dispatch({ changes: change });
-      else t.state = st.update({ changes: change }).state;
+      else t.state = updateOff(t, change);
     } finally {
       syncing = false;
     }
