@@ -2096,6 +2096,14 @@
     if (r) { const b = r as (typeof o)[number]; await openFile(b.path, b.line); }
   }
 
+  /** `:crypt:` headings whose body isn't locked (#1169); Enter opens the note at the heading. */
+  async function findUnlockedCrypt() {
+    const o = await call<{ path: string; line: number; title: string; text: string }[]>("notes_crypt_unlocked");
+    if (!o.length) return flash("All :crypt: headings are locked");
+    const r = await pick({ prompt: ":crypt: headings that aren't locked (Space n q locks one)", items: o.map((h) => ({ label: h.text, detail: `${rel(h.path)}:${h.line + 1}`, value: h as unknown })) });
+    if (r) { const h = r as (typeof o)[number]; await openFile(h.path, h.line); }
+  }
+
   /** Open tasks with open subtasks but no next action (#671). */
   async function stuckProjects() {
     const o = await call<{ path: string; line: number; title: string; open: number }[]>("org_stuck");
@@ -3521,6 +3529,7 @@
     { label: "Jump to a note linking here…", leader: "n l", run: pickBacklink },
     { label: "Notes: find notes with no links…", leader: "n O", run: findOrphans },
     { label: "Notes: find broken links…", leader: "n L", run: findBrokenLinks },
+    { label: "Notes: find :crypt: headings that aren't locked…", run: findUnlockedCrypt },
     { label: "Notes: recently changed…", leader: "n C", run: recentlyChanged },
     { label: "Notes: open a random note, older ones likelier", leader: "n *", run: () => staleNotes(true) },
     { label: "Notes: stale notes (untouched for a year)…", leader: "n Z", run: () => staleNotes(false) },
