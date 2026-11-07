@@ -180,13 +180,27 @@ fn lock_with(text: &str, line: usize, pass: &str, kw: &crate::org::Kw, kdf: (u32
     Ok((crate::org::set_tags(&out, line, kw, tags), plain.to_string(), block))
 }
 
+/// Range within BODY of the armoured block: its BEGIN line through the END line's newline (an
+/// unterminated block runs to the end). Plaintext children after it are not part of the block.
+fn block_range(body: &str) -> Range<usize> {
+    let start = body.len() - body.trim_start().len();
+    let mut pos = start;
+    for l in body[start..].split_inclusive('\n') {
+        pos += l.len();
+        if l.trim() == END {
+            break;
+        }
+    }
+    start..pos
+}
+
 /// The plaintext body of the locked heading on LINE of TEXT.
 pub fn unlock(text: &str, line: usize, pass: &str) -> Result<String, String> {
     let body = &text[body_at(text, line)?];
     if !body.trim_start().starts_with(BEGIN) {
         return Err("this heading isn't locked".into());
     }
-    decrypt_section(body, pass)
+    decrypt_section(&body[block_range(body)], pass)
 }
 
 /// Re-encrypt the locked heading on LINE of TEXT under NEW instead of OLD (#1155). Returns (new text,
@@ -201,9 +215,9 @@ fn rekey_with(text: &str, line: usize, old: &str, new: &str, kdf: (u32, u32, u32
     }
     let plain = unlock(text, line, old)?;
     let r = body_at(text, line)?;
-    let lead = &text[r.clone()][..text[r.clone()].len() - text[r.clone()].trim_start().len()];
+    let b = block_range(&text[r.clone()]);
     let block = encrypt_with(&plain, new, kdf)?;
-    Ok((format!("{}{lead}{block}\n{}", &text[..r.start], &text[r.end..]), plain, block))
+    Ok((format!("{}{block}\n{}", &text[..r.start + b.start], &text[r.start + b.end..]), plain, block))
 }
 
 /// TEXT with every armoured block (an unterminated one runs to the end) blanked line by line, so
@@ -287,6 +301,19 @@ mod tests {
         assert_eq!(rekey_with(&locked, 0, "bad", "new", FAST).unwrap_err(), "wrong passphrase or tampered block");
         assert_eq!(rekey_with(&locked, 0, "old", "old", FAST).unwrap_err(), "the new passphrase is the same as the old one");
         assert_eq!(rekey_with("* H\nplain\n", 0, "a", "b", FAST).unwrap_err(), "this heading isn't locked");
+    }
+
+    #[test]
+    fn plaintext_child_after_block() {
+        let kw = crate::org::Kw { todo: vec![], done: vec![] };
+        let (locked, _, _) = lock_with("* V\nsecret\n", 0, "old", &kw, FAST).unwrap();
+        let with_child = format!("{locked}** c\nkid\n");
+        assert_eq!(unlock(&with_child, 0, "old").unwrap(), "secret\n");
+        let (out, _, _) = rekey_with(&with_child, 0, "old", "new", FAST).unwrap();
+        assert!(out.ends_with(&format!("{END}\n** c\nkid\n")), "{out}");
+        assert_eq!(unlock(&out, 0, "new").unwrap(), "secret\n");
+        let cut = with_child.replace(END, "");
+        assert_eq!(unlock(&cut, 0, "old").unwrap_err(), "truncated encrypted block");
     }
 
     #[test]
