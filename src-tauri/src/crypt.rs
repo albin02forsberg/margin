@@ -189,6 +189,23 @@ pub fn unlock(text: &str, line: usize, pass: &str) -> Result<String, String> {
     decrypt_section(body, pass)
 }
 
+/// Re-encrypt the locked heading on LINE of TEXT under NEW instead of OLD (#1155). Returns (new text,
+/// the plaintext body, the block) like `lock`; the plaintext never leaves Rust.
+pub fn rekey(text: &str, line: usize, old: &str, new: &str) -> Result<(String, String, String), String> {
+    rekey_with(text, line, old, new, KDF)
+}
+
+fn rekey_with(text: &str, line: usize, old: &str, new: &str, kdf: (u32, u32, u32)) -> Result<(String, String, String), String> {
+    if old == new {
+        return Err("the new passphrase is the same as the old one".into());
+    }
+    let plain = unlock(text, line, old)?;
+    let r = body_at(text, line)?;
+    let lead = &text[r.clone()][..text[r.clone()].len() - text[r.clone()].trim_start().len()];
+    let block = encrypt_with(&plain, new, kdf)?;
+    Ok((format!("{}{lead}{block}\n{}", &text[..r.start], &text[r.end..]), plain, block))
+}
+
 /// TEXT with every armoured block (an unterminated one runs to the end) blanked line by line, so
 /// line numbers hold. Readers that index, search, export or hand text to an AI use this (#1087).
 pub fn strip(text: &str) -> std::borrow::Cow<'_, str> {
@@ -256,6 +273,20 @@ mod tests {
         let (o2, p2, _) = lock_with("* V :crypt:\nend", 0, "pw", &kw, FAST).unwrap();
         assert!(o2.starts_with("* V :crypt:\n-----BEGIN") && o2.ends_with(&format!("{END}\n")), "{o2}");
         assert_eq!((p2.as_str(), unlock(&o2, 0, "pw").unwrap().as_str()), ("end", "end"));
+    }
+
+    #[test]
+    fn rekey_heading() {
+        let kw = crate::org::Kw { todo: vec![], done: vec![] };
+        let (locked, plain, _) = lock_with("* Vault\nsecret\n* After\nb\n", 0, "old", &kw, FAST).unwrap();
+        let (out, p2, _) = rekey_with(&locked, 0, "old", "new", FAST).unwrap();
+        assert_eq!(p2, plain);
+        assert!(out.starts_with("* Vault :crypt:\n-----BEGIN") && out.ends_with("-----END MARGIN ENCRYPTED-----\n* After\nb\n") && !out.contains("secret"));
+        assert_eq!(unlock(&out, 0, "new").unwrap(), "secret\n");
+        assert_eq!(unlock(&out, 0, "old").unwrap_err(), "wrong passphrase or tampered block");
+        assert_eq!(rekey_with(&locked, 0, "bad", "new", FAST).unwrap_err(), "wrong passphrase or tampered block");
+        assert_eq!(rekey_with(&locked, 0, "old", "old", FAST).unwrap_err(), "the new passphrase is the same as the old one");
+        assert_eq!(rekey_with("* H\nplain\n", 0, "a", "b", FAST).unwrap_err(), "this heading isn't locked");
     }
 
     #[test]

@@ -1262,6 +1262,39 @@
     });
   }
 
+  /** Space n K (#1155): change the passphrase of the locked heading at the cursor; the old one comes from the cache or a prompt. */
+  async function cryptRekey() {
+    const t = tab, line = inFile() ? ed.headingAtCursor(view.state) : -1;
+    if (line < 0) return flash("Open a note and put the cursor on a locked heading first.");
+    await saveQueue(t.key, async () => {
+      const text = stateOf(t).doc.toString();
+      if (!/^-----BEGIN MARGIN ENCRYPTED-----/m.test(text)) return flash("This note has no locked heading.");
+      const nw = await pick({ prompt: "New passphrase for this heading", secret: true });
+      if (!nw) return;
+      if ((await pick({ prompt: "Type the passphrase again", secret: true })) !== nw) return flash("⚠ The passphrases don't match; nothing was changed.");
+      const args = { path: t.path, text, line, expect: t.saved };
+      let r: [string, string | null] | null = null;
+      try {
+        try { r = await call("crypt_rekey", { ...args, passes: [nw, null] }); } catch (e) {
+          if (e !== "passphrase-needed") throw e;
+          const old = await pick({ prompt: "Current passphrase", secret: true });
+          if (!old) return;
+          r = await call("crypt_rekey", { ...args, passes: [nw, old] });
+        }
+      } catch (e) {
+        return flash(e === "changed-on-disk" ? "⚠ The note changed on disk; nothing was changed. Try again." : `⚠ ${e}`);
+      }
+      if (!r) return;
+      clearTimeout(saveTimers.get(t.key));
+      const st = newState(t.key, r[0], t.path);
+      Object.assign(t, { state: st, saved: r[0], dirty: false, conflict: false });
+      const v = viewOf(t);
+      if (v) { v.setState(st); watchMode(v); if (v === view) mode = "normal"; }
+      reload++;
+      flash("🔒 Passphrase changed.");
+    });
+  }
+
   /** Space n Q: show the locked heading at the cursor decrypted, in a read-only tab (never in the note's buffer). */
   async function cryptView() {
     const line = inFile() ? ed.headingAtCursor(view.state) : -1;
@@ -3418,6 +3451,7 @@
     { label: "Today's journal", keys: ["Ctrl+J"], leader: "j", run: () => journal() },
     { label: "Note: extract heading at cursor into a new note, leaving a link", leader: "n x", run: () => act(extractNote) },
     { label: "Note: lock (encrypt) the heading at cursor with a passphrase", leader: "n q", run: () => act(cryptLock) },
+    { label: "Note: change the passphrase of the locked heading", leader: "n K", run: () => act(cryptRekey) },
     { label: "Note: read a locked heading (decrypted, read-only)", leader: "n Q", run: () => act(cryptView) },
     { label: "Journal for another day…", leader: "n J", run: journalPick },
     { label: "Journal: on this day…", leader: "n t", run: journalOnThisDay },
