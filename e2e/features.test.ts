@@ -2366,6 +2366,25 @@ describe("Locked headings (#1086)", () => {
     await browser.keys(" ");
     await type("nQ");
     await find(".cm-editor .cm-content", "secret words, edited");
+    // A line added above the heading in the note (#1172): :w in the decrypted tab still re-locks that heading.
+    await (await find(".tabs .tab button", "vault")).click();
+    await find(".status .file", "vault.org");
+    await type("ggOintro");
+    await browser.keys(Key.Escape);
+    await (await find(".tabs .tab button", "Vault")).click();
+    await type("ggA again");
+    await browser.keys(Key.Escape);
+    await fileMatches(f, (s) => s.startsWith("intro\n"), "the line above wasn't saved");
+    const pre = read(f);
+    await ex(":w");
+    await fileMatches(f, (s) => s !== pre && s.startsWith("intro\n* Vault :crypt:\n-----BEGIN MARGIN ENCRYPTED-----\n") && !s.includes("again") && s.endsWith("* Open\nplain\n"), "edit not re-locked after a line was added above");
+    await ex(":bd");
+    await find(".status .file", "vault.org");
+    await browser.keys(Key.Escape);
+    await type("ggj");
+    await browser.keys(" ");
+    await type("nQ");
+    await find(".cm-editor .cm-content", "secret words, edited again");
     // The passphrase is forgotten (idle / hidden to the tray): the decrypted tab closes.
     await browser.execute(() => (window as any).__TAURI_INTERNALS__.invoke("plugin:event|emit", { event: "crypt-forget", payload: null }));
     await browser.waitUntil(async () => !(await texts(".tabs .tab button")).some((t) => t.includes("Vault")), { timeoutMsg: "decrypted tab stayed open" });

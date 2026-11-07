@@ -1321,7 +1321,7 @@ const theme = EditorView.theme({
 export const peekState = (doc: string, opts: { todo: string[]; done: string[]; path?: string }) =>
   EditorState.create({ doc, extensions: [theme, orgConf.of(opts), orgStyle, EditorView.lineWrapping, EditorState.readOnly.of(true)] });
 
-export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; path?: string; onChange: () => void; onUpdate?: (s: EditorState, docChanged: boolean) => void }) {
+export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; path?: string; onChange: (u: ViewUpdate) => void; onUpdate?: (s: EditorState, docChanged: boolean) => void }) {
   const ext: Extension[] = [
     vim({ status: true }),
     numConf.of(numExt(eff({}))),
@@ -1338,7 +1338,7 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
     theme,
     EditorState.readOnly.of(opts.readOnly),
     EditorView.updateListener.of((u) => {
-      if (u.docChanged) opts.onChange();
+      if (u.docChanged) opts.onChange(u);
       if (u.docChanged || u.selectionSet) opts.onUpdate?.(u.state, u.docChanged);
     }),
   ];
