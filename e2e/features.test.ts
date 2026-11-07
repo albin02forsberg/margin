@@ -2355,6 +2355,6 @@ describe("Locked headings (#1086)", () => {
     assert.ok(!read(f).includes("secret"), "reading wrote the plaintext");
     // The passphrase is forgotten (idle / hidden to the tray): the decrypted tab closes.
     await browser.execute(() => (window as any).__TAURI_INTERNALS__.invoke("plugin:event|emit", { event: "crypt-forget", payload: null }));
-    await browser.waitUntil(async () => !(await $(".tabs .tab.cur button=Vault").isExisting()), { timeoutMsg: "decrypted tab stayed open" });
+    await browser.waitUntil(async () => !(await texts(".tabs .tab button")).some((t) => t.includes("Vault")), { timeoutMsg: "decrypted tab stayed open" });
   });
 });
