@@ -72,6 +72,7 @@
   import { addBookmark, bookmarkAt, mergeBookmarks, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, retitleBookmarks, type Bookmark } from "$lib/bookmarks";
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
   import { pushRecent, sortByRecent, parseRecents } from "$lib/recents";
+  import { isCryptKey } from "$lib/crypttabs";
 
   type View = "agenda" | "todo" | "time" | "projects" | "ledger" | "habits" | "calendar" | "settings";
   /** SAVED: the text last read from / written to disk, to tell our own writes from outside changes.
@@ -822,7 +823,27 @@
 
   async function closeTab(i = cur) {
     const t = tabs[i];
-    if (t && (i = await detachTab(t)) >= 0) await showAfterClose(i);
+    if (t && (i = await detachTab(t)) >= 0) {
+      if (t.kind === "file" && t.path) i -= await closeCryptTabs(t.path, i); // the note's decrypted views go with it
+      await showAfterClose(i);
+    }
+  }
+
+  /** Close the decrypted-heading tabs (of note PATH, or all); returns how many sat before index BEFORE. Doesn't show a tab afterwards. */
+  async function closeCryptTabs(path?: string, before = 0) {
+    let n = 0;
+    for (const t of tabs.filter((t) => isCryptKey(t.key, path))) {
+      if (tabs.indexOf(t) < before) n++;
+      await detachTab(t);
+    }
+    return n;
+  }
+  /** The passphrase was forgotten (idle, hidden to the tray): so are the plaintext tabs. */
+  async function cryptForget() {
+    if (!tabs.some((t) => isCryptKey(t.key))) return;
+    await closeCryptTabs();
+    await showAfterClose(cur >= 0 ? cur : 0);
+    flash("Decrypted tabs closed");
   }
 
   // Hiding an area in Settings closes its open tabs (#870), highest first; runs when the setting changes, not on tab changes.
@@ -4007,6 +4028,16 @@
     }));
     const unlistenTray = listen<string>("tray", (e) => act(() => timeActions[e.payload]()));
     const unlistenOpen = listen<{ path: string; line: number }>("open-entry", (e) => act(() => openFile(e.payload.path, e.payload.line)));
+    const unlistenForget = listen("crypt-forget", () => act(cryptForget));
+    // Without an idle source in the backend, forget after idle_threshold_minutes without input here instead.
+    let forgetTimer: ReturnType<typeof setTimeout> | undefined, noIdleSource = false;
+    const armForget = () => {
+      clearTimeout(forgetTimer);
+      const m = cfg?.config.idle_threshold_minutes ?? 0;
+      if (noIdleSource && m > 0) forgetTimer = setTimeout(() => act(async () => (await call("crypt_forget"), cryptForget())), m * 60_000);
+    };
+    call<boolean>("idle_has_source").then((has) => ((noIdleSource = !has), armForget()), () => {});
+    for (const ev of ["keydown", "pointerdown"]) window.addEventListener(ev, armForget, true);
     const unlistenIdle = listen<{ since: string; back: string }>("idle", (e) => act(() => idleReturn(e.payload)));
     // Quick capture (global shortcut or `margin --capture`): a task, or a template if there are any.
     // The payload says the window was hidden before, so hide it again.
@@ -4052,6 +4083,9 @@
       unlistenQuit.then((f) => f());
       unlistenOpen.then((f) => f());
       unlistenIdle.then((f) => f());
+      unlistenForget.then((f) => f());
+      clearTimeout(forgetTimer);
+      for (const ev of ["keydown", "pointerdown"]) window.removeEventListener(ev, armForget, true);
       unlistenCapture.then((f) => f());
       unlistenDrop.then((f) => f());
       window.removeEventListener("keydown", onZoomKey, true);

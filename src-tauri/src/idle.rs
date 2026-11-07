@@ -23,6 +23,26 @@ pub fn step(away: Option<NaiveDateTime>, last: NaiveDateTime, idle: Duration, th
     }
 }
 
+/// Whether the cached passphrase should be forgotten now: it exists, idle re-lock is on (THRESHOLD > 0) and the user was away that long.
+pub fn should_forget(idle: Duration, threshold: Duration, has_pass: bool) -> bool {
+    has_pass && threshold > Duration::zero() && idle >= threshold
+}
+
+/// Whether `start` found an idle source (else the frontend times out the decrypted tabs itself).
+static HAS_SOURCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[tauri::command]
+pub fn idle_has_source() -> bool {
+    HAS_SOURCE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Drop the cached passphrase and tell the frontend to close its decrypted tabs; true if there was one.
+pub fn forget(app: &AppHandle) -> bool {
+    let had = app.state::<App>().crypt.lock().unwrap_or_else(|e| e.into_inner()).take().is_some();
+    let _ = app.emit("crypt-forget", ());
+    had
+}
+
 /// How long since the last input, if this desktop can tell: X11, macOS and Windows
 /// through user-idle, Wayland through ext-idle-notify (threshold fixed at startup).
 pub(crate) fn source(threshold: Duration) -> Option<Box<dyn Fn() -> Duration + Send>> {
@@ -41,6 +61,7 @@ pub(crate) fn source(threshold: Duration) -> Option<Box<dyn Fn() -> Duration + S
 pub fn start(app: &AppHandle) {
     let mins = app.state::<App>().cfg().idle_threshold_minutes;
     let source = if mins > 0 { source(Duration::minutes(mins)) } else { None };
+    HAS_SOURCE.store(source.is_some(), std::sync::atomic::Ordering::Relaxed);
     let app = app.clone();
     std::thread::spawn(move || {
         let (mut away, mut last) = (None, now());
@@ -53,6 +74,10 @@ pub fn start(app: &AppHandle) {
             let running = mins > 0 && s.tc().current().is_some();
             let (a, back) = step(away, last, idle, Duration::minutes(mins), running, t);
             (away, last) = (a, t);
+            let has_pass = source.is_some() && s.crypt.lock().unwrap_or_else(|e| e.into_inner()).is_some();
+            if should_forget(idle, Duration::minutes(mins), has_pass) {
+                forget(&app);
+            }
             if let Some((since, back)) = back {
                 tray::show(&app);
                 let _ = app.emit("idle", json!({ "since": since, "back": back }));
@@ -80,5 +105,14 @@ mod tests {
         // Woke from sleep: the gap since the last poll is the time away.
         assert_eq!(step(None, t(0), m(0), th, true, t(60)), (None, Some((t(0), t(60)))));
         assert_eq!(step(None, t(0), m(0), th, true, t(1)), (None, None));
+    }
+
+    #[test]
+    fn forgets_passphrase() {
+        let (m, th) = (Duration::minutes, Duration::minutes(10));
+        assert!(should_forget(m(10), th, true));
+        assert!(!should_forget(m(9), th, true));
+        assert!(!should_forget(m(60), th, false)); // nothing cached
+        assert!(!should_forget(m(60), Duration::zero(), true)); // threshold 0: no idle re-lock
     }
 }
