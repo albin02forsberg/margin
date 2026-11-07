@@ -1448,22 +1448,23 @@ fn crypt_lock(app: AppHandle, s: State<App>, path: PathBuf, text: String, line: 
     Ok(r)
 }
 
-/// Like `crypt_lock_in` but re-encrypts the locked heading from OLD to NEW (#1155).
-fn crypt_rekey_in(local: &Path, path: &Path, text: &str, line: usize, expect: &str, old: &str, new: &str) -> R<(String, Option<PathBuf>)> {
+/// Like `crypt_lock_in` but re-encrypts the locked heading from OLD to NEW (#1155). Never touches
+/// the backup slot: TEXT is already ciphertext, so a copy of it would shadow the later plaintext one.
+fn crypt_rekey_in(path: &Path, text: &str, line: usize, expect: &str, old: &str, new: &str) -> R<(String, Option<PathBuf>)> {
     let (out, plain, block) = crypt::rekey(text, line, old, new)?;
     let _lock = note_writes();
     if !may_overwrite(std::fs::read_to_string(path).ok().as_deref(), Some(expect), &out) {
         return Err("changed-on-disk".into());
     }
-    let first = crypt::backup_before_lock(local, path, text, &plain, &block, new)?;
+    crypt::verify_block(&block, new, &plain)?;
     config::write_atomic(path, &out).map_err(|e| e.to_string())?;
-    Ok((out, first.then(|| crypt::backup_path(local, path))))
+    Ok((out, None))
 }
 
 /// Space n K (#1155): change the passphrase of the locked heading on LINE. OLD omitted uses the
 /// cached one (a stale cache asks again: "passphrase-needed").
 #[tauri::command(async)]
-fn crypt_rekey(app: AppHandle, s: State<App>, path: PathBuf, text: String, line: usize, expect: String, passes: (String, Option<String>)) -> R<(String, Option<PathBuf>)> {
+fn crypt_rekey(s: State<App>, path: PathBuf, text: String, line: usize, expect: String, passes: (String, Option<String>)) -> R<(String, Option<PathBuf>)> {
     s.check(&path)?;
     let (new, old) = passes;
     if new.is_empty() {
@@ -1471,8 +1472,7 @@ fn crypt_rekey(app: AppHandle, s: State<App>, path: PathBuf, text: String, line:
     }
     let given = old.as_ref().is_some_and(|p| !p.is_empty());
     let old = crypt_pass(&s.crypt, old, s.cfg().idle_threshold_minutes)?;
-    let local = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
-    let r = crypt_rekey_in(&local, &path, &text, line, &expect, &old, &new).map_err(|e| if given || !e.starts_with("wrong passphrase") { e } else { "passphrase-needed".into() })?;
+    let r = crypt_rekey_in(&path, &text, line, &expect, &old, &new).map_err(|e| if given || !e.starts_with("wrong passphrase") { e } else { "passphrase-needed".into() })?;
     crypt_remember(&s.crypt, new);
     Ok(r)
 }
@@ -3729,14 +3729,24 @@ mod tests {
         let orig = "* Vault\nsecret words\n";
         std::fs::write(&f, orig).unwrap();
         let (locked, _) = crypt_lock_in(&local, &f, orig, 0, orig, "old", &kw).unwrap();
-        assert_eq!(crypt_rekey_in(&local, &f, &locked, 0, &locked, "bad", "new").unwrap_err(), "wrong passphrase or tampered block");
+        assert_eq!(crypt_rekey_in(&f, &locked, 0, &locked, "bad", "new").unwrap_err(), "wrong passphrase or tampered block");
         assert_eq!(std::fs::read_to_string(&f).unwrap(), locked);
-        assert_eq!(crypt_rekey_in(&local, &f, &locked, 0, "older", "old", "new").unwrap_err(), "changed-on-disk");
-        let (out, bk) = crypt_rekey_in(&local, &f, &locked, 0, &locked, "old", "new").unwrap();
-        assert!(bk.is_none()); // the lock already kept the one local copy
+        assert_eq!(crypt_rekey_in(&f, &locked, 0, "older", "old", "new").unwrap_err(), "changed-on-disk");
+        let (out, bk) = crypt_rekey_in(&f, &locked, 0, &locked, "old", "new").unwrap();
+        assert!(bk.is_none());
         assert_eq!(std::fs::read_to_string(&f).unwrap(), out);
         assert_eq!(crypt::unlock(&out, 0, "new").unwrap(), "secret words\n");
         assert!(crypt::unlock(&out, 0, "old").is_err());
+        // Rekeying a file with no backup yet must not put ciphertext in the slot.
+        let (f2, pre) = (notes.join("w.org"), "* A\nfirst\n* B\nsecond\n");
+        std::fs::write(&f2, pre).unwrap();
+        let (l2, _) = crypt_lock_in(&d.join("other"), &f2, pre, 0, pre, "old", &kw).unwrap();
+        std::fs::write(&f2, &l2).unwrap();
+        let (r2, bk2) = crypt_rekey_in(&f2, &l2, 0, &l2, "old", "new").unwrap();
+        assert!(bk2.is_none() && !crypt::backup_path(&local, &f2).exists());
+        let (_, bk3) = crypt_lock_in(&local, &f2, &r2, r2.lines().position(|l| l == "* B").unwrap(), &r2, "p", &kw).unwrap();
+        assert!(bk3.is_some());
+        assert_eq!(std::fs::read_to_string(crypt::backup_path(&local, &f2)).unwrap(), r2);
         let _ = std::fs::remove_dir_all(&d);
     }
 

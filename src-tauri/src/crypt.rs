@@ -114,13 +114,19 @@ pub fn backup_path(local: &Path, file: &Path) -> PathBuf {
     local.join("crypt-backup").join(format!("{:016x}.org", crate::embed::hash(&file.to_string_lossy())))
 }
 
+/// Err unless BLOCK decrypts under PASS back to PLAIN.
+pub fn verify_block(block: &str, pass: &str, plain: &str) -> Result<(), String> {
+    if decrypt_section(block, pass)? != plain {
+        return Err("encrypted block does not decrypt to the original text".into());
+    }
+    Ok(())
+}
+
 /// Call before the first ciphertext write to FILE. Checks that BLOCK decrypts back to PLAIN (the
 /// body being locked), then keeps a copy of ORIGINAL (the file as it is now) in `backup_path`
 /// unless one exists. Returns true when a new copy was made (show the one-time notice then).
 pub fn backup_before_lock(local: &Path, file: &Path, original: &str, plain: &str, block: &str, pass: &str) -> Result<bool, String> {
-    if decrypt_section(block, pass)? != plain {
-        return Err("encrypted block does not decrypt to the original text".into());
-    }
+    verify_block(block, pass, plain)?;
     let dst = backup_path(local, file);
     if dst.exists() {
         return Ok(false);
