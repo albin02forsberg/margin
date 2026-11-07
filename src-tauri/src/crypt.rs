@@ -36,7 +36,8 @@ fn key(pass: &str, salt: &[u8], (m, t, p): (u32, u32, u32)) -> Result<[u8; 32], 
     Ok(k)
 }
 
-/// Encrypt a section body into an armoured block (no trailing newline) at argon2 cost KDF (`KDF` for real blocks).
+/// Encrypt a section body into an armoured block (no trailing newline) at argon2 cost KDF (`KDF` for
+/// real blocks), checking that it decrypts back to PLAIN with the key already derived (no second argon2 run).
 fn encrypt_with(plain: &str, pass: &str, kdf: (u32, u32, u32)) -> Result<String, String> {
     if pass.is_empty() {
         return Err("empty passphrase".into());
@@ -50,7 +51,8 @@ fn encrypt_with(plain: &str, pass: &str, kdf: (u32, u32, u32)) -> Result<String,
         B64.encode(salt),
         B64.encode(nonce)
     );
-    let ct = ChaCha20Poly1305::new(Key::from_slice(&key(pass, &salt, kdf)?))
+    let k = key(pass, &salt, kdf)?;
+    let ct = ChaCha20Poly1305::new(Key::from_slice(&k))
         .encrypt(&nonce, Payload { msg: plain.as_bytes(), aad: header.as_bytes() })
         .map_err(|_| "encryption failed".to_string())?;
     let b64 = B64.encode(ct);
@@ -61,11 +63,19 @@ fn encrypt_with(plain: &str, pass: &str, kdf: (u32, u32, u32)) -> Result<String,
         out.push('\n');
     }
     out.push_str(END);
+    if decrypt_with(&out, |_, _| Ok(k))? != plain {
+        return Err("encrypted block does not decrypt to the original text".into());
+    }
     Ok(out)
 }
 
 /// Decrypt an armoured block. Leading indentation and surrounding blank lines are ignored.
 pub fn decrypt_section(block: &str, pass: &str) -> Result<String, String> {
+    decrypt_with(block, |salt, kdf| key(pass, salt, kdf))
+}
+
+/// Parse BLOCK and open it with the key DERIVE returns for its salt and argon2 cost.
+fn decrypt_with(block: &str, derive: impl FnOnce(&[u8], (u32, u32, u32)) -> Result<[u8; 32], String>) -> Result<String, String> {
     let mut lines = block.lines().map(str::trim).filter(|l| !l.is_empty());
     if lines.next() != Some(BEGIN) {
         return Err("not an encrypted block".into());
@@ -102,7 +112,7 @@ pub fn decrypt_section(block: &str, pass: &str) -> Result<String, String> {
         return Err("bad nonce in encrypted block".into());
     }
     let ct = B64.decode(&body).map_err(|_| "corrupt encrypted block".to_string())?;
-    let pt = ChaCha20Poly1305::new(Key::from_slice(&key(pass, &salt, kdf)?))
+    let pt = ChaCha20Poly1305::new(Key::from_slice(&derive(&salt, kdf)?))
         .decrypt(Nonce::from_slice(&nonce), Payload { msg: &ct, aad: header.as_bytes() })
         .map_err(|_| "wrong passphrase or tampered block".to_string())?;
     String::from_utf8(pt).map_err(|_| "decrypted text is not UTF-8".into())
@@ -114,19 +124,9 @@ pub fn backup_path(local: &Path, file: &Path) -> PathBuf {
     local.join("crypt-backup").join(format!("{:016x}.org", crate::embed::hash(&file.to_string_lossy())))
 }
 
-/// Err unless BLOCK decrypts under PASS back to PLAIN.
-pub fn verify_block(block: &str, pass: &str, plain: &str) -> Result<(), String> {
-    if decrypt_section(block, pass)? != plain {
-        return Err("encrypted block does not decrypt to the original text".into());
-    }
-    Ok(())
-}
-
-/// Call before the first ciphertext write to FILE. Checks that BLOCK decrypts back to PLAIN (the
-/// body being locked), then keeps a copy of ORIGINAL (the file as it is now) in `backup_path`
-/// unless one exists. Returns true when a new copy was made (show the one-time notice then).
-pub fn backup_before_lock(local: &Path, file: &Path, original: &str, plain: &str, block: &str, pass: &str) -> Result<bool, String> {
-    verify_block(block, pass, plain)?;
+/// Call before the first ciphertext write to FILE (the block was verified when it was made). Keeps a
+/// copy of ORIGINAL (the file as it is now) in `backup_path` unless one exists. Returns true when a new copy was made (show the one-time notice then).
+pub fn backup_before_lock(local: &Path, file: &Path, original: &str) -> Result<bool, String> {
     let dst = backup_path(local, file);
     if dst.exists() {
         return Ok(false);
@@ -278,22 +278,31 @@ mod tests {
     }
 
     #[test]
+    fn keyed_verify_rejects_wrong_key_text_and_corruption() {
+        let b = enc("secret\n", "pw");
+        let with = |p: &'static str| move |s: &[u8], kdf| key(p, s, kdf);
+        assert_eq!(decrypt_with(&b, with("pw")).unwrap(), "secret\n");
+        assert_eq!(decrypt_with(&b, with("bad")).unwrap_err(), "wrong passphrase or tampered block");
+        assert_eq!(decrypt_with(&b, |_, _| Ok([0; 32])).unwrap_err(), "wrong passphrase or tampered block");
+        let mut lines: Vec<String> = b.lines().map(String::from).collect();
+        let c = if lines[2].starts_with('A') { "B" } else { "A" };
+        lines[2].replace_range(0..1, c);
+        assert!(decrypt_with(&lines.join("\n"), with("pw")).is_err());
+    }
+
+    #[test]
     fn backup_is_local_verified_and_once() {
         let d = std::env::temp_dir().join(format!("margin-crypt-bk-{}", std::process::id()));
         let (local, notes, data) = (d.join("local"), d.join("notes"), d.join("data"));
         let file = notes.join("a.org");
         let orig = "* H\nsecret\n";
-        let block = enc("secret\n", "pw");
         let p = backup_path(&local, &file);
         assert!(!p.starts_with(&notes) && !p.starts_with(&data) && p.starts_with(&local));
-        // A block that doesn't decrypt to the text, or a wrong passphrase, makes no backup.
-        assert!(backup_before_lock(&local, &file, orig, "other\n", &block, "pw").is_err());
-        assert!(backup_before_lock(&local, &file, orig, "secret\n", &block, "bad").is_err());
         assert!(!p.exists());
-        assert!(backup_before_lock(&local, &file, orig, "secret\n", &block, "pw").unwrap());
+        assert!(backup_before_lock(&local, &file, orig).unwrap());
         assert_eq!(std::fs::read_to_string(&p).unwrap(), orig);
         // Second lock keeps the first copy and reports no new backup.
-        assert!(!backup_before_lock(&local, &file, "* H\n(locked)\n", "secret\n", &block, "pw").unwrap());
+        assert!(!backup_before_lock(&local, &file, "* H\n(locked)\n").unwrap());
         assert_eq!(std::fs::read_to_string(&p).unwrap(), orig);
         let _ = std::fs::remove_dir_all(&d);
     }
