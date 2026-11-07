@@ -1448,6 +1448,35 @@ fn crypt_lock(app: AppHandle, s: State<App>, path: PathBuf, text: String, line: 
     Ok(r)
 }
 
+/// Like `crypt_lock_in` but re-encrypts the locked heading from OLD to NEW (#1155).
+fn crypt_rekey_in(local: &Path, path: &Path, text: &str, line: usize, expect: &str, old: &str, new: &str) -> R<(String, Option<PathBuf>)> {
+    let (out, plain, block) = crypt::rekey(text, line, old, new)?;
+    let _lock = note_writes();
+    if !may_overwrite(std::fs::read_to_string(path).ok().as_deref(), Some(expect), &out) {
+        return Err("changed-on-disk".into());
+    }
+    let first = crypt::backup_before_lock(local, path, text, &plain, &block, new)?;
+    config::write_atomic(path, &out).map_err(|e| e.to_string())?;
+    Ok((out, first.then(|| crypt::backup_path(local, path))))
+}
+
+/// Space n K (#1155): change the passphrase of the locked heading on LINE. OLD omitted uses the
+/// cached one (a stale cache asks again: "passphrase-needed").
+#[tauri::command(async)]
+fn crypt_rekey(app: AppHandle, s: State<App>, path: PathBuf, text: String, line: usize, expect: String, passes: (String, Option<String>)) -> R<(String, Option<PathBuf>)> {
+    s.check(&path)?;
+    let (new, old) = passes;
+    if new.is_empty() {
+        return Err("the new passphrase is empty".into());
+    }
+    let given = old.as_ref().is_some_and(|p| !p.is_empty());
+    let old = crypt_pass(&s.crypt, old, s.cfg().idle_threshold_minutes)?;
+    let local = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let r = crypt_rekey_in(&local, &path, &text, line, &expect, &old, &new).map_err(|e| if given || !e.starts_with("wrong passphrase") { e } else { "passphrase-needed".into() })?;
+    crypt_remember(&s.crypt, new);
+    Ok(r)
+}
+
 /// Space n Q: the plaintext of the locked heading on LINE of TEXT. Takes no path, so it can't
 /// write a file. A cached passphrase that doesn't fit asks for one ("passphrase-needed").
 #[tauri::command(async)]
@@ -3634,7 +3663,7 @@ pub fn run() {
             watcher::gnome_extension, watcher::screen_recording, remind::remind_snooze,
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, md_import, highlights_import, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
-            org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, crypt_lock, crypt_unlock, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
+            org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, crypt_lock, crypt_unlock, crypt_rekey, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, people_last, waiting_for, inbox_count, inbox_entries, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_embed_local, ai_set, ai_download, ai_download_cancel, ai_model_delete, ai_index_status, ai_index_rebuild, semantic_search, ai_related, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
@@ -3687,6 +3716,27 @@ mod tests {
         assert!(bk.starts_with(&local) && !bk.starts_with(&notes));
         assert_eq!(std::fs::read_to_string(&bk).unwrap(), orig);
         assert_eq!(crypt::unlock(&disk, 2, "pw").unwrap(), "secret words\n");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn crypt_rekey_keeps_file_on_wrong_pass() {
+        let d = std::env::temp_dir().join(format!("margin-crypt-rekey-{}", std::process::id()));
+        let (local, notes) = (d.join("local"), d.join("notes"));
+        std::fs::create_dir_all(&notes).unwrap();
+        let f = notes.join("v.org");
+        let kw = org::Kw { todo: vec![], done: vec![] };
+        let orig = "* Vault\nsecret words\n";
+        std::fs::write(&f, orig).unwrap();
+        let (locked, _) = crypt_lock_in(&local, &f, orig, 0, orig, "old", &kw).unwrap();
+        assert_eq!(crypt_rekey_in(&local, &f, &locked, 0, &locked, "bad", "new").unwrap_err(), "wrong passphrase or tampered block");
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), locked);
+        assert_eq!(crypt_rekey_in(&local, &f, &locked, 0, "older", "old", "new").unwrap_err(), "changed-on-disk");
+        let (out, bk) = crypt_rekey_in(&local, &f, &locked, 0, &locked, "old", "new").unwrap();
+        assert!(bk.is_none()); // the lock already kept the one local copy
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), out);
+        assert_eq!(crypt::unlock(&out, 0, "new").unwrap(), "secret words\n");
+        assert!(crypt::unlock(&out, 0, "old").is_err());
         let _ = std::fs::remove_dir_all(&d);
     }
 
