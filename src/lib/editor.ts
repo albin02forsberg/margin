@@ -18,7 +18,7 @@ import { scopedArg, foldCase, type NumOpts, type LocalOpts } from "./setopt";
 import { changeList, changeStep } from "./changelist";
 import { EMPH, toggleEmphasis } from "./emphasis";
 import { FN, addFootnote, footnoteTarget } from "./footnote";
-import { headingAt, level, narrowField, subtreeEnd } from "./narrow";
+import { cryptUnlocked, headingAt, level, narrowField, subtreeEnd } from "./narrow";
 import { transclusion, transcludeTarget } from "./transclude";
 import { completionAt } from "./links";
 import { diagrams } from "./diagram";
@@ -510,6 +510,7 @@ function decorate(view: EditorView, blocks: Block[], tables: Tbl[]): DecorationS
             p += part.length;
           }
         }
+        if (cryptUnlocked(view.state, n)) out.push(Decoration.widget({ widget: new Glyph(" 🔓 not locked · Space n q", "cm-org-crypt"), side: 1 }).range(ln.to));
         if (done && at < end) out.push(mark("cm-org-done-title").range(at, end));
         if (at < end) inline(out, doc.sliceString(at, end), at, active, conf);
         continue;
