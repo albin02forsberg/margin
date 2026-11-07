@@ -1432,12 +1432,12 @@ fn crypt_remember(slot: &PassSlot, pass: String) {
 /// first (crypt::backup_before_lock), then writes like write_file with EXPECT. Returns the new text
 /// and, when this made the first copy of PATH, where it is.
 fn crypt_lock_in(local: &Path, path: &Path, text: &str, line: usize, expect: &str, pass: &str, kw: &org::Kw) -> R<(String, Option<PathBuf>)> {
-    let (new, plain, block) = crypt::lock(text, line, pass, kw)?;
+    let (new, _, _) = crypt::lock(text, line, pass, kw)?;
     let _lock = note_writes();
     if !may_overwrite(std::fs::read_to_string(path).ok().as_deref(), Some(expect), &new) {
         return Err("changed-on-disk".into());
     }
-    let first = crypt::backup_before_lock(local, path, text, &plain, &block, pass)?;
+    let first = crypt::backup_before_lock(local, path, text)?;
     config::write_atomic(path, &new).map_err(|e| e.to_string())?;
     Ok((new, first.then(|| crypt::backup_path(local, path))))
 }
@@ -1457,12 +1457,11 @@ fn crypt_lock(app: AppHandle, s: State<App>, path: PathBuf, text: String, line: 
 /// Like `crypt_lock_in` but re-encrypts the locked heading from OLD to NEW (#1155). Never touches
 /// the backup slot: TEXT is already ciphertext, so a copy of it would shadow the later plaintext one.
 fn crypt_rekey_in(path: &Path, text: &str, line: usize, expect: &str, old: &str, new: &str) -> R<(String, Option<PathBuf>)> {
-    let (out, plain, block) = crypt::rekey(text, line, old, new)?;
+    let (out, _, _) = crypt::rekey(text, line, old, new)?;
     let _lock = note_writes();
     if !may_overwrite(std::fs::read_to_string(path).ok().as_deref(), Some(expect), &out) {
         return Err("changed-on-disk".into());
     }
-    crypt::verify_block(&block, new, &plain)?;
     config::write_atomic(path, &out).map_err(|e| e.to_string())?;
     Ok((out, None))
 }
@@ -1486,12 +1485,11 @@ fn crypt_rekey(s: State<App>, path: PathBuf, text: String, line: usize, expect: 
 /// Like `crypt_rekey_in` but encrypts the edited PLAIN (the block must still decrypt to PREV) under
 /// PASS (#1154). No backup either: TEXT already holds only ciphertext for this heading.
 fn crypt_relock_in(path: &Path, text: &str, line: usize, expect: &str, prev: &str, plain: &str, pass: &str) -> R<String> {
-    let (out, block) = crypt::relock(text, line, prev, plain, pass)?;
+    let (out, _) = crypt::relock(text, line, prev, plain, pass)?;
     let _lock = note_writes();
     if !may_overwrite(std::fs::read_to_string(path).ok().as_deref(), Some(expect), &out) {
         return Err("changed-on-disk".into());
     }
-    crypt::verify_block(&block, pass, plain)?;
     config::write_atomic(path, &out).map_err(|e| e.to_string())?;
     Ok(out)
 }
