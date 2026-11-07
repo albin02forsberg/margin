@@ -16,7 +16,14 @@ export function remapLine(line: number, old: Text, changes: ChangeSet, doc: Text
   const { from, to } = old.line(line + 1);
   let gone = false;
   changes.iterChangedRanges((a, b) => { if (a <= from && b >= to && b - a > to - from) gone = true; });
-  return gone ? -1 : doc.lineAt(changes.mapPos(from, 1)).number - 1;
+  return gone ? findUnique(old.line(line + 1).text, old, doc) : doc.lineAt(changes.mapPos(from, 1)).number - 1;
+}
+
+/** A single change span (diffChange) can cover a heading it left intact: its 0-based line in DOC when TEXT is
+ *  the only such line in both OLD and DOC, else -1 (a real delete, an edited heading or an ambiguous twin). */
+function findUnique(text: string, old: Text, doc: Text) {
+  const count = (d: Text) => { let n = 0, at = -1; for (let i = 1; i <= d.lines; i++) if (d.line(i).text === text) { n++; at = i - 1; } return n === 1 ? at : -1; };
+  return count(old) < 0 ? -1 : count(doc);
 }
 
 /** The decrypted tab of the heading on LINE of note PATH (its key may still name the line it opened on). */

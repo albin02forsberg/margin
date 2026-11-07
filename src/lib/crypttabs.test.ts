@@ -54,6 +54,15 @@ test("remapLine: a relock above (block length changes) shifts a heading below, t
   assert.equal(at(diffChange(text, old), 5, text), 4);
 });
 
+test("remapLine: one span covering an unchanged heading finds it by text; edited or twinned stays -1", () => {
+  const old = "a\n* H :crypt:\nbody\nz\n", span = (text: string) => diffChange(old, text);
+  assert.equal(at(span("A\nb\n* H :crypt:\nbody\nZ\n"), 1, old), 2);
+  assert.equal(at(span("A\n* H2 :crypt:\nbody\nZ\n"), 1, old), -1);
+  assert.equal(at(span("A\n* H :crypt:\n* H :crypt:\nZ\n"), 1, old), -1);
+  const twin = "a\n* H :crypt:\nz\n* H :crypt:\nq\n";
+  assert.equal(at({ from: 2, to: 15 }, 1, twin), -1); // deleted, a twin remains
+});
+
 test("findCryptTab and cryptKey: the current line, not the opening key", () => {
   const tabs = [{ key: "crypt:/n/a.org:2", crypt: { path: "/n/a.org", line: 3 } }, { key: "/n/a.org" }];
   assert.equal(findCryptTab(tabs, "/n/a.org", 3), tabs[0]);
