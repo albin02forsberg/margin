@@ -1633,6 +1633,14 @@ describe("Tables, lists and attachments", () => {
     await fileMatches(join(d.notes, "list.org"), (s) => s.includes("1. a\n2. b\n3. new\n4. c\n"), "list not renumbered");
   });
 
+  it("the status-bar word count settles on the right number after typing", async () => {
+    await open("List", "list.org");
+    const before = parseInt(await $(".status .words").getText());
+    await type("GA one two three");
+    await browser.keys(Key.Escape);
+    await browser.waitUntil(async () => (await $(".status .words").getText()) === `${before + 3} words`, { timeoutMsg: "word count never settled" });
+  });
+
   it("Space i b bolds the word at the cursor, Ctrl+B in insert mode the word just typed", async () => {
     await open("Emph", "emph.org");
     await type("3Gw");

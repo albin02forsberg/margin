@@ -242,15 +242,22 @@
   const stateOf = (t: Tab) => viewOf(t)?.state ?? t.state!;
   const fileTab = (path: string) => tabs.find((t) => t.kind === "file" && t.path === path);
 
-  /** Status-bar word count of S; the whole note is only recounted when its text changed. */
-  function countWords(s: EditorState, docChanged = true) {
+  /** Status-bar word count of S. Typing and selecting recount 200 ms after the last change (from the then-current state);
+   *  NOW (tab or state swap) and the first count of a tab are at once. The whole note is only recounted when its text changed. */
+  let wordsTimer: ReturnType<typeof setTimeout> | undefined, wordsKey: string | undefined;
+  function countWords(s: EditorState, docChanged = true, now = false) {
     if (view && s !== view.state) return; // the unfocused pane
-    const t = tabs[cur], org = !t?.path || /\.org(_archive)?$/.test(t.path);
-    if (docChanged) docWords = wordCount(s.doc.toString(), org);
-    const r = s.selection.main;
-    words = wordsLabel(docWords, r.empty ? undefined : wordCount(s.sliceDoc(r.from, r.to), org));
+    const key = tabs[cur]?.key, r = s.selection.main;
+    if (now || key !== wordsKey) { wordsKey = key; clearTimeout(wordsTimer); wordsTimer = undefined; recount(s, docChanged); }
+    else if (docChanged || !r.empty) { clearTimeout(wordsTimer); wordsTimer = setTimeout(() => { wordsTimer = undefined; if (view && tabs[cur]?.key === wordsKey) recount(view.state, true); }, 200); }
+    else if (!wordsTimer) recount(s, false);
     narrowed = ed.narrowedTo(s);
     syncOutline(s, docChanged);
+  }
+  function recount(s: EditorState, docChanged: boolean) {
+    const t = tabs[cur], org = !t?.path || /\.org(_archive)?$/.test(t.path), r = s.selection.main;
+    if (docChanged) docWords = wordCount(s.doc.toString(), org);
+    words = wordsLabel(docWords, r.empty ? undefined : wordCount(s.sliceDoc(r.from, r.to), org));
   }
 
   /** Outline panel (#915): headings of the focused note, rebuilt 200 ms after an edit (at once for another tab); the cursor only moves the highlight. */
@@ -331,7 +338,7 @@
       ed.vimClearJumps();
       watchMode(view);
       mode = "normal";
-      countWords(view.state);
+      countWords(view.state, true, true);
       await tick();
       view.focus();
     }
@@ -351,7 +358,7 @@
     side = p;
     watchMode(view);
     mode = ed.vimMode(view);
-    if (isText(tab)) countWords(view.state);
+    if (isText(tab)) countWords(view.state, true, true);
     refreshBacklinks();
     if (focus && isText(tab)) { await tick(); view.focus(); }
   }
@@ -2475,7 +2482,7 @@
     }
     if (v && v === view) {
       mode = "normal";
-      countWords(view.state);
+      countWords(view.state, true, true);
     }
     nav.rename(navHist, from, to);
     recent = recent.map((p) => (p === from ? to : p));
