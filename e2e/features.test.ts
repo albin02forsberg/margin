@@ -2326,7 +2326,7 @@ describe("Locked headings (#1086)", () => {
   before(async () => { d = await launch({ files: ({ notes }) => writeFileSync(join(notes, "vault.org"), "* Vault\nsecret words\n* Open\nplain\n") }); await find(".agenda h1", "Today"); }); // app mounted before the first key
   after(close);
 
-  it("Space n q encrypts the body on disk, the reopened note shows it locked, Space n Q reads it", async () => {
+  it("Space n q encrypts the body on disk, the reopened note shows it locked, Space n Q reads it, :w there re-locks an edit", async () => {
     const f = join(d.notes, "vault.org");
     const ex = async (s: string) => { await type(s); await browser.keys(Key.Enter); };
     await browser.keys([Key.Ctrl, "p"]);
@@ -2353,6 +2353,19 @@ describe("Locked headings (#1086)", () => {
     await find(".tabs .tab.cur button", "Vault");
     await find(".cm-editor .cm-content", "secret words");
     assert.ok(!read(f).includes("secret"), "reading wrote the plaintext");
+    // Edit the decrypted tab (#1154): :w re-locks it on disk, the plaintext never lands in the file.
+    const before = read(f);
+    await type("ggA, edited");
+    await browser.keys(Key.Escape);
+    await ex(":w");
+    await find(".status .msg", "Saved and locked");
+    await fileMatches(f, (s) => s !== before && s.startsWith("* Vault :crypt:\n-----BEGIN MARGIN ENCRYPTED-----\n") && !s.includes("secret") && !s.includes("edited") && s.endsWith("* Open\nplain\n"), "edit not re-locked on disk");
+    await ex(":bd");
+    await find(".status .file", "vault.org");
+    await browser.keys(Key.Escape);
+    await browser.keys(" ");
+    await type("nQ");
+    await find(".cm-editor .cm-content", "secret words, edited");
     // The passphrase is forgotten (idle / hidden to the tray): the decrypted tab closes.
     await browser.execute(() => (window as any).__TAURI_INTERNALS__.invoke("plugin:event|emit", { event: "crypt-forget", payload: null }));
     await browser.waitUntil(async () => !(await texts(".tabs .tab button")).some((t) => t.includes("Vault")), { timeoutMsg: "decrypted tab stayed open" });
