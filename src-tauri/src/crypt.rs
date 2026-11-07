@@ -220,10 +220,33 @@ fn rekey_with(text: &str, line: usize, old: &str, new: &str, kdf: (u32, u32, u32
         return Err("the new passphrase is the same as the old one".into());
     }
     let plain = unlock(text, line, old)?;
+    let block = encrypt_with(&plain, new, kdf)?;
+    Ok((swap_block(text, line, &block)?, plain, block))
+}
+
+/// TEXT with the armoured block under the heading on LINE replaced by BLOCK (children after it stay).
+fn swap_block(text: &str, line: usize, block: &str) -> Result<String, String> {
     let r = body_at(text, line)?;
     let b = block_range(&text[r.clone()]);
-    let block = encrypt_with(&plain, new, kdf)?;
-    Ok((format!("{}{block}\n{}", &text[..r.start + b.start], &text[r.start + b.end..]), plain, block))
+    Ok(format!("{}{block}\n{}", &text[..r.start + b.start], &text[r.start + b.end..]))
+}
+
+/// Encrypt PLAIN under PASS into the locked heading on LINE of TEXT (#1154). PREV is what the block
+/// decrypted to when the edit began; a block that now decrypts to anything else (the heading moved or
+/// was changed elsewhere) is left alone. Returns (new text, the block).
+pub fn relock(text: &str, line: usize, prev: &str, plain: &str, pass: &str) -> Result<(String, String), String> {
+    relock_with(text, line, prev, plain, pass, KDF)
+}
+
+fn relock_with(text: &str, line: usize, prev: &str, plain: &str, pass: &str, kdf: (u32, u32, u32)) -> Result<(String, String), String> {
+    if plain.trim().is_empty() {
+        return Err("nothing to lock: the text is empty".into());
+    }
+    if unlock(text, line, pass)? != prev {
+        return Err("the locked heading changed since it was opened; reopen it with Space n Q".into());
+    }
+    let block = encrypt_with(plain, pass, kdf)?;
+    Ok((swap_block(text, line, &block)?, block))
 }
 
 /// TEXT with every armoured block (an unterminated one runs to the end) blanked line by line, so
@@ -307,6 +330,25 @@ mod tests {
         assert_eq!(rekey_with(&locked, 0, "bad", "new", FAST).unwrap_err(), "wrong passphrase or tampered block");
         assert_eq!(rekey_with(&locked, 0, "old", "old", FAST).unwrap_err(), "the new passphrase is the same as the old one");
         assert_eq!(rekey_with("* H\nplain\n", 0, "a", "b", FAST).unwrap_err(), "this heading isn't locked");
+    }
+
+    #[test]
+    fn relock_heading() {
+        let kw = crate::org::Kw { todo: vec![], done: vec![] };
+        let (a, _, _) = lock_with("* A\nsecret\n* B\nother\n", 0, "pw", &kw, FAST).unwrap();
+        let (locked, _, _) = lock_with(&a, a.lines().position(|l| l == "* B").unwrap(), "pw", &kw, FAST).unwrap();
+        let b = locked.lines().position(|l| l.starts_with("* B")).unwrap();
+        let with_child = format!("{locked}** c\nkid\n");
+        let (out, block) = relock_with(&with_child, 0, "secret\n", "new text\n", "pw", FAST).unwrap();
+        assert!(out.contains(&block) && !out.contains("new text") && out.ends_with("** c\nkid\n"), "{out}");
+        assert_eq!(unlock(&out, 0, "pw").unwrap(), "new text\n");
+        assert_eq!(unlock(&out, b, "pw").unwrap(), "other\n"); // the sibling block is untouched
+        assert_eq!(&out[out.find("* B").unwrap()..], &with_child[with_child.find("* B").unwrap()..]);
+        // Wrong pass, a block that no longer holds PREV (e.g. LINE now points at a sibling), an empty edit, a plain heading.
+        assert_eq!(relock_with(&locked, 0, "secret\n", "x", "bad", FAST).unwrap_err(), "wrong passphrase or tampered block");
+        assert!(relock_with(&locked, b, "secret\n", "x", "pw", FAST).unwrap_err().starts_with("the locked heading changed"));
+        assert!(relock_with(&locked, 0, "secret\n", " \n", "pw", FAST).unwrap_err().starts_with("nothing to lock"));
+        assert_eq!(relock_with("* H\nplain\n", 0, "plain\n", "x", "pw", FAST).unwrap_err(), "this heading isn't locked");
     }
 
     #[test]
