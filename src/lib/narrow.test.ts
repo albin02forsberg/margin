@@ -1,7 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EditorState } from "@codemirror/state";
-import { narrowEffect, narrowField, narrowRange, narrowedTo, revealEffects } from "./narrow.ts";
+import { cryptUnlocked, narrowEffect, narrowField, narrowRange, narrowedTo, revealEffects } from "./narrow.ts";
+
+test("cryptUnlocked: own :crypt: tag with a plaintext body only", () => {
+  const B = "-----BEGIN MARGIN ENCRYPTED-----";
+  const s = EditorState.create({ doc: `* A :crypt:\nsecret\n* B :crypt:\n${B}\nxx\n* C :work:\nbody\n* D :crypt:\n** E child\ntext\n* F :crypt:\n\n  plain\n` });
+  assert.deepEqual([1, 3, 6, 8, 9, 11].map((n) => cryptUnlocked(s, n)), [true, false, false, false, false, true]);
+});
 
 const doc = "#+title: N\n* One\nalpha\n** Sub\nbeta\n* Two :x:\ngamma\n";
 const st = (d = doc) => EditorState.create({ doc: d, extensions: narrowField });

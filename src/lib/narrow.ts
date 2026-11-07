@@ -6,6 +6,19 @@ import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
 export const level = (text: string) => /^(\*+) /.exec(text)?.[1].length ?? 0;
 
 /** Last line number (1-based) of the subtree whose heading is on line N. */
+/** True for a heading on line N tagged `:crypt:` itself (not inherited) whose body has text but doesn't start with the armoured block (#1157). */
+export function cryptUnlocked(state: EditorState, n: number): boolean {
+  const head = state.doc.line(n).text;
+  const tags = /\s:([\w@#%:]+):\s*$/.exec(head)?.[1].split(":");
+  if (!level(head) || !tags?.includes("crypt")) return false;
+  for (let i = n + 1; i <= state.doc.lines; i++) {
+    const l = state.doc.line(i).text;
+    if (level(l)) return false;
+    if (l.trim()) return l.trim() !== "-----BEGIN MARGIN ENCRYPTED-----";
+  }
+  return false;
+}
+
 export function subtreeEnd(state: EditorState, n: number): number {
   const lvl = level(state.doc.line(n).text);
   let i = n + 1;

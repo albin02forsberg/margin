@@ -365,6 +365,17 @@ async function pngs() {
     await browser.keys(Key.Escape);
   }
 
+  if (want("crypt-unlocked")) { // #1157: a :crypt:-tagged heading whose body isn't locked is marked
+    await open("Harbor app", "harbor.org");
+    await browser.keys(Key.Escape);
+    await type("Go* Secrets :crypt:\nplain text");
+    await browser.keys(Key.Escape);
+    await type("gg"); // cursor off the heading so the marker shows
+    await find(".cm-org-crypt", "not locked");
+    await shot("crypt-unlocked");
+    await type("Gu"); // undo
+  }
+
   await command("Notes: replace text in all notes"); // the preview only: Esc writes nothing
   await type("Harbor");
   await browser.keys(Key.Enter);
