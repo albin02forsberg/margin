@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { costLine, money, shiftMonth } from "./ledger.ts";
+import { budgetBar, costLine, money, shiftMonth } from "./ledger.ts";
 
 test("money formats signed cents without float error", () => {
   assert.equal(money(-1250, "EUR"), "−12.50 EUR");
@@ -20,4 +20,10 @@ test("costLine shows a project's cost and income, leaving out zeros", () => {
   assert.equal(costLine({ currency: "EUR", income: 90000, expense: -34000 }), "Ledger · cost 340.00 EUR · income 900.00 EUR");
   assert.equal(costLine({ currency: "SEK", income: 0, expense: -500 }), "Ledger · cost 5.00 SEK");
   assert.equal(costLine({ currency: "USD", income: 1, expense: 0 }), "Ledger · income 0.01 USD");
+});
+
+test("budgetBar clamps the fill and flags overspending", () => {
+  assert.deepEqual(budgetBar(1350, 2000), { pct: 68, over: false });
+  assert.deepEqual(budgetBar(2500, 2000), { pct: 100, over: true });
+  assert.deepEqual(budgetBar(-300, 2000), { pct: 0, over: false });
 });

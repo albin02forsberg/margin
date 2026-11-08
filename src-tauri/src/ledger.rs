@@ -133,6 +133,31 @@ pub struct Row {
     pub payee: Option<String>,
 }
 
+/// A category's monthly budget and what the month spent of it (cents, in `currency`).
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Budget {
+    pub category: String,
+    pub currency: String,
+    pub budget: i64,
+    pub used: i64,
+}
+
+/// SPECS (`food=400`, `food=399.50`) against the month's TOTALS: the default CURRENCY's net spending per category,
+/// summed case-insensitively (refunds count back). Bad entries and budgets of 0 or less are skipped.
+pub fn budgets(specs: &[String], totals: &[Total], currency: &str) -> Vec<Budget> {
+    let currency = currency.trim().to_uppercase();
+    let t = totals.iter().find(|t| t.currency == currency);
+    specs
+        .iter()
+        .filter_map(|s| {
+            let (name, amt) = s.split_once('=')?;
+            let (name, budget) = (name.trim().trim_start_matches('#'), amount(amt.trim()).ok().filter(|b| *b > 0)?);
+            let used = -t.map_or(0, |t| t.categories.iter().filter(|(c, _)| c.as_deref().is_some_and(|c| c.eq_ignore_ascii_case(name))).map(|(_, n)| n).sum::<i64>());
+            Some(Budget { category: name.into(), currency: currency.clone(), budget, used })
+        })
+        .collect()
+}
+
 /// TEXT's entries dated in MONTH (`YYYY-MM`, whatever heading they sit under), oldest first, and their
 /// totals per currency (CURRENCY first, then by code; never converted).
 pub fn summarize(text: &str, month: &str, currency: &str) -> (Vec<Total>, Vec<Row>) {
@@ -513,6 +538,15 @@ mod tests {
     }
     fn kw() -> crate::org::Kw {
         crate::org::Kw { todo: vec!["TODO".into()], done: vec!["DONE".into()] }
+    }
+
+    #[test]
+    fn budgets_sum_categories_case_insensitively() {
+        let text = "- 2026-10-01 -10 EUR a #food\n- 2026-10-02 -5.50 EUR b #Food\n- 2026-10-03 +2 EUR refund #food\n- 2026-10-04 -9 SEK c #food\n- 2026-10-05 -1 EUR d #fun\n";
+        let (totals, _) = summarize(text, "2026-10", "EUR");
+        let specs: Vec<String> = ["Food=20", "fun=0", "bad", "x=abc", "rent=399.50"].map(String::from).into();
+        let b = budgets(&specs, &totals, "eur");
+        assert_eq!(b.iter().map(|b| (b.category.as_str(), b.budget, b.used)).collect::<Vec<_>>(), [("Food", 2000, 1350), ("rent", 39950, 0)]);
     }
 
     #[test]

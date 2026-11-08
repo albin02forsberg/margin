@@ -20,3 +20,6 @@ export function costLine(t: { currency: string; income: number; expense: number 
   const parts = [t.expense ? `cost ${money(-t.expense, t.currency, false)}` : "", t.income ? `income ${money(t.income, t.currency, false)}` : ""];
   return ["Ledger", ...parts.filter(Boolean)].join(" · ");
 }
+
+/** A budget bar's fill (0-100, refunds clamp at 0) and whether USED went over BUDGET (cents, #1181). */
+export const budgetBar = (used: number, budget: number) => ({ pct: Math.max(0, Math.min(100, Math.round((used / budget) * 100))), over: used > budget });

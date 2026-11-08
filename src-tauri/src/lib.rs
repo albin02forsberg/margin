@@ -1134,12 +1134,16 @@ fn ledger_add(s: State<App>, text: String, input: String) -> R<(String, String)>
     Ok((ledger::add(&text, &e, &s.kw()), ledger::format_entry(&e)))
 }
 
-/// MONTH (`YYYY-MM`) of the ledger file: its path (None while the file doesn't exist), totals per currency and entries.
+type LedgerMonth = (Option<PathBuf>, Vec<ledger::Total>, Vec<ledger::Row>, Vec<ledger::Budget>);
+
+/// MONTH (`YYYY-MM`) of the ledger file: its path (None while the file doesn't exist), totals per currency, entries and category budgets.
 #[tauri::command(async)]
-fn ledger_month(s: State<App>, month: String) -> R<(Option<PathBuf>, Vec<ledger::Total>, Vec<ledger::Row>)> {
+fn ledger_month(s: State<App>, month: String) -> R<LedgerMonth> {
     let (p, text) = ledger_text(&s)?;
-    let (totals, rows) = ledger::summarize(&text, &month, &s.cfg().ledger_currency);
-    Ok((p.exists().then_some(p), totals, rows))
+    let c = s.cfg();
+    let (totals, rows) = ledger::summarize(&text, &month, &c.ledger_currency);
+    let budgets = ledger::budgets(&c.ledger_budgets, &totals, &c.ledger_currency);
+    Ok((p.exists().then_some(p), totals, rows, budgets))
 }
 
 /// The ledger file's path and text ("" while it doesn't exist).
