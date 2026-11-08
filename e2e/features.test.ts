@@ -1635,10 +1635,10 @@ describe("Tables, lists and attachments", () => {
 
   it("the status-bar word count settles on the right number after typing", async () => {
     await open("List", "list.org");
-    const before = parseInt(await $(".status .words").getText());
+    const before = parseInt(await browser.$(".status .words").getText());
     await type("GA one two three");
     await browser.keys(Key.Escape);
-    await browser.waitUntil(async () => (await $(".status .words").getText()) === `${before + 3} words`, { timeoutMsg: "word count never settled" });
+    await browser.waitUntil(async () => (await browser.$(".status .words").getText()) === `${before + 3} words`, { timeoutMsg: "word count never settled" });
   });
 
   it("Space i b bolds the word at the cursor, Ctrl+B in insert mode the word just typed", async () => {
