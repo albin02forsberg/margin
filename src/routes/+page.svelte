@@ -1981,6 +1981,23 @@
     } catch (e) { if (Date.now() - feedsFlashed > 864e5) (feedsFlashed = Date.now(), flash(`⚠ feeds: ${e}`)); } finally { feedsBusy = false; }
   }
 
+  /** Recurring ledger entries (#1182): once per day and whenever the rules change, file what is due into the inbox for review or the ledger. */
+  let recurringDone = "";
+  async function autoRecurring() {
+    const c = cfg?.config;
+    const key = JSON.stringify([new Date().toDateString(), c?.ledger_recurring, c?.ledger_review_recurring]);
+    if (!c?.ledger_recurring?.length || key === recurringDone) return;
+    recurringDone = key;
+    const [ledger, inbox] = await Promise.all([call<string>("capture_path", { file: c.ledger_file }), call<string>("capture_path", { file: c.inbox })]);
+    type Due = { entries: string[]; review: boolean; errors: string[]; marks: Record<string, string> };
+    const r = await call<Due>("ledger_recurring", { ledger: await textOf(ledger), inbox: await textOf(inbox) });
+    if (r.entries.length) await toFile(r.review ? inbox : ledger, (text) => call("ledger_recurring_file", { text, entries: r.entries, review: r.review }), false);
+    await call("ledger_recurring_mark", { marks: r.marks });
+    const n = r.entries.length, what = `${n} recurring ledger entr${n === 1 ? "y" : "ies"}`;
+    if (r.errors.length) flash(`⚠ ${r.errors.join("; ")}`);
+    else if (n) flash(r.review ? `✓ ${what} to review in the inbox: Ledger: accept import entry at cursor files one` : `✓ ${what} added to the ledger`);
+  }
+
   async function insertDate() {
     if (!inFile()) return;
     const input = await datePick("Insert date", false, undefined, false);
@@ -4089,10 +4106,11 @@
         await openFile(tut);
       }
       await refreshTc();
+      act(autoRecurring);
       if (cfg.config_error) flash(`⚠ config.toml couldn't be loaded (${cfg.config_error}); Margin keeps running on the last good settings (defaults if it never loaded). The file is untouched.`);
       if (!import.meta.env.DEV) checkUpdate(true).catch(() => {}); // offline or no release yet: stay quiet
     });
-    const timer = setInterval(() => (act(refreshTc), act(autoFeeds)), 60_000);
+    const timer = setInterval(() => (act(refreshTc), act(autoFeeds), act(autoRecurring)), 60_000);
     const blur = () => (saveSession(), act(saveAll));
     const focus = () => syncFromDisk();
     const unlisten = listen<{ paths: string[]; refresh: string[] }>("fs-changed", (e) => syncFromDisk(e.payload.paths, e.payload.refresh));

@@ -1227,6 +1227,17 @@ per line, in the default currency) adds a used / budget bar under that currency'
 (any case, refunds count back; red when over). `h` / `l` or the arrows switch months. An entry counts in
 the month of its own date, whichever heading it sits under.
 
+**Recurring entries.** Rent, subscriptions and salary go in **Settings → Ledger → Recurring entries**
+(`ledger_recurring`, one per line): a start date, how often (`+1m`, `+2w`, `+1y`, `+7d`), then the entry as you'd
+quick-add it, e.g. `2026-01-31 +1m 1200 rent @landlord #housing`. On start and once a day Margin adds what is due:
+by default as *Review ledger import* entries in the inbox to accept like a bank import, or straight into the ledger
+with **Review recurring entries first** (`ledger_review_recurring`) off. Months are counted from the start date, so
+the 31st lands on the 30th or the 28th in shorter months and comes back after. Each rule remembers how far it has
+been added (on this computer), so an added entry you delete or change is never added again; a new or edited rule
+fills in the current month only, and an entry already in the ledger or the inbox (same date, amount and `@payee`,
+or text without one) is skipped, also when another computer added it. Rules live in `config.toml`; the ledger file
+is only appended to.
+
 **Projects and people.** A project card (Projects view, `Space t P`) shows a *Ledger · cost … · income …* line
 per currency, all time, from the entries whose `#tag` is the project's name (any case) or whose
 `[[id:…]]` link points at a note or heading in that project's category (the rule the cards use for
