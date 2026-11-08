@@ -68,6 +68,8 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "ledger_file", label: "Ledger file", hint: `Space f l adds entries here, ${rel}` },
     { key: "ledger_currency", label: "Default currency", hint: "3-letter code for entries that don't name one, e.g. EUR or SEK" },
     { key: "ledger_budgets", label: "Monthly budgets", kind: "list", hint: "one per line, category=amount in the default currency, e.g. food=400; the Ledger view shows used / budget per category" },
+    { key: "ledger_recurring", label: "Recurring entries", kind: "list", hint: "one per line: start date, how often (+1m, +2w, +1y, +7d), then the entry as you'd quick-add it, e.g. 2026-11-01 +1m 1200 rent @landlord #housing; due ones are added on start and each day; a new or edited rule fills in this month only, and an added entry you delete isn't added again" },
+    { key: "ledger_review_recurring", label: "Review recurring entries first", kind: "bool", hint: "due recurring entries go to the inbox as Review ledger import entries you accept, like a bank import; off = straight into the ledger" },
   ] },
   { name: "Areas", fields: [
     { key: "hidden_areas", label: "Show these areas", kind: "list", options: Object.keys(AREAS), hint: "an unticked area's commands leave the command palette and the Space menu; its files and data stay as they are" },

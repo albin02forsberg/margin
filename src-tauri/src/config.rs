@@ -134,6 +134,10 @@ pub struct Config {
     pub ledger_currency: String,
     /// Monthly spending budgets per `#category` in `ledger_currency`, as `food=400` or `food=399.50`.
     pub ledger_budgets: Vec<String>,
+    /// Recurring entries, as `START +N[dwmy] amount [CUR] text`, e.g. `2026-11-01 +1m 1200 rent @landlord #housing`.
+    pub ledger_recurring: Vec<String>,
+    /// Recurring entries go to the inbox for review (accept like a bank import) instead of straight into the ledger.
+    pub ledger_review_recurring: bool,
     /// Areas ("ledger", "habits", "flashcards", "goals") whose commands leave the palette and Space menu; files are untouched.
     pub hidden_areas: Vec<String>,
     /// Zen mode (`Space v z`) also makes the window fullscreen.
@@ -342,6 +346,8 @@ impl Default for Config {
             ledger_file: "ledger.org".into(),
             ledger_currency: "EUR".into(),
             ledger_budgets: vec![],
+            ledger_recurring: vec![],
+            ledger_review_recurring: true,
             hidden_areas: vec![],
             zen_fullscreen: false,
             theme: String::new(),

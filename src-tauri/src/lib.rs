@@ -1224,6 +1224,34 @@ fn ledger_import(s: State<App>, app: AppHandle, text: String, path: PathBuf, spe
     Ok((ledger::propose(&text, &new, &s.kw()), new.len(), es.len() - new.len()))
 }
 
+/// Where the recurring rules' watermarks live (#1182): app state beside `ledger-import.json`.
+fn recurring_marks(app: &AppHandle) -> R<PathBuf> {
+    Ok(app.path().app_local_data_dir().map_err(|e| e.to_string())?.join("ledger-recurring.json"))
+}
+
+/// The recurring ledger entries due today against LEDGER and INBOX (the texts as open):
+/// `{ entries: [entry line], review, errors, marks }`; MARKS go back to `ledger_recurring_mark` once they are filed.
+#[tauri::command]
+fn ledger_recurring(s: State<App>, app: AppHandle, ledger: String, inbox: String) -> R<Value> {
+    let c = s.cfg();
+    let due = ledger::recurring(&c.ledger_recurring, &ledger::load_marks(&recurring_marks(&app)?), &[&ledger, &inbox], today(), &c.ledger_currency);
+    let entries: Vec<String> = due.entries.iter().map(ledger::format_entry).collect();
+    Ok(json!({ "entries": entries, "review": c.ledger_review_recurring, "errors": due.errors, "marks": due.marks }))
+}
+
+/// TEXT with ENTRIES (ledger lines) proposed for review (TEXT is the inbox) or filed under their months (the ledger).
+#[tauri::command]
+fn ledger_recurring_file(s: State<App>, text: String, entries: Vec<String>, review: bool) -> String {
+    let es: Vec<ledger::Entry> = entries.iter().filter_map(|l| ledger::parse_entry(l)).collect();
+    if review { ledger::propose(&text, &es, &s.kw()) } else { es.iter().fold(text, |t, e| ledger::add(&t, e, &s.kw())) }
+}
+
+/// Save the recurring rules' watermarks once their entries are filed.
+#[tauri::command]
+fn ledger_recurring_mark(app: AppHandle, marks: std::collections::BTreeMap<String, NaiveDate>) -> R<()> {
+    ledger::save_marks(&recurring_marks(&app)?, &marks)
+}
+
 /// The entry under the heading at LINE of TEXT (an inbox proposal) filed into LEDGER: [new text, new ledger, entry line].
 #[tauri::command]
 fn ledger_accept(s: State<App>, text: String, line: usize, ledger: String) -> R<(String, String, String)> {
@@ -3730,7 +3758,7 @@ pub fn run() {
             watcher::gnome_extension, watcher::screen_recording, remind::remind_snooze,
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, md_import, highlights_import, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
-            org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, crypt_lock, crypt_unlock, crypt_rekey, crypt_relock, crypt_remove, crypt_forget, idle::idle_has_source, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
+            org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, crypt_lock, crypt_unlock, crypt_rekey, crypt_relock, crypt_remove, crypt_forget, idle::idle_has_source, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, ledger_recurring, ledger_recurring_file, ledger_recurring_mark, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, notes_crypt_unlocked, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, people_last, waiting_for, inbox_count, inbox_entries, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_embed_local, ai_set, ai_download, ai_download_cancel, ai_model_delete, ai_index_status, ai_index_rebuild, semantic_search, ai_related, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,

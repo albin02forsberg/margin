@@ -530,6 +530,84 @@ pub fn accept_all(inbox: &str, ledger: &str, kw: &crate::org::Kw) -> Result<(Str
     Ok((inbox, ledger, n))
 }
 
+// ---------------------------------------------------------------- recurring (#1182)
+
+/// A recurring RULE `START +N[dwmy] amount [CUR] text…` (the quick-add body: unsigned is an expense): its first entry and step.
+pub fn parse_rule(rule: &str, currency: &str) -> Result<(Entry, u32, char), String> {
+    let bad = || format!("can't read the recurring entry {rule:?}: write it like 2026-11-01 +1m 1200 rent @landlord");
+    let mut w = rule.split_whitespace();
+    let start: NaiveDate = w.next().and_then(|d| d.parse().ok()).ok_or_else(bad)?;
+    let step = w.next().and_then(|s| s.strip_prefix('+')).ok_or_else(bad)?;
+    let unit = step.chars().last().filter(|c| "dwmy".contains(*c)).ok_or_else(bad)?;
+    let n = step[..step.len() - 1].parse::<u32>().ok().filter(|&n| n > 0).ok_or_else(bad)?;
+    let body = w.collect::<Vec<_>>().join(" ");
+    if body.split_whitespace().next().is_some_and(|d| d.parse::<NaiveDate>().is_ok()) {
+        return Err(bad());
+    }
+    let e = parse_quick(&body, start, currency).map_err(|e| format!("recurring entry {rule:?}: {e}"))?;
+    Ok((e, n, unit))
+}
+
+/// The K-th date of a rule from START every N UNITs, always counted from START (so the 31st stays the month's last day).
+fn nth(start: NaiveDate, n: u32, unit: char, k: u32) -> Option<NaiveDate> {
+    let steps = k.checked_mul(n)?;
+    match unit {
+        'd' => start.checked_add_days(chrono::Days::new(steps.into())),
+        'w' => start.checked_add_days(chrono::Days::new(u64::from(steps) * 7)),
+        'm' => start.checked_add_months(chrono::Months::new(steps)),
+        _ => start.checked_add_months(chrono::Months::new(steps.checked_mul(12)?)),
+    }
+}
+
+/// Recurring entries due now: ENTRIES oldest first, the new watermarks MARKS (rule text → done through; current rules only)
+/// and one error per rule that can't be read.
+#[derive(Debug, Default, PartialEq)]
+pub struct Due {
+    pub entries: Vec<Entry>,
+    pub marks: BTreeMap<String, NaiveDate>,
+    pub errors: Vec<String>,
+}
+
+/// RULES' occurrences up to TODAY after each rule's watermark in MARKS (keyed by the exact rule text, so a new or edited
+/// rule only fills in TODAY's month), less those already in KNOWN (ledger and inbox text) by date, amount and payee (else text).
+pub fn recurring(rules: &[String], marks: &BTreeMap<String, NaiveDate>, known: &[&str], today: NaiveDate, currency: &str) -> Due {
+    let key = |e: &Entry| (e.date, e.cents, e.payee().map_or_else(|| e.text.clone(), str::to_lowercase));
+    let mut seen: std::collections::HashSet<_> = known.iter().flat_map(|t| t.lines()).filter_map(parse_entry).map(|e| key(&e)).collect();
+    let mut due = Due::default();
+    let month = today.with_day(1).and_then(|d| d.pred_opt()).unwrap_or(today);
+    for r in rules.iter().map(|r| r.trim()).filter(|r| !r.is_empty()) {
+        let (e, n, unit) = match parse_rule(r, currency) {
+            Ok(x) => x,
+            Err(err) => {
+                due.errors.push(err);
+                continue;
+            }
+        };
+        let after = marks.get(r).copied().unwrap_or(month);
+        for d in (0..).map_while(|k| nth(e.date, n, unit, k).filter(|d| *d <= today)).filter(|d| *d > after) {
+            let x = Entry { date: d, ..e.clone() };
+            if seen.insert(key(&x)) {
+                due.entries.push(x);
+            }
+        }
+        due.marks.insert(r.into(), after.max(today));
+    }
+    due.entries.sort_by_key(|e| e.date);
+    due
+}
+
+/// The recurring rules' watermarks in the JSON store at STORE (missing or corrupt: none).
+pub fn load_marks(store: &std::path::Path) -> BTreeMap<String, NaiveDate> {
+    std::fs::read_to_string(store).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+pub fn save_marks(store: &std::path::Path, marks: &BTreeMap<String, NaiveDate>) -> Result<(), String> {
+    if let Some(d) = store.parent() {
+        std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+    }
+    crate::config::write_atomic(store, serde_json::to_string(marks).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -538,6 +616,63 @@ mod tests {
     }
     fn kw() -> crate::org::Kw {
         crate::org::Kw { todo: vec!["TODO".into()], done: vec!["DONE".into()] }
+    }
+
+    #[test]
+    fn recurring_rules_parse_and_clamp_month_ends() {
+        let (e, n, u) = parse_rule("2026-01-31  +1m 1200 rent @landlord #housing", "eur").unwrap();
+        assert_eq!((format_entry(&e).as_str(), n, u), ("- 2026-01-31 -1200.00 EUR rent @landlord #housing", 1, 'm'));
+        let dates = |r: &str, k: u32| { let (e, n, u) = parse_rule(r, "EUR").unwrap(); (0..k).map(|k| nth(e.date, n, u, k).unwrap().to_string()).collect::<Vec<_>>() };
+        // Always counted from the start: the 31st comes back after a short month.
+        assert_eq!(dates("2026-01-31 +1m 1 x", 4), ["2026-01-31", "2026-02-28", "2026-03-31", "2026-04-30"]);
+        assert_eq!(dates("2024-02-29 +1y +5 USD gift", 5), ["2024-02-29", "2025-02-28", "2026-02-28", "2027-02-28", "2028-02-29"]);
+        assert_eq!(dates("2026-11-01 +2w 9 gym", 3), ["2026-11-01", "2026-11-15", "2026-11-29"]);
+        assert_eq!(dates("2026-11-01 +3d 9 x", 2), ["2026-11-01", "2026-11-04"]);
+        for bad in ["", "rent", "2026-11-01 1200 rent", "2026-11-01 +0m 1 x", "2026-11-01 +1q 1 x", "2026-11-01 +m 1 x", "2026-11-01 +1é 1 x", "2026-11-01 +1m", "2026-11-01 +1m lunch", "2026-11-01 +1m 2026-11-02 5 x"] {
+            assert!(parse_rule(bad, "EUR").is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn recurring_fills_from_the_watermark_and_never_resurrects() {
+        let rules: Vec<String> = vec!["2026-01-31 +1m 1200 rent @landlord".into(), "bad rule".into(), " ".into()];
+        let (today, none) = (d("2026-11-08"), BTreeMap::new());
+        let lines = |due: &Due| due.entries.iter().map(format_entry).collect::<Vec<_>>();
+        // First sight: only today's month (not January to October), up to today.
+        let due = recurring(&rules, &none, &[], today, "EUR");
+        assert_eq!(lines(&due), Vec::<String>::new()); // the 30th hasn't come yet
+        assert_eq!((due.marks.len(), due.errors.len()), (1, 1));
+        let due = recurring(&rules, &none, &[], d("2026-11-30"), "EUR");
+        assert_eq!(lines(&due), ["- 2026-11-30 -1200.00 EUR rent @landlord"]);
+        // After the watermark only: deleting or editing the November entry never brings it back; months missed come in.
+        let marks = due.marks;
+        assert_eq!(marks["2026-01-31 +1m 1200 rent @landlord"], d("2026-11-30"));
+        assert!(recurring(&rules, &marks, &[], d("2026-12-01"), "EUR").entries.is_empty());
+        let due = recurring(&rules, &marks, &[], d("2027-02-28"), "EUR");
+        assert_eq!(lines(&due), ["- 2026-12-31 -1200.00 EUR rent @landlord", "- 2027-01-31 -1200.00 EUR rent @landlord", "- 2027-02-28 -1200.00 EUR rent @landlord"]);
+        // Already in the ledger (another machine) or proposed in the inbox, by date, amount and payee: not again.
+        let ledger = "* 2026-12\n- 2026-12-31 -1200.00 EUR December rent @Landlord\n";
+        let inbox = "* TODO Review ledger import\n- 2027-01-31 -1200.00 EUR rent @landlord\n";
+        assert_eq!(lines(&recurring(&rules, &marks, &[ledger, inbox], d("2027-02-28"), "EUR")), ["- 2027-02-28 -1200.00 EUR rent @landlord"]);
+        // An edited rule is a new rule: a fresh watermark (today's month only), the old one dropped.
+        let edited = vec!["2026-01-31 +1m 1250 rent @landlord".to_string()];
+        let due = recurring(&edited, &marks, &[], d("2027-02-28"), "EUR");
+        assert_eq!(lines(&due), ["- 2027-02-28 -1250.00 EUR rent @landlord"]);
+        assert_eq!(due.marks.keys().collect::<Vec<_>>(), ["2026-01-31 +1m 1250 rent @landlord"]);
+        // A rule starting in the future adds nothing yet.
+        assert!(recurring(&["2027-01-01 +1m 5 x".into()], &none, &[], today, "EUR").entries.is_empty());
+    }
+
+    #[test]
+    fn recurring_marks_round_trip() {
+        let store = std::env::temp_dir().join(format!("margin-ledger-rec-{}", std::process::id())).join("ledger-recurring.json");
+        assert!(load_marks(&store).is_empty());
+        let marks = BTreeMap::from([("2026-11-01 +1m 5 x".to_string(), d("2026-11-08"))]);
+        save_marks(&store, &marks).unwrap();
+        assert_eq!(load_marks(&store), marks);
+        std::fs::write(&store, "{nope").unwrap();
+        assert!(load_marks(&store).is_empty());
+        std::fs::remove_dir_all(store.parent().unwrap()).ok();
     }
 
     #[test]
