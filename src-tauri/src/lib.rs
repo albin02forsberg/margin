@@ -758,7 +758,11 @@ fn with_spent(spent: &dyn Fn(&str, &str) -> Option<u32>, items: Vec<org::Item>) 
 
 #[tauri::command(async)]
 fn agenda(s: State<App>, start: String, days: i64) -> R<Vec<org::Item>> {
-    let items = org::agenda(&s.files(), &s.kw(), date(&start)?, days, today()).into_iter().filter(|i| !org::someday(&i.tags, &i.inherited)).collect();
+    let (files, start) = (s.files(), date(&start)?);
+    // Birthdays (read-only, #1183) first on their day.
+    let mut items: Vec<org::Item> = org::birthdays(&files, start, days, today(), s.cfg().birthday_lead_days).into_iter()
+        .chain(org::agenda(&files, &s.kw(), start, days, today()).into_iter().filter(|i| !org::someday(&i.tags, &i.inherited))).collect();
+    items.sort_by_key(|i| i.date);
     Ok(with_spent(&*spent_lookup(&s), items))
 }
 

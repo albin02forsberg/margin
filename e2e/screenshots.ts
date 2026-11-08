@@ -173,6 +173,10 @@ SCHEDULED: ${ts(0, ".+1d")}
 :LOGBOOK:
 ${[-1, -2, -3, -5, -6, -7, -8, -9, -10, -12, -13, -14, -15, -16, -17, -18, -19, -20].map((o) => `- State "DONE"       from "TODO"       ${its(o)}`).join("\n")}
 :END:
+* Maja :@maja:
+:PROPERTIES:
+:BIRTHDAY: ${day(2).getFullYear() - 34}${iso(day(2)).slice(4)}
+:END:
 `);
 
   write(join(notes, "inbox.org"), `
@@ -306,6 +310,10 @@ async function pngs() {
   await browser.keys([Key.Ctrl, "1"]);
   await browser.$(".agenda h1").waitForDisplayed();
   await shot("today");
+  if (want("birthday")) { // #1183: Maja's birthday heads-up in Today
+    await find(".agenda .row .title", "Maja");
+    await shot("birthday");
+  }
   if (want("month-calendar")) { // #1039
     await command("Go to Month calendar");
     await browser.$(".monthcal .day").waitForDisplayed();

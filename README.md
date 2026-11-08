@@ -119,6 +119,13 @@ contact is the latest of: a journal day mentioning them (its date), another note
 (when the file last changed), a done task tagged or naming them (its `CLOSED` date) and a ledger
 payment to them.
 
+Birthdays: give the person's heading (tagged with exactly one `@name` of its own) or their note
+(`#+FILETAGS: :@anna:`) a `:BIRTHDAY: 1984-03-12` property, or `--03-12` without the year. Today and
+the agenda then show "Anna · Turns 42" on the day and a heads-up "Turns 42 in 3d" a few days before
+(`birthday_lead_days`, default 3; 0 = only on the day), and a reminder notification comes once a day
+then. A Feb 29 birthday falls on Feb 28 in other years. These lines are read-only: they are no task,
+`Enter` opens the person view, and nothing is written to your files.
+
 <img src="docs/gifs/links.gif" width="800" alt="Opening a note, showing its backlinks and graph, and following a link with Enter">
 
 **Flashcards** — tag a heading `:drill:` and it becomes a card: the title is the question, its
@@ -1319,8 +1326,9 @@ Timed entries (`SCHEDULED: <… 14:00>`, deadlines with a time, appointments)
 pop up a desktop notification 10 minutes before; date-only deadlines remind you
 once a day from the day before (`deadline_warning_days`), or from their own
 warning cookie (`-3d`) when they have one. Clicking one opens the task (Linux; elsewhere
-notifications are display-only for now). Settings: `reminders`, `remind_before_minutes`,
-`deadline_warning_days`.
+notifications are display-only for now). Birthdays (see **People**) remind once on the day and
+on their heads-up days. Settings: `reminders`, `remind_before_minutes`,
+`deadline_warning_days`, `birthday_lead_days`.
 
 To be reminded again later, snooze the last reminder from the palette
 (Ctrl+K): "Reminders: snooze the last one for 10 min", "for 1 h" or "until

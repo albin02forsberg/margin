@@ -22,7 +22,8 @@ pub struct Due {
 
 /// Reminders that are due at NOW: timed entries (scheduled, deadline, appointment)
 /// from BEFORE ahead until they start, and date-only deadlines once a day from
-/// their own `-3d` warning period ahead (else WARN_DAYS). Done tasks are skipped. Callers drop keys already sent.
+/// their own `-3d` warning period ahead (else WARN_DAYS), and today's birthdays (on the day or the heads-up) once a day.
+/// Done tasks are skipped. Callers drop keys already sent.
 pub fn due(items: &[Item], kw: &Kw, now: NaiveDateTime, before: Duration, warn_days: i64) -> Vec<Due> {
     let mut out = vec![];
     for it in items {
@@ -50,6 +51,10 @@ pub fn due(items: &[Item], kw: &Kw, now: NaiveDateTime, before: Duration, warn_d
                     };
                     out.push(Due { key: format!("{} deadline {place}", now.date()), title: it.title.clone(), body, path: it.path.clone(), line: it.line });
                 }
+            }
+            ("birthday", _) if it.date == now.date() => {
+                let body = if it.label.contains(" in ") { it.label.clone() } else { format!("{} today", it.label) };
+                out.push(Due { key: format!("{} birthday {place}", now.date()), title: it.title.clone(), body, path: it.path.clone(), line: it.line });
             }
             _ => {}
         }
@@ -79,7 +84,8 @@ fn tick(app: &AppHandle) {
     let files = s.files();
     // Wide enough for the longest per-deadline warning cookie.
     let span = files.iter().flat_map(|f| &f.headlines).filter_map(|h| h.deadline.as_ref().and_then(org::warn_days)).fold(c.deadline_warning_days, i64::max);
-    let items = org::agenda(&files, &s.kw(), today, span.max(0) + 2, today);
+    let mut items = org::agenda(&files, &s.kw(), today, span.max(0) + 2, today);
+    items.extend(org::birthdays(&files, today, 1, today, c.birthday_lead_days));
     let due = due(&items, &s.kw(), now, Duration::minutes(c.remind_before_minutes), c.deadline_warning_days);
     let file = c.data().join("reminders-sent.txt");
     let (mut sent, mut changed) = load_sent(&file, today);
@@ -349,6 +355,20 @@ mod tests {
         // Not re-sent today (no longer in its warning period): it fires.
         let mut q = vec![(at(next, 9, 0), dl.clone())];
         assert_eq!(take_snoozed(&mut q, at(next, 9, 0), &BTreeSet::new(), |_, _| true), [dl]);
+    }
+
+    #[test]
+    fn birthdays_remind_once_a_day() {
+        let kw = Kw { todo: vec!["TODO".into()], done: vec![] };
+        let doc = "* Anna :@anna:\n:PROPERTIES:\n:BIRTHDAY: 1984-10-05\n:END:\n* Bob :@bob:\n:PROPERTIES:\n:BIRTHDAY: --10-02\n:END:\n";
+        let f = Arc::new(org::parse(Path::new("/n/p.org"), doc, &kw));
+        let day: chrono::NaiveDate = "2026-10-02".parse().unwrap();
+        // The reminder tick's items: the next days' agenda plus today's birthdays; Anna's own day (in 3 days) is not today.
+        let fs = [f];
+        let items = [org::birthdays(&fs, day, 5, day, 3), org::birthdays(&fs, day, 1, day, 3)].concat();
+        let got = due(&items, &kw, day.and_hms_opt(9, 0, 0).unwrap(), Duration::minutes(10), 1);
+        let got: Vec<String> = got.into_iter().map(|d| format!("{} | {}: {}", d.key, d.title, d.body)).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
+        assert_eq!(got, ["2026-10-02 birthday /n/p.org:0 | Anna: Turns 42 in 3d", "2026-10-02 birthday /n/p.org:4 | Bob: Birthday today"]);
     }
 
     #[test]

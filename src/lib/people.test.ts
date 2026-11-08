@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { byLastContact, contactAge, lastLine, peopleFrom, personName, personRows } from "./people.ts";
+import { birthdayPerson, byLastContact, contactAge, lastLine, peopleFrom, personName, personRows } from "./people.ts";
+
+test("birthdayPerson: a birthday item's person, nothing for tasks (#1183)", () => {
+  assert.equal(birthdayPerson({ kind: "birthday", tags: ["@anna"] }), "anna");
+  assert.equal(birthdayPerson({ kind: "scheduled", tags: ["@anna"] }), null);
+  assert.equal(birthdayPerson({ kind: "birthday", tags: [] }), null);
+});
 
 test("contactAge, byLastContact and lastLine (#969)", () => {
   assert.equal(contactAge("2026-09-19", "2026-10-30"), "41 d ago");
