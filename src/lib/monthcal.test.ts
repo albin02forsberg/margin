@@ -39,7 +39,18 @@ test("bucket: scheduled, deadlines, effort once per heading; done and today-only
     it("2026-11-03", "overdue", "Report", 5, 60), it("2026-11-03", "warning", "Tax", 14),
   ];
   const b = bucket(items, (x) => x.keyword === "DONE");
-  assert.deepEqual(b["2026-11-02"], { scheduled: 3, deadline: 1, effort: 70, titles: ["Water", "Report", "Meeting"] });
-  assert.deepEqual(b["2026-11-09"], { scheduled: 1, deadline: 0, effort: 10, titles: ["Water"] });
+  assert.deepEqual(b["2026-11-02"], { scheduled: 3, deadline: 1, effort: 70, titles: ["Water", "Report", "Meeting"], birthdays: [] });
+  assert.deepEqual(b["2026-11-09"], { scheduled: 1, deadline: 0, effort: 10, titles: ["Water"], birthdays: [] });
   assert.equal(b["2026-11-03"], undefined);
+});
+
+test("bucket: birthdays and anniversaries on their day, not as tasks; heads-ups left out", () => {
+  const bd = (date: string, title: string, label: string) => ({ date, kind: "birthday", title, label, path: "p.org", line: 0, keyword: null });
+  const items = [
+    bd("2026-11-02", "Maja", "Turns 34 in 2d"), bd("2026-11-04", "Maja", "Turns 34"), bd("2026-11-04", "Anna", "Anniversary: 5 years"),
+    { date: "2026-11-04", kind: "scheduled", title: "Cake", path: "a.org", line: 3, keyword: "TODO" },
+  ];
+  const b = bucket(items, () => false);
+  assert.equal(b["2026-11-02"], undefined);
+  assert.deepEqual(b["2026-11-04"], { scheduled: 1, deadline: 0, effort: 0, titles: ["Cake"], birthdays: ["🎂 Maja", "💍 Anna"] });
 });

@@ -54,7 +54,9 @@ pub fn due(items: &[Item], kw: &Kw, now: NaiveDateTime, before: Duration, warn_d
             }
             ("birthday", _) if it.date == now.date() => {
                 let body = if it.label.contains(" in ") { it.label.clone() } else { format!("{} today", it.label) };
-                out.push(Due { key: format!("{} birthday {place}", now.date()), title: it.title.clone(), body, path: it.path.clone(), line: it.line });
+                // An anniversary on the same heading and day as the birthday gets its own key.
+                let what = if it.label.starts_with("Anniversary") { " anniversary" } else { "" };
+                out.push(Due { key: format!("{} birthday {place}{what}", now.date()), title: it.title.clone(), body, path: it.path.clone(), line: it.line });
             }
             _ => {}
         }
@@ -190,13 +192,14 @@ fn snooze_until(now: NaiveDateTime, minutes: Option<i64>) -> NaiveDateTime {
     minutes.map_or_else(|| (now.date() + Duration::days(1)).and_hms_opt(9, 0, 0).unwrap(), |m| now + Duration::minutes(m))
 }
 
-/// Take the snoozed reminders whose time has come. Dropped instead: tasks no longer OPEN (done or gone),
+/// Take the snoozed reminders whose time has come. Dropped instead: tasks no longer OPEN (done or gone; birthdays,
+/// which may sit on a note's line 0 with no heading, are kept),
 /// and ones from an earlier day that the normal path already SENT again today (date-only deadlines).
 fn take_snoozed(q: &mut Vec<(NaiveDateTime, Due)>, now: NaiveDateTime, sent: &BTreeSet<String>, open: impl Fn(&Path, usize) -> bool) -> Vec<Due> {
     let today = now.date().to_string();
     let (due, rest) = std::mem::take(q).into_iter().partition::<Vec<_>, _>(|(at, _)| *at <= now);
     *q = rest;
-    due.into_iter().map(|(_, d)| d).filter(|d| open(&d.path, d.line) && !(d.key.get(..10).is_some_and(|k| k < today.as_str()) && sent.contains(&format!("{today}{}", &d.key[10..])))).collect()
+    due.into_iter().map(|(_, d)| d).filter(|d| (d.key.contains(" birthday ") || open(&d.path, d.line)) && !(d.key.get(..10).is_some_and(|k| k < today.as_str()) && sent.contains(&format!("{today}{}", &d.key[10..])))).collect()
 }
 
 /// Queue D to fire again after MINUTES (None: tomorrow 9:00); the confirmation to show.
@@ -355,12 +358,16 @@ mod tests {
         // Not re-sent today (no longer in its warning period): it fires.
         let mut q = vec![(at(next, 9, 0), dl.clone())];
         assert_eq!(take_snoozed(&mut q, at(next, 9, 0), &BTreeSet::new(), |_, _| true), [dl]);
+        // A birthday from a note's file-level drawer (line 0, no heading there) still fires.
+        let bday = d("2026-10-02 birthday /n/a.org:0", 0);
+        let mut q = vec![(at(day, 14, 10), bday.clone())];
+        assert_eq!(take_snoozed(&mut q, at(day, 14, 10), &BTreeSet::new(), |_, _| false), [bday]);
     }
 
     #[test]
     fn birthdays_remind_once_a_day() {
         let kw = Kw { todo: vec!["TODO".into()], done: vec![] };
-        let doc = "* Anna :@anna:\n:PROPERTIES:\n:BIRTHDAY: 1984-10-05\n:END:\n* Bob :@bob:\n:PROPERTIES:\n:BIRTHDAY: --10-02\n:END:\n";
+        let doc = "* Anna :@anna:\n:PROPERTIES:\n:BIRTHDAY: 1984-10-05\n:END:\n* Bob :@bob:\n:PROPERTIES:\n:BIRTHDAY: --10-02\n:ANNIVERSARY: 2016-10-02\n:END:\n";
         let f = Arc::new(org::parse(Path::new("/n/p.org"), doc, &kw));
         let day: chrono::NaiveDate = "2026-10-02".parse().unwrap();
         // The reminder tick's items: the next days' agenda plus today's birthdays; Anna's own day (in 3 days) is not today.
@@ -368,7 +375,8 @@ mod tests {
         let items = [org::birthdays(&fs, day, 5, day, 3), org::birthdays(&fs, day, 1, day, 3)].concat();
         let got = due(&items, &kw, day.and_hms_opt(9, 0, 0).unwrap(), Duration::minutes(10), 1);
         let got: Vec<String> = got.into_iter().map(|d| format!("{} | {}: {}", d.key, d.title, d.body)).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
-        assert_eq!(got, ["2026-10-02 birthday /n/p.org:0 | Anna: Turns 42 in 3d", "2026-10-02 birthday /n/p.org:4 | Bob: Birthday today"]);
+        assert_eq!(got, ["2026-10-02 birthday /n/p.org:0 | Anna: Turns 42 in 3d", "2026-10-02 birthday /n/p.org:4 anniversary | Bob: Anniversary: 10 years today",
+            "2026-10-02 birthday /n/p.org:4 | Bob: Birthday today"]);
     }
 
     #[test]

@@ -81,6 +81,7 @@
   import { blockedDone, bulkTargets, columns, moveTo } from "./board";
   import { chips } from "./chips";
   import { isPushed } from "./pushed";
+  import { bdayIcon } from "./people";
   import { doneLog, withLog } from "./donelog";
   import { fmtEffort, fmtSpent, overbooked, planned, plannedLabel } from "./effort";
   import { agendaText } from "./agendatext";
@@ -431,7 +432,7 @@
 {#snippet row(it: AgendaItem, i: number)}
   <div class="row" class:sel={i === sel} class:done={isDone(it)} class:blocked={it.blocked} class:marked={marks.has(markKey(it))} data-i={i} role="option" aria-selected={i === sel}>
     {#if marks.has(markKey(it))}<span class="mark" title="Marked (*)">*</span>{/if}
-    {#if it.kind === "birthday"}<span class="bday" title="Birthday (read-only; Enter opens the person)">🎂</span>
+    {#if it.kind === "birthday"}<span class="bday" title="{it.label.startsWith("Anniversary") ? "Anniversary" : "Birthday"} (read-only; Enter opens the person)">{bdayIcon(it.label)}</span>
     {:else}<span class="check" title="Mark done (x)">{isDone(it) ? "✓" : ""}</span>{/if}
     {#if it.priority}<span class="prio p{it.priority}">{it.priority}</span>{/if}
     {#if it.keyword && it.keyword !== todo[0] && !isDone(it)}<span class="kw">{it.keyword}</span>{/if}

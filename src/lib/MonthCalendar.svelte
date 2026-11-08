@@ -50,7 +50,7 @@
     else return;
     e.preventDefault();
   }
-  const label = (d: string, x?: Day) => [x?.titles.join(", "), x?.effort ? plannedLabel(x.effort, expected[d]) : ""].filter(Boolean).join(" · ") || "Nothing planned";
+  const label = (d: string, x?: Day) => [x?.birthdays.join(", "), x?.titles.join(", "), x?.effort ? plannedLabel(x.effort, expected[d]) : ""].filter(Boolean).join(" · ") || "Nothing planned";
 </script>
 
 <div class="monthcal" bind:this={root} tabindex="0" onkeydown={key} role="grid" aria-label="Month calendar">
@@ -78,6 +78,7 @@
             {#if x.deadline}<span class="due">{x.deadline} due</span>{/if}
             {#if x.effort}<span class="eff">~{fmtEffort(x.effort)}</span>{/if}
           </span>
+          {#each x.birthdays as b}<span class="t bday">{b}</span>{/each}
           {#each x.titles.slice(0, 3) as t}<span class="t">{t}</span>{/each}
           {#if x.titles.length > 3}<span class="t dim">+{x.titles.length - 3} more</span>{/if}
         {/if}
@@ -106,5 +107,6 @@
   .now .n { color: var(--accent); font-weight: 700; }
   .counts { display: flex; gap: var(--s2); flex-wrap: wrap; font-size: var(--fs-xs); color: var(--dim); }
   .due { color: var(--todo); }
+  .bday { color: var(--accent); }
   .t { font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>

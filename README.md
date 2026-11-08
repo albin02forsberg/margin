@@ -124,7 +124,11 @@ Birthdays: give the person's heading (tagged with exactly one `@name` of its own
 the agenda then show "Anna · Turns 42" on the day and a heads-up "Turns 42 in 3d" a few days before
 (`birthday_lead_days`, default 3; 0 = only on the day), and a reminder notification comes once a day
 then. A Feb 29 birthday falls on Feb 28 in other years. These lines are read-only: they are no task,
-`Enter` opens the person view, and nothing is written to your files.
+`Enter` opens the person view, and nothing is written to your files. An `:ANNIVERSARY: 2021-06-12`
+on the same heading or note works the same way: "Anna · Anniversary: 5 years" (or just "Anniversary"
+without the year), with the same heads-up and reminder. Like birthdays it needs exactly one `@name`
+tag, so put a couple's anniversary on one of them (a heading tagged `:@anna:@ed:` doesn't count). The
+month calendar shows both on their day (🎂 / 💍), apart from the task counts.
 
 <img src="docs/gifs/links.gif" width="800" alt="Opening a note, showing its backlinks and graph, and following a link with Enter">
 
