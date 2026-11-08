@@ -1,7 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { tick } from "svelte";
-  import { money, monthName, shiftMonth } from "$lib/ledger";
+  import { budgetBar, money, monthName, shiftMonth } from "$lib/ledger";
   import type { TimeApi } from "$lib/Time.svelte";
 
   type Total = { currency: string; income: number; expense: number; net: number; categories: [string | null, number][]; payees: [string, number][] };
@@ -14,12 +14,14 @@
   let path = $state<string | null>(null);
   let totals = $state.raw<Total[]>([]);
   let rows = $state.raw<Row[]>([]);
+  type Budget = { category: string; currency: string; budget: number; used: number };
+  let budgets = $state.raw<Budget[]>([]);
   let loaded = $state(false);
   let root = $state<HTMLDivElement>();
 
   $effect(() => {
     void [reload, month];
-    if (active) api.act(async () => { [path, totals, rows] = await invoke<[string | null, Total[], Row[]]>("ledger_month", { month }); loaded = true; });
+    if (active) api.act(async () => { [path, totals, rows, budgets] = await invoke<[string | null, Total[], Row[], Budget[]]>("ledger_month", { month }); loaded = true; });
   });
   $effect(() => {
     if (active) tick().then(() => root?.focus());
@@ -63,6 +65,13 @@
               {#each t.categories as [c, n]}<tr><td class:dim={!c}>{c ? `#${c}` : "uncategorised"}</td><td class="num">{money(n, t.currency)}</td></tr>{/each}
             </tbody>
           </table>
+          {#each budgets.filter((b) => b.currency === t.currency) as b (b.category)}
+            {@const bar = budgetBar(b.used, b.budget)}
+            <div class="budget" class:over={bar.over}>
+              <span>#{b.category}</span><span class="num">{money(b.used, t.currency, false)} / {money(b.budget, t.currency, false)}</span>
+              <progress max="100" value={bar.pct}></progress>
+            </div>
+          {/each}
           {#if t.payees.length}
             <table class="payees">
               <thead><tr><th>Payee</th><th></th></tr></thead>
@@ -117,6 +126,9 @@
   tr:last-child td { border-bottom: 0; }
   .num { text-align: right; font-family: var(--mono); white-space: nowrap; }
   .mono { font-family: var(--mono); font-size: var(--fs-md); white-space: nowrap; }
+  .budget { display: grid; grid-template-columns: 1fr auto; gap: 2px var(--s2); margin-top: var(--s3); font-size: var(--fs-base); }
+  .budget progress { grid-column: 1 / -1; width: 100%; height: 6px; accent-color: currentColor; }
+  .budget.over { color: var(--todo); }
   .entry:hover td { background: var(--active); }
   .entry .num { width: 1%; }
   button.link { background: none; border: 0; padding: 0; text-align: left; overflow-wrap: anywhere; width: 100%; }

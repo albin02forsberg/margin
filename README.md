@@ -1211,7 +1211,9 @@ other shape are left alone. `Space n u` undoes the last entry.
 **Go to Ledger** (`Space v l`, once the ledger file exists) shows a month: income, expenses and net
 per currency (amounts in other currencies are totalled on their own, never converted), the totals
 per `#category` (entries without one as *uncategorised*) and per `@payee`, then the month's entries;
-click one to open the ledger at its line. `h` / `l` or the arrows switch months. An entry counts in
+click one to open the ledger at its line. **Settings → Ledger → Monthly budgets** (`ledger_budgets`, one `food=400`
+per line, in the default currency) adds a used / budget bar under that currency's totals for each listed `#category`
+(any case, refunds count back; red when over). `h` / `l` or the arrows switch months. An entry counts in
 the month of its own date, whichever heading it sits under.
 
 **Projects and people.** A project card (Projects view, `Space t P`) shows a *Ledger · cost … · income …* line

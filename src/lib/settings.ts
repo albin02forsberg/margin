@@ -66,6 +66,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
   { name: "Ledger", fields: [
     { key: "ledger_file", label: "Ledger file", hint: `Space f l adds entries here, ${rel}` },
     { key: "ledger_currency", label: "Default currency", hint: "3-letter code for entries that don't name one, e.g. EUR or SEK" },
+    { key: "ledger_budgets", label: "Monthly budgets", kind: "list", hint: "one per line, category=amount in the default currency, e.g. food=400; the Ledger view shows used / budget per category" },
   ] },
   { name: "Areas", fields: [
     { key: "hidden_areas", label: "Show these areas", kind: "list", options: Object.keys(AREAS), hint: "an unticked area's commands leave the command palette and the Space menu; its files and data stay as they are" },

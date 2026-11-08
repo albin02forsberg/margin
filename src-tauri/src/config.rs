@@ -130,6 +130,8 @@ pub struct Config {
     pub ledger_file: String,
     /// Currency of ledger entries that don't name one (a 3-letter code).
     pub ledger_currency: String,
+    /// Monthly spending budgets per `#category` in `ledger_currency`, as `food=400` or `food=399.50`.
+    pub ledger_budgets: Vec<String>,
     /// Areas ("ledger", "habits", "flashcards", "goals") whose commands leave the palette and Space menu; files are untouched.
     pub hidden_areas: Vec<String>,
     /// Zen mode (`Space v z`) also makes the window fullscreen.
@@ -336,6 +338,7 @@ impl Default for Config {
             nightly_updates: false,
             ledger_file: "ledger.org".into(),
             ledger_currency: "EUR".into(),
+            ledger_budgets: vec![],
             hidden_areas: vec![],
             zen_fullscreen: false,
             theme: String::new(),
