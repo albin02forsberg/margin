@@ -303,6 +303,7 @@
    *  With marks, a BULK op runs on every marked item instead (one undo step) and clears the marks (kept on cancel). */
   function op(name: string, it = selected, arg?: string, bulk = true) {
     if (!it || busy) return;
+    if (it.kind === "birthday" && name !== "open") return api.flash("A birthday is read-only: Enter opens the person");
     const many = bulk && marks.size && BULK.has(name) ? marked(marks, all) : null;
     if (many && !many.length) return api.flash("No marked task");
     const xs = many ?? [it], ts = bulkTargets(name, xs.map((x) => x.keyword), arg, todo, done);
@@ -331,7 +332,7 @@
   /** Copy the shown (filtered) list as Markdown checkboxes; the week view groups by day. */
   async function copyList() {
     if (!shown.length) return api.flash("Nothing to copy");
-    const text = agendaText(shown.map((i) => ({ ...i, done: isDone(i) })), mode === "agenda" && span === 7);
+    const text = agendaText(shown.filter((i) => i.kind !== "birthday").map((i) => ({ ...i, done: isDone(i) })), mode === "agenda" && span === 7);
     await navigator.clipboard.writeText(text).then(() => api.flash(`Copied ${shown.length} task${shown.length === 1 ? "" : "s"}`), () => api.flash("Couldn't copy to the clipboard."));
   }
 
@@ -352,7 +353,7 @@
     else switch (k) {
       case "j": case "ArrowDown": sel = Math.min(sel + 1, shown.length - 1); break;
       case "k": case "ArrowUp": sel = Math.max(sel - 1, 0); break;
-      case "*": if (selected) { const m = markKey(selected); marks = new Map(marks); if (!marks.delete(m)) marks.set(m, { path: selected.path, line: selected.line, title: selected.title }); sel = Math.min(sel + 1, shown.length - 1); } break;
+      case "*": if (selected && selected.kind !== "birthday") { const m = markKey(selected); marks = new Map(marks); if (!marks.delete(m)) marks.set(m, { path: selected.path, line: selected.line, title: selected.title }); sel = Math.min(sel + 1, shown.length - 1); } break;
       case "g": case "Home": sel = 0; break;
       case "G": case "End": sel = shown.length - 1; break;
       case ">": op("later"); break;
@@ -430,7 +431,8 @@
 {#snippet row(it: AgendaItem, i: number)}
   <div class="row" class:sel={i === sel} class:done={isDone(it)} class:blocked={it.blocked} class:marked={marks.has(markKey(it))} data-i={i} role="option" aria-selected={i === sel}>
     {#if marks.has(markKey(it))}<span class="mark" title="Marked (*)">*</span>{/if}
-    <span class="check" title="Mark done (x)">{isDone(it) ? "✓" : ""}</span>
+    {#if it.kind === "birthday"}<span class="bday" title="Birthday (read-only; Enter opens the person)">🎂</span>
+    {:else}<span class="check" title="Mark done (x)">{isDone(it) ? "✓" : ""}</span>{/if}
     {#if it.priority}<span class="prio p{it.priority}">{it.priority}</span>{/if}
     {#if it.keyword && it.keyword !== todo[0] && !isDone(it)}<span class="kw">{it.keyword}</span>{/if}
     <span class="title">{it.title}</span>
@@ -682,6 +684,7 @@
   .check { width: 15px; height: 15px; border: 1.5px solid var(--dim); border-radius: 50%; flex: none; display: grid; place-items: center; font-size: var(--fs-xs); color: var(--done); cursor: pointer; transition: border-color 120ms var(--ease); }
   .row.done .check { border-color: var(--done); }
   .check:hover { border-color: var(--accent); }
+  .bday { width: 15px; flex: none; text-align: center; font-size: var(--fs-xs); }
   .prio { font-size: var(--fs-xs); font-weight: 700; border-radius: var(--radius-sm); padding: 0 5px; background: var(--active); color: var(--dim); }
   .prio.pA { color: var(--todo); }
   .prio.pB { color: var(--h5); }

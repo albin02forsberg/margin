@@ -67,7 +67,7 @@
   import { windowTitle } from "$lib/wintitle";
   import { orderNotes, parsePins, togglePin } from "$lib/pins";
   import * as nav from "$lib/navhistory";
-  import { byLastContact, lastLine, peopleFrom, personName, personRows, type LastContact } from "$lib/people";
+  import { birthdayPerson, byLastContact, lastLine, peopleFrom, personName, personRows, type LastContact } from "$lib/people";
   import { waitingRows, type Waiting } from "$lib/waiting";
   import { addBookmark, bookmarkAt, mergeBookmarks, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, retitleBookmarks, type Bookmark } from "$lib/bookmarks";
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
@@ -2350,12 +2350,15 @@
     }
   }
 
-  /** Pick a person (`@name` tag, or type one), then one of their open tasks or a line mentioning them (#704). */
-  async function personView() {
-    const people = peopleFrom(await call<string[]>("org_tags"));
+  /** Pick a person (`@name` tag, or type one; WHO skips the picker), then one of their open tasks or a line mentioning them (#704). */
+  async function personView(who?: string) {
     const today = new Date().toLocaleDateString("sv-SE");
-    const items = byLastContact(people, people.length ? await call<LastContact>("people_last", { names: people }) : {}, today);
-    const v = await pick({ prompt: "Person", items, allowCustom: true, hint: people.length ? "longest out of touch first · or type a name and press Ctrl+↵" : "no :@name: tags yet; type a name and press Ctrl+↵" });
+    let v: unknown = who;
+    if (who == null) {
+      const people = peopleFrom(await call<string[]>("org_tags"));
+      const items = byLastContact(people, people.length ? await call<LastContact>("people_last", { names: people }) : {}, today);
+      v = await pick({ prompt: "Person", items, allowCustom: true, hint: people.length ? "longest out of touch first · or type a name and press Ctrl+↵" : "no :@name: tags yet; type a name and press Ctrl+↵" });
+    }
     const name = v == null ? "" : personName(String(v));
     if (!name) return;
     const pv = await call<Parameters<typeof personRows>[0] & { last?: { date: string; source: string } | null }>("person_view", { name });
@@ -3517,7 +3520,8 @@
   };
   const timeApi: TimeApi = { act, run: async (name, arg) => { await timeActions[name](arg); } };
   const agendaApi: AgendaApi = {
-    run: (op, it, arg) => recorded(async () => { await taskOps[op]({ path: it.path, line: it.line }, it, arg); }),
+    // A birthday (#1183) is read-only: Agenda only lets "open" through, which shows the person.
+    run: (op, it, arg) => { const who = birthdayPerson(it); return who != null ? personView(who) : recorded(async () => { await taskOps[op]({ path: it.path, line: it.line }, it, arg); }); },
     runMany,
     newTask: (s) => act(() => newTask(s ?? "")),
     undo,
@@ -3588,7 +3592,7 @@
     { label: "Notes: import a Markdown/Obsidian folder (preview first)…", run: mdImport },
     { label: "Notes: import Kindle / Readwise highlights (one note per book, preview first)…", leader: "n I", run: highlightsImport },
     { label: "Tags: undo a rename or text replace (notes put back)…", run: undoTagRename },
-    { label: "People: a person's open tasks and mentions (@name)…", leader: "n @", run: personView },
+    { label: "People: a person's open tasks and mentions (@name)…", leader: "n @", run: () => personView() },
     { label: "Flashcards: review due :drill: headings", leader: "n d", run: reviewDrill },
     { label: "Note: pin / unpin (pinned notes come first in Ctrl+P)", leader: "n p", run: pinNote },
     { label: "Notes: open a pinned note…", leader: "n P", run: pinnedNotes },

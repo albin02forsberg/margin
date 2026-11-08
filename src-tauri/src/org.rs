@@ -123,6 +123,8 @@ pub struct Headline {
     pub target: Option<String>,
     /// Raw `:START:` (a goal's `YYYY-MM-DD` start date, see goal_status).
     pub start: Option<String>,
+    /// Raw `:BIRTHDAY:` of a person's heading (see birthdays).
+    pub birthday: Option<String>,
 }
 
 impl Headline {
@@ -168,6 +170,8 @@ pub struct OrgFile {
     pub text: String,
     /// Modification time when `scan` read it (None for parses made elsewhere).
     pub mtime: Option<SystemTime>,
+    /// Raw file-level `:BIRTHDAY:` (a person's note, see birthdays).
+    pub birthday: Option<String>,
 }
 
 fn parse_ts(c: &regex::Captures) -> Option<Ts> {
@@ -272,6 +276,8 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
                     f.id = Some(c[2].to_string());
                 } else if c[1].eq_ignore_ascii_case("CATEGORY") {
                     file_cat = c[2].to_string();
+                } else if c[1].eq_ignore_ascii_case("BIRTHDAY") {
+                    f.birthday = Some(c[2].to_string());
                 } else if c[1].eq_ignore_ascii_case("ROAM_ALIASES") {
                     f.aliases = ALIAS.captures_iter(&c[2]).map(|a| a.get(1).or(a.get(2)).unwrap().as_str().to_string()).collect();
                 }
@@ -317,6 +323,8 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
                     h.target = Some(c[2].trim().to_string());
                 } else if c[1].eq_ignore_ascii_case("START") {
                     h.start = Some(c[2].trim().to_string());
+                } else if c[1].eq_ignore_ascii_case("BIRTHDAY") {
+                    h.birthday = Some(c[2].to_string());
                 }
             }
             continue;
@@ -665,6 +673,65 @@ pub fn agenda(files: &[Arc<OrgFile>], kw: &Kw, start: NaiveDate, days: i64, toda
     out.sort_by(|a, b| {
         (a.date, a.time.is_none(), &a.time, rank(a.kind), &a.priority).cmp(&(b.date, b.time.is_none(), &b.time, rank(b.kind), &b.priority))
     });
+    out
+}
+
+/// A `:BIRTHDAY:` value: `1984-03-12` or year-less `--03-12`, as (year, month, day); None when not a date.
+pub fn parse_birthday(s: &str) -> Option<(Option<i32>, u32, u32)> {
+    let s = s.trim();
+    let (y, md) = match s.strip_prefix("--") {
+        Some(md) => (None, md),
+        None => (Some(s.get(..4)?.parse().ok()?), s.get(4..)?.strip_prefix('-')?),
+    };
+    let (m, d) = md.split_once('-')?;
+    let (m, d) = (m.parse().ok()?, d.parse().ok()?);
+    NaiveDate::from_ymd_opt(y.unwrap_or(2000), m, d)?; // 2000 is a leap year, so a year-less Feb 29 passes
+    Some((y, m, d))
+}
+
+/// The birthday M-D in YEAR: Feb 29 falls on Feb 28 in other years.
+pub fn birthday_on(year: i32, m: u32, d: u32) -> NaiveDate {
+    NaiveDate::from_ymd_opt(year, m, d).or_else(|| NaiveDate::from_ymd_opt(year, m, d - 1)).unwrap_or_default()
+}
+
+/// Birthdays (`:BIRTHDAY:` on a heading tagged with exactly one `@name` of its own, or in a note whose `#+FILETAGS` has
+/// exactly one) as read-only `birthday` items: one on each day in [START, START+DAYS) ("Turns 42", or "Birthday"
+/// without a birth year), and a heads-up on TODAY (when in range) for one in the next LEAD days ("Turns 42 in 3d").
+/// TITLE is the heading's (note's) title, TAGS the `@name`. Archived headings, bad dates and duplicates are skipped.
+pub fn birthdays(files: &[Arc<OrgFile>], start: NaiveDate, days: i64, today: NaiveDate, lead: i64) -> Vec<Item> {
+    let end = start + Duration::days(days - 1);
+    let one_person = |tags: &[String]| match tags.iter().filter(|t| t.starts_with('@') && t.len() > 1).collect::<Vec<_>>()[..] {
+        [t] => Some(t.clone()),
+        _ => None,
+    };
+    let mut seen = HashSet::new();
+    let mut out = vec![];
+    for f in files {
+        let file = f.birthday.as_ref().zip(one_person(&f.tags)).map(|(b, t)| (Headline { title: f.title.clone(), tags: vec![t], category: f.category.clone(), ..Default::default() }, b));
+        let heads = f.headlines.iter().filter(|h| !h.archived()).filter_map(|h| Some((Headline { tags: vec![one_person(&h.tags)?], ..h.clone() }, h.birthday.as_ref()?)));
+        for (h, raw) in file.into_iter().chain(heads) {
+            let Some((born, m, d)) = parse_birthday(raw) else { continue };
+            if !seen.insert((h.tags[0].to_lowercase(), m, d)) {
+                continue;
+            }
+            let what = |y: i32| born.map(|b| y - b).filter(|&a| a > 0).map_or("Birthday".to_string(), |a| format!("Turns {a}"));
+            let mk = |date, label| Item { keyword: None, priority: None, effort: None, closed: None, pushed: 0, ..item(f, &h, date, "birthday", label, None) };
+            for y in start.year()..=end.year() {
+                let on = birthday_on(y, m, d);
+                if (start..=end).contains(&on) {
+                    out.push(mk(on, what(y)));
+                }
+            }
+            let next = [today.year(), today.year() + 1].map(|y| (y, birthday_on(y, m, d))).into_iter().find(|(_, on)| *on >= today);
+            if let Some((y, on)) = next.filter(|_| (start..=end).contains(&today)) {
+                let n = (on - today).num_days();
+                if (1..=lead).contains(&n) {
+                    out.push(mk(today, format!("{} in {n}d", what(y))));
+                }
+            }
+        }
+    }
+    out.sort_by_key(|i| i.date);
     out
 }
 
@@ -2347,6 +2414,49 @@ mod tests {
     const DOC: &str = ":PROPERTIES:\n:ID: file-1\n:END:\n#+title: My Note\n#+category: Work\n\
 * TODO [#A] Write report :work:urgent:\nSCHEDULED: <2026-10-01 Thu> DEADLINE: <2026-10-05 Mon 10:00>\n:PROPERTIES:\n:ID: h-1\n:END:\nSee [[id:other][Other]] and [[file:b.org]].\n\
 ** NEXT Sub\n:PROPERTIES:\n:CATEGORY: Sub\n:END:\n*** DONE Deep\n* Meeting\n<2026-10-03 Sat 14:00>\n* TODO Water plants\nSCHEDULED: <2026-09-28 Mon +1w>\n";
+
+    #[test]
+    fn birthday_values_and_leap_day() {
+        assert_eq!(parse_birthday("1984-03-12"), Some((Some(1984), 3, 12)));
+        assert_eq!(parse_birthday(" --03-12 "), Some((None, 3, 12)));
+        assert_eq!(parse_birthday("--02-29"), Some((None, 2, 29)));
+        assert_eq!(parse_birthday("1983-02-29"), None);
+        for bad in ["", "1984-13-01", "03-12", "--3-x", "soon"] {
+            assert_eq!(parse_birthday(bad), None, "{bad}");
+        }
+        assert_eq!(birthday_on(2027, 2, 29), d("2027-02-28"));
+        assert_eq!(birthday_on(2028, 2, 29), d("2028-02-29"));
+    }
+
+    #[test]
+    fn birthdays_on_the_day_and_ahead() {
+        let doc = "* Anna Svensson :@anna:\n:PROPERTIES:\n:BIRTHDAY: 1984-10-05\n:END:\n\
+                   * Bob :@bob:friend:\n:PROPERTIES:\n:BIRTHDAY: --10-02\n:END:\n\
+                   * Lunch :@anna:@bob:\n:PROPERTIES:\n:BIRTHDAY: 2000-10-03\n:END:\n\
+                   * TODO Anna again :@Anna:\n:PROPERTIES:\n:BIRTHDAY: 1984-10-05\n:END:\n\
+                   * Leap :@lea:\n:PROPERTIES:\n:BIRTHDAY: 2004-02-29\n:END:\n\
+                   * Bad :@x:\n:PROPERTIES:\n:BIRTHDAY: 2004-02-30\n:END:\n\
+                   * Old :@old:ARCHIVE:\n:PROPERTIES:\n:BIRTHDAY: --10-02\n:END:\n";
+        let note = "#+title: Carl\n#+filetags: :@carl:\n:PROPERTIES:\n:BIRTHDAY: 1990-01-01\n:END:\n";
+        let fs = [Arc::new(parse(Path::new("/n/p.org"), doc, &kw())), Arc::new(parse(Path::new("/n/carl.org"), note, &kw()))];
+        let show = |v: Vec<Item>| v.iter().map(|i| format!("{} {} {} {}", i.date, i.title, i.label, i.tags.join(","))).collect::<Vec<_>>();
+        let today = d("2026-10-02");
+        // Day view, default lead: Bob today (no year), Anna's heads-up; the meeting with two people and the archived one don't count.
+        assert_eq!(show(birthdays(&fs, today, 1, today, 3)), ["2026-10-02 Anna Svensson Turns 42 in 3d @anna", "2026-10-02 Bob Birthday @bob"]);
+        // Lead 0: only on the day.
+        assert_eq!(show(birthdays(&fs, today, 1, today, 0)), ["2026-10-02 Bob Birthday @bob"]);
+        // The week: Anna on her day too (once, though two headings carry it); not a task.
+        let wk = birthdays(&fs, today, 7, today, 3);
+        assert_eq!(show(wk.clone())[1..], ["2026-10-02 Bob Birthday @bob", "2026-10-05 Anna Svensson Turns 42 @anna"]);
+        assert!(wk.iter().all(|i| i.kind == "birthday" && i.keyword.is_none() && i.priority.is_none() && i.effort.is_none()));
+        // A heads-up across New Year, from a note's FILETAGS; and only when today is in range.
+        let nye = d("2026-12-30");
+        assert_eq!(show(birthdays(&fs, nye, 1, nye, 3)), ["2026-12-30 Carl Turns 37 in 2d @carl"]);
+        assert!(birthdays(&fs, d("2027-01-02"), 1, nye, 3).is_empty());
+        // Feb 29 on Feb 28 in a non-leap year.
+        let feb = d("2027-02-28");
+        assert_eq!(show(birthdays(&fs, feb, 1, feb, 0)), ["2027-02-28 Leap Turns 23 @lea"]);
+    }
 
     #[test]
     fn scan_records_mtime() {

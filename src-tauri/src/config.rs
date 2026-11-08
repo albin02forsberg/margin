@@ -62,6 +62,8 @@ pub struct Config {
     pub remind_before_minutes: i64,
     /// Remind about date-only deadlines this many days ahead (0 = on the day).
     pub deadline_warning_days: i64,
+    /// Show (and remind of) a `:BIRTHDAY:` this many days ahead in Today (0 = on the day).
+    pub birthday_lead_days: i64,
     /// Saved task searches shown in the sidebar: `[[views]] name = "…" query = "…"`.
     pub views: Vec<View>,
     /// Where to keep a calendar (.ics) of scheduled tasks and deadlines; empty for none.
@@ -299,6 +301,7 @@ impl Default for Config {
             reminders: true,
             remind_before_minutes: 10,
             deadline_warning_days: 1,
+            birthday_lead_days: 3,
             views: vec![],
             calendar_file: String::new(),
             templates: vec![
