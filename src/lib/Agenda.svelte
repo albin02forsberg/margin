@@ -84,7 +84,7 @@
   import { bdayIcon } from "./people";
   import { doneLog, withLog } from "./donelog";
   import { fmtEffort, fmtSpent, overbooked, planned, plannedLabel } from "./effort";
-  import { agendaText } from "./agendatext";
+  import { agendaText, copyRows } from "./agendatext";
   import { blocks, gapLabel, gaps, hhmm } from "./dayplan";
   import { marked, markKey, reresolve, type Mark } from "./bulk";
   import { visible } from "./blocked";
@@ -332,9 +332,10 @@
 
   /** Copy the shown (filtered) list as Markdown checkboxes; the week view groups by day. */
   async function copyList() {
-    if (!shown.length) return api.flash("Nothing to copy");
-    const text = agendaText(shown.filter((i) => i.kind !== "birthday").map((i) => ({ ...i, done: isDone(i) })), mode === "agenda" && span === 7);
-    await navigator.clipboard.writeText(text).then(() => api.flash(`Copied ${shown.length} task${shown.length === 1 ? "" : "s"}`), () => api.flash("Couldn't copy to the clipboard."));
+    const rows = copyRows(shown);
+    if (!rows.length) return api.flash("Nothing to copy");
+    const text = agendaText(rows.map((i) => ({ ...i, done: isDone(i) })), mode === "agenda" && span === 7);
+    await navigator.clipboard.writeText(text).then(() => api.flash(`Copied ${rows.length} task${rows.length === 1 ? "" : "s"}`), () => api.flash("Couldn't copy to the clipboard."));
   }
 
   function key(e: KeyboardEvent) {

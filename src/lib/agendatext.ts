@@ -21,3 +21,6 @@ export function agendaText(items: Row[], groupByDay = false) {
   }
   return out.join("\n");
 }
+
+/** Rows to copy: birthdays are not tasks. */
+export const copyRows = <T extends { kind?: string }>(items: T[]) => items.filter((i) => i.kind !== "birthday");

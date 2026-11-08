@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { agendaText } from "./agendatext.ts";
+import { agendaText, copyRows } from "./agendatext.ts";
 
 const r = (date: string, title: string, o: object = {}) => ({ date, title, priority: null, done: false, ...o });
 
@@ -15,3 +15,10 @@ test("week grouping adds a heading per day", () =>
     agendaText([r("2026-10-20", "A"), r("2026-10-20", "B"), r("2026-10-21", "C")], true),
     "## Tue 20 Oct\n- [ ] A\n- [ ] B\n\n## Wed 21 Oct\n- [ ] C",
   ));
+
+test("copyRows drops birthdays", () => {
+  const t = { kind: "task" }, b = { kind: "birthday" };
+  assert.deepEqual(copyRows([t, b, t]), [t, t]);
+  assert.deepEqual(copyRows([b]), []);
+  assert.deepEqual(copyRows([]), []);
+});
