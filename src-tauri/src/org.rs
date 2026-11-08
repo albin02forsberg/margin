@@ -125,6 +125,8 @@ pub struct Headline {
     pub start: Option<String>,
     /// Raw `:BIRTHDAY:` of a person's heading (see birthdays).
     pub birthday: Option<String>,
+    /// Raw `:ANNIVERSARY:` of a person's heading (see birthdays).
+    pub anniversary: Option<String>,
 }
 
 impl Headline {
@@ -172,6 +174,8 @@ pub struct OrgFile {
     pub mtime: Option<SystemTime>,
     /// Raw file-level `:BIRTHDAY:` (a person's note, see birthdays).
     pub birthday: Option<String>,
+    /// Raw file-level `:ANNIVERSARY:` (see birthdays).
+    pub anniversary: Option<String>,
 }
 
 fn parse_ts(c: &regex::Captures) -> Option<Ts> {
@@ -278,6 +282,8 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
                     file_cat = c[2].to_string();
                 } else if c[1].eq_ignore_ascii_case("BIRTHDAY") {
                     f.birthday = Some(c[2].to_string());
+                } else if c[1].eq_ignore_ascii_case("ANNIVERSARY") {
+                    f.anniversary = Some(c[2].to_string());
                 } else if c[1].eq_ignore_ascii_case("ROAM_ALIASES") {
                     f.aliases = ALIAS.captures_iter(&c[2]).map(|a| a.get(1).or(a.get(2)).unwrap().as_str().to_string()).collect();
                 }
@@ -325,6 +331,8 @@ pub fn parse(path: &Path, text: &str, kw: &Kw) -> OrgFile {
                     h.start = Some(c[2].trim().to_string());
                 } else if c[1].eq_ignore_ascii_case("BIRTHDAY") {
                     h.birthday = Some(c[2].to_string());
+                } else if c[1].eq_ignore_ascii_case("ANNIVERSARY") {
+                    h.anniversary = Some(c[2].to_string());
                 }
             }
             continue;
@@ -697,6 +705,7 @@ pub fn birthday_on(year: i32, m: u32, d: u32) -> NaiveDate {
 /// Birthdays (`:BIRTHDAY:` on a heading tagged with exactly one `@name` of its own, or in a note whose `#+FILETAGS` has
 /// exactly one) as read-only `birthday` items: one on each day in [START, START+DAYS) ("Turns 42", or "Birthday"
 /// without a birth year), and a heads-up on TODAY (when in range) for one in the next LEAD days ("Turns 42 in 3d").
+/// `:ANNIVERSARY:` works the same with "Anniversary: 5 years" (or "Anniversary").
 /// TITLE is the heading's (note's) title, TAGS the `@name`. Archived headings, bad dates and duplicates are skipped.
 pub fn birthdays(files: &[Arc<OrgFile>], start: NaiveDate, days: i64, today: NaiveDate, lead: i64) -> Vec<Item> {
     let end = start + Duration::days(days - 1);
@@ -707,26 +716,35 @@ pub fn birthdays(files: &[Arc<OrgFile>], start: NaiveDate, days: i64, today: Nai
     let mut seen = HashSet::new();
     let mut out = vec![];
     for f in files {
-        let file = f.birthday.as_ref().zip(one_person(&f.tags)).map(|(b, t)| (Headline { title: f.title.clone(), tags: vec![t], category: f.category.clone(), ..Default::default() }, b));
-        let heads = f.headlines.iter().filter(|h| !h.archived()).filter_map(|h| Some((Headline { tags: vec![one_person(&h.tags)?], ..h.clone() }, h.birthday.as_ref()?)));
-        for (h, raw) in file.into_iter().chain(heads) {
-            let Some((born, m, d)) = parse_birthday(raw) else { continue };
-            if !seen.insert((h.tags[0].to_lowercase(), m, d)) {
-                continue;
-            }
-            let what = |y: i32| born.map(|b| y - b).filter(|&a| a > 0).map_or("Birthday".to_string(), |a| format!("Turns {a}"));
-            let mk = |date, label| Item { keyword: None, priority: None, effort: None, closed: None, pushed: 0, ..item(f, &h, date, "birthday", label, None) };
-            for y in start.year()..=end.year() {
-                let on = birthday_on(y, m, d);
-                if (start..=end).contains(&on) {
-                    out.push(mk(on, what(y)));
+        let file = one_person(&f.tags).filter(|_| f.birthday.is_some() || f.anniversary.is_some())
+            .map(|t| (Headline { title: f.title.clone(), tags: vec![t], category: f.category.clone(), ..Default::default() }, &f.birthday, &f.anniversary));
+        let heads = f.headlines.iter().filter(|h| !h.archived() && (h.birthday.is_some() || h.anniversary.is_some()))
+            .filter_map(|h| Some((Headline { tags: vec![one_person(&h.tags)?], ..h.clone() }, &h.birthday, &h.anniversary)));
+        for (h, bday, anniv) in file.into_iter().chain(heads) {
+            for (raw, ann) in [(bday, false), (anniv, true)] {
+                let Some((born, m, d)) = raw.as_deref().and_then(parse_birthday) else { continue };
+                if !seen.insert((h.tags[0].to_lowercase(), ann, m, d)) {
+                    continue;
                 }
-            }
-            let next = [today.year(), today.year() + 1].map(|y| (y, birthday_on(y, m, d))).into_iter().find(|(_, on)| *on >= today);
-            if let Some((y, on)) = next.filter(|_| (start..=end).contains(&today)) {
-                let n = (on - today).num_days();
-                if (1..=lead).contains(&n) {
-                    out.push(mk(today, format!("{} in {n}d", what(y))));
+                let what = |y: i32| match (ann, born.map(|b| y - b).filter(|&a| a > 0)) {
+                    (false, Some(a)) => format!("Turns {a}"),
+                    (false, None) => "Birthday".to_string(),
+                    (true, Some(n)) => format!("Anniversary: {n} year{}", if n == 1 { "" } else { "s" }),
+                    (true, None) => "Anniversary".to_string(),
+                };
+                let mk = |date, label| Item { keyword: None, priority: None, effort: None, closed: None, pushed: 0, ..item(f, &h, date, "birthday", label, None) };
+                for y in start.year()..=end.year() {
+                    let on = birthday_on(y, m, d);
+                    if (start..=end).contains(&on) {
+                        out.push(mk(on, what(y)));
+                    }
+                }
+                let next = [today.year(), today.year() + 1].map(|y| (y, birthday_on(y, m, d))).into_iter().find(|(_, on)| *on >= today);
+                if let Some((y, on)) = next.filter(|_| (start..=end).contains(&today)) {
+                    let n = (on - today).num_days();
+                    if (1..=lead).contains(&n) {
+                        out.push(mk(today, format!("{} in {n}d", what(y))));
+                    }
                 }
             }
         }
@@ -2456,6 +2474,29 @@ mod tests {
         // Feb 29 on Feb 28 in a non-leap year.
         let feb = d("2027-02-28");
         assert_eq!(show(birthdays(&fs, feb, 1, feb, 0)), ["2027-02-28 Leap Turns 23 @lea"]);
+    }
+
+    #[test]
+    fn anniversaries_next_to_birthdays() {
+        let doc = "* Anna :@anna:\n:PROPERTIES:\n:BIRTHDAY: 1984-10-05\n:ANNIVERSARY: 2021-10-05\n:END:\n\
+                   * Bob :@bob:\n:PROPERTIES:\n:ANNIVERSARY: --10-03\n:END:\n\
+                   * Anna and Ed :@anna:@ed:\n:PROPERTIES:\n:ANNIVERSARY: 2000-10-03\n:END:\n\
+                   * Lea :@lea:\n:PROPERTIES:\n:ANNIVERSARY: 2024-02-29\n:END:\n\
+                   * Fresh :@fresh:\n:PROPERTIES:\n:ANNIVERSARY: 2026-10-04\n:END:\n";
+        let note = "#+title: Carl\n#+filetags: :@carl:\n:PROPERTIES:\n:anniversary: 2025-10-02\n:END:\n";
+        let fs = [Arc::new(parse(Path::new("/n/p.org"), doc, &kw())), Arc::new(parse(Path::new("/n/carl.org"), note, &kw()))];
+        let show = |v: Vec<Item>| v.iter().map(|i| format!("{} {} {}", i.date, i.title, i.label)).collect::<Vec<_>>();
+        let today = d("2026-10-02");
+        // Both on Anna's day (the same date doesn't dedupe them); year-less Bob; a two-person heading doesn't count; no "0 years".
+        let wk = birthdays(&fs, today, 7, today, 0);
+        assert_eq!(show(wk.clone()), ["2026-10-02 Carl Anniversary: 1 year", "2026-10-03 Bob Anniversary", "2026-10-04 Fresh Anniversary",
+            "2026-10-05 Anna Turns 42", "2026-10-05 Anna Anniversary: 5 years"]);
+        assert!(wk.iter().all(|i| i.kind == "birthday"));
+        // The heads-up uses the same lead days.
+        assert_eq!(show(birthdays(&fs, today, 1, today, 1)), ["2026-10-02 Bob Anniversary in 1d", "2026-10-02 Carl Anniversary: 1 year"]);
+        // Feb 29 on Feb 28 in a non-leap year.
+        let feb = d("2027-02-28");
+        assert_eq!(show(birthdays(&fs, feb, 1, feb, 0)), ["2027-02-28 Lea Anniversary: 3 years"]);
     }
 
     #[test]

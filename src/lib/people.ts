@@ -42,6 +42,8 @@ export const personName = (s: string) => s.trim().replace(/^@+/, "").trim();
 
 /** The person of a read-only `birthday` agenda item (#1183: its one `@name` tag), else null for any other item. */
 export const birthdayPerson = (it: { kind: string; tags: string[] }) => (it.kind === "birthday" && it.tags[0] ? personName(it.tags[0]) : null);
+/** The marker of a `birthday` item by its LABEL: a ring for an `:ANNIVERSARY:` (#1187), else a cake. */
+export const bdayIcon = (label: string) => (label.startsWith("Anniversary") ? "💍" : "🎂");
 
 type Task = { path: string; line: number; keyword: string | null; title: string; date: string; priority: string | null };
 type Note = { path: string; line: number; title: string; text: string };
