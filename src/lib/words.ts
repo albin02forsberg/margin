@@ -18,8 +18,8 @@ export function wordCount(text: string, org = false) {
   return n;
 }
 
-/** Status-bar label: "412 words", or "38 of 412 words" while text is selected. */
-export function wordsLabel(doc: number, sel?: number) {
-  const n = (k: number) => `${k} word${k === 1 ? "" : "s"}`;
+/** Status-bar label: "412 words", or "38 of 412 words" while text is selected; SCOPE ("heading") adds " in heading". */
+export function wordsLabel(doc: number, sel?: number, scope = "") {
+  const n = (k: number) => `${k} word${k === 1 ? "" : "s"}${scope && ` in ${scope}`}`;
   return sel == null ? n(doc) : `${sel} of ${n(doc)}`;
 }

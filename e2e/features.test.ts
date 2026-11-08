@@ -1252,10 +1252,12 @@ describe("Journal, archive and move", () => {
     await browser.waitUntil(async () => (await shown()).includes("beta"), { timeoutMsg: "note not shown" });
     await leader("vn");
     await find(".status .narrowed", "Narrowed to One");
+    await find(".status .words", "2 words in heading");
     await browser.waitUntil(async () => !(await shown()).includes("beta") && (await shown()).includes("alpha"), { timeoutMsg: "sibling heading still shown" });
     await leader("vn");
     await browser.waitUntil(async () => (await shown()).includes("beta"), { timeoutMsg: "widen didn't show the sibling again" });
     assert.equal((await texts(".status .narrowed")).length, 0);
+    await find(".status .words", "4 words");
     await fileMatches(f("narrow.org"), (s) => s === "* One\nalpha\n* Two\nbeta\n", "narrowing changed the file");
   });
 

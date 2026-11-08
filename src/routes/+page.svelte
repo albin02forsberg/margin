@@ -121,7 +121,7 @@
   let words = $state("");
   /** Title of the heading the editor is narrowed to (Space v n), or "". */
   let narrowed = $state("");
-  let docWords = 0;
+  let docWords = 0, docWordsRange = "";
   let message = $state("");
   let tc = $state<any>({});
   let backlinks = $state.raw<Hit[]>([]);
@@ -256,8 +256,9 @@
   }
   function recount(s: EditorState, docChanged: boolean) {
     const t = tabs[cur], org = !t?.path || /\.org(_archive)?$/.test(t.path), r = s.selection.main;
-    if (docChanged) docWords = wordCount(s.doc.toString(), org);
-    words = wordsLabel(docWords, r.empty ? undefined : wordCount(s.sliceDoc(r.from, r.to), org));
+    const nr = ed.narrowedRange(s), rk = nr ? `${nr.from}-${nr.to}` : "";
+    if (docChanged || rk !== docWordsRange) { docWordsRange = rk; docWords = wordCount(nr ? s.sliceDoc(nr.from, nr.to) : s.doc.toString(), org); }
+    words = wordsLabel(docWords, r.empty ? undefined : wordCount(s.sliceDoc(r.from, r.to), org), nr ? "heading" : "");
   }
 
   /** Outline panel (#915): headings of the focused note, rebuilt 200 ms after an edit (at once for another tab); the cursor only moves the highlight. */

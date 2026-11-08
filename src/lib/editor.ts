@@ -216,7 +216,7 @@ const orgConf = Facet.define<OrgConf, OrgConf>({ combine: (v) => v[0] ?? { todo:
 
 // ---------------------------------------------------------------- document structure
 
-export { level, narrowToggle, narrowedTo, revealEffects } from "./narrow";
+export { level, narrowToggle, narrowedTo, narrowedRange, revealEffects } from "./narrow";
 const DRAWER = /^\s*:(PROPERTIES|LOGBOOK):\s*$/i;
 const CHECKBOX = /^(\s*(?:[-+]|\d+[.)])\s+\[)([ xX-])\]/;
 const ITEM = /^(\s*)([-+]|\d+[.)]|\*(?=\s))(\s+)(\[[ xX-]\]\s+)?/;
