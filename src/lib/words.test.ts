@@ -22,4 +22,6 @@ test("wordsLabel shows the selection out of the whole note", () => {
   assert.equal(wordsLabel(412), "412 words");
   assert.equal(wordsLabel(1), "1 word");
   assert.equal(wordsLabel(412, 38), "38 of 412 words");
+  assert.equal(wordsLabel(312, undefined, "heading"), "312 words in heading");
+  assert.equal(wordsLabel(312, 38, "heading"), "38 of 312 words in heading");
 });

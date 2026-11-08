@@ -94,6 +94,9 @@ export function narrowedTo(state: EditorState): string {
   return t.slice(level(t) + 1).replace(/\s+:[\w@#%:]+:\s*$/, "").trim() || t;
 }
 
+/** The narrowed range, or undefined when not narrowed. */
+export const narrowedRange = (state: EditorState) => state.field(narrowField, false) ?? undefined;
+
 /** Narrow to the subtree at the cursor, or widen when narrowed. null outside org notes or before the first heading. */
 export function narrowToggle(v: EditorView): "narrow" | "widen" | null {
   const cur = v.state.field(narrowField, false);
