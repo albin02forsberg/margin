@@ -31,7 +31,7 @@ function write(path: string, text: string) {
 }
 
 /** config.toml lines on top of setup.ts's. */
-const config = [`templates = []`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`, ``, `[[feeds]]`, `name = "Orchard blog"`, `url = "https://blog.example/feed.xml"`, ``, `[[feeds]]`, `name = "Release notes"`, `url = "https://releases.example/atom.xml"`, `heading = "Upgrades"`];
+const config = [`templates = []`, `ledger_budgets = ["food=200", "transport=60"]`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`, ``, `[[feeds]]`, `name = "Orchard blog"`, `url = "https://blog.example/feed.xml"`, ``, `[[feeds]]`, `name = "Release notes"`, `url = "https://releases.example/atom.xml"`, `heading = "Upgrades"`];
 
 /** A small Markdown vault outside the notes folder, for the import preview (#900). */
 let vault = "";
@@ -46,6 +46,14 @@ function fixtures({ root, notes, data }: Dirs) {
   clippings = join(root, "My Clippings.txt");
   const clip = (book: string, loc: string, text: string) => `${book}\n- Your Highlight on page 3 | Location ${loc} | Added on Monday, January 6, 2025 9:12:00 PM\n\n${text}\n==========\n`;
   write(clippings, clip("Braiding Sweetgrass (Robin Wall Kimmerer)", "120-122", "All flourishing is mutual.") + clip("Braiding Sweetgrass (Robin Wall Kimmerer)", "410-413", "Paying attention is a form of reciprocity with the living world.") + clip("The Overstory (Richard Powers)", "88-90", "The best time to plant a tree was twenty years ago."));
+  const m = iso(day(0)).slice(0, 7); // current month, so the entries show in the Ledger view whatever today is
+  write(join(notes, "ledger.org"), `* ${m}
+- ${m}-01 +2400 EUR salary @Orchard Labs #income
+- ${m}-02 -64.20 EUR groceries @Corner Market #food
+- ${m}-03 -48.90 EUR monthly pass @Metro #transport
+- ${m}-05 -112.40 EUR dinner with friends @Olive #food
+- ${m}-06 -18.50 EUR coffee beans @Roastery #food
+`);
   write(join(notes, "orchard.org"), `
 :PROPERTIES:
 :ID: orchard
@@ -313,6 +321,11 @@ async function pngs() {
   if (want("birthday")) { // #1183: Maja's birthday heads-up in Today
     await find(".agenda .row .title", "Maja");
     await shot("birthday");
+  }
+  if (want("ledger")) { // #1186: month totals, per category and budget bars
+    await command("Go to Ledger (month totals)");
+    await browser.$(".ledger").waitForDisplayed();
+    await shot("ledger");
   }
   if (want("month-calendar")) { // #1039
     await command("Go to Month calendar");
