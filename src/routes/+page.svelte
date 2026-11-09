@@ -95,6 +95,7 @@
 
   let cfg = $state<any>(null);
   $effect(() => ed.setSpellcheck(!!cfg?.config.spellcheck));
+  $effect(() => ed.setVimInit(cfg?.config.vim_init ?? ""));
   let tabs = $state<Tab[]>([]);
   let cur = $state(-1);
   let editorEl = $state<HTMLDivElement>();

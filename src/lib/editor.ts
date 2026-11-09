@@ -16,6 +16,7 @@ import * as tbl from "./orgtable";
 import { renumber, itemSwap } from "./list";
 import { scopedArg, foldCase, type NumOpts, type LocalOpts } from "./setopt";
 import { changeList, changeStep } from "./changelist";
+import { runVimInit, type Ctx } from "./vimInit";
 import { EMPH, toggleEmphasis } from "./emphasis";
 import { FN, addFootnote, footnoteTarget } from "./footnote";
 import { cryptUnlocked, headingAt, level, narrowField, subtreeEnd } from "./narrow";
@@ -168,6 +169,7 @@ const trackViews = ViewPlugin.fromClass(class {
   // setState itself, which can't dispatch.
   constructor(readonly v: EditorView) {
     views.add(v);
+    if (initDue) queueMicrotask(() => views.has(v) && initDue && runInit(v));
     const f = v.state.field(bufOpts, false), o = f && eff(f.local);
     if (o && (["number", "relativenumber", "wrap"] as const).some((k) => o[k] !== f.shown[k])) queueMicrotask(() => views.has(v) && applyOpts(v));
   }
@@ -192,6 +194,34 @@ function say(cm: { openNotification?: (n: Node, o: object) => unknown }, msg: st
   const el = Object.assign(document.createElement("div"), { className: "cm-vim-message", textContent: msg });
   el.style.whiteSpace = "pre";
   cm.openNotification?.(el, { bottom: true, duration: 5000 });
+}
+// `vim_init` (#1209): ex commands run like a vimrc on the first editor. A re-run first unmaps the previous run's
+// mappings (never mapclear: that drops gf/gt and the other app mappings too).
+for (const [name, alias, ctx] of [["nunmap", "nun", "normal"], ["iunmap", "iu", "insert"], ["vunmap", "vu", "visual"]] as const)
+  Vim.defineEx(name, alias, (cm: any, p: ExP) => { if (!p.args || !Vim.unmap(p.args[0], ctx)) say(cm, `No such mapping: ${name} ${p.argString?.trim() ?? ""}`); });
+let vimInit = "", initDue = false, initMapped: { lhs: string; ctx: Ctx }[] = [];
+/** Set the `vim_init` text: runs now if an editor exists, else when the first one opens. */
+export function setVimInit(text: string) {
+  if (text === vimInit && !initDue) return;
+  vimInit = text;
+  const v = views.values().next().value;
+  if (v) runInit(v); else initDue = true;
+}
+function runInit(v: EditorView) {
+  initDue = false;
+  const cm: any = getCM(v);
+  if (!cm) return;
+  for (const m of initMapped) Vim.unmap(m.lhs, m.ctx as string);
+  // A line's error is whatever it shows in the status bar (or throws).
+  const r = runVimInit(vimInit, (c) => {
+    let msg = "";
+    const orig = cm.openNotification;
+    cm.openNotification = (n: Node) => { msg = n.textContent ?? ""; return () => {}; };
+    try { Vim.handleEx(cm, c); } catch (e) { msg ||= String(e); } finally { cm.openNotification = orig; }
+    return msg;
+  });
+  initMapped = r.mapped;
+  if (r.errors.length) say(cm, `vim_init: ${r.errors.join("\n")}`);
 }
 Vim.defineAction("orgFollow", () => hooks.follow());
 Vim.mapCommand("gf", "action", "orgFollow", {}, { context: "normal" });

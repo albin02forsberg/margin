@@ -126,6 +126,8 @@ pub struct Config {
     pub spellcheck: bool,
     /// Spell-check languages (Linux/WebKitGTK only), e.g. `sv_SE`; empty = the system locale.
     pub spellcheck_languages: Vec<String>,
+    /// Vim ex commands run when the first editor opens, one per line (`nnoremap ; :`); `"` starts a comment.
+    pub vim_init: String,
     /// Code-block languages `Ctrl+Enter` / `Space i r` may run (e.g. `sh`); empty = nothing runs. Kept here, never in a note.
     pub babel_languages: Vec<String>,
     /// Update from the daily builds of main (the `nightly` prerelease) instead of stable releases.
@@ -344,6 +346,7 @@ impl Default for Config {
             restore_tabs: true,
             spellcheck: false,
             spellcheck_languages: vec![],
+            vim_init: String::new(),
             babel_languages: vec![],
             nightly_updates: false,
             ledger_file: "ledger.org".into(),
@@ -721,6 +724,13 @@ mod tests {
     fn babel_off_by_default() {
         assert!(Config::default().babel_languages.is_empty());
         assert_eq!(toml::from_str::<Config>("babel_languages = [\"sh\"]").unwrap().babel_languages, ["sh"]);
+    }
+
+    #[test]
+    fn vim_init_optional() {
+        assert_eq!(toml::from_str::<Config>("").unwrap().vim_init, "");
+        let c = toml::from_str::<Config>("vim_init = '''\ninoremap jk <Esc>\nset rnu\n'''").unwrap();
+        assert_eq!(c.vim_init, "inoremap jk <Esc>\nset rnu\n");
     }
 
     #[test]
