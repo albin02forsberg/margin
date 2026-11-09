@@ -1539,6 +1539,12 @@ describe("Wide tables", () => {
     }, row);
     assert.ok(w > cw, "row is not wider than the text column");
     assert.ok(h < lh * 1.5, "row wrapped");
+    const [rl, rr, cl, cr] = await browser.execute((r: HTMLElement) => {
+      const a = r.getBoundingClientRect(), b = (r.closest(".cm-content") as HTMLElement).getBoundingClientRect();
+      return [a.left, a.right, b.left, b.right];
+    }, row);
+    assert.ok(rl < cl && rr > cr, "row does not extend on both sides");
+    assert.ok(Math.abs((cl - rl) - (rr - cr)) < 2, "row is not centred on the text column");
   });
 });
 
