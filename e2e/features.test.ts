@@ -2447,6 +2447,6 @@ describe("vim_init", () => {
     await type("jk");
     await find(".status .mode", "NORMAL");
     await browser.keys([Key.Ctrl, "s"]);
-    await fileMatches(join(d.notes, "vi.org"), (s) => s === "#+title: Vi\nx\n", "jk was typed instead of leaving insert mode");
+    await fileMatches(join(d.notes, "vi.org"), (s) => s === "#+title: Vi\n\nx\n", "jk was typed instead of leaving insert mode");
   });
 });
