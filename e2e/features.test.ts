@@ -2431,3 +2431,22 @@ describe("Locked headings (#1086)", () => {
     await browser.waitUntil(async () => !(await texts(".tabs .tab button")).some((t) => t.includes("Vault")), { timeoutMsg: "decrypted tab stayed open" });
   });
 });
+
+describe("vim_init", () => {
+  let d: Dirs;
+  before(async () => { d = await launch({ config: ['vim_init = "\\" vimrc\\ninoremap jk <Esc>"'], files: ({ notes }) => writeFileSync(join(notes, "vi.org"), "#+title: Vi\n") }); });
+  after(close, { timeout: 30_000 });
+
+  it("runs its mappings when an editor opens, so jk leaves insert mode", async () => {
+    await find(".agenda h1", "Today");
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Vi");
+    await find(".status .file", "vi.org");
+    await type("Gox");
+    await find(".status .mode", "INSERT");
+    await type("jk");
+    await find(".status .mode", "NORMAL");
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "vi.org"), (s) => s.trimEnd() === "#+title: Vi\n\nx", "jk was typed instead of leaving insert mode");
+  });
+});

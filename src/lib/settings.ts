@@ -55,6 +55,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "theme", label: "Theme", kind: "choice", choices: ["", "light", "dark"], hint: "system follows the OS light/dark setting; the window frame follows it too" },
     { key: "spellcheck", label: "Spell check org notes", kind: "bool", hint: "underlines misspelled words with the system spell checker; on Linux the webview needs a system checker (hunspell/enchant) installed" },
     { key: "spellcheck_languages", label: "Spell check languages", kind: "list", hint: "Linux only; one per line, e.g. sv_SE or en_US; needs that hunspell dictionary installed; empty = system locale" },
+    { key: "vim_init", label: "Vim init commands", kind: "multiline", hint: "ex commands run like a vimrc when the first editor opens and when this changes, one per line, e.g. inoremap jk <Esc> or set relativenumber; lines starting with \" are comments; a <Space> mapping in normal mode is skipped (it is the leader key)" },
     { key: "babel_languages", label: "Run code blocks", kind: "list", hint: "languages Ctrl+Enter / Space i r may run from a #+begin_src block, one per line: sh or shell (both run sh in the notes folder, 10 s limit); it asks first whenever the code is new or changed; empty = nothing runs (Windows: not available)" },
   ] },
   { name: "Tasks", fields: [
