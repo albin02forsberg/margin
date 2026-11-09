@@ -894,6 +894,17 @@ describe("Journal, archive and move", () => {
     await find(".status .file", "ledger.org");
   });
 
+  it("y in the Ledger toggles the year view; a month header opens that month (#1196)", async () => {
+    await leader("vl");
+    await find(".ledger .total h3", "SEK");
+    await browser.keys("y"); // the view focuses itself
+    await find(".ledger .year h3", "SEK");
+    await find(".ledger .year td", "#work");
+    const m = new Date().getMonth();
+    await (await browser.$$(".ledger .year thead button"))[m].click();
+    await find(".ledger .total h3", "SEK");
+  });
+
   it("Space v k shows the month's planned tasks; Enter opens the selected day in Today (#1039)", async () => {
     const t = new Date(); t.setDate(t.getDate() + 1);
     writeFileSync(f("monthcal.org"), `* TODO Month cal task\nSCHEDULED: <${orgDay(t)}>\n`); // a deadline would also show today, as "Due in 1d"

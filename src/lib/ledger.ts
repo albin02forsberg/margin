@@ -42,3 +42,6 @@ export function sumByCurrency(rows: { cents: number; currency: string }[]): [str
   for (const r of rows) m.set(r.currency, (m.get(r.currency) ?? 0) + r.cents);
   return [...m].sort((a, b) => (a[0] < b[0] ? -1 : 1));
 }
+
+/** The share of INCOME kept (NET / INCOME, cents) as a whole percent, or null without income (#1196). */
+export const savingsRate = (income: number, net: number) => (income > 0 ? Math.round((net / income) * 100) : null);

@@ -53,7 +53,7 @@ function fixtures({ root, notes, data }: Dirs) {
 - ${m}-03 -48.90 EUR monthly pass @Metro #transport
 - ${m}-05 -112.40 EUR dinner with friends @Olive #food
 - ${m}-06 -18.50 EUR coffee beans @Roastery #food
-`);
+${[1, 2, 3].map((k) => { const p = iso(new Date(+m.slice(0, 4), +m.slice(5, 7) - 1 - k, 15)).slice(0, 7); return `* ${p}\n- ${p}-01 +2400 EUR salary @Orchard Labs #income\n- ${p}-04 -${180 + 40 * k}.00 EUR groceries #food\n- ${p}-09 -48.90 EUR monthly pass @Metro #transport\n`; }).join("")}`);
   write(join(notes, "orchard.org"), `
 :PROPERTIES:
 :ID: orchard
@@ -326,6 +326,14 @@ async function pngs() {
     await command("Go to Ledger (month totals)");
     await browser.$(".ledger").waitForDisplayed();
     await shot("ledger");
+  }
+  if (want("ledger-year")) { // #1196: month-by-category table and savings rate
+    if (!want("ledger")) await command("Go to Ledger (month totals)");
+    await browser.$(".ledger").waitForDisplayed();
+    await browser.keys("y");
+    await browser.$(".ledger .year").waitForDisplayed();
+    await shot("ledger-year");
+    await browser.keys("y");
   }
   if (want("month-calendar")) { // #1039
     await command("Go to Month calendar");

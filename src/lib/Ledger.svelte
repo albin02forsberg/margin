@@ -1,13 +1,13 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { tick } from "svelte";
-  import { budgetBar, filterRows, money, monthName, shiftMonth, sumByCurrency } from "$lib/ledger";
+  import { budgetBar, filterRows, money, monthName, savingsRate, shiftMonth, sumByCurrency } from "$lib/ledger";
   import type { TimeApi } from "$lib/Time.svelte";
 
   type Total = { currency: string; income: number; expense: number; net: number; categories: [string | null, number][]; payees: [string, number][] };
   type Row = { line: number; date: string; cents: number; currency: string; text: string; category: string | null; payee: string | null };
   /** A month of the ledger file (#789): totals per currency, category and payee, then the entries (click: open at its line).
-   *  `h` / `l` or the arrows switch months. Reloads on RELOAD. */
+   *  `h` / `l` or the arrows switch months; `y` toggles the year view (#1196). Reloads on RELOAD. */
   let { api, active, reload }: { api: TimeApi; active: boolean; reload: number } = $props();
   const thisMonth = new Date().toLocaleDateString("sv-SE").slice(0, 7);
   let month = $state(thisMonth);
@@ -24,17 +24,32 @@
 
   $effect(() => {
     void [reload, month];
-    if (active) api.act(async () => { [path, totals, rows, budgets] = await invoke<[string | null, Total[], Row[], Budget[]]>("ledger_month", { month }); loaded = true; });
+    if (active && !yearView) api.act(async () => { [path, totals, rows, budgets] = await invoke<[string | null, Total[], Row[], Budget[]]>("ledger_month", { month }); loaded = true; });
   });
   $effect(() => {
     if (active) tick().then(() => root?.focus());
   });
-  const shift = (n: number) => ((month = shiftMonth(month, n)), (filter = ""));
+  type Year = { currency: string; income: number[]; expense: number[]; categories: [string | null, number[]][] };
+  let yearView = $state(false);
+  let years = $state.raw<Year[]>([]);
+  const year = $derived(month.slice(0, 4));
+  $effect(() => {
+    void [reload, year];
+    if (active && yearView) api.act(async () => { [path, years] = await invoke<[string | null, Year[]]>("ledger_year", { year }); loaded = true; });
+  });
+  const shortMonths = Array.from({ length: 12 }, (_, i) => new Date(2000, i, 1).toLocaleDateString(undefined, { month: "short" }));
+  const sum = (m: number[]) => m.reduce((a, n) => a + n, 0);
+  const cell = (n: number) => (n ? money(n, "", false).trim() : "");
+  /** Back or forward one month, or one year in the year view. */
+  const shift = (n: number) => ((month = shiftMonth(month, yearView ? 12 * n : n)), (filter = ""));
   function key(e: KeyboardEvent) {
     if ((e.target as HTMLElement).tagName === "INPUT") return;
-    if (e.ctrlKey || e.metaKey || e.altKey || !(e.key === "h" || e.key === "l")) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const n = ({ h: -1, l: 1, ...(yearView ? { "[": -1, "]": 1 } : {}) } as Record<string, number>)[e.key];
+    if (!n && e.key !== "y") return;
     e.preventDefault();
-    shift(e.key === "h" ? -1 : 1);
+    if (n) shift(n);
+    else yearView = !yearView;
   }
   const open = (line: number) => api.act(() => api.run("open", { path, line }));
 </script>
@@ -43,14 +58,37 @@
   <header>
     <h1>Ledger</h1>
     <div class="switch">
-      <button title="Previous month (h)" onclick={() => shift(-1)}>‹</button>
-      <strong class="month">{monthName(month)}</strong>
-      <button title="Next month (l)" onclick={() => shift(1)}>›</button>
-      {#if month !== thisMonth}<button class="today" onclick={() => ((month = thisMonth), (filter = ""))}>This month</button>{/if}
+      <button title={yearView ? "Previous year (h)" : "Previous month (h)"} onclick={() => shift(-1)}>‹</button>
+      <strong class="month">{yearView ? year : monthName(month)}</strong>
+      <button title={yearView ? "Next year (l)" : "Next month (l)"} onclick={() => shift(1)}>›</button>
+      {#if yearView ? year !== thisMonth.slice(0, 4) : month !== thisMonth}<button class="today" onclick={() => ((month = thisMonth), (filter = ""))}>This {yearView ? "year" : "month"}</button>{/if}
+      <button class="today" title="Toggle the year view (y)" onclick={() => (yearView = !yearView)}>{yearView ? "Month" : "Year"}</button>
     </div>
   </header>
   {#if loaded && !path}
     <p class="dim">No ledger yet: <kbd>Space</kbd> <kbd>f</kbd> <kbd>l</kbd> adds the first entry.</p>
+  {:else if loaded && yearView}
+    {#each years as y (y.currency)}
+      {@const net = y.income.map((n, i) => n + y.expense[i])}
+      {@const rate = savingsRate(sum(y.income), sum(net))}
+      {@const max = Math.max(1, ...y.categories.flatMap(([, m]) => m.map(Math.abs)))}
+      <section class="card year">
+        <h3>{y.currency}{#if rate !== null}<small class="dim"> · savings rate {rate}%</small>{/if}</h3>
+        <div class="scroll"><table>
+          <thead><tr><th></th>{#each shortMonths as name, i}<th class="num"><button class="link" title="Open this month" onclick={() => { month = `${year}-${String(i + 1).padStart(2, "0")}`; yearView = false; }}>{name}</button></th>{/each}<th class="num">Total</th></tr></thead>
+          <tbody>
+            {#each [{ label: "Income", m: y.income }, { label: "Expenses", m: y.expense }, { label: "Net", m: net }] as r (r.label)}
+              <tr class="sum"><td>{r.label}</td>{#each r.m as n}<td class="num" class:neg={n < 0}>{cell(n)}</td>{/each}<td class="num" class:neg={sum(r.m) < 0}>{cell(sum(r.m))}</td></tr>
+            {/each}
+            {#each y.categories as [c, m] (c)}
+              <tr><td class:dim={!c}>{c ? `#${c}` : "uncategorised"}</td>{#each m as n}<td class="num heat" style:--a={Math.abs(n) / max}>{cell(n)}</td>{/each}<td class="num">{cell(sum(m))}</td></tr>
+            {/each}
+          </tbody>
+        </table></div>
+      </section>
+    {:else}
+      <p class="dim empty">No entries in {year}.</p>
+    {/each}
   {:else if loaded && !rows.length}
     <p class="dim empty">No entries in {monthName(month)}.</p>
   {:else if loaded}
@@ -144,5 +182,11 @@
   .filter input { background: var(--card); border: 1px solid var(--border); color: var(--fg); border-radius: 8px; padding: 3px var(--s3); font: var(--fs-md) var(--sans); width: 18em; }
   button.on { font-weight: 600; text-decoration: underline; }
   .dim { color: var(--dim); font-size: var(--fs-md); }
+  .year { margin-bottom: var(--s4); }
+  .year .scroll { overflow-x: auto; }
+  .year td.num, .year th.num { padding-left: var(--s3); }
+  .year .sum td { font-weight: 500; }
+  .year tr:nth-child(3) td { border-bottom-width: 2px; }
+  .heat { background: color-mix(in srgb, var(--accent) calc(var(--a) * 30%), transparent); }
   kbd { font: var(--fs-xs) var(--mono); color: var(--dim); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--s1); }
 </style>
