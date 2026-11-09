@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isoWeek, pushedLine, putReview, reviewBody, reviewEntry, reviewWeekLabel } from "./review.ts";
+import { isoWeek, type LedgerWeek, pushedLine, putReview, reviewBody, reviewEntry, reviewWeekLabel } from "./review.ts";
 
 test("reviewWeekLabel names the ISO week holding most of the span", () => {
   assert.equal(reviewWeekLabel(new Date(2026, 9, 12)), "2026-W42"); // Monday
@@ -75,4 +75,17 @@ test("reviewBody lists the top 3 most-pushed open tasks, capped, stable and shor
   assert.equal(body.find((l) => l.startsWith("Pushed:")), `Pushed: ${"x".repeat(39)}… (9x), b (5x), d (4x)`);
   assert.equal(pushedLine([p("a", 3), p("c", 3)]), "Pushed: a (3x), c (3x)");
   assert.ok(!reviewBody([], [], [], [], 0, [], 0, [p("low", 2)]).includes("Pushed"));
+});
+
+test("reviewBody adds ledger lines after the hours, per currency, only with entries (#1197)", () => {
+  const lines = (l?: LedgerWeek) => reviewBody([], [{ project: "Margin", worked: 1 }], [], [], 0, [], 0, [], l).split("\n");
+  assert.ok(!lines().some((l) => l.includes("Ledger") || l.includes("budget")));
+  const eur = { currency: "EUR", spent: 41200, last: 53000, income: 0, top: ["food", 18000] as [string, number] };
+  const one = lines([[eur], []]), at = one.indexOf("- Margin: 1h 00m");
+  assert.equal(one[at + 1], "Ledger: spent 412.00 EUR (last week 530.00 EUR), income 0.00 EUR; top: #food 180.00 EUR");
+  const two = lines([[eur, { currency: "SEK", spent: 0, last: 400, income: 5000, top: null }], [{ category: "food", currency: "EUR", budget: 40000, used: 43000 }, { category: "fun", currency: "EUR", budget: 5000, used: 5050 }]]);
+  assert.deepEqual(two.slice(at + 2, at + 4), [
+    "Ledger: spent 0.00 SEK (last week 4.00 SEK), income 50.00 SEK",
+    "Over budget this month: #food 430.00/400.00 EUR, #fun 50.50/50.00 EUR",
+  ]);
 });

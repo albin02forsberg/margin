@@ -20,7 +20,7 @@
   import { bareTitle, bracketRetitle, findTarget, linkHeadings, linkTarget, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
-  import { type Goal, goalWhen, putReview, reviewBody, reviewEntry, reviewWeekLabel } from "$lib/review";
+  import { type Goal, type LedgerWeek, goalWhen, putReview, reviewBody, reviewEntry, reviewWeekLabel } from "$lib/review";
   import { weekStartOf } from "$lib/week";
   import { calibrate, estimates, pct } from "$lib/estimates";
   import { fmtEffort } from "$lib/effort";
@@ -2875,14 +2875,15 @@
     const t = new Date(), day = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const w0 = weekStartOf(t, cfg?.config.week_start), off = (n: number) => day(new Date(w0.getFullYear(), w0.getMonth(), w0.getDate() + n));
     const q = (query: string) => call<AgendaItem[]>("search_todos", { query });
-    const [closed, sched, due, next, inbox, dash, goals, someday, open] = await Promise.all([
+    const [closed, sched, due, next, inbox, dash, goals, someday, open, ledger] = await Promise.all([
       q(`closed:>=${off(0)} closed:<=${off(6)}`), q(`scheduled:<${day(t)} -tag:someday`), q(`due:<${day(t)} -tag:someday`), q(`scheduled:>=${off(7)} scheduled:<=${off(13)} -tag:someday`),
       call<number>("inbox_count"), call<{ projects: { project: string; worked: number }[] }>("tc_dashboard"),
       call<Goal[]>("org_goals"), q("tag:someday"), q("-tag:someday"),
+      (cfg.config.hidden_areas ?? []).includes("ledger") ? [[], []] as LedgerWeek : call<LedgerWeek>("ledger_week", { from: off(0) }).catch((): LedgerWeek => [[], []]),
     ]);
     const done = doneLog(closed.filter((i) => i.keyword && kw().done.includes(i.keyword))), seen = new Set<string>();
     const overdue = [...sched, ...due].filter((i) => !i.habit && !seen.has(`${i.path}\n${i.line}`) && !!seen.add(`${i.path}\n${i.line}`));
-    const body = reviewBody(done, dash.projects, overdue, next.filter((i) => !i.habit), inbox, goals, someday.length, open);
+    const body = reviewBody(done, dash.projects, overdue, next.filter((i) => !i.habit), inbox, goals, someday.length, open, ledger);
     let path = "";
     for (const f of weekJournals(await call<string[]>("list_files"), cfg.config.daily_dir, off(0), day(t))) if (putReview(await textOf(f), body) !== null) { path = f; break; }
     if (!path) path = await call("capture_path", { file: journalFile(), journal: true });

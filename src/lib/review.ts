@@ -2,6 +2,7 @@
 import { hm } from "./clock.ts";
 import { estimateLine } from "./estimates.ts";
 import { isPushed } from "./pushed.ts";
+import { money } from "./ledger.ts";
 
 export const BEGIN = "# review-begin", END = "# review-end";
 
@@ -27,11 +28,22 @@ export function pushedLine(open: (Task & { pushed?: number })[]) {
   const top = open.filter((t) => isPushed(t.pushed)).sort((a, b) => b.pushed! - a.pushed!).slice(0, 3);
   return top.length ? `Pushed: ${top.map((t) => `${t.title.length > 40 ? `${t.title.slice(0, 39)}…` : t.title} (${t.pushed}x)`).join(", ")}` : null;
 }
+/** `ledger_week` (#1197): per currency, cents (SPENT / LAST expenses as positive sums), then budgets this month went over. */
+export type LedgerWeek = [{ currency: string; spent: number; last: number; income: number; top: [string, number] | null }[], { category: string; currency: string; budget: number; used: number }[]];
+
+/** "Ledger: spent 412.00 EUR (last week 530.00 EUR), income 0.00 EUR; top: #food 180.00 EUR" per currency, then one "Over budget this month" line. */
+export function ledgerLines([weeks, over]: LedgerWeek) {
+  const m = (n: number, cur: string) => money(n, cur, false);
+  return [
+    ...weeks.map((w) => `Ledger: spent ${m(w.spent, w.currency)} (last week ${m(w.last, w.currency)}), income ${m(w.income, w.currency)}${w.top ? `; top: #${w.top[0]} ${m(w.top[1], w.currency)}` : ""}`),
+    ...(over.length ? [`Over budget this month: ${over.map((b) => `#${b.category} ${m(b.used, b.currency).split(" ")[0]}/${m(b.budget, b.currency)}`).join(", ")}`] : []),
+  ];
+}
 const task = (t: Task) => `${t.title}${t.category ? ` (${t.category})` : ""}`;
 
 /** The generated part, between the BEGIN/END markers: DONE (doneLog rows, by close time; with their estimates vs clocked time), the week's HOURS
- *  per project (tc_dashboard `projects`), GOALS (section omitted without any), OVERDUE and NEXT (scheduled next week) tasks, the INBOX count the SOMEDAY count (#833; line omitted at 0) and a PUSHED line (#1062) after the estimates. */
-export function reviewBody(done: Task[], hours: Hours[], overdue: Task[], next: Task[], inbox: number, goals: Goal[] = [], someday = 0, pushed: (Task & { pushed?: number })[] = []) {
+ *  per project (tc_dashboard `projects`) with the LEDGER lines (#1197, none without entries), GOALS (section omitted without any), OVERDUE and NEXT (scheduled next week) tasks, the INBOX count the SOMEDAY count (#833; line omitted at 0) and a PUSHED line (#1062) after the estimates. */
+export function reviewBody(done: Task[], hours: Hours[], overdue: Task[], next: Task[], inbox: number, goals: Goal[] = [], someday = 0, pushed: (Task & { pushed?: number })[] = [], ledger: LedgerWeek = [[], []]) {
   const worked = hours.filter((h) => h.worked > 0), total = worked.reduce((a, h) => a + h.worked, 0);
   return [
     BEGIN,
@@ -43,6 +55,7 @@ export function reviewBody(done: Task[], hours: Hours[], overdue: Task[], next: 
     ...[pushedLine(pushed)].filter((l) => l !== null),
     `** Hours per project (${hm(total)})`,
     ...list(worked.map((h) => `${h.project}: ${hm(h.worked)}`), "no time tracked"),
+    ...ledgerLines(ledger),
     ...(goals.length ? [`** Goals (${goals.length})`, ...goals.map((g) => `- ${g.title}: ${g.total ? `${g.done}/${g.total} done (${g.percent}%)` : "no tasks"}, ${goalWhen(g)}`)] : []),
     `** Overdue (${overdue.length})`,
     ...list(overdue.map((t) => `${task(t)}, since ${t.date}`), "nothing overdue"),
