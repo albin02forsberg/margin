@@ -111,6 +111,17 @@ fn plain(text: &str) -> String {
     t.split_whitespace().filter(|w| !w.starts_with(['#', '@'])).collect::<Vec<_>>().join(" ").to_lowercase()
 }
 
+/// Whether W (without a sigil) is only digits, ignoring a trailing `.` or `-`: a card or reference number, not a name.
+fn numeric(w: &str) -> bool {
+    let w = w.trim_end_matches(['.', '-']);
+    !w.is_empty() && w.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// `plain` without number-only words, so a bank row's `KORT 1234` matches a ledger line's `KORT #1234` (#1217).
+fn key(text: &str) -> String {
+    plain(text).split_whitespace().filter(|w| !numeric(w)).collect::<Vec<_>>().join(" ")
+}
+
 /// Whether TEXT has a literal `#-` word: the user opted out of a category.
 fn opted_out(text: &str) -> bool {
     text.split_whitespace().any(|w| w == "#-")
@@ -558,7 +569,7 @@ pub fn remember(store: &std::path::Path, csv: &str, spec: &str) -> Result<(), St
 pub fn read_csv(csv: &str, m: &Mapping, currency: &str, known: &[&str]) -> (Vec<(Entry, bool)>, usize) {
     let mut seen: HashMap<(NaiveDate, i64, String), usize> = HashMap::new();
     for e in known.iter().flat_map(|t| t.lines()).filter_map(parse_entry) {
-        *seen.entry((e.date, e.cents, plain(&e.text))).or_default() += 1;
+        *seen.entry((e.date, e.cents, key(&e.text))).or_default() += 1;
     }
     let (mut out, mut skipped) = (vec![], 0);
     for r in csv_rows(csv, m.delim) {
@@ -576,10 +587,12 @@ pub fn read_csv(csv: &str, m: &Mapping, currency: &str, known: &[&str]) -> (Vec<
             skipped += 1;
             continue;
         };
-        let text = m.text.iter().map(|&c| cell(c)).collect::<Vec<_>>().join(" ").split_whitespace().collect::<Vec<_>>().join(" ");
+        let text = m.text.iter().map(|&c| cell(c)).collect::<Vec<_>>().join(" ");
+        // `#1234` in bank text is a number, not a category: drop the sigil so it can't pre-empt the ledger's category
+        let text = text.split_whitespace().map(|w| w.strip_prefix(['#', '@']).filter(|r| numeric(r)).unwrap_or(w)).collect::<Vec<_>>().join(" ");
         let cur = m.currency.map(|c| cell(c).trim().to_uppercase()).filter(|c| c.len() == 3 && c.bytes().all(|b| b.is_ascii_uppercase()));
         let e = Entry { date, cents, currency: cur.unwrap_or_else(|| currency.trim().to_uppercase()), text };
-        let dupe = seen.get_mut(&(e.date, e.cents, plain(&e.text))).filter(|n| **n > 0).map(|n| *n -= 1).is_some();
+        let dupe = seen.get_mut(&(e.date, e.cents, key(&e.text))).filter(|n| **n > 0).map(|n| *n -= 1).is_some();
         out.push((e, dupe));
     }
     (out, skipped)
@@ -590,14 +603,14 @@ pub fn read_csv(csv: &str, m: &Mapping, currency: &str, known: &[&str]) -> (Vec<
 pub fn categorize_import(ledger: &str, es: &mut [(Entry, bool)]) {
     let mut by: HashMap<String, String> = HashMap::new();
     for o in ledger.lines().filter_map(parse_entry).filter(|o| !opted_out(&o.text)) {
-        let p = plain(&o.text);
+        let p = key(&o.text);
         if let (Some(c), false) = (o.category(), p.is_empty()) {
             by.insert(p, c.to_string());
         }
     }
     for (e, _) in es.iter_mut().filter(|x| !x.1) {
         if e.category().is_none() && !opted_out(&e.text) {
-            if let Some(c) = by.get(&plain(&e.text)) {
+            if let Some(c) = by.get(&key(&e.text)) {
                 e.text = format!("{} #{c}", e.text);
             }
         }
@@ -1026,6 +1039,22 @@ mod tests {
         let ledger = "* 2026-10\n- 2026-10-03 -10.00 EUR ICA Stockholm kort @ica #food [[id:x]]\n";
         let (es, _) = read_csv(csv, &m, "eur", &[ledger]);
         assert_eq!(es.iter().map(|x| x.1).collect::<Vec<_>>(), [true, false]);
+    }
+
+    #[test]
+    fn import_ignores_numeric_sigils() {
+        let m = Mapping::parse("date=1 amount=3 text=2 delimiter=; decimal=,").unwrap();
+        let csv = "Datum;Text;Belopp\n2026-10-03;X KORT #1234;-10\n2026-10-04;SWISH @0701234567;-5\n";
+        let ledger = "* 2026-10\n- 2026-09-01 -9.00 EUR x kort #food\n- 2026-10-03 -10.00 EUR x kort #1234\n";
+        let (es, _) = read_csv(csv, &m, "eur", &[ledger]);
+        assert_eq!(es[0].0.text, "X KORT 1234");
+        assert!(es[0].1, "old line with #1234 still counts as a duplicate");
+        assert_eq!(es[1].0.payee(), None);
+        let ledger = "* 2026-10\n- 2026-09-01 -9.00 EUR x kort #food\n";
+        let (mut es, _) = read_csv(csv, &m, "eur", &[ledger]);
+        categorize_import(ledger, &mut es);
+        assert_eq!(es[0].0.text, "X KORT 1234 #food");
+        assert_eq!(es[0].0.category(), Some("food"));
     }
 
     #[test]
