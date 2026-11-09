@@ -1162,6 +1162,17 @@ fn ledger_week(s: State<App>, from: String) -> R<(Vec<ledger::Week>, Vec<ledger:
     Ok((ledger::week_summary(&text, from, &c.ledger_currency), over))
 }
 
+/// The monthly review's ledger part (#1220): FROM's calendar month (`YYYY-MM-DD`) against the month before, per currency,
+/// and the category budgets that month went over, shaped like `ledger_week`.
+#[tauri::command(async)]
+fn ledger_month_review(s: State<App>, from: String) -> R<(Vec<ledger::Week>, Vec<ledger::Budget>)> {
+    let from = NaiveDate::parse_from_str(&from, "%Y-%m-%d").map_err(|e| format!("bad month start {from:?}: {e}"))?;
+    let (text, c) = (ledger_text(&s)?.1, s.cfg());
+    let (totals, _) = ledger::summarize(&text, &from.format("%Y-%m").to_string(), &c.ledger_currency);
+    let over = ledger::budgets(&c.ledger_budgets, &totals, &c.ledger_currency).into_iter().filter(|b| b.used > b.budget).collect();
+    Ok((ledger::month_summary(&text, from, &c.ledger_currency), over))
+}
+
 /// YEAR (`YYYY`) of the ledger file per month and category (#1196): its path (None while the file doesn't exist) and totals per currency.
 #[tauri::command(async)]
 fn ledger_year(s: State<App>, year: String) -> R<(Option<PathBuf>, Vec<ledger::Year>)> {
@@ -2341,6 +2352,31 @@ fn tc_dashboard(s: State<App>) -> Value {
 /// 0 on days off. WORKED is what the day's log holds (0 if nothing).
 fn expected_after_leave(dates: &[NaiveDate], cal: &timeclock::Calendar, leave: &[timeclock::Leave], worked: impl Fn(NaiveDate) -> f64) -> Vec<f64> {
     dates.iter().map(|&d| { let e = timeclock::expected_hours(d, cal); e - timeclock::leave_credit(leave, d, e, worked(d)) }).collect()
+}
+
+/// Hours worked per project ("Other" for none) over FROM..=TO, most first, their total and the hours expected (less leave),
+/// for the monthly review (#1220). TODAY's worked hours are TODAY_H (the running clock included), as in `dashboard`.
+fn project_hours(sessions: &[timeclock::Session], cal: &timeclock::Calendar, leave: &[timeclock::Leave], (from, to): (NaiveDate, NaiveDate), (today, today_h): (NaiveDate, f64)) -> Value {
+    let merged = timeclock::prepare_report_sessions(sessions);
+    let mut by: std::collections::BTreeMap<&str, f64> = Default::default();
+    merged.iter().filter(|x| (from..=to).contains(&x.date)).for_each(|x| *by.entry(if x.project.is_empty() { "Other" } else { &x.project }).or_default() += x.hours);
+    let mut projects: Vec<_> = by.into_iter().collect();
+    projects.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let dates: Vec<NaiveDate> = from.iter_days().take_while(|d| *d <= to).collect();
+    let worked = |d: NaiveDate| if d == today { today_h } else { sessions.iter().filter(|x| x.date == d).map(|x| x.hours).sum() };
+    json!({
+        "projects": projects.iter().map(|(p, w)| json!({ "project": p, "worked": w })).collect::<Vec<_>>(),
+        "total": projects.iter().map(|x| x.1).sum::<f64>(),
+        "expected": expected_after_leave(&dates, cal, leave, worked).iter().sum::<f64>(),
+    })
+}
+
+/// `project_hours` of the active profile over FROM..=TO (`YYYY-MM-DD`).
+#[tauri::command]
+fn tc_project_hours(s: State<App>, from: String, to: String) -> R<Value> {
+    let tc = s.tc();
+    let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
+    Ok(project_hours(&tc.sessions(), &tc.cal, &leave, (date(&from)?, date(&to)?), (today(), tc.status().2)))
 }
 
 /// Expected hours (less leave) of the active profile for each `YYYY-MM-DD` in DATES, for the agenda's planned-vs-expected.
@@ -3782,7 +3818,7 @@ pub fn run() {
             watcher::gnome_extension, watcher::screen_recording, remind::remind_snooze,
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, md_import, highlights_import, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
-            org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, crypt_lock, crypt_unlock, crypt_rekey, crypt_relock, crypt_remove, crypt_forget, idle::idle_has_source, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_week, ledger_year, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, ledger_recurring, ledger_recurring_file, ledger_recurring_mark, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, expected_hours_for,
+            org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, crypt_lock, crypt_unlock, crypt_rekey, crypt_relock, crypt_remove, crypt_forget, idle::idle_has_source, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_week, ledger_month_review, ledger_year, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, ledger_recurring, ledger_recurring_file, ledger_recurring_mark, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, tc_project_hours, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, notes_crypt_unlocked, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, people_last, waiting_for, inbox_count, inbox_entries, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_embed_local, ai_set, ai_download, ai_download_cancel, ai_model_delete, ai_index_status, ai_index_rebuild, semantic_search, ai_related, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
@@ -4706,6 +4742,19 @@ mod tests {
         let ds = [d("2026-01-08"), d("2026-01-09"), d("2026-01-10"), d("2026-01-11"), d("2026-01-06")];
         assert_eq!(expected_after_leave(&ds, &fx.cal, &leave, |_| 0.0), [8.0, 0.0, 0.0, 0.0, 0.0]);
         assert_eq!(expected_after_leave(&ds[..1], &fx.cal, &[], |_| 0.0), [8.0]); // without the leave list nothing changes
+    }
+
+    #[test]
+    fn project_hours_sums_a_range_against_expected() {
+        let fx = dash_fixture("2026-01-08", (None, None));
+        let leave: Vec<_> = fx.leave.iter().map(|x| x.1.clone()).collect();
+        let d = |s: &str| s.parse::<NaiveDate>().unwrap();
+        let v = project_hours(&fx.sessions, &fx.cal, &leave, (d("2026-01-01"), d("2026-01-08")), (d("2026-01-08"), 1.5));
+        let ps: Vec<(String, f64)> = v["projects"].as_array().unwrap().iter().map(|p| (p["project"].as_str().unwrap().into(), (p["worked"].as_f64().unwrap() * 10.0).round() / 10.0)).collect();
+        assert_eq!(ps, [("Acme".into(), 5.2), ("Beta".into(), 2.0), ("Other".into(), 1.0)]); // not December's Acme 9.0
+        assert!((v["total"].as_f64().unwrap() - 8.2).abs() < 1e-9, "{v}");
+        // Thu 1st (New Year's Day) and Tue 6th red days, the weekend off: Fri 2nd, Mon 5th, Wed 7th, Thu 8th.
+        assert_eq!(v["expected"].as_f64(), Some(32.0));
     }
 
     #[test]

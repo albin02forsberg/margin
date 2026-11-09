@@ -20,7 +20,8 @@ the editor has vim keys.
   `812 / 1500 words` and turns accent-coloured once reached. `Space n k` carries
   over the previous entry's open items: unchecked `- [ ]` items and TODO
   subtrees (not done or `:ARCHIVE:`) move under `* Carried over from <date>`
-  in today's entry; `Space n u` puts them back. `Space t R` writes a
+  in today's entry; `Space n u` puts them back. `Space t R` asks Week or
+  Month. Week writes a
   `* Weekly review <2026-W43>` into today's entry: Inbox count (and parked someday/maybe tasks, when any), tasks closed
   this week (with `Estimates: 120% of plan` when they had an `:EFFORT:` and
   clocked time), a `Pushed:` line (up to three open tasks rescheduled 3+ times), hours per project, a `Ledger:` line per currency when the ledger has entries this or last week (spent vs last week, income, top `#category`; plus the budgets this month went over, skipped when the Ledger area is hidden), `:GOAL:` progress (when you have goals), overdue tasks and what's scheduled next week,
@@ -28,6 +29,13 @@ the editor has vim keys.
   replaces only the generated lines between `# review-begin` and
   `# review-end` (edits there are overwritten; the rest is kept), also on a
   later day of the same week, in the entry that already holds the block.
+  Month writes a `* Monthly review 2026-11` the same way, between
+  `# review-begin month` and `# review-end month` (so it sits beside a weekly
+  one): tasks closed this month (count and the top 5 categories), hours per
+  project against the hours expected so far (less leave), the `Ledger:` lines
+  against last month and the budgets the month went over, and `:GOAL:`
+  progress; re-running it later in the month replaces the block in whichever
+  entry of the month holds it.
   `Space n j` logs a daily metric (Settings > Daily metrics: mood, energy,
   sleep…) as `:MOOD: 4` in the entry's top property drawer; `Space n M` shows
   them over the last 30 / 90 / 365 days (`r` switches): a sparkline per metric
