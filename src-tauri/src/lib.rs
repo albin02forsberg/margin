@@ -1134,7 +1134,8 @@ fn capture_insert(s: State<App>, text: String, heading: Option<String>, entry: S
 /// TEXT (the ledger file) with quick-add INPUT filed under its month: [new text, the entry line].
 #[tauri::command]
 fn ledger_add(s: State<App>, text: String, input: String) -> R<(String, String)> {
-    let e = ledger::parse_quick(&input, today(), &s.cfg().ledger_currency)?;
+    let mut e = ledger::parse_quick(&input, today(), &s.cfg().ledger_currency)?;
+    ledger::autocategory(&text, &mut e);
     Ok((ledger::add(&text, &e, &s.kw()), ledger::format_entry(&e)))
 }
 

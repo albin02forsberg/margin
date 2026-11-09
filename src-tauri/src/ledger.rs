@@ -104,6 +104,39 @@ pub fn parse_quick(input: &str, today: NaiveDate, currency: &str) -> Result<Entr
     Ok(Entry { date, cents, currency: cur, text: w.join(" ") })
 }
 
+/// Text of E without `@payee`, `#tag` words and `[[links]]`, lowercased: what a repeat purchase has in common.
+fn plain(text: &str) -> String {
+    let t = Regex::new(r"\[\[.*?\]\]").unwrap().replace_all(text, "");
+    t.split_whitespace().filter(|w| !w.starts_with(['#', '@'])).collect::<Vec<_>>().join(" ").to_lowercase()
+}
+
+/// Whether TEXT has a literal `#-` word: the user opted out of a category.
+fn opted_out(text: &str) -> bool {
+    text.split_whitespace().any(|w| w == "#-")
+}
+
+/// Give E the category of the latest entry in TEXT (the ledger file) with the same `@payee`, else the same plain text,
+/// unless E has a `#category` or `#-` itself (#1205).
+pub fn autocategory(text: &str, e: &mut Entry) {
+    if e.category().is_some() || opted_out(&e.text) {
+        return;
+    }
+    let (payee, plain_e) = (e.payee().map(str::to_lowercase), plain(&e.text));
+    if payee.is_none() && plain_e.is_empty() {
+        return;
+    }
+    let found = text.lines().rev().filter_map(parse_entry).filter(|o| !opted_out(&o.text)).find_map(|o| {
+        let same = match &payee {
+            Some(p) => o.payee().is_some_and(|q| q.to_lowercase() == *p),
+            None => plain(&o.text) == plain_e,
+        };
+        o.category().filter(|_| same).map(str::to_string)
+    });
+    if let Some(c) = found {
+        e.text = format!("{} #{c}", e.text).trim().into();
+    }
+}
+
 /// TEXT (the ledger file) with E filed at the end of its `* YYYY-MM` heading (added when missing).
 pub fn add(text: &str, e: &Entry, kw: &crate::org::Kw) -> String {
     crate::org::capture_insert(text, Some(&e.date.format("%Y-%m").to_string()), &format_entry(e), kw)
@@ -683,6 +716,18 @@ mod tests {
     }
     fn kw() -> crate::org::Kw {
         crate::org::Kw { todo: vec!["TODO".into()], done: vec!["DONE".into()] }
+    }
+
+    #[test]
+    fn autocategory_copies_the_latest_match_and_respects_explicit_choices() {
+        let ledger = "* 2026-10\n- 2026-10-01 -5.00 EUR coffee @anna #old\n- 2026-10-02 -9.00 EUR coffee [[id:x][Y z]] @anna #cafe\n- 2026-10-03 -3.00 EUR bus #transit\n- 2026-10-04 -3.00 EUR bus @anna #-\n";
+        let fill = |t: &str| { let mut e = parse_quick(t, d("2026-11-01"), "EUR").unwrap(); autocategory(ledger, &mut e); e.text };
+        assert_eq!(fill("4 beans @Anna"), "beans @Anna #cafe"); // payee, case-insensitive, latest; the #- entry is skipped
+        assert_eq!(fill("3 Bus"), "Bus #transit"); // text
+        assert_eq!(fill("4 beans @anna #gift"), "beans @anna #gift");
+        assert_eq!(fill("4 beans @anna #-"), "beans @anna #-");
+        assert_eq!(fill("4 tea @bob"), "tea @bob");
+        assert_eq!(fill("4"), "");
     }
 
     #[test]
