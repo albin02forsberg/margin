@@ -18,8 +18,15 @@ export function wordCount(text: string, org = false) {
   return n;
 }
 
-/** Status-bar label: "412 words", or "38 of 412 words" while text is selected; SCOPE ("heading") adds " in heading". */
-export function wordsLabel(doc: number, sel?: number, scope = "") {
-  const n = (k: number) => `${k} word${k === 1 ? "" : "s"}${scope && ` in ${scope}`}`;
+/** `#+WORDGOAL: N` from the first 30 lines of TEXT; 0 when absent or not a positive integer. */
+export function parseWordGoal(text: string) {
+  for (const l of text.split("\n", 30)) { const m = /^\s*#\+WORDGOAL:\s*(\d+)\s*$/i.exec(l); if (m) return +m[1]; }
+  return 0;
+}
+
+/** Status-bar label: "412 words", or "38 of 412 words" while text is selected; SCOPE ("heading") adds " in heading".
+ *  GOAL > 0 makes it "412 / 1500 words". */
+export function wordsLabel(doc: number, sel?: number, scope = "", goal = 0) {
+  const n = (k: number) => `${k}${goal > 0 && k === doc ? ` / ${goal}` : ""} word${k === 1 && !goal ? "" : "s"}${scope && ` in ${scope}`}`;
   return sel == null ? n(doc) : `${sel} of ${n(doc)}`;
 }

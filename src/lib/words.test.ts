@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { wordCount, wordsLabel } from "./words.ts";
+import { parseWordGoal, wordCount, wordsLabel } from "./words.ts";
 
 test("wordCount splits on any whitespace", () => {
   assert.equal(wordCount(""), 0);
@@ -16,6 +16,20 @@ test("wordCount ignores punctuation-only tokens", () => {
 test("wordCount org skips markup", () => {
   const org = "#+title: My notes\n* TODO Write report :work:\nSCHEDULED: <2026-10-16 Fri>\n:PROPERTIES:\n:ID: abc\n:END:\n- [ ] item\n";
   assert.equal(wordCount(org, true), 6); // My notes, TODO Write report, item
+});
+
+test("parseWordGoal reads #+WORDGOAL: from the top lines", () => {
+  assert.equal(parseWordGoal("#+TITLE: x\n#+wordgoal: 1500\nbody"), 1500);
+  assert.equal(parseWordGoal("body\n#+WORDGOAL: abc"), 0);
+  assert.equal(parseWordGoal("#+WORDGOAL: -5"), 0);
+  assert.equal(parseWordGoal("\n".repeat(40) + "#+WORDGOAL: 9"), 0);
+  assert.equal(wordCount("#+WORDGOAL: 1500\nhello", true), 2); // only the keyword name is skipped
+});
+
+test("wordsLabel shows progress to a goal for the whole note", () => {
+  assert.equal(wordsLabel(812, undefined, "", 1500), "812 / 1500 words");
+  assert.equal(wordsLabel(812, 38, "", 1500), "38 of 812 / 1500 words");
+  assert.equal(wordsLabel(812, undefined, "", 0), "812 words");
 });
 
 test("wordsLabel shows the selection out of the whole note", () => {

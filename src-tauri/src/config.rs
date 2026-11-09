@@ -33,6 +33,8 @@ pub struct Config {
     /// Org text put in new journal files after the title; `%t`/`%T`/`%u`/`%U` expand for that day,
     /// prompts and `%?` don't. Empty = nothing.
     pub journal_template: String,
+    /// Word goal for journal day files without a `#+WORDGOAL:`; 0 = none.
+    pub journal_word_goal: u32,
     /// Daily metrics offered by `Space n j` (stored upper-cased in the journal day's top drawer).
     pub metrics: Vec<String>,
     /// Where new tasks go by default, relative to notes_dir.
@@ -293,6 +295,7 @@ impl Default for Config {
             stuck_next_keywords: v(&["NEXT", "DOING"]),
             daily_dir: "daily".into(),
             journal_template: String::new(),
+            journal_word_goal: 0,
             metrics: v(&["mood", "energy", "sleep"]),
             inbox: "inbox.org".into(),
             log_done: true,
@@ -890,6 +893,7 @@ mod tests {
     fn defaults_round_trip() {
         let c: Config = toml::from_str(&toml::to_string(&Config::default()).unwrap()).unwrap();
         assert_eq!(c.templates.len(), 3);
+        assert_eq!(c.journal_word_goal, 0);
         assert!(toml::from_str::<Config>("templates = []").unwrap().templates.is_empty());
         // Configs from before ai_backend keep using Ollama; ai_set's edit round-trips.
         assert_eq!(toml::from_str::<Config>("ai_model = \"m\"").unwrap().ai_backend, crate::ai::Backend::Ollama);
