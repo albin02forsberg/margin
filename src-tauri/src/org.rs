@@ -1172,20 +1172,54 @@ fn drawer_end(lines: &[String], start: usize) -> Option<usize> {
     (start + 1..lim).find(|&j| lines[j].trim().eq_ignore_ascii_case(":END:"))
 }
 
+/// Whether the heading at HL has `:NAME: t|true` (case-insensitive) in its drawer.
+fn drawer_flag(lines: &[String], hl: usize, name: &str) -> bool {
+    lines.get(hl + 2).is_some_and(|l| l.trim().eq_ignore_ascii_case(":PROPERTIES:"))
+        && drawer_end(lines, hl + 2).is_some_and(|e| {
+            lines[hl + 3..e].iter().any(|l| {
+                let l = l.trim().to_ascii_uppercase();
+                l.strip_prefix(&format!(":{name}:")).is_some_and(|v| matches!(v.trim(), "T" | "TRUE"))
+            })
+        })
+}
+
+/// With `:RESET_SUBTASKS: t` in the heading's drawer, reopen its done
+/// descendants (first TODO keyword, `CLOSED` dropped). Children with their own
+/// repeater manage themselves. Run after the repeat step has inserted its lines.
+fn reset_subtasks(lines: &mut Vec<String>, hl: usize, kw: &Kw) {
+    let Some(todo) = kw.todo.first() else { return };
+    if !drawer_flag(lines, hl, "RESET_SUBTASKS") {
+        return;
+    }
+    let end = subtree_range(lines, hl).1;
+    for i in (hl + 1..end).rev() {
+        let Some(mut p) = Parts::parse(&lines[i], kw).filter(|p| p.keyword.as_deref().is_some_and(|k| kw.is_done(k))) else { continue };
+        let plan = i + 1 < lines.len() && is_planning(&lines[i + 1]);
+        if plan && TS.captures_iter(&lines[i + 1]).any(|c| c.get(4).is_some()) {
+            continue;
+        }
+        p.keyword = Some(todo.clone());
+        lines[i] = p.line();
+        if plan && CLOSED.is_match(&lines[i + 1]) {
+            let old = lines[i + 1].clone();
+            let indent = &old[..old.len() - old.trim_start().len()];
+            let rest = CLOSED.replace(old.trim(), "").trim().to_string();
+            if rest.is_empty() {
+                lines.remove(i + 1);
+            } else {
+                lines[i + 1] = format!("{indent}{rest}");
+            }
+        }
+    }
+}
+
 /// With `:RESET_CHECK_BOXES: t` in the heading's drawer, untick the checkbox
 /// items of its own text (not children, not the LOGBOOK). Run after the repeat
 /// step has inserted its lines. A `[n/m]` cookie in the heading is left as is.
 fn reset_checkboxes(lines: &mut [String], hl: usize) {
     static BOX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\s*(?:[-+*]|\d+[.)])\s+)\[[Xx-]\]").unwrap());
     let end = heading_end(lines, hl);
-    let on = lines.get(hl + 2).is_some_and(|l| l.trim().eq_ignore_ascii_case(":PROPERTIES:"))
-        && drawer_end(lines, hl + 2).is_some_and(|e| {
-            lines[hl + 3..e].iter().any(|l| {
-                let l = l.trim().to_ascii_uppercase();
-                l.strip_prefix(":RESET_CHECK_BOXES:").is_some_and(|v| matches!(v.trim(), "T" | "TRUE"))
-            })
-        });
-    if !on {
+    if !drawer_flag(lines, hl, "RESET_CHECK_BOXES") {
         return;
     }
     let mut log = false;
@@ -1255,6 +1289,7 @@ pub fn set_keyword(text: &str, line: usize, kw: &Kw, new: Option<&str>, now: Nai
         }
         lines.insert(i, log);
         reset_checkboxes(&mut lines, hl);
+        reset_subtasks(&mut lines, hl, kw);
         next = p.keyword.clone().filter(|k| !kw.is_done(k)).or(kw.todo.first().cloned());
     } else {
         let done = |k: Option<&str>| k.is_some_and(|k| kw.is_done(k));
@@ -3087,6 +3122,19 @@ mod tests {
         assert!(set_keyword(&no, 0, &kw(), Some("DONE"), at(), true).contains("- [X] a"));
         let once = t.replace(" +1w", "");
         assert!(set_keyword(&once, 0, &kw(), Some("DONE"), at(), true).contains("- [X] a"));
+    }
+
+    #[test]
+    fn repeat_resets_subtasks() {
+        let t = "* TODO Pack\nSCHEDULED: <2026-09-28 Mon +1w>\n:PROPERTIES:\n:RESET_SUBTASKS: t\n:END:\n** DONE a\nCLOSED: [2026-09-27 Sun 10:00]\n*** DONE a1\nCLOSED: [2026-09-27 Sun 10:00] SCHEDULED: <2026-09-20 Sun>\n** DONE r\nCLOSED: [2026-09-27 Sun 10:00] SCHEDULED: <2026-09-20 Sun +1d>\n** NEXT n\n** DONE b\n* DONE sib\n";
+        let r = set_keyword(t, 0, &kw(), Some("DONE"), at(), true);
+        assert!(r.contains("** TODO a\n*** TODO a1\nSCHEDULED: <2026-09-20 Sun>\n"), "{r}");
+        assert!(r.contains("** DONE r\nCLOSED"), "{r}");
+        assert!(r.contains("** NEXT n\n** TODO b\n* DONE sib\n"), "{r}");
+        let both = t.replace(":RESET_SUBTASKS: t", ":RESET_SUBTASKS: t\n:RESET_CHECK_BOXES: t");
+        assert!(set_keyword(&both, 0, &kw(), Some("DONE"), at(), true).contains("** TODO a\n"));
+        let no = t.replace(":RESET_SUBTASKS: t", ":X: t");
+        assert!(set_keyword(&no, 0, &kw(), Some("DONE"), at(), true).contains("** DONE a\n"));
     }
 
     #[test]
