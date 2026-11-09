@@ -1522,6 +1522,26 @@ describe("Insert commands", () => {
   });
 });
 
+describe("Wide tables", () => {
+  const wide = `| ${"a".repeat(60)} | ${"b".repeat(60)} |`;
+  before(async () => { await launch({ files: ({ notes }) => writeFileSync(join(notes, "wide.org"), `#+title: Wide\n${wide}\n`) }); });
+  after(close, { timeout: 30_000 });
+
+  it("a row wider than the text column stays on one line instead of wrapping", async () => {
+    await find(".agenda h1", "Today");
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Wide");
+    await find(".status .file", "wide.org");
+    const row = await find(".cm-org-table", "aaaa");
+    const [w, cw, h, lh] = await browser.execute((r: HTMLElement) => {
+      const c = r.closest(".cm-content") as HTMLElement;
+      return [r.scrollWidth, c.clientWidth, r.getBoundingClientRect().height, (c.querySelector(".cm-line") as HTMLElement).getBoundingClientRect().height];
+    }, row);
+    assert.ok(w > cw, "row is not wider than the text column");
+    assert.ok(h < lh * 1.5, "row wrapped");
+  });
+});
+
 // Own launch: vim's jump list is shared by all tabs, so a jump from a longer note breaks G here.
 describe("Footnotes", () => {
   let d: Dirs;
