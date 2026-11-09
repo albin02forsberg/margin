@@ -23,3 +23,22 @@ export function costLine(t: { currency: string; income: number; expense: number 
 
 /** A budget bar's fill (0-100, refunds clamp at 0) and whether USED went over BUDGET (cents, #1181). */
 export const budgetBar = (used: number, budget: number) => ({ pct: Math.max(0, Math.min(100, Math.round((used / budget) * 100))), over: used > budget });
+
+type FRow = { cents: number; currency: string; text: string; category: string | null; payee: string | null };
+
+/** ROWS matching filter Q (#1195): `#cat` / `@payee` match exactly (`#-` = uncategorised), else a substring of text, category or payee; all case-insensitive. */
+export function filterRows<T extends FRow>(rows: T[], q: string): T[] {
+  q = q.trim().toLowerCase();
+  if (!q) return rows;
+  const v = q.slice(1);
+  if (q[0] === "#" && v) return rows.filter((r) => (v === "-" ? !r.category : r.category?.toLowerCase() === v));
+  if (q[0] === "@" && v) return rows.filter((r) => r.payee?.toLowerCase() === v);
+  return rows.filter((r) => [r.text, r.category, r.payee].some((s) => s?.toLowerCase().includes(q)));
+}
+
+/** Signed cents summed per currency, in code order. */
+export function sumByCurrency(rows: { cents: number; currency: string }[]): [string, number][] {
+  const m = new Map<string, number>();
+  for (const r of rows) m.set(r.currency, (m.get(r.currency) ?? 0) + r.cents);
+  return [...m].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+}

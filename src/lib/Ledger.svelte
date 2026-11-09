@@ -1,7 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { tick } from "svelte";
-  import { budgetBar, money, monthName, shiftMonth } from "$lib/ledger";
+  import { budgetBar, filterRows, money, monthName, shiftMonth, sumByCurrency } from "$lib/ledger";
   import type { TimeApi } from "$lib/Time.svelte";
 
   type Total = { currency: string; income: number; expense: number; net: number; categories: [string | null, number][]; payees: [string, number][] };
@@ -18,6 +18,9 @@
   let budgets = $state.raw<Budget[]>([]);
   let loaded = $state(false);
   let root = $state<HTMLDivElement>();
+  let filter = $state("");
+  const shown = $derived(filterRows(rows, filter));
+  const toggle = (q: string) => (filter = filter === q ? "" : q);
 
   $effect(() => {
     void [reload, month];
@@ -26,8 +29,9 @@
   $effect(() => {
     if (active) tick().then(() => root?.focus());
   });
-  const shift = (n: number) => (month = shiftMonth(month, n));
+  const shift = (n: number) => ((month = shiftMonth(month, n)), (filter = ""));
   function key(e: KeyboardEvent) {
+    if ((e.target as HTMLElement).tagName === "INPUT") return;
     if (e.ctrlKey || e.metaKey || e.altKey || !(e.key === "h" || e.key === "l")) return;
     e.preventDefault();
     shift(e.key === "h" ? -1 : 1);
@@ -42,7 +46,7 @@
       <button title="Previous month (h)" onclick={() => shift(-1)}>‹</button>
       <strong class="month">{monthName(month)}</strong>
       <button title="Next month (l)" onclick={() => shift(1)}>›</button>
-      {#if month !== thisMonth}<button class="today" onclick={() => (month = thisMonth)}>This month</button>{/if}
+      {#if month !== thisMonth}<button class="today" onclick={() => ((month = thisMonth), (filter = ""))}>This month</button>{/if}
     </div>
   </header>
   {#if loaded && !path}
@@ -62,7 +66,7 @@
           <table class="cats">
             <thead><tr><th>Category</th><th></th></tr></thead>
             <tbody>
-              {#each t.categories as [c, n]}<tr><td class:dim={!c}>{c ? `#${c}` : "uncategorised"}</td><td class="num">{money(n, t.currency)}</td></tr>{/each}
+              {#each t.categories as [c, n]}<tr><td class:dim={!c}><button class="link" class:on={filter === (c ? `#${c}` : "#-")} onclick={() => toggle(c ? `#${c}` : "#-")}>{c ? `#${c}` : "uncategorised"}</button></td><td class="num">{money(n, t.currency)}</td></tr>{/each}
             </tbody>
           </table>
           {#each budgets.filter((b) => b.currency === t.currency) as b (b.category)}
@@ -76,7 +80,7 @@
             <table class="payees">
               <thead><tr><th>Payee</th><th></th></tr></thead>
               <tbody>
-                {#each t.payees as [p, n]}<tr><td>@{p}</td><td class="num">{money(n, t.currency)}</td></tr>{/each}
+                {#each t.payees as [p, n]}<tr><td><button class="link" class:on={filter === `@${p}`} onclick={() => toggle(`@${p}`)}>@{p}</button></td><td class="num">{money(n, t.currency)}</td></tr>{/each}
               </tbody>
             </table>
           {/if}
@@ -84,9 +88,13 @@
       {/each}
     </div>
     <h2>Entries</h2>
+    <div class="filter">
+      <input type="search" placeholder="Filter: text, #category, @payee" bind:value={filter} onkeydown={(e) => { if (e.key === "Escape" && filter) { e.stopPropagation(); filter = ""; } }} />
+      {#if filter.trim()}<span class="dim">{shown.length} {shown.length === 1 ? "entry" : "entries"}{#each sumByCurrency(shown) as [c, n]}, {money(n, c)}{/each}</span>{/if}
+    </div>
     <div class="card list"><table>
       <tbody>
-        {#each rows as r (r.line)}
+        {#each shown as r (r.line)}
           <tr class="entry">
             <td class="mono">{r.date}</td>
             <td class="num" class:neg={r.cents < 0}>{money(r.cents, r.currency)}</td>
@@ -132,6 +140,9 @@
   .entry:hover td { background: var(--active); }
   .entry .num { width: 1%; }
   button.link { background: none; border: 0; padding: 0; text-align: left; overflow-wrap: anywhere; width: 100%; }
+  .filter { display: flex; gap: var(--s3); align-items: center; margin-bottom: var(--s3); }
+  .filter input { background: var(--card); border: 1px solid var(--border); color: var(--fg); border-radius: 8px; padding: 3px var(--s3); font: var(--fs-md) var(--sans); width: 18em; }
+  button.on { font-weight: 600; text-decoration: underline; }
   .dim { color: var(--dim); font-size: var(--fs-md); }
   kbd { font: var(--fs-xs) var(--mono); color: var(--dim); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--s1); }
 </style>

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { budgetBar, costLine, money, shiftMonth } from "./ledger.ts";
+import { budgetBar, costLine, filterRows, money, shiftMonth, sumByCurrency } from "./ledger.ts";
 
 test("money formats signed cents without float error", () => {
   assert.equal(money(-1250, "EUR"), "−12.50 EUR");
@@ -26,4 +26,17 @@ test("budgetBar clamps the fill and flags overspending", () => {
   assert.deepEqual(budgetBar(1350, 2000), { pct: 68, over: false });
   assert.deepEqual(budgetBar(2500, 2000), { pct: 100, over: true });
   assert.deepEqual(budgetBar(-300, 2000), { pct: 0, over: false });
+});
+
+test("filterRows matches #category, @payee and free text; sumByCurrency totals per currency", () => {
+  const r = (text: string, category: string | null, payee: string | null, cents = -100, currency = "EUR") => ({ text, category, payee, cents, currency });
+  const rows = [r("Lunch", "Food", "Cafe"), r("Bus", null, "SL", -250, "SEK"), r("Salary", "Pay", null, 5000)];
+  assert.equal(filterRows(rows, "").length, 3);
+  assert.deepEqual(filterRows(rows, "#food").map((x) => x.text), ["Lunch"]);
+  assert.deepEqual(filterRows(rows, "#-").map((x) => x.text), ["Bus"]);
+  assert.deepEqual(filterRows(rows, "@sl").map((x) => x.text), ["Bus"]);
+  assert.equal(filterRows(rows, "#fo").length, 0);
+  assert.deepEqual(filterRows(rows, "SAL").map((x) => x.text), ["Salary"]);
+  assert.deepEqual(filterRows(rows, "cafe").map((x) => x.text), ["Lunch"]);
+  assert.deepEqual(sumByCurrency(rows), [["EUR", 4900], ["SEK", -250]]);
 });
