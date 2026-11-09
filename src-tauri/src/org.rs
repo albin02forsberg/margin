@@ -1172,6 +1172,36 @@ fn drawer_end(lines: &[String], start: usize) -> Option<usize> {
     (start + 1..lim).find(|&j| lines[j].trim().eq_ignore_ascii_case(":END:"))
 }
 
+/// With `:RESET_CHECK_BOXES: t` in the heading's drawer, untick the checkbox
+/// items of its own text (not children, not the LOGBOOK). Run after the repeat
+/// step has inserted its lines. A `[n/m]` cookie in the heading is left as is.
+fn reset_checkboxes(lines: &mut [String], hl: usize) {
+    static BOX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\s*(?:[-+*]|\d+[.)])\s+)\[[Xx-]\]").unwrap());
+    let end = heading_end(lines, hl);
+    let on = lines.get(hl + 2).is_some_and(|l| l.trim().eq_ignore_ascii_case(":PROPERTIES:"))
+        && drawer_end(lines, hl + 2).is_some_and(|e| {
+            lines[hl + 3..e].iter().any(|l| {
+                let l = l.trim().to_ascii_uppercase();
+                l.strip_prefix(":RESET_CHECK_BOXES:").is_some_and(|v| matches!(v.trim(), "T" | "TRUE"))
+            })
+        });
+    if !on {
+        return;
+    }
+    let mut log = false;
+    for l in &mut lines[hl + 1..end] {
+        match l.trim().to_ascii_uppercase().as_str() {
+            ":LOGBOOK:" => log = true,
+            ":END:" => log = false,
+            _ if !log => {
+                let n = BOX.replace(l, "${1}[ ]").into_owned();
+                *l = n;
+            }
+            _ => {}
+        }
+    }
+}
+
 /// Set the TODO keyword (None clears it). Marking a repeating task done
 /// shifts its dates, sets `:LAST_REPEAT:`, logs `- State "DONE" from "TODO"
 /// [date time]` below the planning line and drawers (inside a LOGBOOK if
@@ -1224,6 +1254,7 @@ pub fn set_keyword(text: &str, line: usize, kw: &Kw, new: Option<&str>, now: Nai
             i += 1;
         }
         lines.insert(i, log);
+        reset_checkboxes(&mut lines, hl);
         next = p.keyword.clone().filter(|k| !kw.is_done(k)).or(kw.todo.first().cloned());
     } else {
         let done = |k: Option<&str>| k.is_some_and(|k| kw.is_done(k));
@@ -3039,6 +3070,23 @@ mod tests {
         let s = set_planning(&s, 0, "DEADLINE", Some((d("2026-10-23"), None, None, Some("-1w".into()))));
         assert_eq!(s, "* TODO A\nSCHEDULED: <2026-10-06 Tue 09:00 .+2d/3d> DEADLINE: <2026-10-23 Fri +1w -1w>\n");
         assert_eq!(set_planning("* TODO B\n", 0, "DEADLINE", Some((d("2026-10-23"), None, Some("+1m".into()), Some("-3d".into())))), "* TODO B\nDEADLINE: <2026-10-23 Fri +1m -3d>\n");
+    }
+
+    #[test]
+    fn repeat_resets_checkboxes() {
+        let t = "* TODO Pack [2/3]\nSCHEDULED: <2026-09-28 Mon +1w>\n:PROPERTIES:\n:RESET_CHECK_BOXES: t\n:END:\n- [X] a\n- [-] b\n  1. [x] c\n- [ ] d\n** TODO Child\n- [X] keep\n";
+        let r = set_keyword(t, 0, &kw(), Some("DONE"), at(), true);
+        assert!(r.contains("- [ ] a\n- [ ] b\n  1. [ ] c\n- [ ] d\n** TODO Child\n- [X] keep\n"), "{r}");
+        assert!(r.starts_with("* TODO Pack [2/3]\n"), "{r}");
+        for rep in [".+1d", "++1d"] {
+            let t = t.replace("+1w", rep);
+            assert!(set_keyword(&t, 0, &kw(), Some("DONE"), at(), true).contains("- [ ] a\n"));
+        }
+        // No property, or a non-repeating task: boxes stay.
+        let no = t.replace(":RESET_CHECK_BOXES: t", ":X: t");
+        assert!(set_keyword(&no, 0, &kw(), Some("DONE"), at(), true).contains("- [X] a"));
+        let once = t.replace(" +1w", "");
+        assert!(set_keyword(&once, 0, &kw(), Some("DONE"), at(), true).contains("- [X] a"));
     }
 
     #[test]
