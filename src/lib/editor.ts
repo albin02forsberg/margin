@@ -1310,7 +1310,8 @@ const theme = EditorView.theme({
   ".cm-org-block-code .tok-invalid": { color: "var(--todo)", textDecoration: "underline wavy" },
 
   // tables
-  ".cm-org-table": { fontFamily: "var(--mono)", fontSize: "0.9em" },
+  // Rows never wrap: a wide table spills past the 72ch column (the scroller scrolls) instead of breaking mid-row.
+  ".cm-org-table": { fontFamily: "var(--mono)", fontSize: "0.9em", whiteSpace: "pre", width: "max-content", minWidth: "100%" },
   ".cm-org-table-head": { fontWeight: "700" },
   ".cm-org-table-sep": { color: "var(--border)" },
   ".cm-org-pipe": { color: "var(--border)" },

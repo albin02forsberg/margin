@@ -165,6 +165,17 @@ Proposed.
 * DONE Designing Data-Intensive Applications, ch. 5 :reading:
 `);
 
+  write(join(notes, "regions.org"), `
+#+title: Regional rollout
+
+A table wider than the text column stays on one line and scrolls sideways.
+
+| Region | Launch date | Owner | Status | Notes on the rollout and what is still blocking it |
+|--------+-------------+-------+--------+-----------------------------------------------------|
+| EU     | 2026-03-01  | Mia   | live   | Data residency sign-off finished in January          |
+| US     | 2026-04-15  | Sam   | beta   | Waiting on the payment provider's sandbox keys       |
+`);
+
   write(join(notes, "home.org"), `
 #+title: Home
 
@@ -304,6 +315,14 @@ async function pngs() {
     await browser.keys(Key.Escape);
     await browser.$(".cm-diagram svg").waitForDisplayed({ timeout: 20_000 });
     await shot("mermaid");
+    await open("Orchard platform", "orchard.org");
+  }
+
+  if (want("wide-table")) { // #1212
+    await open("Regional rollout", "regions.org");
+    await browser.keys(Key.Escape);
+    await browser.keys("}");
+    await shot("wide-table");
     await open("Orchard platform", "orchard.org");
   }
 
