@@ -20,7 +20,7 @@
   import { bareTitle, bracketRetitle, findTarget, linkHeadings, linkTarget, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
-  import { type Goal, type LedgerWeek, type ProjectHours, type ReviewKind, goalWhen, monthBody, putReview, reviewBody, reviewEntry, reviewRange } from "$lib/review";
+  import { type Goal, type HabitRow, type LedgerWeek, type LedgerYear, type ProjectHours, type ReviewKind, goalWhen, monthBody, putReview, reviewBody, reviewEntry, reviewName, reviewRange, weekExtremes, yearBody, yearCount, yearLedgerLines } from "$lib/review";
   import { weekStartOf } from "$lib/week";
   import { calibrate, estimates, pct } from "$lib/estimates";
   import { fmtEffort } from "$lib/effort";
@@ -2904,6 +2904,18 @@
     await fileReview("month", r, monthBody(doneLog(closed.filter((i) => i.keyword && kw().done.includes(i.keyword))), hours, goals, ledger));
   }
 
+  /** This year's review (#1221): the month's parts over the year, busiest/quietest week, notes edited, habit streaks, the ledger against last year. */
+  async function yearlyReview() {
+    const t = new Date(), y = t.getFullYear(), r = reviewRange("year", t), days = Math.round((+new Date(y, t.getMonth(), t.getDate()) - +new Date(y, 0, 1)) / 864e5) + 1;
+    const ly = (year: number) => (cfg.config.hidden_areas ?? []).includes("ledger") ? [] : call<[string | null, LedgerYear[]]>("ledger_year", { year: String(year) }).then((x) => x[1], (): LedgerYear[] => []);
+    const [closed, hours, goals, secs, counts, habits, ledger, last] = await Promise.all([
+      call<AgendaItem[]>("search_todos", { query: `closed:>=${r.from} closed:<=${r.to}` }), call<ProjectHours>("tc_project_hours", { from: r.from, to: r.to }), call<Goal[]>("org_goals"),
+      call<Record<string, number>>("tc_activity", { year: y }), call<{ notes: Record<string, number> }>("activity_counts", { year: y }), call<HabitRow[]>("habit_overview", { days }), ly(y), ly(y - 1),
+    ]);
+    const done = doneLog(closed.filter((i) => i.keyword && kw().done.includes(i.keyword)));
+    await fileReview("year", r, yearBody(done, hours, goals, weekExtremes(secs, y, cfg?.config.week_start, t), yearCount(counts.notes, y), habits, yearLedgerLines(ledger, last)));
+  }
+
   /** BODY into the period's journal entry that already holds a KIND block (#697), else into today's under a new heading. */
   async function fileReview(kind: ReviewKind, r: { from: string; to: string; label: string }, body: string) {
     let path = "";
@@ -2911,12 +2923,12 @@
     if (!path) path = await call("capture_path", { file: journalFile(), journal: true });
     await recorded(() => toFile(path, async (text) => putReview(text, body, kind) ?? call("capture_insert", { text, heading: null, entry: reviewEntry(r.label, body, kind) })));
     await journal();
-    flash(`${kind === "week" ? "Weekly" : "Monthly"} review written to ${base(path)}; a re-run replaces the marked block (Space n u to undo).`);
+    flash(`${reviewName[kind]} review written to ${base(path)}; a re-run replaces the marked block (Space n u to undo).`);
   }
 
   async function review() {
-    const kind = await pick({ prompt: "Review", items: [{ label: "Week", detail: "this week's review", value: "week" as ReviewKind }, { label: "Month", detail: "this month's review", value: "month" as ReviewKind }] });
-    if (kind) await (kind === "week" ? weeklyReview() : monthlyReview());
+    const kind = await pick({ prompt: "Review", items: [{ label: "Week", detail: "this week's review", value: "week" as ReviewKind }, { label: "Month", detail: "this month's review", value: "month" as ReviewKind }, { label: "Year", detail: "this year's review", value: "year" as ReviewKind }] });
+    if (kind) await { week: weeklyReview, month: monthlyReview, year: yearlyReview }[kind as ReviewKind]();
   }
 
   /** One day's sessions, tasks closed and notes edited in time order (#694); Enter opens one, the first row copies Markdown. */
@@ -3824,7 +3836,7 @@
     { label: "Time: log time off…", leader: "t l", run: t("timeOff") },
     { label: "Time: log a past session…", leader: "t n", run: t("logSession") },
     { label: "Time: update dynamic blocks (#+BEGIN: clocktable / tasks) in this note", leader: "t u", run: () => act(updateClockTables) },
-    { label: "Weekly or monthly review into today's journal (re-run replaces the marked block)", leader: "t R", run: () => act(review) },
+    { label: "Weekly, monthly or yearly review into today's journal (re-run replaces the marked block)", leader: "t R", run: () => act(review) },
     { label: "Today: evening shutdown (walk today's open tasks: done, tomorrow, next week…)", leader: "t q", run: () => act(shutdown) },
     ...([["for 10 min", 10], ["for 1 h", 60], ["until tomorrow 9:00", null]] as const).map(([when, minutes]) => ({ label: `Reminders: snooze the last one ${when}`, run: () => act(async () => flash((await call<string | null>("remind_snooze", { minutes })) ?? "No reminder to snooze.")) })),
     { label: "Today: plan the day (walk overdue, due-soon and undated A/B tasks: today, tomorrow, a date…)", leader: "t g", run: () => act(planDay) },

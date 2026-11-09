@@ -1,4 +1,4 @@
-// Weekly review (#670): a `* Weekly review` section in today's journal entry, built from the week's tasks and time; `* Monthly review` likewise (#1220).
+// Weekly review (#670): a `* Weekly review` section in today's journal entry, built from the week's tasks and time; `* Monthly review` (#1220) and `* Yearly review` (#1221) likewise.
 import { hm } from "./clock.ts";
 import { estimateLine } from "./estimates.ts";
 import { isPushed } from "./pushed.ts";
@@ -6,8 +6,10 @@ import { money } from "./ledger.ts";
 import { weekStartOf } from "./week.ts";
 
 export const BEGIN = "# review-begin", END = "# review-end";
-export type ReviewKind = "week" | "month";
-/** KIND's begin/end markers: the week keeps the plain ones (old blocks stay valid), the month's get a ` month` suffix (#1220). */
+export type ReviewKind = "week" | "month" | "year";
+/** Heading word per KIND. */
+export const reviewName = { week: "Weekly", month: "Monthly", year: "Yearly" } as const;
+/** KIND's begin/end markers: the week keeps the plain ones (old blocks stay valid), the others get a ` month` / ` year` suffix (#1220). */
 export const markers = (kind: ReviewKind = "week") => (kind === "week" ? [BEGIN, END] : [`${BEGIN} ${kind}`, `${END} ${kind}`]);
 
 type Task = { title: string; category: string; date: string; closed?: string | null; effort?: number | null; spent?: number | null };
@@ -77,14 +79,14 @@ export const reviewWeekLabel = (start: Date) => {
 };
 
 export const reviewEntry = (label: string, body: string, kind: ReviewKind = "week") =>
-  [`* ${kind === "week" ? "Weekly" : "Monthly"} review ${label}`, body, "** Went well", "** To change"].join("\n");
+  [`* ${reviewName[kind]} review ${label}`, body, "** Went well", "** To change"].join("\n");
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-/** The KIND of period holding DATE (weeks from WEEKSTART): FROM..TO (YYYY-MM-DD, TO clipped to TODAY while it runs) and its heading label (#1220). */
+/** The KIND of period holding DATE (weeks from WEEKSTART): FROM..TO (YYYY-MM-DD, TO clipped to TODAY while it runs) and its heading label (#1220, #1221). */
 export function reviewRange(kind: ReviewKind, date: Date, weekStart?: string, today = date) {
-  const first = kind === "week" ? weekStartOf(date, weekStart) : new Date(date.getFullYear(), date.getMonth(), 1);
-  const last = kind === "week" ? new Date(first.getFullYear(), first.getMonth(), first.getDate() + 6) : new Date(first.getFullYear(), first.getMonth() + 1, 0);
-  return { from: ymd(first), to: ymd(last < today ? last : today), label: kind === "week" ? reviewWeekLabel(first) : ymd(first).slice(0, 7) };
+  const first = kind === "week" ? weekStartOf(date, weekStart) : new Date(date.getFullYear(), kind === "month" ? date.getMonth() : 0, 1);
+  const last = kind === "week" ? new Date(first.getFullYear(), first.getMonth(), first.getDate() + 6) : new Date(first.getFullYear(), kind === "month" ? first.getMonth() + 1 : 12, 0);
+  return { from: ymd(first), to: ymd(last < today ? last : today), label: kind === "week" ? reviewWeekLabel(first) : ymd(first).slice(0, kind === "month" ? 7 : 4) };
 }
 
 /** `tc_project_hours` (#1220): worked hours per project over a range, their total and the hours expected (less leave). */
@@ -92,8 +94,11 @@ export type ProjectHours = { projects: Hours[]; total: number; expected: number 
 
 /** The monthly review's generated part (#1220): DONE count with its top 5 categories, HOURS per project against expected,
  *  the LEDGER lines (none without entries) and GOALS (omitted without any). */
-export function monthBody(done: Task[], hours: ProjectHours, goals: Goal[] = [], ledger: LedgerWeek = [[], []]) {
-  const [begin, end] = markers("month"), by = new Map<string, number>();
+export const monthBody = (done: Task[], hours: ProjectHours, goals: Goal[] = [], ledger: LedgerWeek = [[], []]) => periodBody("month", done, hours, goals, ledgerLines(ledger, "month"));
+
+/** monthBody's layout for KIND, with EXTRA lines after the hours and ledger (#1221). */
+function periodBody(kind: ReviewKind, done: Task[], hours: ProjectHours, goals: Goal[], ledger: string[], extra: string[] = []) {
+  const [begin, end] = markers(kind), by = new Map<string, number>();
   for (const t of done) by.set(t.category || "no category", (by.get(t.category || "no category") ?? 0) + 1);
   return [
     begin,
@@ -102,10 +107,54 @@ export function monthBody(done: Task[], hours: ProjectHours, goals: Goal[] = [],
     ...[estimateLine(done)].filter((l) => l !== null),
     `** Hours per project (${hm(hours.total)} of ${hm(hours.expected)} expected)`,
     ...list(hours.projects.filter((h) => h.worked > 0).map((h) => `${h.project}: ${hm(h.worked)}`), "no time tracked"),
-    ...ledgerLines(ledger, "month"),
+    ...ledger,
+    ...extra,
     ...(goals.length ? [`** Goals (${goals.length})`, ...goals.map((g) => `- ${g.title}: ${g.total ? `${g.done}/${g.total} done (${g.percent}%)` : "no tasks"}, ${goalWhen(g)}`)] : []),
     end,
   ].join("\n");
+}
+
+const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+/** Busiest and quietest of YEAR's weeks (starting on WEEKSTART) by clocked SECS per `YYYY-MM-DD` (`tc_activity`), in hours: only weeks wholly
+ *  inside the year and ended by TODAY count, so a partial edge week or the running one never comes out quietest; null with none (#1221). */
+export function weekExtremes(secs: Record<string, number>, year: number, weekStart: string | undefined, today: Date) {
+  let d = weekStartOf(new Date(year, 0, 1), weekStart);
+  if (d.getFullYear() < year) d = addDays(d, 7);
+  const weeks: { label: string; hours: number }[] = [];
+  for (; ymd(addDays(d, 6)) <= ymd(today) && addDays(d, 6).getFullYear() === year; d = addDays(d, 7))
+    weeks.push({ label: reviewWeekLabel(d), hours: Array.from({ length: 7 }, (_, i) => secs[ymd(addDays(d, i))] ?? 0).reduce((a, b) => a + b, 0) / 3600 });
+  if (!weeks.length) return null;
+  return { busiest: weeks.reduce((a, w) => (w.hours > a.hours ? w : a)), quietest: weeks.reduce((a, w) => (w.hours < a.hours ? w : a)) };
+}
+
+/** The sum of COUNTS (per `YYYY-MM-DD`, e.g. `activity_counts` `notes`, which spans the year before too) over YEAR. */
+export const yearCount = (counts: Record<string, number> | undefined, year: number) =>
+  Object.entries(counts ?? {}).reduce((a, [d, n]) => (d.startsWith(`${year}-`) ? a + n : a), 0);
+
+/** `ledger_year` (#1196): one currency's year in cents per month (expense negative) and each category's net. */
+export type LedgerYear = { currency: string; income: number[]; expense: number[]; categories: [string | null, number[]][] };
+const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+/** "Ledger: spent 4120.00 EUR (last year 5300.00 EUR), income 100.00 EUR (last year 0.00 EUR); top: #food 1800.00 EUR" per currency of YEAR, LAST matched by currency. */
+export function yearLedgerLines(year: LedgerYear[], last: LedgerYear[]) {
+  const m = (n: number, cur: string) => money(n, cur, false);
+  return year.map((y) => {
+    const l = last.find((x) => x.currency === y.currency), cur = y.currency;
+    const top = y.categories.filter(([c, ms]) => c && sum(ms) < 0).sort((a, b) => sum(a[1]) - sum(b[1]))[0];
+    return `Ledger: spent ${m(-sum(y.expense), cur)} (last year ${m(-sum(l?.expense ?? []), cur)}), income ${m(sum(y.income), cur)} (last year ${m(sum(l?.income ?? []), cur)})${top ? `; top: #${top[0]} ${m(-sum(top[1]), cur)}` : ""}`;
+  });
+}
+
+/** A `habit_overview` row. */
+export type HabitRow = { title: string; habit?: { streak: number; best: number; pct: number } | null };
+/** The yearly review's generated part (#1221): monthBody's parts over the year plus the busiest/quietest WEEKS (weekExtremes), NOTES edited
+ *  (by last change, so a note counts once) and each open habit's current and best streak, longest first (section omitted without habits). */
+export function yearBody(done: Task[], hours: ProjectHours, goals: Goal[], weeks: ReturnType<typeof weekExtremes>, notes: number, habits: HabitRow[], ledger: string[] = []) {
+  const hs = habits.filter((h) => h.habit).sort((a, b) => b.habit!.streak - a.habit!.streak || b.habit!.best - a.habit!.best);
+  return periodBody("year", done, hours, goals, ledger, [
+    ...(weeks ? [`Busiest week: ${weeks.busiest.label} (${hm(weeks.busiest.hours)}); quietest: ${weeks.quietest.label} (${hm(weeks.quietest.hours)})`] : []),
+    `Notes edited: ${notes} (by last change)`,
+    ...(hs.length ? [`** Habit streaks (${hs.length})`, ...hs.map((h) => `- ${h.title}: streak ${h.habit!.streak}, best ${h.habit!.best}, ${h.habit!.pct}% on time`)] : []),
+  ]);
 }
 
 /** TEXT with its KIND's begin..end span replaced by BODY, or null if it has none (then file a reviewEntry). Markers match exactly, so week and month blocks never collide. */

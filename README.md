@@ -20,8 +20,8 @@ the editor has vim keys.
   `812 / 1500 words` and turns accent-coloured once reached. `Space n k` carries
   over the previous entry's open items: unchecked `- [ ]` items and TODO
   subtrees (not done or `:ARCHIVE:`) move under `* Carried over from <date>`
-  in today's entry; `Space n u` puts them back. `Space t R` asks Week or
-  Month. Week writes a
+  in today's entry; `Space n u` puts them back. `Space t R` asks Week,
+  Month or Year. Week writes a
   `* Weekly review <2026-W43>` into today's entry: Inbox count (and parked someday/maybe tasks, when any), tasks closed
   this week (with `Estimates: 120% of plan` when they had an `:EFFORT:` and
   clocked time), a `Pushed:` line (up to three open tasks rescheduled 3+ times), hours per project, a `Ledger:` line per currency when the ledger has entries this or last week (spent vs last week, income, top `#category`; plus the budgets this month went over, skipped when the Ledger area is hidden), `:GOAL:` progress (when you have goals), overdue tasks and what's scheduled next week,
@@ -36,6 +36,12 @@ the editor has vim keys.
   against last month and the budgets the month went over, and `:GOAL:`
   progress; re-running it later in the month replaces the block in whichever
   entry of the month holds it.
+  Year writes a `* Yearly review 2026` likewise (`# review-begin year`):
+  the month's parts over the year so far, plus `Ledger:` lines against last
+  year (spent, income, top expense `#category`), the busiest and quietest
+  week by clocked time (only whole weeks of the year that are over, counted
+  from your Week start setting), notes edited this year (by last change, so
+  a note counts once) and each open habit's current and best streak.
   `Space n j` logs a daily metric (Settings > Daily metrics: mood, energy,
   sleep…) as `:MOOD: 4` in the entry's top property drawer; `Space n M` shows
   them over the last 30 / 90 / 365 days (`r` switches): a sparkline per metric

@@ -1,6 +1,55 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isoWeek, type LedgerWeek, monthBody, pushedLine, putReview, reviewBody, reviewEntry, reviewRange, reviewWeekLabel } from "./review.ts";
+import { isoWeek, type LedgerWeek, monthBody, pushedLine, putReview, reviewBody, reviewEntry, reviewRange, reviewWeekLabel, weekExtremes, yearBody, yearCount, yearLedgerLines } from "./review.ts";
+
+test("reviewRange: the year runs Jan 1 to Dec 31, clipped to today, labelled YYYY (#1221)", () => {
+  assert.deepEqual(reviewRange("year", new Date(2026, 10, 9)), { from: "2026-01-01", to: "2026-11-09", label: "2026" });
+  assert.deepEqual(reviewRange("year", new Date(2025, 5, 1), undefined, new Date(2026, 0, 3)), { from: "2025-01-01", to: "2025-12-31", label: "2025" });
+  assert.match(reviewEntry("2026", yearBody([], { projects: [], total: 0, expected: 0 }, [], null, 0, []), "year"), /^\* Yearly review 2026\n# review-begin year\n[\s\S]*# review-end year\n\*\* Went well/);
+});
+
+test("weekExtremes ranks only whole weeks inside the year that are over by today (#1221)", () => {
+  const h = (n: number) => n * 3600;
+  // 2026-01-01 is a Thursday: Monday weeks start 2026-01-05 (W02); the partial Dec 29 week is skipped though it is the quietest.
+  const secs = { "2026-01-02": h(1), "2026-01-05": h(8), "2026-01-06": h(8), "2026-01-12": h(3), "2026-01-19": h(40), "2025-12-29": h(99) };
+  assert.deepEqual(weekExtremes(secs, 2026, "monday", new Date(2026, 0, 25)), { busiest: { label: "2026-W04", hours: 40 }, quietest: { label: "2026-W03", hours: 3 } });
+  // The running week (Jan 19..25) doesn't count before its last day; nor does a year's last partial week.
+  assert.deepEqual(weekExtremes(secs, 2026, "monday", new Date(2026, 0, 24)), { busiest: { label: "2026-W02", hours: 16 }, quietest: { label: "2026-W03", hours: 3 } });
+  assert.equal(weekExtremes(secs, 2026, "monday", new Date(2026, 0, 10)), null);
+  assert.equal(weekExtremes({}, 2026, "monday", new Date(2027, 0, 5))!.busiest.label, "2026-W02"); // all zero: the first week
+  // Sunday weeks start 2026-01-04, so Jan 4..10 holds the 16h.
+  assert.deepEqual(weekExtremes(secs, 2026, "sunday", new Date(2026, 0, 17)), { busiest: { label: "2026-W02", hours: 16 }, quietest: { label: "2026-W03", hours: 3 } });
+  // Saturday weeks: Jan 3..9 is the first whole one, Dec 26..Jan 1 of the next year the last is out (ends 2027-01-01).
+  const dec = weekExtremes({ "2026-12-26": h(5) }, 2026, "saturday", new Date(2027, 1, 1))!;
+  assert.equal(dec.busiest.hours, 0);
+});
+
+test("yearCount sums one year's days of a per-day map (#1221)", () => {
+  assert.equal(yearCount({ "2025-12-31": 4, "2026-01-01": 2, "2026-11-09": 3 }, 2026), 5);
+  assert.equal(yearCount(undefined, 2026), 0);
+});
+
+test("yearLedgerLines: spent and income against last year, the largest expense category on top (#1221)", () => {
+  const z = Array(12).fill(0), mo = (jan: number, feb = 0) => [jan, feb, ...z.slice(2)];
+  const eur = { currency: "EUR", income: mo(10000), expense: mo(-30000, -12000), categories: [[null, mo(-20000)], ["food", mo(-9000, -9000)], ["rent", mo(-1000)], ["pay", mo(10000)]] as [string | null, number[]][] };
+  const last = { currency: "EUR", income: z, expense: mo(-50000), categories: [] };
+  assert.deepEqual(yearLedgerLines([eur], [last]), ["Ledger: spent 420.00 EUR (last year 500.00 EUR), income 100.00 EUR (last year 0.00 EUR); top: #food 180.00 EUR"]);
+  assert.deepEqual(yearLedgerLines([{ ...eur, categories: [] }], []), ["Ledger: spent 420.00 EUR (last year 0.00 EUR), income 100.00 EUR (last year 0.00 EUR)"]);
+});
+
+test("yearBody: weeks, notes edited and habit streaks longest first after the hours (#1221)", () => {
+  const habit = (title: string, streak: number, best: number) => ({ title, habit: { streak, best, pct: 80 } });
+  const body = yearBody([t("a", "2026-03-02")], { projects: [{ project: "Margin", worked: 900 }], total: 900, expected: 1600 }, [],
+    { busiest: { label: "2026-W12", hours: 52.5 }, quietest: { label: "2026-W33", hours: 0 } }, 41, [habit("Run", 3, 9), habit("Read", 12, 30), { title: "x", habit: null }], ["Ledger: …"]);
+  assert.equal(body, [
+    "# review-begin year", "** Done (1)", "- work: 1",
+    "** Hours per project (900h 00m of 1600h 00m expected)", "- Margin: 900h 00m", "Ledger: …",
+    "Busiest week: 2026-W12 (52h 30m); quietest: 2026-W33 (0m)", "Notes edited: 41 (by last change)",
+    "** Habit streaks (2)", "- Read: streak 12, best 30, 80% on time", "- Run: streak 3, best 9, 80% on time",
+    "# review-end year",
+  ].join("\n"));
+  assert.doesNotMatch(yearBody([], { projects: [], total: 0, expected: 0 }, [], null, 0, []), /Busiest|Habit streaks/);
+});
 
 test("reviewWeekLabel names the ISO week holding most of the span", () => {
   assert.equal(reviewWeekLabel(new Date(2026, 9, 12)), "2026-W42"); // Monday
