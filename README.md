@@ -20,7 +20,7 @@ the editor has vim keys.
   in today's entry; `Space n u` puts them back. `Space t R` writes a
   `* Weekly review <2026-W43>` into today's entry: Inbox count (and parked someday/maybe tasks, when any), tasks closed
   this week (with `Estimates: 120% of plan` when they had an `:EFFORT:` and
-  clocked time), a `Pushed:` line (up to three open tasks rescheduled 3+ times), hours per project, `:GOAL:` progress (when you have goals), overdue tasks and what's scheduled next week,
+  clocked time), a `Pushed:` line (up to three open tasks rescheduled 3+ times), hours per project, a `Ledger:` line per currency when the ledger has entries this or last week (spent vs last week, income, top `#category`; plus the budgets this month went over, skipped when the Ledger area is hidden), `:GOAL:` progress (when you have goals), overdue tasks and what's scheduled next week,
   then empty `** Went well` / `** To change` headings. Running it again
   replaces only the generated lines between `# review-begin` and
   `# review-end` (edits there are overwritten; the rest is kept), also on a

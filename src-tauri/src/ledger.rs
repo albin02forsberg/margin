@@ -181,6 +181,44 @@ pub fn summarize(text: &str, month: &str, currency: &str) -> (Vec<Total>, Vec<Ro
     (totals, rows)
 }
 
+/// One currency's week for the weekly review (#1197), in cents: SPENT and LAST (the week before) are expenses as positive
+/// sums, INCOME this week's income, TOP the `#category` with the most net spending this week (positive).
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Week {
+    pub currency: String,
+    pub spent: i64,
+    pub last: i64,
+    pub income: i64,
+    pub top: Option<(String, i64)>,
+}
+
+/// TEXT's week of 7 days from FROM against the 7 days before, per currency with entries in either (CURRENCY first, then by code).
+pub fn week_summary(text: &str, from: NaiveDate, currency: &str) -> Vec<Week> {
+    let (prev, to) = (from - chrono::Days::new(7), from + chrono::Days::new(6));
+    let rows = rows(text, |e| e.date >= prev && e.date <= to);
+    type Sums<'a> = (Week, BTreeMap<&'a str, i64>);
+    let mut by: BTreeMap<(bool, &str), Sums> = BTreeMap::new();
+    for r in &rows {
+        let (w, cats) = by.entry((r.currency != currency.trim().to_uppercase(), &r.currency)).or_insert_with(|| (Week { currency: r.currency.clone(), spent: 0, last: 0, income: 0, top: None }, BTreeMap::new()));
+        match (r.date < from, r.cents < 0) {
+            (true, true) => w.last -= r.cents,
+            (true, false) => {}
+            (false, true) => w.spent -= r.cents,
+            (false, false) => w.income += r.cents,
+        }
+        if let (false, Some(c)) = (r.date < from, &r.category) {
+            *cats.entry(c).or_default() -= r.cents;
+        }
+    }
+    by.into_values()
+        .map(|(mut w, cats)| {
+            // Most spent first; ties go to the first name (max_by_key keeps the last, so iterate reversed).
+            w.top = cats.into_iter().rev().filter(|(_, n)| *n > 0).max_by_key(|(_, n)| *n).map(|(c, n)| (c.to_string(), n));
+            w
+        })
+        .collect()
+}
+
 /// TEXT's entries that KEEP accepts, oldest first.
 pub fn rows(text: &str, keep: impl Fn(&Entry) -> bool) -> Vec<Row> {
     let mut rows: Vec<Row> = text.lines().enumerate().filter_map(|(line, l)| {
@@ -730,6 +768,20 @@ mod tests {
         let t = add(&format!("{t}not an entry  #kept\n* 2026-11\n- 2026-11-01 -1.00 EUR x\n"), &e("+5 refund"), &kw());
         assert_eq!(t, "#+title: ledger\n* 2026-10\n- 2026-10-25 -12.50 EUR lunch\nnot an entry  #kept\n- 2026-10-25 +5.00 EUR refund\n* 2026-11\n- 2026-11-01 -1.00 EUR x\n");
         assert!(add(&t, &e("2026-12-01 2 y"), &kw()).ends_with("- 2026-11-01 -1.00 EUR x\n* 2026-12\n- 2026-12-01 -2.00 EUR y\n"));
+    }
+
+    #[test]
+    fn week_summary_compares_with_the_week_before() {
+        let text = "- 2026-11-02 -10 EUR lunch #food\n- 2026-11-03 -30 EUR bus #transport\n- 2026-11-04 +5 EUR refund #fun\n- 2026-11-08 -20 EUR dinner #food\n- 2026-11-05 +100 EUR pay\n- 2026-10-30 -53 EUR old #food\n- 2026-10-26 +9 EUR old pay\n- 2026-10-25 -1 EUR too old\n- 2026-11-09 -1 EUR next week\n- 2026-10-28 -4 SEK fika\n";
+        let w = week_summary(text, d("2026-11-02"), "eur");
+        assert_eq!(w, [
+            Week { currency: "EUR".into(), spent: 6000, last: 5300, income: 10500, top: Some(("food".into(), 3000)) },
+            Week { currency: "SEK".into(), spent: 0, last: 400, income: 0, top: None },
+        ]);
+        // A tie goes to the first name; a refund-only category is never on top.
+        let tie = week_summary("- 2026-11-02 -5 EUR x #b\n- 2026-11-02 -5 EUR y #a\n- 2026-11-03 +9 EUR z #c\n", d("2026-11-02"), "EUR");
+        assert_eq!(tie[0].top, Some(("a".into(), 500)));
+        assert!(week_summary(text, d("2027-01-04"), "EUR").is_empty());
     }
 
     #[test]
