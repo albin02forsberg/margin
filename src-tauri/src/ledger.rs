@@ -10,6 +10,7 @@ use std::sync::{Arc, LazyLock};
 
 static ENTRY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+(\S+)\s+([A-Z]{3})(?:\s+(.*?))?\s*$").unwrap());
 static WORD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:^|\s)([#@])([\w][\w.-]*)").unwrap());
+static WIKI: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[.*?\]\]").unwrap());
 static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[([^\]]+)\]").unwrap());
 
 #[derive(Debug, Clone, PartialEq)]
@@ -106,7 +107,7 @@ pub fn parse_quick(input: &str, today: NaiveDate, currency: &str) -> Result<Entr
 
 /// Text of E without `@payee`, `#tag` words and `[[links]]`, lowercased: what a repeat purchase has in common.
 fn plain(text: &str) -> String {
-    let t = Regex::new(r"\[\[.*?\]\]").unwrap().replace_all(text, "");
+    let t = WIKI.replace_all(text, "");
     t.split_whitespace().filter(|w| !w.starts_with(['#', '@'])).collect::<Vec<_>>().join(" ").to_lowercase()
 }
 
@@ -552,12 +553,12 @@ pub fn remember(store: &std::path::Path, csv: &str, spec: &str) -> Result<(), St
 }
 
 /// A bank CSV read with M: the rows that hold a date and an amount as entries (in CURRENCY unless a currency column
-/// says otherwise), each flagged true when it is already in KNOWN (ledger and inbox text) by date, amount and text.
+/// says otherwise), each flagged true when it is already in KNOWN (ledger and inbox text) by date, amount and text (ignoring tags, payee and links).
 /// A known entry matches once, so two equal coffees on a day stay two. The count of other rows comes last.
 pub fn read_csv(csv: &str, m: &Mapping, currency: &str, known: &[&str]) -> (Vec<(Entry, bool)>, usize) {
     let mut seen: HashMap<(NaiveDate, i64, String), usize> = HashMap::new();
     for e in known.iter().flat_map(|t| t.lines()).filter_map(parse_entry) {
-        *seen.entry((e.date, e.cents, e.text)).or_default() += 1;
+        *seen.entry((e.date, e.cents, plain(&e.text))).or_default() += 1;
     }
     let (mut out, mut skipped) = (vec![], 0);
     for r in csv_rows(csv, m.delim) {
@@ -578,7 +579,7 @@ pub fn read_csv(csv: &str, m: &Mapping, currency: &str, known: &[&str]) -> (Vec<
         let text = m.text.iter().map(|&c| cell(c)).collect::<Vec<_>>().join(" ").split_whitespace().collect::<Vec<_>>().join(" ");
         let cur = m.currency.map(|c| cell(c).trim().to_uppercase()).filter(|c| c.len() == 3 && c.bytes().all(|b| b.is_ascii_uppercase()));
         let e = Entry { date, cents, currency: cur.unwrap_or_else(|| currency.trim().to_uppercase()), text };
-        let dupe = seen.get_mut(&(e.date, e.cents, e.text.clone())).filter(|n| **n > 0).map(|n| *n -= 1).is_some();
+        let dupe = seen.get_mut(&(e.date, e.cents, plain(&e.text))).filter(|n| **n > 0).map(|n| *n -= 1).is_some();
         out.push((e, dupe));
     }
     (out, skipped)
@@ -994,6 +995,18 @@ mod tests {
             ("- 2026-10-06 +5.00 EUR Inbox one".into(), true),
         ]);
         assert_eq!(skipped, 2); // the header and the bad row
+    }
+
+    #[test]
+    fn read_csv_dedupes_ignoring_tags_payee_and_links() {
+        let m = Mapping::parse("date=1 amount=3 text=2 delimiter=; decimal=,").unwrap();
+        let csv = "Datum;Text;Belopp\n2026-10-03;ICA STOCKHOLM KORT #1234;-10\n2026-10-03;Other;-10\n";
+        let ledger = "* 2026-10\n- 2026-10-03 -10.00 EUR ica stockholm @ica #food [[id:x]]\n";
+        let (es, _) = read_csv(csv, &m, "eur", &[ledger]);
+        assert_eq!(es.iter().map(|x| x.1).collect::<Vec<_>>(), [false, false]);
+        let ledger = "* 2026-10\n- 2026-10-03 -10.00 EUR ICA Stockholm kort @ica #food [[id:x]]\n";
+        let (es, _) = read_csv(csv, &m, "eur", &[ledger]);
+        assert_eq!(es.iter().map(|x| x.1).collect::<Vec<_>>(), [true, false]);
     }
 
     #[test]
