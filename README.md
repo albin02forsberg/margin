@@ -492,7 +492,9 @@ under it and sets `:LAST_REPEAT:`, as org does. Give it `:STYLE: habit` in its
 properties and Today (and Tasks) shows a 21-day consistency bar and how many
 completions in a row were on time, like org-habit. Add
 `:RESET_CHECK_BOXES: t` and completing it also unticks the checkboxes in its
-own text (a `[n/m]` cookie in the heading is left as is). Past due days follow the
+own text (a `[n/m]` cookie in the heading is left as is); `:RESET_SUBTASKS: t`
+likewise reopens its done sub-headings (dropping their `CLOSED`), except ones
+with a repeater of their own. Past due days follow the
 repeater: `+` steps back from the scheduled date, `++` stays on its grid, `.+`
 counts from each completion. With a max (`.+2d/3d`) the days between min and
 max show amber (due, not yet overdue), after it red:
