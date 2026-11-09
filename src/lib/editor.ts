@@ -1246,7 +1246,7 @@ const completion = [
 
 const theme = EditorView.theme({
   "&": { height: "100%", fontSize: "var(--fs-lg)", backgroundColor: "var(--bg)", color: "var(--fg)" },
-  ".cm-scroller": { fontFamily: "var(--editor-font)", lineHeight: "1.65" },
+  ".cm-scroller": { fontFamily: "var(--editor-font)", lineHeight: "1.65", containerType: "inline-size" },
   ".cm-content": { padding: "24px 0 40vh", maxWidth: "72ch", margin: "0 auto", caretColor: "var(--accent)" },
   ".cm-line": { padding: "0 36px" },
   ".cm-activeLine": { backgroundColor: "var(--active)" },
@@ -1341,7 +1341,7 @@ const theme = EditorView.theme({
 
   // tables
   // Rows never wrap: a wide table spills past the 72ch column (the scroller scrolls) instead of breaking mid-row.
-  ".cm-org-table": { fontFamily: "var(--mono)", fontSize: "0.9em", whiteSpace: "pre", width: "max-content", minWidth: "100%" },
+  ".cm-org-table": { fontFamily: "var(--mono)", fontSize: "0.9em", whiteSpace: "pre", width: "max-content", minWidth: "100%", position: "relative", left: "50%", transform: "translateX(max(-50%, -50cqw))" }, // centred on the text column, never past the pane's left edge (#1218)
   ".cm-org-table-head": { fontWeight: "700" },
   ".cm-org-table-sep": { color: "var(--border)" },
   ".cm-org-pipe": { color: "var(--border)" },
