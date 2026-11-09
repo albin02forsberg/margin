@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isoWeek, type LedgerWeek, pushedLine, putReview, reviewBody, reviewEntry, reviewWeekLabel } from "./review.ts";
+import { isoWeek, type LedgerWeek, monthBody, pushedLine, putReview, reviewBody, reviewEntry, reviewRange, reviewWeekLabel } from "./review.ts";
 
 test("reviewWeekLabel names the ISO week holding most of the span", () => {
   assert.equal(reviewWeekLabel(new Date(2026, 9, 12)), "2026-W42"); // Monday
@@ -88,4 +88,38 @@ test("reviewBody adds ledger lines after the hours, per currency, only with entr
     "Ledger: spent 0.00 SEK (last week 4.00 SEK), income 50.00 SEK",
     "Over budget this month: #food 430.00/400.00 EUR, #fun 50.50/50.00 EUR",
   ]);
+});
+
+test("reviewRange gives the month's first day, the end clipped to today, and a YYYY-MM label (#1220)", () => {
+  assert.deepEqual(reviewRange("month", new Date(2026, 10, 9)), { from: "2026-11-01", to: "2026-11-09", label: "2026-11" });
+  assert.deepEqual(reviewRange("month", new Date(2024, 1, 10), undefined, new Date(2024, 5, 1)), { from: "2024-02-01", to: "2024-02-29", label: "2024-02" }); // leap Feb
+  assert.equal(reviewRange("month", new Date(2025, 1, 3), undefined, new Date(2025, 5, 1)).to, "2025-02-28");
+  assert.deepEqual(reviewRange("month", new Date(2026, 11, 31), undefined, new Date(2027, 0, 2)), { from: "2026-12-01", to: "2026-12-31", label: "2026-12" });
+  assert.deepEqual(reviewRange("month", new Date(2027, 0, 1)), { from: "2027-01-01", to: "2027-01-01", label: "2027-01" });
+  assert.deepEqual(reviewRange("week", new Date(2026, 9, 14)), { from: "2026-10-12", to: "2026-10-14", label: "2026-W42" });
+});
+
+test("monthBody: done by category, hours against expected, ledger against last month", () => {
+  const done = [t("a", "2026-11-02"), t("b", "2026-11-03"), t("c", "2026-11-04", "home"), t("d", "2026-11-05", "")];
+  const eur = { currency: "EUR", spent: 41200, last: 53000, income: 0, top: null };
+  assert.equal(monthBody(done, { projects: [{ project: "Margin", worked: 30 }, { project: "Old", worked: 0 }], total: 30, expected: 48 }, [], [[eur], []]), [
+    "# review-begin month", "** Done (4)", "- work: 2", "- home: 1", "- no category: 1",
+    "** Hours per project (30h 00m of 48h 00m expected)", "- Margin: 30h 00m",
+    "Ledger: spent 412.00 EUR (last month 530.00 EUR), income 0.00 EUR",
+    "# review-end month",
+  ].join("\n"));
+  assert.match(monthBody([], { projects: [], total: 0, expected: 0 }), /nothing closed[\s\S]*no time tracked/);
+});
+
+test("putReview keeps week and month blocks in one file apart; re-runs replace only their own (#1220)", () => {
+  const none = { projects: [], total: 0, expected: 0 };
+  const week = reviewEntry("2026-W45", reviewBody([], [], [], [], 0)), month = reviewEntry("2026-11", monthBody([], none), "month");
+  assert.match(month, /^\* Monthly review 2026-11\n# review-begin month\n/);
+  assert.equal(putReview(`* x\n${week}\n`, "m", "month"), null); // a week block isn't a month block
+  assert.equal(putReview(`* x\n${month}\n`, "w"), null); // nor the other way round
+  const mb = monthBody([t("New", "2026-11-09")], none), once = putReview(`* x\n${week}\n${month}\n`, mb, "month")!;
+  assert.equal(putReview(once, mb, "month"), once); // idempotent
+  assert.ok(once.startsWith(`* x\n${week}\n* Monthly review 2026-11\n# review-begin month\n** Done (1)\n- work: 1\n`));
+  assert.equal(once.split("# review-begin month").length, 2);
+  assert.equal(putReview(once, reviewBody([], [], [], [], 7))!.split("Inbox: 7 entries").length, 2);
 });

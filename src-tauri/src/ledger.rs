@@ -264,6 +264,24 @@ pub fn week_summary(text: &str, from: NaiveDate, currency: &str) -> Vec<Week> {
         .collect()
 }
 
+/// TEXT's calendar MONTH (`YYYY-MM`) against the month before, as `Week`s for the monthly review (#1220), from two `summarize` calls.
+pub fn month_summary(text: &str, month: NaiveDate, currency: &str) -> Vec<Week> {
+    let ym = |d: NaiveDate| d.format("%Y-%m").to_string();
+    let (now, prev) = (summarize(text, &ym(month), currency).0, summarize(text, &ym(month - chrono::Months::new(1)), currency).0);
+    let mut by: BTreeMap<(bool, String), Week> = BTreeMap::new();
+    for (t, this) in prev.into_iter().map(|t| (t, false)).chain(now.into_iter().map(|t| (t, true))) {
+        let w = by.entry((t.currency != currency.trim().to_uppercase(), t.currency.clone())).or_insert_with(|| Week { currency: t.currency.clone(), spent: 0, last: 0, income: 0, top: None });
+        if !this {
+            w.last = -t.expense;
+            continue;
+        }
+        (w.spent, w.income) = (-t.expense, t.income);
+        // Categories come largest first (ties by name), so the first net spending one is the top.
+        w.top = t.categories.into_iter().find_map(|(c, n)| c.filter(|_| n < 0).map(|c| (c, -n)));
+    }
+    by.into_values().collect()
+}
+
 /// One currency's year (#1196), in cents per month (index 0 = January): INCOME, EXPENSE (negative) and each
 /// category's net (None = uncategorised), largest yearly amount first.
 #[derive(Serialize, Debug, PartialEq)]
@@ -889,6 +907,18 @@ mod tests {
         let tie = week_summary("- 2026-11-02 -5 EUR x #b\n- 2026-11-02 -5 EUR y #a\n- 2026-11-03 +9 EUR z #c\n", d("2026-11-02"), "EUR");
         assert_eq!(tie[0].top, Some(("a".into(), 500)));
         assert!(week_summary(text, d("2027-01-04"), "EUR").is_empty());
+    }
+
+    #[test]
+    fn month_summary_compares_with_the_month_before() {
+        let text = "- 2026-11-02 -10 EUR lunch #food\n- 2026-11-03 -30 EUR bus #transport\n- 2026-11-04 +50 EUR refund #fun\n- 2026-11-30 -20 EUR dinner #food\n- 2026-10-30 -53 EUR old #food\n- 2026-09-30 -1 EUR too old\n- 2026-12-01 -1 EUR next month\n- 2026-10-28 -4 SEK fika\n";
+        assert_eq!(month_summary(text, d("2026-11-01"), "eur"), [
+            Week { currency: "EUR".into(), spent: 6000, last: 5300, income: 5000, top: Some(("food".into(), 3000)) },
+            Week { currency: "SEK".into(), spent: 0, last: 400, income: 0, top: None },
+        ]);
+        // January looks back at December of the year before.
+        assert_eq!(month_summary("- 2026-12-31 -7 EUR x\n", d("2027-01-01"), "EUR")[0].last, 700);
+        assert!(month_summary(text, d("2027-03-01"), "EUR").is_empty());
     }
 
     #[test]
