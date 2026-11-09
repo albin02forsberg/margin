@@ -1477,7 +1477,7 @@ describe("Week start", () => {
     await browser.waitUntil(async () => (await first()).startsWith(want(0)), { timeoutMsg: `week doesn't start on Sunday: ${await first()}` });
     const cfg = join(d.cfgDir, "config.toml");
     writeFileSync(cfg, readFileSync(cfg, "utf8").replace('week_start = "sunday"', 'week_start = "monday"')); // the browsed week (Sunday..Saturday) re-aligns to the Monday on or before its Sunday: 6 days back from the Sunday
-    await browser.waitUntil(async () => (await first()).startsWith(want(1, 6)), { timeoutMsg: `week didn't re-align to Monday: ${await first()}` });
+    await browser.waitUntil(async () => (await first()).startsWith(want(0, 6)), { timeoutMsg: `week didn't re-align to Monday: ${await first()}` });
   });
 });
 
