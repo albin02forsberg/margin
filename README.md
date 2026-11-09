@@ -1210,7 +1210,7 @@ shows it right away. No backup runs for them; the app's next one includes the ch
 **Ledger: add an entry…** (`Space f l`) asks for one line, `[date] amount [currency] text`,
 e.g. `12.50 lunch @anna #food`: a plain amount is an expense, `+1200 invoice #work` income,
 `12,50` works too (no thousands separators), the date defaults to today and the currency to
-**Settings → Ledger → Default currency** (`ledger_currency`, `EUR`). It is filed at the end of
+**Settings → Ledger → Default currency** (`ledger_currency`, `EUR`). Without a `#category`, an entry takes the one of the latest entry with the same `@payee` (else the same text); `#-` keeps it uncategorised. It is filed at the end of
 its month's `* 2026-10` heading (added when missing) in `ledger.org` (`ledger_file`, in the notes
 folder) as a list line you can also write by hand or in Emacs:
 
