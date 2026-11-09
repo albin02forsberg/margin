@@ -585,6 +585,25 @@ pub fn read_csv(csv: &str, m: &Mapping, currency: &str, known: &[&str]) -> (Vec<
     (out, skipped)
 }
 
+/// Give the new rows of ES (from `read_csv`) the category of the latest ledger entry in LEDGER with the same plain text
+/// (as `autocategory`, #1211). Duplicates are left alone and rows don't feed each other.
+pub fn categorize_import(ledger: &str, es: &mut [(Entry, bool)]) {
+    let mut by: HashMap<String, String> = HashMap::new();
+    for o in ledger.lines().filter_map(parse_entry).filter(|o| !opted_out(&o.text)) {
+        let p = plain(&o.text);
+        if let (Some(c), false) = (o.category(), p.is_empty()) {
+            by.insert(p, c.to_string());
+        }
+    }
+    for (e, _) in es.iter_mut().filter(|x| !x.1) {
+        if e.category().is_none() && !opted_out(&e.text) {
+            if let Some(c) = by.get(&plain(&e.text)) {
+                e.text = format!("{} #{c}", e.text);
+            }
+        }
+    }
+}
+
 /// The heading title of an import proposal in the inbox.
 pub const REVIEW: &str = "Review ledger import";
 
@@ -1007,6 +1026,17 @@ mod tests {
         let ledger = "* 2026-10\n- 2026-10-03 -10.00 EUR ICA Stockholm kort @ica #food [[id:x]]\n";
         let (es, _) = read_csv(csv, &m, "eur", &[ledger]);
         assert_eq!(es.iter().map(|x| x.1).collect::<Vec<_>>(), [true, false]);
+    }
+
+    #[test]
+    fn import_gets_category_from_ledger() {
+        let m = Mapping::parse("date=1 amount=3 text=2 delimiter=; decimal=,").unwrap();
+        let csv = "Datum;Text;Belopp\n2026-10-03;ICA STOCKHOLM;-10\n2026-10-03;New Shop;-5\n2026-10-04;ica stockholm #fun;-7\n";
+        let ledger = "* 2026-10\n- 2026-09-01 -9.00 EUR ica stockholm #snacks\n- 2026-10-01 -9.00 EUR ICA Stockholm @ica #food\n";
+        let (mut es, _) = read_csv(csv, &m, "eur", &[ledger]);
+        categorize_import(ledger, &mut es);
+        let got: Vec<_> = es.iter().map(|x| x.0.text.as_str()).collect();
+        assert_eq!(got, ["ICA STOCKHOLM #food", "New Shop", "ica stockholm #fun"]);
     }
 
     #[test]

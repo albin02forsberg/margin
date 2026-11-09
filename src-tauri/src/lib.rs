@@ -1225,7 +1225,9 @@ fn ledger_import_preview(s: State<App>, app: AppHandle, path: PathBuf, spec: Opt
     let (csv, m, remembered) = bank_csv(&s, &app, &path, spec.as_deref())?;
     let c = s.cfg();
     let inbox = std::fs::read_to_string(c.notes().join(&c.inbox)).unwrap_or_default();
-    let (es, skipped) = ledger::read_csv(&csv, &m, &c.ledger_currency, &[&ledger_text(&s)?.1, &inbox]);
+    let ledger = ledger_text(&s)?.1;
+    let (mut es, skipped) = ledger::read_csv(&csv, &m, &c.ledger_currency, &[&ledger, &inbox]);
+    ledger::categorize_import(&ledger, &mut es);
     let dupes = es.iter().filter(|x| x.1).count();
     let rows: Vec<(String, bool)> = es.iter().take(15).map(|(e, d)| (ledger::format_entry(e), *d)).collect();
     Ok(json!({ "spec": m.spec(), "remembered": remembered, "rows": rows, "new": es.len() - dupes, "dupes": dupes, "skipped": skipped }))
@@ -1235,7 +1237,9 @@ fn ledger_import_preview(s: State<App>, app: AppHandle, path: PathBuf, spec: Opt
 #[tauri::command(async)]
 fn ledger_import(s: State<App>, app: AppHandle, text: String, path: PathBuf, spec: String) -> R<(String, usize, usize)> {
     let (csv, m, _) = bank_csv(&s, &app, &path, Some(&spec))?;
-    let (es, _) = ledger::read_csv(&csv, &m, &s.cfg().ledger_currency, &[&ledger_text(&s)?.1, &text]);
+    let ledger = ledger_text(&s)?.1;
+    let (mut es, _) = ledger::read_csv(&csv, &m, &s.cfg().ledger_currency, &[&ledger, &text]);
+    ledger::categorize_import(&ledger, &mut es);
     let new: Vec<ledger::Entry> = es.iter().filter(|x| !x.1).map(|x| x.0.clone()).collect();
     // Best effort: a failed write must not lose the import.
     if let Ok(p) = import_memo(&app) {
