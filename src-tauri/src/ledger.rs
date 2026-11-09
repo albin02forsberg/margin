@@ -219,6 +219,35 @@ pub fn week_summary(text: &str, from: NaiveDate, currency: &str) -> Vec<Week> {
         .collect()
 }
 
+/// One currency's year (#1196), in cents per month (index 0 = January): INCOME, EXPENSE (negative) and each
+/// category's net (None = uncategorised), largest yearly amount first.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Year {
+    pub currency: String,
+    pub income: [i64; 12],
+    pub expense: [i64; 12],
+    pub categories: Vec<(Option<String>, [i64; 12])>,
+}
+
+/// TEXT's entries dated in YEAR (`YYYY`) per currency, CURRENCY first, then by code (never converted), like `summarize`.
+pub fn summarize_year(text: &str, year: &str, currency: &str) -> Vec<Year> {
+    let rows = rows(text, |e| e.date.format("%Y").to_string() == year);
+    type Sums = ([i64; 12], [i64; 12], BTreeMap<Option<String>, [i64; 12]>);
+    let mut by: BTreeMap<(bool, &str), Sums> = BTreeMap::new();
+    for r in &rows {
+        let (t, m) = (by.entry((r.currency != currency.trim().to_uppercase(), &r.currency)).or_default(), r.date.month0() as usize);
+        if r.cents > 0 { t.0[m] += r.cents } else { t.1[m] += r.cents }
+        t.2.entry(r.category.clone()).or_default()[m] += r.cents;
+    }
+    by.into_iter()
+        .map(|((_, cur), (income, expense, c))| {
+            let mut categories: Vec<_> = c.into_iter().collect();
+            categories.sort_by_key(|(_, m)| std::cmp::Reverse(m.iter().sum::<i64>().unsigned_abs())); // stable: ties stay by name
+            Year { currency: cur.into(), income, expense, categories }
+        })
+        .collect()
+}
+
 /// TEXT's entries that KEEP accepts, oldest first.
 pub fn rows(text: &str, keep: impl Fn(&Entry) -> bool) -> Vec<Row> {
     let mut rows: Vec<Row> = text.lines().enumerate().filter_map(|(line, l)| {
@@ -797,6 +826,23 @@ mod tests {
         assert_eq!((t[1].income, t[1].expense, t[1].net, t[2].net), (0, -10000, -10000, 50));
         assert_eq!(summarize(text, "2026-09", "EUR"), (vec![], vec![]));
         assert_eq!(summarize("", "2026-10", "EUR"), (vec![], vec![]));
+    }
+
+    #[test]
+    fn summarize_year_groups_months_by_currency_and_category() {
+        let text = "- 2026-01-05 +1000 EUR pay #work\n- 2026-01-09 -20 EUR lunch #food\n- 2026-03-01 +5 EUR refund #food\n- 2026-03-02 -3 EUR bus\n- 2026-12-31 -100 SEK fika #food\n- 2025-12-31 -9 EUR old #food\n- 2027-01-01 -9 EUR new\n";
+        let y = summarize_year(text, "2026", "eur");
+        assert_eq!(y.iter().map(|y| y.currency.as_str()).collect::<Vec<_>>(), ["EUR", "SEK"]);
+        let mut m = [0; 12];
+        (m[0], m[2]) = (100000, 500);
+        assert_eq!(y[0].income, m);
+        (m[0], m[2]) = (-2000, -300);
+        assert_eq!(y[0].expense, m);
+        let cat = |c: Option<&str>| y[0].categories.iter().find(|(k, _)| k.as_deref() == c).unwrap().1;
+        assert_eq!(y[0].categories.iter().map(|(c, _)| c.as_deref()).collect::<Vec<_>>(), [Some("work"), Some("food"), None]);
+        assert_eq!((cat(Some("food"))[0], cat(Some("food"))[2], cat(None)[2]), (-2000, 500, -300));
+        assert_eq!((y[1].expense[11], y[1].categories.len()), (-10000, 1));
+        assert!(summarize_year(text, "2024", "EUR").is_empty());
     }
 
     #[test]

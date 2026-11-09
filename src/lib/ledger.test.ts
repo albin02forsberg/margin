@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { budgetBar, costLine, filterRows, money, shiftMonth, sumByCurrency } from "./ledger.ts";
+import { budgetBar, costLine, filterRows, money, savingsRate, shiftMonth, sumByCurrency } from "./ledger.ts";
 
 test("money formats signed cents without float error", () => {
   assert.equal(money(-1250, "EUR"), "−12.50 EUR");
@@ -39,4 +39,10 @@ test("filterRows matches #category, @payee and free text; sumByCurrency totals p
   assert.deepEqual(filterRows(rows, "SAL").map((x) => x.text), ["Salary"]);
   assert.deepEqual(filterRows(rows, "cafe").map((x) => x.text), ["Lunch"]);
   assert.deepEqual(sumByCurrency(rows), [["EUR", 4900], ["SEK", -250]]);
+});
+
+test("savingsRate is net over income, null without income", () => {
+  assert.equal(savingsRate(100000, 25000), 25);
+  assert.equal(savingsRate(100000, -50000), -50);
+  assert.equal(savingsRate(0, -5000), null);
 });

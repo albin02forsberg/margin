@@ -1225,7 +1225,9 @@ per `#category` (entries without one as *uncategorised*) and per `@payee`, then 
 click one to open the ledger at its line. The filter box above the entries (text, `#category` or `@payee`; `#-` is uncategorised) narrows them and shows the count and sum per currency; clicking a category or payee row sets it, `Esc` clears. **Settings → Ledger → Monthly budgets** (`ledger_budgets`, one `food=400`
 per line, in the default currency) adds a used / budget bar under that currency's totals for each listed `#category`
 (any case, refunds count back; red when over). `h` / `l` or the arrows switch months. An entry counts in
-the month of its own date, whichever heading it sits under.
+the month of its own date, whichever heading it sits under. `y` (or the *Year* button) toggles a year view per
+currency: income, expenses and net per month, a row per `#category` shaded by size, a total column and the year's
+savings rate (net / income); `h` / `l` or `[` / `]` switch years and clicking a month opens it.
 
 **Recurring entries.** Rent, subscriptions and salary go in **Settings → Ledger → Recurring entries**
 (`ledger_recurring`, one per line): a start date, how often (`+1m`, `+2w`, `+1y`, `+7d`), then the entry as you'd
