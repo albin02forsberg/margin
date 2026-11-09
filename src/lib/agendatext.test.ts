@@ -22,3 +22,9 @@ test("copyRows drops birthdays", () => {
   assert.deepEqual(copyRows([b]), []);
   assert.deepEqual(copyRows([]), []);
 });
+
+test("timed rows show the time or range before the priority; closed rows don't", () =>
+  assert.equal(
+    agendaText([r("2026-10-20", "Standup", { time: "09:00-10:30", priority: "A" }), r("2026-10-20", "Call", { time: "14:00" }), r("2026-10-20", "Done", { time: "16:12", kind: "closed", done: true }), r("2026-10-20", "Plain", { time: null })], true),
+    "## Tue 20 Oct\n- [ ] 09:00-10:30 [#A] Standup\n- [ ] 14:00 Call\n- [x] Done\n- [ ] Plain",
+  ));
