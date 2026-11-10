@@ -164,3 +164,14 @@ export function putReview(text: string, body: string, kind: ReviewKind = "week")
   if (e < 0) return null;
   return [...lines.slice(0, b), ...body.split("\n"), ...lines.slice(e + 1)].join(eol);
 }
+
+/** The file in FILES (oldest first) already holding a KIND block, or "": scans newest first in parallel chunks of 32 and stops at the first chunk with a match (newest match wins), so a re-run costs one chunk. An unreadable file counts as no match. */
+export async function findReviewFile(files: string[], read: (f: string) => Promise<string>, body: string, kind: ReviewKind = "week"): Promise<string> {
+  const rev = [...files].reverse();
+  for (let i = 0; i < rev.length; i += 32) {
+    const chunk = rev.slice(i, i + 32), texts = await Promise.all(chunk.map((f) => read(f).catch(() => "")));
+    const k = texts.findIndex((t) => putReview(t, body, kind) !== null);
+    if (k >= 0) return chunk[k];
+  }
+  return "";
+}

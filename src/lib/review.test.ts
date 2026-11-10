@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isoWeek, type LedgerWeek, monthBody, pushedLine, putReview, reviewBody, reviewEntry, reviewRange, reviewWeekLabel, weekExtremes, yearBody, yearCount, yearLedgerLines } from "./review.ts";
+import { findReviewFile, isoWeek, markers, type LedgerWeek, monthBody, pushedLine, putReview, reviewBody, reviewEntry, reviewRange, reviewWeekLabel, weekExtremes, yearBody, yearCount, yearLedgerLines } from "./review.ts";
 
 test("reviewRange: the year runs Jan 1 to Dec 31, clipped to today, labelled YYYY (#1221)", () => {
   assert.deepEqual(reviewRange("year", new Date(2026, 10, 9)), { from: "2026-01-01", to: "2026-11-09", label: "2026" });
@@ -91,6 +91,19 @@ test("reviewBody counts parked someday tasks after the inbox line, and leaves th
 test("reviewBody adds the estimates line after Done when tasks have an estimate and clocked time", () => {
   const body = reviewBody([{ ...t("Ship it", "2026-10-20"), effort: 60, spent: 72 }], [], [], [], 0).split("\n");
   assert.equal(body[body.indexOf("- 2026-10-20 Ship it (work)") + 1], "Estimates: 120% of plan (1 task).");
+});
+
+test("findReviewFile scans newest first in chunks and stops at the first matching chunk", async () => {
+  const files = Array.from({ length: 70 }, (_, i) => `f${i}`), [B, E] = markers();
+  const run = async (has: string[]) => {
+    let reads = 0;
+    const got = await findReviewFile(files, async (f) => { reads++; if (f === "f60") throw new Error("bad"); return has.includes(f) ? `${B}\nold\n${E}` : ""; }, "b");
+    return [got, reads];
+  };
+  assert.deepEqual(await run([]), ["", 70]);
+  assert.deepEqual(await run(["f69"]), ["f69", 32]);
+  assert.deepEqual(await run(["f20", "f25"]), ["f25", 64]);
+  assert.deepEqual(await run(["f60", "f50", "f65"]), ["f65", 32]);
 });
 
 test("putReview: no markers means a fresh entry; a re-run replaces only the marked span", () => {
