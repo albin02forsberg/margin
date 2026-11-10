@@ -493,6 +493,18 @@ async function pngs() {
   await browser.keys(Key.Escape);
   await shot("split");
 
+  if (want("meeting-note")) { // #1227: an ad-hoc meeting note (the demo has no calendar)
+    await command("Meeting note from calendar event");
+    await find(".picker label span", "Meeting note for");
+    await type("ad-hoc");
+    await browser.keys(Key.Enter);
+    await find(".picker label span", "Meeting title");
+    await type("Harbor release sync");
+    await browser.keys(Key.Enter);
+    await opened(`${iso(new Date())} Harbor release sync.org`);
+    await shot("meeting-note");
+  }
+
   await browser.keys([Key.Ctrl, ","]); // the MCP snippet (#929)
   await (await find(".settings .chips button", "AI chat")).click();
   await browser.$(".settings .mcp code").waitForDisplayed();
