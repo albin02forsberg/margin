@@ -20,7 +20,7 @@
   import { bareTitle, bracketRetitle, findTarget, linkHeadings, linkTarget, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
-  import { type Goal, type HabitRow, type LedgerWeek, type LedgerYear, type ProjectHours, type ReviewKind, goalWhen, monthBody, putReview, reviewBody, reviewEntry, reviewName, reviewRange, weekExtremes, yearBody, yearCount, yearLedgerLines } from "$lib/review";
+  import { type Goal, type HabitRow, type LedgerWeek, type LedgerYear, type ProjectHours, type ReviewKind, findReviewFile, goalWhen, monthBody, putReview, reviewBody, reviewEntry, reviewName, reviewRange, weekExtremes, yearBody, yearCount, yearLedgerLines } from "$lib/review";
   import { weekStartOf } from "$lib/week";
   import { calibrate, estimates, pct } from "$lib/estimates";
   import { fmtEffort } from "$lib/effort";
@@ -2918,8 +2918,7 @@
 
   /** BODY into the period's journal entry that already holds a KIND block (#697), else into today's under a new heading. */
   async function fileReview(kind: ReviewKind, r: { from: string; to: string; label: string }, body: string) {
-    let path = "";
-    for (const f of weekJournals(await call<string[]>("list_files"), cfg.config.daily_dir, r.from, r.to)) if (putReview(await textOf(f), body, kind) !== null) { path = f; break; }
+    let path = await findReviewFile(weekJournals(await call<string[]>("list_files"), cfg.config.daily_dir, r.from, r.to), textOf, body, kind);
     if (!path) path = await call("capture_path", { file: journalFile(), journal: true });
     await recorded(() => toFile(path, async (text) => putReview(text, body, kind) ?? call("capture_insert", { text, heading: null, entry: reviewEntry(r.label, body, kind) })));
     await journal();
