@@ -35,6 +35,14 @@ test("tasks -> checklist refusals", () => {
   assert.equal(t(["* TODO a", ":PROPERTIES:", ":FOO: 1", ":END:"], ["TODO"], ["DONE"]), null);
   assert.equal(t(["text"], ["TODO"], ["DONE"]), null);
 });
+test("tasks -> checklist keeps relative body indentation", () => {
+  const src = ["* TODO a", "- sub", "  - subsub", "  #+begin_src js", "    x", "  #+end_src"];
+  assert.deepEqual(t(src, ["TODO"], ["DONE"]), ["- [ ] a", "  - sub", "    - subsub", "    #+begin_src js", "      x", "    #+end_src"]);
+});
+test("nested checklist round trip", () => {
+  const l = ["- [ ] a", "  - sub", "    - subsub", "  text"];
+  assert.deepEqual(t(c(l, 1, "TODO", "DONE"), ["TODO"], ["DONE"]), l);
+});
 test("round trip", () => {
   const l = ["- [ ] a", "  body", "- [X] b"];
   assert.deepEqual(t(c(l, 1, "TODO", "DONE"), ["TODO"], ["DONE"]), l);

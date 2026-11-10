@@ -38,10 +38,14 @@ export function tasksToChecklist(lines: string[], todo: string[], done: string[]
   const lvl = HEAD.exec(lines[0] ?? "")?.[1].length;
   if (!lvl) return null;
   const out: string[] = [];
+  let m = 0; // common indent of the current heading's body, so relative indentation survives
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i], h = HEAD.exec(l);
     if (h) {
       if (h[1].length !== lvl) return null;
+      m = Infinity;
+      for (let k = i + 1; k < lines.length && !HEAD.test(lines[k]); k++)
+        if (lines[k].trim() && !PLAN.test(lines[k]) && !/^\s*:(PROPERTIES|END|ID):/.test(lines[k])) m = Math.min(m, /^\s*/.exec(lines[k])![0].length);
       const t = l.slice(h[0].length).trim(), w = t.split(/\s+/)[0], rest = t.slice(w.length).trim();
       out.push((done.includes(w) ? `- [X] ${rest}` : todo.includes(w) ? `- [ ] ${rest}` : `- ${t}`).trimEnd());
     } else if (PLAN.test(l)) continue;
@@ -51,7 +55,7 @@ export function tasksToChecklist(lines: string[], todo: string[], done: string[]
       if (lines[j]?.trim() !== ":END:") return null;
       i = j;
     } else if (/^\s*:[A-Za-z_]+:\s*$/.test(l)) return null;
-    else out.push(l.trim() === "" ? l : `  ${l.replace(/^\s+/, "")}`);
+    else out.push(l.trim() === "" ? l : `  ${l.slice(m)}`);
   }
   return out;
 }
