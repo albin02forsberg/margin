@@ -289,10 +289,11 @@
     if (showOutline && isText(tab)) syncOutline(view.state);
   }
 
-  function newState(key: string, text: string, path?: string, readOnly = false) {
+  function newState(key: string, text: string, path?: string, readOnly = false, startup = false) {
     return ed.createState(text, {
       org: !path || /\.org(_archive)?$/.test(path),
       readOnly,
+      startup,
       ...kw(),
       path,
       onUpdate: countWords,
@@ -427,7 +428,7 @@
     let t = fileTab(path);
     if (!t) {
       const text: string = await call("read_file", { path });
-      tabs.push((t = { key: path, title: niceName(path), kind: "file", path, dirty: false, saved: text, state: newState(path, text, path) }));
+      tabs.push((t = { key: path, title: niceName(path), kind: "file", path, dirty: false, saved: text, state: newState(path, text, path, false, true) }));
       t = tabs[tabs.length - 1]; // the reactive proxy
     }
     const old = tabs.find((x) => x.key === key2);
@@ -563,7 +564,7 @@
     let i = tabs.findIndex((t) => t.kind === "file" && t.path === path);
     if (i < 0) {
       const text: string = await call("read_file", { path });
-      tabs.push({ key: path, title: niceName(path), kind: "file", path, dirty: false, saved: text, state: newState(path, text, path) });
+      tabs.push({ key: path, title: niceName(path), kind: "file", path, dirty: false, saved: text, state: newState(path, text, path, false, true) });
       i = tabs.length - 1;
     }
     await show(i);

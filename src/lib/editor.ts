@@ -20,6 +20,7 @@ import { runVimInit, type Ctx } from "./vimInit";
 import { EMPH, toggleEmphasis } from "./emphasis";
 import { FN, addFootnote, footnoteTarget } from "./footnote";
 import { cryptUnlocked, headingAt, level, narrowField, subtreeEnd } from "./narrow";
+import { startupFolds, startupMode } from "./startup";
 import { checklistToTasks, levelAt, listRange } from "./checklist";
 import { transclusion, transcludeTarget } from "./transclude";
 import { completionAt } from "./links";
@@ -1364,7 +1365,7 @@ const theme = EditorView.theme({
 export const peekState = (doc: string, opts: { todo: string[]; done: string[]; path?: string }) =>
   EditorState.create({ doc, extensions: [theme, orgConf.of(opts), orgStyle, EditorView.lineWrapping, EditorState.readOnly.of(true)] });
 
-export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; path?: string; onChange: (u: ViewUpdate) => void; onUpdate?: (s: EditorState, docChanged: boolean) => void }) {
+export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; path?: string; startup?: boolean; onChange: (u: ViewUpdate) => void; onUpdate?: (s: EditorState, docChanged: boolean) => void }) {
   const ext: Extension[] = [
     vim({ status: true }),
     numConf.of(numExt(eff({}))),
@@ -1400,6 +1401,10 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
     for (let i = 1; i <= state.doc.lines; i++) {
       const r = drawerRange(state, i) ?? cryptRange(state, i);
       if (r) effects.push(foldEffect.of(r));
+    }
+    // `#+STARTUP:` folds, first open only (`opts.startup`); never written to the file.
+    if (opts.startup) {
+      for (const f of startupFolds(doc.split("\n"), startupMode(doc))) effects.push(foldEffect.of({ from: state.doc.line(f.from).to, to: state.doc.line(f.to).to }));
     }
     if (effects.length) state = state.update({ effects }).state;
   }
