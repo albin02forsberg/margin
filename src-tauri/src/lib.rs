@@ -2754,13 +2754,19 @@ fn calendar_on(c: &Config, d: NaiveDate, load: impl FnOnce(&str) -> R<String>) -
     }
 }
 
-/// Today's calendar events for a meeting note (#1227): `{configured, events, warning}`.
+/// The day a meeting-note picker lists: INPUT (`+1`, `fri`, ISO date) relative to TODAY, blank or none = today.
+fn meeting_day(input: Option<&str>, today: NaiveDate) -> R<NaiveDate> {
+    input.map(str::trim).filter(|i| !i.is_empty()).map_or(Ok(today), |i| date_at(i, today))
+}
+
+/// A day's calendar events for a meeting note (#1227, #1244; DATE default today): `{date, configured, events, warning}`.
 #[tauri::command(async)]
-fn meeting_events(s: State<App>) -> Value {
+fn meeting_events(s: State<App>, date: Option<String>) -> R<Value> {
     let c = s.cfg();
-    let (events, warning) = calendar_on(&c, today(), |p| ics::calendar(p, &ics::CALENDAR, std::time::Instant::now(), ics::get));
+    let day = meeting_day(date.as_deref(), today())?;
+    let (events, warning) = calendar_on(&c, day, |p| ics::calendar(p, &ics::CALENDAR, std::time::Instant::now(), ics::get));
     let events: Vec<Value> = events.into_iter().map(|e| json!({ "start": e.start, "end": e.end, "summary": e.summary, "attendees": e.attendees })).collect();
-    json!({ "configured": !c.activity_calendar.trim().is_empty(), "events": events, "warning": warning })
+    Ok(json!({ "date": day.format("%Y-%m-%d").to_string(), "configured": !c.activity_calendar.trim().is_empty(), "events": events, "warning": warning }))
 }
 
 /// The meeting note `<notes>/meetings/YYYY-MM-DD TITLE.org` for START (default now), created with its
@@ -4501,6 +4507,10 @@ mod tests {
     #[test]
     fn meeting_note_name_body_and_idempotence() {
         let d = NaiveDate::from_ymd_opt(2026, 11, 10).unwrap();
+        let day = |i| meeting_day(i, d);
+        assert_eq!((day(None), day(Some(" "))), (Ok(d), Ok(d)));
+        assert_eq!((day(Some("+1")), day(Some("fri")), day(Some("2026-11-12"))), (Ok(d + Duration::days(1)), Ok(NaiveDate::from_ymd_opt(2026, 11, 13).unwrap()), Ok(NaiveDate::from_ymd_opt(2026, 11, 12).unwrap())));
+        assert!(day(Some("nonsense")).is_err());
         assert_eq!(meeting_name(d, "../x"), "2026-11-10 x.org");
         assert_eq!(meeting_name(d, "  "), "2026-11-10 Meeting.org");
         assert_eq!(meeting_name(d, "a/b: c\\d\n?"), "2026-11-10 a b c d.org");
