@@ -1527,6 +1527,7 @@ describe("Meeting notes", () => {
     await answer("Meeting title", "Hallway chat");
     await fileMatches(join(d.notes, "meetings", `${day} Hallway chat.org`), (s) => s.includes("#+title: Hallway chat\n\n[") && s.includes("* Action items\n"), "ad-hoc meeting note not created");
     await answer("Track time on project", "Acme");
+    await answer("Export code for the new project", "");
     await find(".picker li", "Hallway chat"); // the meeting title is the first task suggestion
     await browser.keys(Key.Enter);
     await find(".clockchip b", "Acme");
