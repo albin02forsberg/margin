@@ -7,7 +7,7 @@ macOS, Windows). Notes are plain org files, so they stay readable anywhere;
 the editor has vim keys.
 
 - **Notes** — org documents that render like a page: links, backlinks,
-  unlinked mentions and a local note graph, tables with formulas, code blocks, inline images, folding (`#+STARTUP: overview` or `content` in a note starts it folded; the headings you fold are remembered per note across closing the tab and restarting, and win over `#+STARTUP:` once saved; the file is never changed).
+  unlinked mentions and a local note graph, tables with formulas, code blocks, inline images, folding (`#+STARTUP: overview`, `content`, `fold`, `nofold` or `show2levels`..`show5levels` in a note starts it folded; the headings you fold are remembered per note across closing the tab and restarting, and win over `#+STARTUP:` once saved; the file is never changed).
 - **Tasks** — Today and All tasks views, schedules, deadlines, priorities,
   tags, repeaters; capture from anywhere with a global shortcut.
 - **Journal** — a daily note, one keypress away; `Space n [` / `Space n ]`
