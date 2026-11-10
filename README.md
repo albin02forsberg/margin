@@ -369,6 +369,7 @@ key in your desktop's settings instead: it opens the same form in the running ap
 `Enter` open, `<`/`>` reschedule a day, `+`/`-` priority, `n` new task, `u` undo,
 `v` day/week, `h`/`l` previous/next, `.` today, `D` (or click the heading) go to a date, `/` filter, `?` all keys.
 Click the checkbox to complete a task.
+`Space x k` in a note turns the checklist at the cursor (or the selected lines) into task headings one level below the heading above: `- [ ]` becomes `TODO`, `- [X]` `DONE`; nested items stay as body text. One undo step.
 `e` (or `Space x e` in a note) renames the task and updates the one-line links to it, `[[*Old]]` in its note and
 `[[file:note.org::*Old]]` in other notes (descriptions and path style kept), in one undo step (`u`, or `Space n u` in a note).
 Links stay as they are when the old title isn't unique in its note, or the new one is empty, contains `[`/`]` or is another heading's title.
