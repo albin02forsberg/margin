@@ -3780,6 +3780,7 @@
     { label: "New task heading below", keys: ["Alt+Shift+Enter"], ctx: "editor", leader: "x n", run: () => ed.newHeading(view, kw().todo[0]) },
     { label: "Turn line into heading / back", leader: "x *", run: () => inFile() && ed.toggleHeading(view) },
     { label: "Toggle checkbox (or click it)", leader: "x c", run: () => inFile() && ed.toggleCheckbox(view) },
+    { label: "Task headings -> checklist (selection or siblings at cursor)", leader: "x K", run: () => { if (!inFile()) return; const n = ed.tasksToChecklistAt(view, kw().todo, kw().done); flash(n < 0 ? "Can't convert: child headings, drawers or other metadata would be lost" : n ? `${n} item${n > 1 ? "s" : ""} made (SCHEDULED/DEADLINE dropped)` : "No task headings here"); } },
     { label: "Checklist -> task headings (selection or list at cursor)", leader: "x k", run: () => { if (!inFile()) return; const n = ed.checklistToTasksAt(view, kw().todo[0], kw().done[0]); flash(n ? `${n} task${n > 1 ? "s" : ""} made` : "No checklist here"); } },
     { label: "Update progress cookies [2/5]", leader: "x u", run: () => inFile() && ed.updateCookies(view) },
     { label: "Sort headings under the cursor…", leader: "x o", run: () => act(sortHeadings) },

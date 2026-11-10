@@ -22,7 +22,7 @@ import { FN, addFootnote, footnoteTarget } from "./footnote";
 import { cryptUnlocked, headingAt, level, narrowField, subtreeEnd } from "./narrow";
 import { startupFolds, startupMode } from "./startup";
 import { foldsToStore, headingKeys, keyLines } from "./folds";
-import { checklistToTasks, levelAt, listRange } from "./checklist";
+import { checklistToTasks, levelAt, listRange, tasksToChecklist } from "./checklist";
 import { transclusion, transcludeTarget } from "./transclude";
 import { completionAt } from "./links";
 import { diagrams } from "./diagram";
@@ -906,6 +906,27 @@ export function checklistToTasksAt(v: EditorView, todo: string, done: string): n
   const changes = old.flatMap((t, i) => (t === now[i] ? [] : [{ from: d.line(a + i + 1).from, to: d.line(a + i + 1).to, insert: now[i] }]));
   if (changes.length) v.dispatch({ changes });
   return changes.length;
+}
+
+/** Turn the selected sibling task headings (or the run of same-level headings around the cursor)
+ *  into a checklist, one undo step. Returns the item count, or -1 when something would be lost. */
+export function tasksToChecklistAt(v: EditorView, todo: string[], done: string[]): number {
+  const d = v.state.doc, all = d.toString().split("\n"), sel = v.state.selection.main;
+  const lv = (i: number) => /^(\*+)\s/.exec(all[i])?.[1].length ?? 0;
+  let a = d.lineAt(sel.from).number - 1, b = d.lineAt(sel.to).number - 1;
+  if (sel.empty) {
+    while (a > 0 && !lv(a)) a--;
+    const L = lv(a);
+    if (!L) return 0;
+    b = a;
+    while (b + 1 < all.length && (!lv(b + 1) || lv(b + 1) === L)) b++;
+    while (b > a && all[b].trim() === "") b--;
+    for (let p = a - 1; p >= 0; p--) if (lv(p)) { if (lv(p) !== L) break; a = p; }
+  }
+  const old = all.slice(a, b + 1), now = tasksToChecklist(old, todo, done);
+  if (!now) return -1;
+  v.dispatch({ changes: { from: d.line(a + 1).from, to: d.line(b + 1).to, insert: now.join("\n") } });
+  return old.filter((l) => /^\*+\s/.test(l)).length;
 }
 
 /** Refresh the [n/m] / [n%] cookie of heading H: counts the checkboxes in

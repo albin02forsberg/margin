@@ -27,3 +27,31 @@ export function listRange(lines: string[], i: number): [number, number] {
   while (b < lines.length - 1 && ok(lines[b + 1])) b++;
   return [a, b];
 }
+
+const PLAN = /^\s*(?:SCHEDULED|DEADLINE|CLOSED):/;
+
+/** Inverse of `checklistToTasks`: sibling headings (all one level, no child
+ *  headings) -> checklist items. Done keyword -> `- [X]`, other keyword ->
+ *  `- [ ]`, none -> `- `. Body lines indent 2; SCHEDULED/DEADLINE/CLOSED and an
+ *  `:ID:`-only drawer are dropped. Null when anything else would be lost. */
+export function tasksToChecklist(lines: string[], todo: string[], done: string[]): string[] | null {
+  const lvl = HEAD.exec(lines[0] ?? "")?.[1].length;
+  if (!lvl) return null;
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i], h = HEAD.exec(l);
+    if (h) {
+      if (h[1].length !== lvl) return null;
+      const t = l.slice(h[0].length).trim(), w = t.split(/\s+/)[0], rest = t.slice(w.length).trim();
+      out.push((done.includes(w) ? `- [X] ${rest}` : todo.includes(w) ? `- [ ] ${rest}` : `- ${t}`).trimEnd());
+    } else if (PLAN.test(l)) continue;
+    else if (l.trim() === ":PROPERTIES:") {
+      let j = i + 1;
+      while (j < lines.length && /^\s*:ID:/.test(lines[j])) j++;
+      if (lines[j]?.trim() !== ":END:") return null;
+      i = j;
+    } else if (/^\s*:[A-Za-z_]+:\s*$/.test(l)) return null;
+    else out.push(l.trim() === "" ? l : `  ${l.replace(/^\s+/, "")}`);
+  }
+  return out;
+}
