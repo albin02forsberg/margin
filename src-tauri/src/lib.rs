@@ -2766,12 +2766,19 @@ fn meeting_events(s: State<App>) -> Value {
 /// The meeting note `<notes>/meetings/YYYY-MM-DD TITLE.org` for START (default now), created with its
 /// time, ATTENDEES as `@handles` and Notes / Action items headings; an existing one is returned untouched.
 #[tauri::command]
-fn meeting_note(s: State<App>, title: String, start: Option<NaiveDateTime>, end: Option<NaiveDateTime>, attendees: Vec<String>) -> R<PathBuf> {
+fn meeting_note(s: State<App>, title: String, start: Option<NaiveDateTime>, end: Option<NaiveDateTime>, attendees: Vec<String>) -> R<MeetingNote> {
     let start = start.unwrap_or_else(timeclock::now);
     let p = s.cfg().notes().join("meetings").join(meeting_name(start.date(), &title));
     s.check(&p)?;
-    write_meeting(&p, &title, &meeting_body(start, end, &attendees))?;
-    Ok(p)
+    let created = write_meeting(&p, &title, &meeting_body(start, end, &attendees))?;
+    Ok(MeetingNote { path: p, created })
+}
+
+/// `meeting_note`'s result: the file and whether this call created it.
+#[derive(serde::Serialize)]
+struct MeetingNote {
+    path: PathBuf,
+    created: bool,
 }
 
 /// The file name `YYYY-MM-DD TITLE.org` with TITLE made safe: no path separators, `:` or other
@@ -2804,14 +2811,15 @@ fn meeting_body(start: NaiveDateTime, end: Option<NaiveDateTime>, attendees: &[S
     format!("{when}\n{who}\n* Notes\n\n* Action items\n")
 }
 
-/// Create the note P titled TITLE holding BODY, unless it exists.
-fn write_meeting(p: &Path, title: &str, body: &str) -> R<()> {
+/// Create the note P titled TITLE holding BODY, unless it exists; true when created.
+fn write_meeting(p: &Path, title: &str, body: &str) -> R<bool> {
     if p.exists() {
-        return Ok(());
+        return Ok(false);
     }
     notes::write_note(p, &title.split_whitespace().collect::<Vec<_>>().join(" ")).map_err(|e| e.to_string())?;
     let mut f = std::fs::OpenOptions::new().append(true).open(p).map_err(|e| e.to_string())?;
-    std::io::Write::write_all(&mut f, body.as_bytes()).map_err(|e| e.to_string())
+    std::io::Write::write_all(&mut f, body.as_bytes()).map_err(|e| e.to_string())?;
+    Ok(true)
 }
 
 /// The profile's `activity_dismissed.json`; missing is empty, unreadable or malformed is an error.
@@ -4508,10 +4516,10 @@ mod tests {
         assert!(meeting_body(t(23, 0), Some(t(23, 0) + Duration::hours(2)), &[]).starts_with("[2026-11-10 Tue 23:00]--[2026-11-11 Wed 01:00]\n"));
         let dir = std::env::temp_dir().join(format!("margin-meeting-{}", notes::gen_id()));
         let p = dir.join("meetings").join(meeting_name(d, "Sync"));
-        write_meeting(&p, " Sync\n", "body\n").unwrap();
+        assert!(write_meeting(&p, " Sync\n", "body\n").unwrap());
         let first = std::fs::read_to_string(&p).unwrap();
         assert!(first.contains("#+title: Sync\n\nbody\n"), "{first}");
-        write_meeting(&p, "Sync", "other\n").unwrap();
+        assert!(!write_meeting(&p, "Sync", "other\n").unwrap());
         assert_eq!(std::fs::read_to_string(&p).unwrap(), first);
         std::fs::remove_dir_all(dir).unwrap();
     }

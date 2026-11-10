@@ -2470,7 +2470,13 @@
     const ev = e === "adhoc" ? null : (e as Ev);
     const title = ev ? ev.summary : (await ask("Meeting title"))?.trim();
     if (!title) return;
-    await openFile(await call<string>("meeting_note", { title, start: ev?.start ?? null, end: ev?.end ?? null, attendees: ev?.attendees ?? [] }));
+    const m = await call<{ path: string; created: boolean }>("meeting_note", { title, start: ev?.start ?? null, end: ev?.end ?? null, attendees: ev?.attendees ?? [] });
+    await openFile(m.path);
+    if (!m.created) return;
+    // a new meeting: offer to track it (Esc on the project picker skips), unless a timer already runs
+    await refreshTc();
+    if (tc.project != null) return flash(`Already tracking ${tc.project}`);
+    await clockIn(undefined, title);
   }
 
   /** Merge the open note into another one (#847): it becomes a top-level section there, links, pins and bookmarks follow, and it goes to .trash. */
