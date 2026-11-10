@@ -1517,11 +1517,25 @@ describe("Meeting notes", () => {
     const file = join(d.notes, "meetings", `${day} Design review.org`);
     await fileMatches(file, (s) => s.includes(`#+title: Design: review\n\n[${orgDay(new Date())} 10:00-10:30]\nAttendees: @Anna_Svensson @bo\n\n* Notes\n\n* Action items\n`), "meeting note not created from the event");
     await find(".status .file", `${day} Design review.org`);
+    // a new meeting offers to track it (#1234); Esc skips
+    await find(".picker label span", "Track time on project");
+    await browser.keys(Key.Escape);
     await noPicker();
+    await find(".clockchip b", "Not tracking");
     await leader("nN");
     await answer("Meeting note for", "ad-hoc");
     await answer("Meeting title", "Hallway chat");
     await fileMatches(join(d.notes, "meetings", `${day} Hallway chat.org`), (s) => s.includes("#+title: Hallway chat\n\n[") && s.includes("* Action items\n"), "ad-hoc meeting note not created");
+    await answer("Track time on project", "Acme");
+    await find(".picker li", "Hallway chat"); // the meeting title is the first task suggestion
+    await browser.keys(Key.Enter);
+    await find(".clockchip b", "Acme");
+    // with a timer running, a new meeting note doesn't ask again
+    await leader("nN");
+    await answer("Meeting note for", "ad-hoc");
+    await answer("Meeting title", "Second chat");
+    await fileMatches(join(d.notes, "meetings", `${day} Second chat.org`), (s) => s.includes("#+title: Second chat"), "second meeting note not created");
+    await noPicker();
   });
 });
 

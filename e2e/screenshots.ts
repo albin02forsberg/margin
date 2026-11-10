@@ -502,6 +502,7 @@ async function pngs() {
     await type("Harbor release sync");
     await browser.keys(Key.Enter);
     await opened(`${iso(new Date())} Harbor release sync.org`);
+    await find(".picker label span", "Track time on project"); // the clock-in offer (#1234)
     await shot("meeting-note");
   }
 
