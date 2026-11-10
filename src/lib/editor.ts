@@ -21,6 +21,7 @@ import { EMPH, toggleEmphasis } from "./emphasis";
 import { FN, addFootnote, footnoteTarget } from "./footnote";
 import { cryptUnlocked, headingAt, level, narrowField, subtreeEnd } from "./narrow";
 import { startupFolds, startupMode } from "./startup";
+import { headingKeys, keyLines } from "./folds";
 import { checklistToTasks, levelAt, listRange } from "./checklist";
 import { transclusion, transcludeTarget } from "./transclude";
 import { completionAt } from "./links";
@@ -1365,7 +1366,18 @@ const theme = EditorView.theme({
 export const peekState = (doc: string, opts: { todo: string[]; done: string[]; path?: string }) =>
   EditorState.create({ doc, extensions: [theme, orgConf.of(opts), orgStyle, EditorView.lineWrapping, EditorState.readOnly.of(true)] });
 
-export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; path?: string; startup?: boolean; onChange: (u: ViewUpdate) => void; onUpdate?: (s: EditorState, docChanged: boolean) => void }) {
+/** Keys (folds.ts) of the folded headings in STATE, for a later `createState` (#1236); block and drawer folds aren't kept. */
+export function foldKeys(state: EditorState): string[] {
+  const heads: number[] = [];
+  foldedRanges(state).between(0, state.doc.length, (from) => {
+    const l = state.doc.lineAt(from);
+    if (l.to === from && level(l.text)) heads.push(l.number);
+  });
+  return headingKeys(state.doc.toString().split("\n"), heads);
+}
+
+/** FOLDS: saved heading folds (`foldKeys`), which replace the `#+STARTUP:` ones. */
+export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; path?: string; startup?: boolean; folds?: string[]; onChange: (u: ViewUpdate) => void; onUpdate?: (s: EditorState, docChanged: boolean) => void }) {
   const ext: Extension[] = [
     vim({ status: true }),
     numConf.of(numExt(eff({}))),
@@ -1403,7 +1415,12 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
       if (r) effects.push(foldEffect.of(r));
     }
     // `#+STARTUP:` folds, first open only (`opts.startup`); never written to the file.
-    if (opts.startup) {
+    if (opts.folds) {
+      for (const n of keyLines(doc.split("\n"), opts.folds)) {
+        const end = state.doc.line(subtreeEnd(state, n));
+        if (end.number > n) effects.push(foldEffect.of({ from: state.doc.line(n).to, to: end.to }));
+      }
+    } else if (opts.startup) {
       for (const f of startupFolds(doc.split("\n"), startupMode(doc))) effects.push(foldEffect.of({ from: state.doc.line(f.from).to, to: state.doc.line(f.to).to }));
     }
     if (effects.length) state = state.update({ effects }).state;

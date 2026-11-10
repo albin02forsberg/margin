@@ -2081,6 +2081,12 @@ describe("Org structure keys", () => {
       const at = await browser.execute(() => `focus: ${document.activeElement?.className}; cursor line: ${document.querySelector(".cm-activeLine")?.textContent}`);
       throw new Error(`Tab didn't fold the subtree; ${at}; lines: ${JSON.stringify(await texts(".cm-line"))}`);
     }
+    // The fold is remembered across closing and reopening the tab (#1236).
+    await browser.keys(" ");
+    await type("bd");
+    await browser.waitUntil(async () => !(await texts(".tabs .tab button")).some((t) => t.includes("fold")), { timeoutMsg: "tab not closed" });
+    await open("fold", 3);
+    assert.ok(!(await shown()), "fold not restored after reopening the tab");
     await browser.keys(Key.Tab);
     await browser.waitUntil(shown, { timeoutMsg: "Tab didn't unfold the subtree" });
   });

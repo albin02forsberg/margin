@@ -62,6 +62,7 @@
   import { entryKeys, inboxKeys, summariseInbox, type InboxAction, type InboxCounts } from "$lib/inbox";
   import { morningKeys, planCandidates, planSummary, type MorningAction } from "$lib/morning";
   import { parseSession, type Entry } from "$lib/session";
+  import { parseFolds, putFolds } from "$lib/folds";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
   import { parseWordGoal, wordCount, wordsLabel } from "$lib/words";
   import { windowTitle } from "$lib/wintitle";
@@ -289,11 +290,13 @@
     if (showOutline && isText(tab)) syncOutline(view.state);
   }
 
-  function newState(key: string, text: string, path?: string, readOnly = false, startup = false) {
+  /** STARTUP: a first open, so the note's saved folds (#1236), else its `#+STARTUP:` ones; FOLDKEYS: folds carried over from the tab's old state. */
+  function newState(key: string, text: string, path?: string, readOnly = false, startup = false, foldKeys?: string[]) {
     return ed.createState(text, {
       org: !path || /\.org(_archive)?$/.test(path),
       readOnly,
       startup,
+      folds: foldKeys ?? (startup && path ? folds[path] : undefined),
       ...kw(),
       path,
       onUpdate: countWords,
@@ -735,7 +738,17 @@
 
   /** The open tabs (`restore_tabs`) for the next start: only paths and lines, never content; Today always opens first. */
   let restored = false; // nothing is written until the last session is back
+  /** Folded headings per org note (#1236), in localStorage only: recorded on tab close and with the session. */
+  let folds = parseFolds(stored("folds", ""));
+  function saveFolds(ts: Tab[]) {
+    for (const t of ts) {
+      const st = t.kind === "file" && t.path && !t.missing && /\.org(_archive)?$/.test(t.path) ? viewOf(t)?.state ?? t.state : undefined;
+      if (st) folds = putFolds(folds, t.path!, ed.foldKeys(st));
+    }
+    store("folds", JSON.stringify(folds));
+  }
   function saveSession() {
+    saveFolds(tabs);
     if (!restored || !cfg?.config.restore_tabs) return;
     const ok = (t: Tab) => (t.kind === "file" ? !t.missing && ([cfg.config_path, cfg.log_path, cfg.projects_path].includes(t.path) || t.path!.startsWith(cfg.notes)) : t.kind !== "report" && t.kind !== "agenda");
     const keep = tabs.filter(ok);
@@ -840,6 +853,7 @@
     if (i < 0) return -1;
     if (t.kind === "file" && t.path) {
       const st = stateOf(t);
+      saveFolds([t]);
       closed.push({ path: t.path, line: st.doc.lineAt(st.selection.main.head).number - 1 });
     } else if (t.kind !== "file" && t.kind !== "report") closed.push({ kind: t.kind, query: t.query, title: t.title });
     if (closed.length > 20) closed.shift();
@@ -1293,7 +1307,7 @@
   function takeWritten(t: Tab, text: string, line: number) {
     clearTimeout(saveTimers.get(t.key));
     updateOff(t, ed.diffChange(stateOf(t).doc.toString(), text)); // only to move the decrypted tabs of its other headings
-    const st = newState(t.key, text, t.path);
+    const st = newState(t.key, text, t.path, false, false, ed.foldKeys(stateOf(t)));
     Object.assign(t, { state: st, saved: text, dirty: false, conflict: false });
     const v = viewOf(t);
     if (v) {
@@ -2524,7 +2538,7 @@
     const old = stateOf(t), text = old.doc.toString(), v = viewOf(t);
     if (v && v === view2) key2 = to;
     // A sync during the move may have flagged the old path as missing; the trailing sync re-checks.
-    Object.assign(t, { key: to, path: to, title: niceName(to), state: newState(to, text, to), saved: text, dirty: false, conflict: false, missing: false });
+    Object.assign(t, { key: to, path: to, title: niceName(to), state: newState(to, text, to, false, false, ed.foldKeys(old)), saved: text, dirty: false, conflict: false, missing: false });
     if (v) {
       v.setState(t.state!);
       ed.vimClearJumps();
@@ -2536,6 +2550,8 @@
       countWords(view.state, true, true);
     }
     nav.rename(navHist, from, to);
+    delete folds[from];
+    saveFolds([t]); // the saved folds move with the note
     recent = recent.map((p) => (p === from ? to : p));
     store("recent", JSON.stringify(recent));
     if (pinned.includes(from)) savePinned(pinned.map((p) => (p === from ? to : p)));
