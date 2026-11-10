@@ -3,7 +3,7 @@
 // (#930). JSON-RPC 2.0, one message per line; stdout carries only responses, anything else goes to stderr.
 
 use crate::config::Config;
-use crate::{ai, capture_file, check_in, embed, embed_backend, files_of, journal_file, kw_of, new_day_file, notes, org, org_edit_op, range_report, retrieve, saved_profile, semantic_model, tc_of, timeclock, week_range, write_checked};
+use crate::{ai, capture_file, check_in, embed, embed_backend, files_of, journal_file, journal_template_for, kw_of, new_day_file, notes, org, org_edit_op, range_report, retrieve, saved_profile, semantic_model, tc_of, timeclock, week_range, write_checked};
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -361,7 +361,7 @@ fn edit(c: &Config, root: &Path, all: &[Arc<org::OrgFile>], name: &str, args: &V
         // A new day file isn't in the scan cache yet, so this works on the path itself, not find().
         let created = !p.exists();
         if created {
-            new_day_file(&p, &c.journal_template, day)?;
+            new_day_file(&p, &journal_template_for(c, day), day)?;
         }
         let read = std::fs::read_to_string(&p).map_err(|e| e.to_string())?.replace("\r\n", "\n").replace('\r', "\n");
         write_checked(&p, org::capture_insert(&read, arg("heading"), text, &kw), Some(&read))?;

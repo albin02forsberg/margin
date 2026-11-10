@@ -1337,9 +1337,19 @@ fn capture_path(s: State<App>, file: String, date_input: Option<String>, journal
             Some(i) => date_at(i, now.date())?,
             None => now.date(),
         };
-        new_day_file(&p, if journal { &c.journal_template } else { "" }, day)?;
+        new_day_file(&p, &if journal { journal_template_for(&c, day) } else { String::new() }, day)?;
     }
     Ok(p)
+}
+
+/// The journal template for DAY: `<templates_dir>/journal/<mon..sun>.org` if it has text, else the
+/// `journal_template` setting.
+pub(crate) fn journal_template_for(c: &config::Config, day: NaiveDate) -> String {
+    let name = format!("{}.org", day.weekday().to_string().to_lowercase());
+    c.templates_path()
+        .and_then(|t| std::fs::read_to_string(t.join("journal").join(name)).ok())
+        .filter(|t| !t.trim().is_empty())
+        .unwrap_or_else(|| c.journal_template.clone())
 }
 
 /// Create P as an org-roam note titled after its name, with TEMPLATE expanded for DAY below it.
@@ -4907,6 +4917,22 @@ mod tests {
         assert!(t.ends_with("* Plan <2026-03-04 Wed> \n"), "{t:?}");
         append_journal_template(&p, "  ", day).unwrap(); // empty template: untouched
         assert_eq!(std::fs::read_to_string(&p).unwrap(), t);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn journal_template_prefers_weekday_file() {
+        let dir = std::env::temp_dir().join(format!("margin-jtw-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("templates/journal")).unwrap();
+        std::fs::write(dir.join("templates/journal/mon.org"), "* Monday plan").unwrap();
+        std::fs::write(dir.join("templates/journal/tue.org"), "  \n").unwrap();
+        let mut c = config::Config { notes_dir: dir.to_string_lossy().into(), journal_template: "* Default".into(), ..Default::default() };
+        let d = |n| NaiveDate::from_ymd_opt(2026, 3, n).unwrap(); // 2026-03-02 is a Monday
+        assert_eq!(journal_template_for(&c, d(2)), "* Monday plan");
+        assert_eq!(journal_template_for(&c, d(3)), "* Default"); // blank file
+        assert_eq!(journal_template_for(&c, d(4)), "* Default"); // missing file
+        c.templates_dir = "".into();
+        assert_eq!(journal_template_for(&c, d(2)), "* Default"); // no templates folder
         std::fs::remove_dir_all(&dir).ok();
     }
 
