@@ -20,7 +20,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "publish_dir", label: "Publish folder", hint: "Space n E writes the notes tagged below here as a static site; empty = asked the first time; must be outside the notes folder" },
     { key: "publish_tag", label: "Publish tag", hint: "notes with this file tag (#+filetags) are published" },
     { key: "daily_dir", label: "Journal folder", hint: rel },
-    { key: "journal_template", label: "Journal template", kind: "multiline", hint: "org text added to each new journal entry, e.g. * Plan; %t and %u expand to that day's date, prompts and %? don't; empty = nothing" },
+    { key: "journal_template", label: "Journal template", kind: "multiline", hint: "org text added to each new journal entry, e.g. * Plan; %t and %u expand to that day's date, prompts and %? don't; empty = nothing; a non-empty <templates_dir>/journal/mon.org … sun.org overrides it for that weekday" },
     { key: "journal_word_goal", label: "Journal word goal", kind: "number", step: 50, hint: "words per journal day shown in the status bar as 812 / 1500; a #+WORDGOAL: N line in any org note sets its own; 0 = none" },
     { key: "metrics", label: "Daily metrics", kind: "list", hint: "one per line; offered by Space n j, which logs mood, energy, sleep… into the journal day's property drawer" },
     { key: "inbox", label: "Inbox file", hint: `new tasks go here, ${rel}` },

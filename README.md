@@ -14,7 +14,8 @@ the editor has vim keys.
   step to the previous / next existing entry, `Space n t` lists
   entries from this day in earlier years and months. Set a `journal_template`
   (Settings) to give each new entry a skeleton, e.g. `* Plan`; `%t` expands
-  to that day's date (prompts and `%?` are ignored). Set a word goal with
+  to that day's date (prompts and `%?` are ignored). A file `journal/mon.org` … `sun.org` in the
+  templates folder overrides it for that weekday. Set a word goal with
   `#+WORDGOAL: 1500` at the top of any org note, or `journal_word_goal`
   (Settings) for every journal day: the status bar then reads
   `812 / 1500 words` and turns accent-coloured once reached. `Space n k` carries
