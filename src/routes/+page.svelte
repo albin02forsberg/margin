@@ -743,7 +743,10 @@
   function saveFolds(ts: Tab[]) {
     for (const t of ts) {
       const st = t.kind === "file" && t.path && !t.missing && /\.org(_archive)?$/.test(t.path) ? viewOf(t)?.state ?? t.state : undefined;
-      if (st) folds = putFolds(folds, t.path!, ed.foldKeys(st));
+      if (!st) continue;
+      const keys = ed.foldsToKeep(st);
+      if (keys) folds = putFolds(folds, t.path!, keys);
+      else delete folds[t.path!];
     }
     store("folds", JSON.stringify(folds));
   }
