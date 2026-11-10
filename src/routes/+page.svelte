@@ -2476,21 +2476,26 @@
   }
 
   /** Meeting note (#1227): pick one of today's calendar events (or an ad-hoc meeting); opens `meetings/YYYY-MM-DD title.org`, created if new. */
-  async function meetingNote() {
+  async function meetingNote(day: string | null = null): Promise<void> {
     type Ev = { start: string; end: string; summary: string; attendees: string[] };
-    const r = await call<{ configured: boolean; events: Ev[]; warning: string | null }>("meeting_events");
+    const r = await call<{ date: string; configured: boolean; events: Ev[]; warning: string | null }>("meeting_events", { date: day });
+    const isToday = day == null, on = isToday ? "today" : `on ${r.date}`;
     const hm = (s: string) => s.slice(11, 16);
-    const items = [...r.events.map((e) => ({ label: `${hm(e.start)}–${hm(e.end)}  ${e.summary}`, detail: e.attendees.join(", "), value: e as unknown })), { label: "Ad-hoc meeting…", value: "adhoc" }];
-    const hint = r.warning ?? (r.configured ? (r.events.length ? undefined : "No events today") : "Set activity_calendar to list today's events");
-    const e = await pick({ prompt: "Meeting note for", items, hint });
+    const items = [...r.events.map((e) => ({ label: `${hm(e.start)}–${hm(e.end)}  ${e.summary}`, detail: e.attendees.join(", "), value: e as unknown })), { label: "Ad-hoc meeting…", value: "adhoc" }, { label: "Other day…", value: "other" }];
+    const hint = r.warning ?? (r.configured ? (r.events.length ? undefined : `No events ${on}`) : `Set activity_calendar to list ${isToday ? "today's" : "the day's"} events`);
+    const e = await pick({ prompt: isToday ? "Meeting note for" : `Meeting note for ${r.date}`, items, hint });
     if (!e) return;
+    if (e === "other") {
+      const d = (await ask("Day (+1, fri, 2026-11-12)"))?.trim();
+      return d ? meetingNote(d).catch((x) => void flash(String(x))) : undefined;
+    }
     const ev = e === "adhoc" ? null : (e as Ev);
     const title = ev ? ev.summary : (await ask("Meeting title"))?.trim();
     if (!title) return;
-    const m = await call<{ path: string; created: boolean }>("meeting_note", { title, start: ev?.start ?? null, end: ev?.end ?? null, attendees: ev?.attendees ?? [] });
+    const m = await call<{ path: string; created: boolean }>("meeting_note", { title, start: ev?.start ?? (isToday ? null : `${r.date}T${new Date().toTimeString().slice(0, 8)}`), end: ev?.end ?? null, attendees: ev?.attendees ?? [] });
     await openFile(m.path);
-    if (!m.created) return;
-    // a new meeting: offer to track it (Esc on the project picker skips), unless a timer already runs
+    if (!m.created || !isToday) return;
+    // a new meeting today: offer to track it (Esc on the project picker skips), unless a timer already runs
     await refreshTc();
     if (tc.project != null) return flash(`Already tracking ${tc.project}`);
     await clockIn(undefined, title);
