@@ -21,7 +21,7 @@ import { EMPH, toggleEmphasis } from "./emphasis";
 import { FN, addFootnote, footnoteTarget } from "./footnote";
 import { cryptUnlocked, headingAt, level, narrowField, subtreeEnd } from "./narrow";
 import { startupFolds, startupMode } from "./startup";
-import { headingKeys, keyLines } from "./folds";
+import { foldsToStore, headingKeys, keyLines } from "./folds";
 import { checklistToTasks, levelAt, listRange } from "./checklist";
 import { transclusion, transcludeTarget } from "./transclude";
 import { completionAt } from "./links";
@@ -1373,7 +1373,14 @@ export function foldKeys(state: EditorState): string[] {
     const l = state.doc.lineAt(from);
     if (l.to === from && level(l.text)) heads.push(l.number);
   });
-  return headingKeys(state.doc.toString().split("\n"), heads);
+  const c = state.facet(orgConf);
+  return headingKeys(state.doc.toString().split("\n"), heads, [...c.todo, ...c.done]);
+}
+
+/** `foldKeys` to remember for STATE, or null when they are just the `#+STARTUP:` folds (nothing worth storing). */
+export function foldsToKeep(state: EditorState): string[] | null {
+  const c = state.facet(orgConf);
+  return foldsToStore(state.doc.toString(), foldKeys(state), [...c.todo, ...c.done]);
 }
 
 /** FOLDS: saved heading folds (`foldKeys`), which replace the `#+STARTUP:` ones. */
@@ -1416,7 +1423,7 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
     }
     // `#+STARTUP:` folds, first open only (`opts.startup`); never written to the file.
     if (opts.folds) {
-      for (const n of keyLines(doc.split("\n"), opts.folds)) {
+      for (const n of keyLines(doc.split("\n"), opts.folds, [...opts.todo, ...opts.done])) {
         const end = state.doc.line(subtreeEnd(state, n));
         if (end.number > n) effects.push(foldEffect.of({ from: state.doc.line(n).to, to: end.to }));
       }
