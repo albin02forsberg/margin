@@ -20,6 +20,7 @@ import { runVimInit, type Ctx } from "./vimInit";
 import { EMPH, toggleEmphasis } from "./emphasis";
 import { FN, addFootnote, footnoteTarget } from "./footnote";
 import { cryptUnlocked, headingAt, level, narrowField, subtreeEnd } from "./narrow";
+import { checklistToTasks, levelAt, listRange } from "./checklist";
 import { transclusion, transcludeTarget } from "./transclude";
 import { completionAt } from "./links";
 import { diagrams } from "./diagram";
@@ -892,6 +893,17 @@ export function toggleCheckbox(v: EditorView): boolean {
   v.dispatch({ changes: { from: pos, to: pos + 1, insert: m[2] === " " ? "X" : " " } });
   updateCookies(v, ln.number);
   return true;
+}
+
+/** Turn the checklist at the cursor (or the selected lines) into task headings, one undo step.
+ *  Returns the number of items converted. */
+export function checklistToTasksAt(v: EditorView, todo: string, done: string): number {
+  const d = v.state.doc, all = d.toString().split("\n"), sel = v.state.selection.main;
+  const [a, b] = sel.empty ? listRange(all, d.lineAt(sel.head).number - 1) : [d.lineAt(sel.from).number - 1, d.lineAt(sel.to).number - 1];
+  const old = all.slice(a, b + 1), now = checklistToTasks(old, levelAt(all, a), todo, done);
+  const changes = old.flatMap((t, i) => (t === now[i] ? [] : [{ from: d.line(a + i + 1).from, to: d.line(a + i + 1).to, insert: now[i] }]));
+  if (changes.length) v.dispatch({ changes });
+  return changes.length;
 }
 
 /** Refresh the [n/m] / [n%] cookie of heading H: counts the checkboxes in
