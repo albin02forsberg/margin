@@ -3,6 +3,7 @@ import { after, before, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -1497,6 +1498,30 @@ describe("Week start", () => {
     const cfg = join(d.cfgDir, "config.toml");
     writeFileSync(cfg, readFileSync(cfg, "utf8").replace('week_start = "sunday"', 'week_start = "monday"')); // the browsed week (Sunday..Saturday) re-aligns to the Monday on or before its Sunday: 6 days back from the Sunday
     await browser.waitUntil(async () => (await first()).startsWith(want(0, 6)), { timeoutMsg: `week didn't re-align to Monday: ${await first()}` });
+  });
+});
+
+describe("Meeting notes", () => {
+  let d: Dirs;
+  const day = isoDay(new Date()), ymd = day.replaceAll("-", "");
+  const ics = `BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:m1\nDTSTART:${ymd}T100000\nDTEND:${ymd}T103000\nSUMMARY:Design: review\nATTENDEE;CN="Anna Svensson":mailto:anna@x.se\nATTENDEE:mailto:bo@x.se\nEND:VEVENT\nEND:VCALENDAR\n`;
+  const cal = join(tmpdir(), `margin-e2e-cal-${process.pid}.ics`);
+  before(async () => { writeFileSync(cal, ics); d = await launch({ config: [`activity_calendar = ${JSON.stringify(cal)}`] }); });
+  after(close, { timeout: 30_000 });
+  const leader = async (keys: string) => { await browser.keys(Key.Escape); await browser.keys(" "); await type(keys); };
+
+  it("Space n N creates a meeting note from today's event, and an ad-hoc one (#1227)", async () => {
+    await find(".agenda h1", "Today");
+    await leader("nN");
+    await answer("Meeting note for", "design");
+    const file = join(d.notes, "meetings", `${day} Design review.org`);
+    await fileMatches(file, (s) => s.includes(`#+title: Design: review\n\n[${orgDay(new Date())} 10:00-10:30]\nAttendees: @Anna_Svensson @bo\n\n* Notes\n\n* Action items\n`), "meeting note not created from the event");
+    await find(".status .file", `${day} Design review.org`);
+    await noPicker();
+    await leader("nN");
+    await answer("Meeting note for", "ad-hoc");
+    await answer("Meeting title", "Hallway chat");
+    await fileMatches(join(d.notes, "meetings", `${day} Hallway chat.org`), (s) => s.includes("#+title: Hallway chat\n\n[") && s.includes("* Action items\n"), "ad-hoc meeting note not created");
   });
 });
 

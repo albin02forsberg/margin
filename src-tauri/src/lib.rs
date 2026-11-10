@@ -2741,17 +2741,77 @@ fn activity_suggestions(s: State<App>, date_input: String) -> R<Value> {
 /// a bad pattern or an unreachable calendar is a warning, not a reason to hide the other suggestions.
 fn meetings_and_calendar(c: &Config, d: NaiveDate, load: impl FnOnce(&str) -> R<String>) -> (Vec<regex::Regex>, Vec<ics::Event>, Vec<String>) {
     let (meetings, mut warnings) = activity::lenient("activity_meetings", &c.activity_meetings);
-    let calendar = match c.activity_calendar.trim() {
-        "" => vec![],
-        p => match load(p) {
-            Ok(t) => ics::events_on(&t, d),
-            Err(e) => {
-                warnings.push(e);
-                vec![]
-            }
-        },
-    };
+    let (calendar, w) = calendar_on(c, d, load);
+    warnings.extend(w);
     (meetings, calendar, warnings)
+}
+
+/// The configured calendar's events on D (via LOAD), or the error loading it.
+fn calendar_on(c: &Config, d: NaiveDate, load: impl FnOnce(&str) -> R<String>) -> (Vec<ics::Event>, Option<String>) {
+    match c.activity_calendar.trim() {
+        "" => (vec![], None),
+        p => load(p).map_or_else(|e| (vec![], Some(e)), |t| (ics::events_on(&t, d), None)),
+    }
+}
+
+/// Today's calendar events for a meeting note (#1227): `{configured, events, warning}`.
+#[tauri::command(async)]
+fn meeting_events(s: State<App>) -> Value {
+    let c = s.cfg();
+    let (events, warning) = calendar_on(&c, today(), |p| ics::calendar(p, &ics::CALENDAR, std::time::Instant::now(), ics::get));
+    let events: Vec<Value> = events.into_iter().map(|e| json!({ "start": e.start, "end": e.end, "summary": e.summary, "attendees": e.attendees })).collect();
+    json!({ "configured": !c.activity_calendar.trim().is_empty(), "events": events, "warning": warning })
+}
+
+/// The meeting note `<notes>/meetings/YYYY-MM-DD TITLE.org` for START (default now), created with its
+/// time, ATTENDEES as `@handles` and Notes / Action items headings; an existing one is returned untouched.
+#[tauri::command]
+fn meeting_note(s: State<App>, title: String, start: Option<NaiveDateTime>, end: Option<NaiveDateTime>, attendees: Vec<String>) -> R<PathBuf> {
+    let start = start.unwrap_or_else(timeclock::now);
+    let p = s.cfg().notes().join("meetings").join(meeting_name(start.date(), &title));
+    s.check(&p)?;
+    write_meeting(&p, &title, &meeting_body(start, end, &attendees))?;
+    Ok(p)
+}
+
+/// The file name `YYYY-MM-DD TITLE.org` with TITLE made safe: no path separators, `:` or other
+/// characters Windows refuses, no leading/trailing dots or spaces, at most 80 characters.
+fn meeting_name(day: NaiveDate, title: &str) -> String {
+    let t: String = title.chars().map(|c| if c.is_control() || "/\\:*?\"<>|".contains(c) { ' ' } else { c }).collect();
+    let t: String = t.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(80).collect();
+    let t = t.trim_matches(|c: char| c == '.' || c == ' ');
+    format!("{} {}.org", day.format("%Y-%m-%d"), if t.is_empty() { "Meeting" } else { t })
+}
+
+/// An attendee as a person handle: an address's local part, anything but letters, digits and `_` as `_`.
+fn person_handle(a: &str) -> String {
+    let a = a.trim().trim_start_matches("mailto:").trim_start_matches('@');
+    let a = if a.contains('@') { a.split('@').next().unwrap_or_default() } else { a };
+    let s: String = a.chars().map(|c| if c.is_alphanumeric() { c } else { '_' }).collect();
+    s.split('_').filter(|p| !p.is_empty()).collect::<Vec<_>>().join("_")
+}
+
+/// A meeting note's body: the time (inactive, so it doesn't show twice in the agenda), the attendees, and its headings.
+fn meeting_body(start: NaiveDateTime, end: Option<NaiveDateTime>, attendees: &[String]) -> String {
+    let when = match end {
+        Some(e) if e.date() == start.date() && e > start => format!("[{}-{}]", start.format("%Y-%m-%d %a %H:%M"), e.format("%H:%M")),
+        Some(e) if e > start => format!("[{}]--[{}]", start.format("%Y-%m-%d %a %H:%M"), e.format("%Y-%m-%d %a %H:%M")),
+        _ => format!("[{}]", start.format("%Y-%m-%d %a %H:%M")),
+    };
+    let mut seen = std::collections::HashSet::new();
+    let people: Vec<String> = attendees.iter().map(|a| person_handle(a)).filter(|h| !h.is_empty() && seen.insert(h.to_lowercase())).map(|h| format!("@{h}")).collect();
+    let who = if people.is_empty() { String::new() } else { format!("Attendees: {}\n", people.join(" ")) };
+    format!("{when}\n{who}\n* Notes\n\n* Action items\n")
+}
+
+/// Create the note P titled TITLE holding BODY, unless it exists.
+fn write_meeting(p: &Path, title: &str, body: &str) -> R<()> {
+    if p.exists() {
+        return Ok(());
+    }
+    notes::write_note(p, &title.split_whitespace().collect::<Vec<_>>().join(" ")).map_err(|e| e.to_string())?;
+    let mut f = std::fs::OpenOptions::new().append(true).open(p).map_err(|e| e.to_string())?;
+    std::io::Write::write_all(&mut f, body.as_bytes()).map_err(|e| e.to_string())
 }
 
 /// The profile's `activity_dismissed.json`; missing is empty, unreadable or malformed is an error.
@@ -3828,7 +3888,7 @@ pub fn run() {
             watcher::gnome_extension, watcher::screen_recording, remind::remind_snooze,
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, md_import, highlights_import, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
-            org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, crypt_lock, crypt_unlock, crypt_rekey, crypt_relock, crypt_remove, crypt_forget, idle::idle_has_source, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_week, ledger_month_review, ledger_year, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, ledger_recurring, ledger_recurring_file, ledger_recurring_mark, capture_path, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, tc_project_hours, expected_hours_for,
+            org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, crypt_lock, crypt_unlock, crypt_rekey, crypt_relock, crypt_remove, crypt_forget, idle::idle_has_source, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_week, ledger_month_review, ledger_year, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, ledger_recurring, ledger_recurring_file, ledger_recurring_mark, capture_path, meeting_events, meeting_note, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, tc_project_hours, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, notes_crypt_unlocked, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, people_last, waiting_for, inbox_count, inbox_entries, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_embed_local, ai_set, ai_download, ai_download_cancel, ai_model_delete, ai_index_status, ai_index_rebuild, semantic_search, ai_related, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
@@ -4428,6 +4488,32 @@ mod tests {
         let (m, cal, w) = meetings_and_calendar(&c, d, |_| Err("activity_calendar (URL): offline".into()));
         assert_eq!((m.len(), cal.len(), w.len()), (1, 0, 2));
         assert!(w[0].starts_with("activity_meetings:") && w[1].starts_with("activity_calendar"));
+    }
+
+    #[test]
+    fn meeting_note_name_body_and_idempotence() {
+        let d = NaiveDate::from_ymd_opt(2026, 11, 10).unwrap();
+        assert_eq!(meeting_name(d, "../x"), "2026-11-10 x.org");
+        assert_eq!(meeting_name(d, "  "), "2026-11-10 Meeting.org");
+        assert_eq!(meeting_name(d, "a/b: c\\d\n?"), "2026-11-10 a b c d.org");
+        assert_eq!(meeting_name(d, &"y".repeat(200)).len(), "2026-11-10 .org".len() + 80);
+        let notes = Path::new("/n");
+        assert_eq!(notes.join("meetings").join(meeting_name(d, "../../etc")).parent(), Some(notes.join("meetings").as_path()));
+        assert_eq!(person_handle("anna.svensson@example.com"), "anna_svensson");
+        assert_eq!((person_handle("Anna Svensson"), person_handle("mailto:bo@x.se"), person_handle(" ")), ("Anna_Svensson".into(), "bo".into(), "".into()));
+        let t = |h, m| d.and_hms_opt(h, m, 0).unwrap();
+        let ppl = vec!["Anna Svensson".to_string(), "anna svensson".into(), "bo@x.se".into(), "".into()];
+        assert_eq!(meeting_body(t(10, 0), Some(t(10, 30)), &ppl), "[2026-11-10 Tue 10:00-10:30]\nAttendees: @Anna_Svensson @bo\n\n* Notes\n\n* Action items\n");
+        assert_eq!(meeting_body(t(9, 5), None, &[]), "[2026-11-10 Tue 09:05]\n\n* Notes\n\n* Action items\n");
+        assert!(meeting_body(t(23, 0), Some(t(23, 0) + Duration::hours(2)), &[]).starts_with("[2026-11-10 Tue 23:00]--[2026-11-11 Wed 01:00]\n"));
+        let dir = std::env::temp_dir().join(format!("margin-meeting-{}", notes::gen_id()));
+        let p = dir.join("meetings").join(meeting_name(d, "Sync"));
+        write_meeting(&p, " Sync\n", "body\n").unwrap();
+        let first = std::fs::read_to_string(&p).unwrap();
+        assert!(first.contains("#+title: Sync\n\nbody\n"), "{first}");
+        write_meeting(&p, "Sync", "other\n").unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), first);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

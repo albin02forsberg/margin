@@ -2457,6 +2457,21 @@
     flash(`Moved to ${dir ? `${dir}/` : "the notes folder"}${n ?` — updated links in ${n} note${n > 1 ? "s" : ""}` : ""}`);
   }
 
+  /** Meeting note (#1227): pick one of today's calendar events (or an ad-hoc meeting); opens `meetings/YYYY-MM-DD title.org`, created if new. */
+  async function meetingNote() {
+    type Ev = { start: string; end: string; summary: string; attendees: string[] };
+    const r = await call<{ configured: boolean; events: Ev[]; warning: string | null }>("meeting_events");
+    const hm = (s: string) => s.slice(11, 16);
+    const items = [...r.events.map((e) => ({ label: `${hm(e.start)}–${hm(e.end)}  ${e.summary}`, detail: e.attendees.join(", "), value: e as unknown })), { label: "Ad-hoc meeting…", value: "adhoc" }];
+    const hint = r.warning ?? (r.configured ? (r.events.length ? undefined : "No events today") : "Set activity_calendar to list today's events");
+    const e = await pick({ prompt: "Meeting note for", items, hint });
+    if (!e) return;
+    const ev = e === "adhoc" ? null : (e as Ev);
+    const title = ev ? ev.summary : (await ask("Meeting title"))?.trim();
+    if (!title) return;
+    await openFile(await call<string>("meeting_note", { title, start: ev?.start ?? null, end: ev?.end ?? null, attendees: ev?.attendees ?? [] }));
+  }
+
   /** Merge the open note into another one (#847): it becomes a top-level section there, links, pins and bookmarks follow, and it goes to .trash. */
   async function mergeNote() {
     if (!inFile() || !tab.path!.startsWith(cfg.notes)) return flash("Open a note first.");
@@ -3608,6 +3623,7 @@
     { label: "Rename note…", leader: "n r", run: renameNote },
     { label: "Note: duplicate…", leader: "n c", run: () => act(duplicateNote) },
     { label: "Move note to folder…", leader: "n m", run: moveNote },
+    { label: "Meeting note from calendar event…", leader: "n N", run: () => act(meetingNote) },
     { label: "Notes: merge into another note…", leader: "n v", run: mergeNote },
     { label: "Delete note… (move to .trash)", leader: "n D", run: trashNote },
     { label: "Restore note from .trash…", leader: "n R", run: restoreNote },
