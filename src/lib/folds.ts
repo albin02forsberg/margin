@@ -2,23 +2,11 @@
 // A heading is keyed by its `:ID:` property, else by its line text plus which occurrence of that text it is,
 // so edits elsewhere in the note don't shift it. The text is the stars plus the title: a TODO keyword, priority or tags changing keeps the fold. Stored in localStorage, never in the note.
 
-import { startupFolds, startupMode } from "./startup.ts";
+import { headProp, startupFolds, startupMode } from "./startup.ts";
 
 export type FoldMap = Record<string, string[]>;
 
 const isHead = (t: string) => /^\*+ /.test(t);
-
-/** The `:ID:` in the property drawer right under heading line N (1-based), after at most one planning line. */
-function headId(lines: string[], n: number): string | undefined {
-  for (let j = n; j < Math.min(n + 2, lines.length) && !isHead(lines[j]); j++) {
-    if (!/^\s*:PROPERTIES:\s*$/i.test(lines[j])) continue;
-    for (let k = j + 1; k < lines.length && !/^\s*:END:\s*$/i.test(lines[k]) && !isHead(lines[k]); k++) {
-      const m = /^\s*:ID:\s*(\S+)\s*$/i.exec(lines[k]);
-      if (m) return m[1];
-    }
-    return;
-  }
-}
 
 /** Heading T as stars plus title: the TODO/DONE keyword in KW, `[#A]` priority and trailing `:tags:` removed. */
 function headTitle(t: string, kw: string[]): string {
@@ -35,7 +23,7 @@ function keyed(lines: string[], kw: string[]): [number, string][] {
   const out: [number, string][] = [];
   lines.forEach((t, i) => {
     if (!isHead(t)) return;
-    const id = headId(lines, i + 1);
+    const id = headProp(lines, i + 1, "ID");
     if (id) return out.push([i + 1, `id:${id}`]);
     const text = headTitle(t, kw), k = seen.get(text) ?? 0;
     seen.set(text, k + 1);
