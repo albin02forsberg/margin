@@ -18,6 +18,20 @@ test("theme.css: the forced-light and media-query light blocks match", () => {
   assert.equal(body(':root[data-theme="light"] {'), body(':root:not([data-theme="dark"]) {'));
 });
 
+test("theme.css: retro overrides every palette token, and its two light blocks match", () => {
+  const css = readFileSync(new URL("./theme.css", import.meta.url), "utf8");
+  const body = (sel: string) => css.split(sel)[1].split("}")[0].replace(/\s+/g, " ").trim();
+  const names = (b: string) => [...b.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]).sort();
+  const classicLight = names(body(':root[data-theme="light"] {'));
+  const retroLight = body(':root[data-look="retro"][data-theme="light"] {');
+  assert.equal(retroLight, body(':root[data-look="retro"]:not([data-theme="dark"]) {'));
+  assert.deepEqual(names(retroLight), classicLight);
+  const retroDark = names(body(':root[data-look="retro"] {'));
+  for (const n of [...classicLight, "--r", "--radius", "--radius-sm", "--sans", "--editor-font"]) assert.ok(retroDark.includes(n), n);
+  // after the classic light blocks, so its dark palette isn't overridden by an equally specific classic one
+  assert.ok(css.indexOf(':root[data-look="retro"] {') > css.indexOf(':root:not([data-theme="dark"]) {'));
+});
+
 test("nextTheme cycles system -> light -> dark -> system", () => {
   assert.equal(nextTheme(""), "light");
   assert.equal(nextTheme("light"), "dark");

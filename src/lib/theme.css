@@ -53,6 +53,53 @@
   }
 }
 
+/* Retro look (`look = "retro"`): flat, square, bordered, monospace, instant. After the light blocks (same specificity);
+   it still follows light/dark, with its own light pair (keep both identical, theme.test.ts). Shadows are zero-size, not
+   `none`, so `var(--soft), var(--ring)` stays valid. */
+:root[data-look="retro"] {
+  --sans: var(--mono); --editor-font: var(--mono);
+  --bg: #101010; --fg: #c8c8c8; --panel: #1c1c1c; --border: #5a5a5a; --dim: #8c8c8c;
+  --active: #2c2c2c; --sel: #1f3f6a; --accent: #ffb000;
+  --h1: #5fafff; --h2: #d787ff; --h3: #5fd7d7; --h4: #afd75f; --h5: #ffd75f; --h6: #ff875f;
+  --todo: #ff5f5f; --done: #5fd75f; --date: #5fd7d7; --link: #5fafff; --code: #afd75f;
+  --kw: #d787ff;
+  --radius: 0; --radius-sm: 0; --r: 0;
+  --card: var(--panel); --canvas: var(--bg);
+  --soft: 0 0 0 transparent; --lift: 0 0 0 transparent; --pshadow: 0 0 0 transparent; --shadow: 0 0 0 transparent;
+  --scrim: rgb(0 0 0 / .4);
+  --ring: 0 0 0 2px var(--link);
+}
+:root[data-look="retro"][data-theme="light"] {
+    --bg: #f0f0f0; --fg: #000000; --panel: #d4d0c8; --border: #808080; --dim: #505050;
+    --active: #c0c0c0; --sel: #a6caf0; --accent: #000080;
+    --h1: #000080; --h2: #800080; --h3: #006c6c; --h4: #5a5a00; --h5: #7a5200; --h6: #a03c00;
+    --todo: #b00000; --done: #006400; --date: #006c6c; --link: #0000c0; --code: #006400;
+    --kw: #800080;
+    --card: var(--panel); --canvas: var(--bg);
+    --soft: 0 0 0 transparent; --lift: 0 0 0 transparent; --pshadow: 0 0 0 transparent;
+    --scrim: rgb(0 0 0 / .14);
+    color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-look="retro"]:not([data-theme="dark"]) {
+    --bg: #f0f0f0; --fg: #000000; --panel: #d4d0c8; --border: #808080; --dim: #505050;
+    --active: #c0c0c0; --sel: #a6caf0; --accent: #000080;
+    --h1: #000080; --h2: #800080; --h3: #006c6c; --h4: #5a5a00; --h5: #7a5200; --h6: #a03c00;
+    --todo: #b00000; --done: #006400; --date: #006c6c; --link: #0000c0; --code: #006400;
+    --kw: #800080;
+    --card: var(--panel); --canvas: var(--bg);
+    --soft: 0 0 0 transparent; --lift: 0 0 0 transparent; --pshadow: 0 0 0 transparent;
+    --scrim: rgb(0 0 0 / .14);
+    color-scheme: light;
+  }
+}
+/* Components hard-code radii (pills, dots, buttons) and motion; retro flattens them all here rather than per component. */
+[data-look="retro"] *, [data-look="retro"] *::before, [data-look="retro"] *::after {
+  border-radius: 0 !important; transition-duration: 0s !important; animation-duration: 0s !important; animation-iteration-count: 1 !important;
+}
+[data-look="retro"] .card, [data-look="retro"] .chip, [data-look="retro"] .pill { border: 1px solid var(--border); }
+[data-look="retro"] .card:hover { transform: none; }
+
 /* Card look primitives. Opt-in classes only: nothing changes until a view uses them. */
 .card { background: var(--card); border-radius: var(--r); box-shadow: var(--soft); padding: var(--s3) var(--s4); min-width: 0; }
 .chip, .pill { background: var(--card); box-shadow: var(--soft); color: var(--dim); font-size: var(--fs-sm); padding: 3px 10px; white-space: nowrap; }

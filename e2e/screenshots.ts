@@ -367,6 +367,11 @@ async function pngs() {
   await browser.keys([Key.Ctrl, "1"]);
   await browser.$(".agenda h1").waitForDisplayed();
   await shot("today");
+  if (want("retro")) { // #1281: the built-in retro look
+    await browser.execute(() => { document.documentElement.dataset.look = "retro"; });
+    await shot("retro");
+    await browser.execute(() => { delete document.documentElement.dataset.look; });
+  }
   if (want("birthday")) { // #1183: Maja's birthday heads-up in Today
     await find(".agenda .row .title", "Maja");
     await shot("birthday");
