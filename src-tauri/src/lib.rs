@@ -1303,10 +1303,21 @@ fn ledger_accept_all(s: State<App>, text: String, ledger: String) -> R<(String, 
 #[tauri::command]
 fn capture_templates(s: State<App>) -> Vec<config::Template> {
     let c = s.cfg();
-    let mut paths: Vec<PathBuf> = c.templates_path().and_then(|d| std::fs::read_dir(d).ok()).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "org")).collect();
-    paths.sort();
-    let files = paths.iter().filter_map(|p| Some(config::Template::from_file(&p.file_stem()?.to_string_lossy(), &std::fs::read_to_string(p).ok()?)));
+    let files = template_files(c.templates_path());
     c.templates.into_iter().chain(files).collect()
+}
+
+/// One template per .org file directly in DIR, by file name; unreadable files are skipped.
+fn template_files(dir: Option<PathBuf>) -> Vec<config::Template> {
+    let mut paths: Vec<PathBuf> = dir.and_then(|d| std::fs::read_dir(d).ok()).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "org")).collect();
+    paths.sort();
+    paths.iter().filter_map(|p| Some(config::Template::from_file(&p.file_stem()?.to_string_lossy(), &std::fs::read_to_string(p).ok()?))).collect()
+}
+
+/// New-note templates: one per .org file in <notes>/<templates_dir>/notes/.
+#[tauri::command]
+fn note_templates(s: State<App>) -> Vec<config::Template> {
+    template_files(s.cfg().templates_path().map(|t| t.join("notes")))
 }
 
 #[tauri::command]
@@ -1463,10 +1474,28 @@ fn context_of(f: &org::OrgFile, line: usize) -> Value {
 
 // ---------------------------------------------------------------- notes
 
+/// A new note titled TITLE, seeded with template BODY expanded with ANSWERS (its `%?` line is the
+/// returned `line`, else 0).
 #[tauri::command]
-fn notes_new(s: State<App>, title: String) -> R<notes::Node> {
-    let (path, id) = notes::new_note(&s.cfg().notes(), &title, "").map_err(|e| e.to_string())?;
-    Ok(notes::Node { id, title, path, line: 0 })
+fn notes_new(s: State<App>, title: String, body: Option<String>, answers: Option<std::collections::HashMap<String, String>>) -> R<notes::Node> {
+    let answers = answers.unwrap_or_default();
+    let body = org::expand_template(&body.unwrap_or_default(), timeclock::now(), "", |p| answers.get(p).cloned().unwrap_or_default());
+    new_note_at_cursor(&s.cfg().notes(), title, &body).map_err(|e| e.to_string())
+}
+
+/// `notes::new_note` with BODY minus its `%?` marker; the node's line is the marker's (0 if none).
+fn new_note_at_cursor(dir: &Path, title: String, body: &str) -> std::io::Result<notes::Node> {
+    let clean = body.replace('\u{1}', "");
+    let (path, id) = notes::new_note(dir, &title, &clean)?;
+    let line = match body.find('\u{1}') {
+        Some(i) if !clean.trim().is_empty() => {
+            let text = std::fs::read_to_string(&path)?;
+            let head = text.len() - clean.trim_end().len() - 1; // the header new_note wrote before BODY
+            text[..head].matches('\n').count() + body[..i].matches('\n').count()
+        }
+        _ => 0,
+    };
+    Ok(notes::Node { id, title, path, line })
 }
 
 /// Move the subtree at LINE of TEXT (the live text of PATH) into a new note
@@ -3902,7 +3931,7 @@ pub fn run() {
             watcher::gnome_extension, watcher::screen_recording, remind::remind_snooze,
             config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, md_import, highlights_import, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
-            org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, crypt_lock, crypt_unlock, crypt_rekey, crypt_relock, crypt_remove, crypt_forget, idle::idle_has_source, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_week, ledger_month_review, ledger_year, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, ledger_recurring, ledger_recurring_file, ledger_recurring_mark, capture_path, meeting_events, meeting_note, capture_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, tc_project_hours, expected_hours_for,
+            org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, crypt_lock, crypt_unlock, crypt_rekey, crypt_relock, crypt_remove, crypt_forget, idle::idle_has_source, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_week, ledger_month_review, ledger_year, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, ledger_recurring, ledger_recurring_file, ledger_recurring_mark, capture_path, meeting_events, meeting_note, capture_templates, note_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, tc_project_hours, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, notes_crypt_unlocked, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, people_last, waiting_for, inbox_count, inbox_entries, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_embed_local, ai_set, ai_download, ai_download_cancel, ai_model_delete, ai_index_status, ai_index_rebuild, semantic_search, ai_related, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
@@ -3932,6 +3961,34 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn note_templates_scan_org_files_sorted() {
+        let d = std::env::temp_dir().join(format!("margin-note-tpl-{}", std::process::id()));
+        let t = d.join("notes");
+        std::fs::create_dir_all(&t).unwrap();
+        std::fs::write(t.join("project.org"), "#+title: Project\n* Goal\n%?\n").unwrap();
+        std::fs::write(t.join("book.org"), "* Highlights\n").unwrap();
+        std::fs::write(t.join("readme.txt"), "not a template").unwrap();
+        let v = template_files(Some(t));
+        assert_eq!(v.iter().map(|t| (t.name.as_str(), t.body.as_str())).collect::<Vec<_>>(), [("book", "* Highlights\n"), ("Project", "* Goal\n%?\n")]);
+        assert!(template_files(Some(d.join("missing"))).is_empty());
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn new_note_from_template_returns_cursor_line() {
+        let d = std::env::temp_dir().join(format!("margin-note-new-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let body = org::expand_template("* Goal %^{Goal}\n* Next\n- \n%?\n* Log\n", timeclock::now(), "", |p| format!("<{p}>"));
+        let n = new_note_at_cursor(&d, "Proj".into(), &body).unwrap();
+        let text = std::fs::read_to_string(&n.path).unwrap();
+        assert!(text.ends_with("#+title: Proj\n\n* Goal <Goal>\n* Next\n- \n\n* Log\n"), "{text}");
+        assert_eq!(text.lines().nth(n.line), Some(""));
+        assert_eq!(text.lines().nth(n.line - 1), Some("- "));
+        assert_eq!(new_note_at_cursor(&d, "Plain".into(), "").unwrap().line, 0);
+        std::fs::remove_dir_all(&d).unwrap();
+    }
 
     #[test]
     fn crypt_lock_writes_only_ciphertext() {

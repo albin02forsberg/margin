@@ -2412,17 +2412,35 @@
     if (r) await openFile(...(r as [string, number]));
   }
 
-  async function createNote(title: string) {
-    const n: NoteNode = await call("notes_new", { title });
+  /** Create note TITLE (seeded with template BODY expanded with ANSWERS) and open it in insert mode at the
+   * end of the template's %? line, else at the end. */
+  async function createNote(title: string, body?: string, answers?: Record<string, string>) {
+    const n: NoteNode = await call("notes_new", { title, body, answers });
     await openFile(n.path);
-    view.dispatch({ selection: { anchor: view.state.doc.length } });
+    const d = view.state.doc;
+    view.dispatch({ selection: { anchor: n.line ? d.line(Math.min(n.line + 1, d.lines)).to : d.length }, scrollIntoView: true });
     ed.insertMode(view);
     return n;
   }
 
+  /** Space n n: pick a template from templates/notes/ (when there are any), then the title and its %^{} prompts. */
   async function newNote() {
+    const tpls = await call<Tpl[]>("note_templates");
+    let t: Tpl | null = null;
+    if (tpls.length) {
+      const v = await pick({ prompt: "New note from template", items: [{ label: "Empty note", value: "" as unknown }, ...tpls.map((t) => ({ label: t.name, value: t as unknown }))] });
+      if (v == null) return;
+      t = (v as Tpl) || null;
+    }
     const title = await ask("New note title");
-    if (title) await createNote(title);
+    if (!title) return;
+    const answers: Record<string, string> = {};
+    for (const p of t ? await call<string[]>("template_prompts", { body: t.body }) : []) {
+      const a = p === "clip-link" ? await clipLink() : await ask(p);
+      if (a == null) return;
+      answers[p] = a;
+    }
+    await createNote(title, t?.body, answers);
   }
 
   /** Flash and return true when the tab's unsaved edits clash with the disk copy (rename/trash would lose them). */

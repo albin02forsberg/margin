@@ -622,6 +622,21 @@ the name to the file name, the target to the inbox. The rest is the body.
 Quick capture (Super+Shift+N) asks "Task" or a template when you have any; a
 template captured with the window hidden is filed without opening it.
 
+**Note templates.** Each `.org` file in `notes/templates/notes/` is a skeleton
+for whole new notes (a project, a book, a person). With at least one there,
+New note (Space n n, Ctrl+Shift+N) first asks which, with "Empty note" first,
+then the title and the template's `%^{prompts}`. The body goes under the note's
+`#+title`, expanded like a capture template, and the cursor lands at the end of
+the `%?` line. `#+title:` in the template file names it in the list.
+
+```org
+#+title: Project
+* Goal: %^{Goal}
+* Next actions
+- %?
+* Log
+```
+
 ### Feeds
 
 "Fetch feeds" in Ctrl+K reads your RSS and Atom feeds and files each new item

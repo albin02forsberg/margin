@@ -46,6 +46,9 @@ function fixtures({ root, notes, data }: Dirs) {
   clippings = join(root, "My Clippings.txt");
   const clip = (book: string, loc: string, text: string) => `${book}\n- Your Highlight on page 3 | Location ${loc} | Added on Monday, January 6, 2025 9:12:00 PM\n\n${text}\n==========\n`;
   write(clippings, clip("Braiding Sweetgrass (Robin Wall Kimmerer)", "120-122", "All flourishing is mutual.") + clip("Braiding Sweetgrass (Robin Wall Kimmerer)", "410-413", "Paying attention is a form of reciprocity with the living world.") + clip("The Overstory (Richard Powers)", "88-90", "The best time to plant a tree was twenty years ago."));
+  write(join(notes, "templates/notes/project.org"), "#+title: Project\n* Goal: %^{Goal}\n* Next actions\n- %?\n* Log\n");
+  write(join(notes, "templates/notes/book.org"), "#+title: Book\n- Author: %^{Author}\n* Highlights\n%?\n");
+  write(join(notes, "templates/notes/person.org"), "#+title: Person\n* Context\n%?\n* Last talked\n");
   const m = iso(day(0)).slice(0, 7); // current month, so the entries show in the Ledger view whatever today is
   write(join(notes, "ledger.org"), `* ${m}
 - ${m}-01 +2400 EUR salary @Orchard Labs #income
@@ -324,6 +327,13 @@ async function pngs() {
     await browser.keys("}");
     await shot("wide-table");
     await open("Orchard platform", "orchard.org");
+  }
+
+  if (want("note-template")) { // #1253: Ctrl+Shift+N lists templates/notes/
+    await picker([Key.Ctrl, Key.Shift, "n"], "New note from template");
+    await shot("note-template");
+    await browser.keys(Key.Escape);
+    await pause();
   }
 
   await command("Show note graph");

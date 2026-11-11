@@ -148,6 +148,8 @@ describe("Features", () => {
         writeFileSync(join(notes, "diagram.org"), "#+title: Diagram\n\n#+begin_src mermaid\ngraph TD\n  Plan --> Ship\n#+end_src\n\n#+begin_src mermaid\nnot a diagram ((\n#+end_src\n");
         writeFileSync(join(notes, "peeker.org"), "[[file:peeked.org::*Plan][the plan]] is over there.\n");
         writeFileSync(join(notes, "peeked.org"), "#+title: Peeked\n\n* Plan\n- peek at me\n* Other\n- not me\n");
+        mkdirSync(join(notes, "templates", "notes"), { recursive: true });
+        writeFileSync(join(notes, "templates", "notes", "project.org"), "#+title: Project\n* Goal: %^{Goal}\n* Next actions\n- %?\n* Log\n");
       },
     });
   });
@@ -214,6 +216,23 @@ describe("Features", () => {
     await browser.keys(Key.Escape);
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(file, (s) => s.includes("* Standup with Alice\n- budget topics\n"), "cursor wasn't at %?");
+  });
+
+  it("Ctrl+Shift+N creates a note from a templates/notes/ template, cursor at %? (#1253)", async () => {
+    await browser.keys([Key.Ctrl, "1"]);
+    await find(".agenda h1", "Today");
+    await browser.keys([Key.Ctrl, Key.Shift, "n"]);
+    await find(".picker li", "Empty note");
+    await answer("New note from template", "Project");
+    await answer("New note title", "Garden shed");
+    await answer("Goal", "Build it");
+    await find(".status .file", "garden_shed.org");
+    await type("buy wood");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    const f = readdirSync(d.notes).find((n) => n.endsWith("-garden_shed.org"));
+    assert.ok(f, "note not created");
+    await fileMatches(join(d.notes, f), (s) => s.includes("#+title: Garden shed\n\n* Goal: Build it\n* Next actions\n- buy wood\n* Log\n"), "template body or cursor wrong");
   });
 
   it("Insert date keeps the repeater", async () => {
