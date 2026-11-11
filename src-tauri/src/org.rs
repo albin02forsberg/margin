@@ -2152,7 +2152,9 @@ const CURSOR: char = '\u{1}';
 /// Expand capture-template BODY: %t %T active date/timestamp, %u %U inactive ones, %^{Prompt}
 /// via ASK, %i the selection SEL (continuation lines indented like the line it's on), %? the
 /// cursor, %a the link HERE.0 to where the capture started and %f that note's file name HERE.1
-/// (both empty without one), %% a literal %.
+/// (both empty without one), %% a literal %. %^t / %^T ask ASK("^t") / ("^T") for a date
+/// (read_date input relative to NOW, so empty is today; %^t drops its time; unreadable inserts
+/// nothing) and %^g ASK("^g") for tags (`:a:b:`, nothing when empty).
 pub fn expand_template(body: &str, now: chrono::NaiveDateTime, sel: &str, here: (&str, &str), mut ask: impl FnMut(&str) -> String) -> String {
     let (d, t) = (now.date(), now.format("%H:%M").to_string());
     let inactive = |s: String| format!("[{}]", &s[1..s.len() - 1]);
@@ -2175,6 +2177,16 @@ pub fn expand_template(body: &str, now: chrono::NaiveDateTime, sel: &str, here: 
             (Some('f'), _) => (here.1.into(), 1),
             (Some('%'), _) => ("%".into(), 1),
             (Some('^'), Some(p)) => (ask(p), p.len() + 3),
+            (Some('^'), _) if rest[1..].starts_with(['t', 'T']) => {
+                let full = rest[1..].starts_with('T');
+                let when = read_date(&ask(if full { "^T" } else { "^t" }), d);
+                (when.map_or(String::new(), |(d, t, r, w)| ts_string(d, t.as_deref().filter(|_| full), r.as_deref(), w.as_deref())), 2)
+            }
+            (Some('^'), _) if rest[1..].starts_with('g') => {
+                let a = ask("^g");
+                let tags: Vec<&str> = a.split([':', ' ', ',']).filter(|t| !t.is_empty()).collect();
+                (if tags.is_empty() { String::new() } else { format!(":{}:", tags.join(":")) }, 2)
+            }
             _ => ("%".into(), 0),
         };
         out.push_str(&s);
@@ -2183,12 +2195,21 @@ pub fn expand_template(body: &str, now: chrono::NaiveDateTime, sel: &str, here: 
     out + rest
 }
 
-/// The distinct %^{Prompt} names in BODY, in order, for the UI to ask before expanding.
-pub fn template_prompts(body: &str) -> Vec<String> {
-    let mut v: Vec<String> = vec![];
+/// A template prompt: NAME is its `answers` key, KIND how the UI asks it: "text" (%^{Name}),
+/// "date" (%^t), "datetime" (%^T) or "tags" (%^g).
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Prompt {
+    pub name: String,
+    pub kind: &'static str,
+}
+
+/// The distinct prompts in BODY, in order, for the UI to ask before expanding.
+pub fn template_prompts(body: &str) -> Vec<Prompt> {
+    let mut v: Vec<Prompt> = vec![];
     expand_template(body, chrono::NaiveDateTime::default(), "", ("", ""), |p| {
-        if !v.iter().any(|x| x == p) {
-            v.push(p.into());
+        if !v.iter().any(|x| x.name == p) {
+            let kind = match p { "^t" => "date", "^T" => "datetime", "^g" => "tags", _ => "text" };
+            v.push(Prompt { name: p.into(), kind });
         }
         String::new()
     });
@@ -3572,7 +3593,15 @@ mod tests {
     fn templates() {
         let now = chrono::NaiveDateTime::parse_from_str("2026-10-02 14:30", "%Y-%m-%d %H:%M").unwrap();
         let body = "* %^{Title} %t\n%U %T %u 100%% %x %^{Who} %^{Title}\n%i%?";
-        assert_eq!(template_prompts(body), ["Title", "Who"]);
+        let names = |b: &str| template_prompts(b).into_iter().map(|p| format!("{}={}", p.name, p.kind)).collect::<Vec<_>>();
+        assert_eq!(names(body), ["Title=text", "Who=text"]);
+        // %^t / %^T / %^g: typed prompts, asked once each; dates read relative to now, tags as :a:b:.
+        let typed = "* %^{X} %^g\nSCHEDULED: %^t %^T %^t\n";
+        assert_eq!(names(typed), ["X=text", "^g=tags", "^t=date", "^T=datetime"]);
+        let ans2 = |a: [&'static str; 2]| move |p: &str| match p { "^t" | "^T" => a[0].into(), "^g" => a[1].into(), _ => "x".into() };
+        assert_eq!(expand_template(typed, now, "", ("", ""), ans2(["mon 9:00 +1w", "a b:c"])), "* x :a:b:c:\nSCHEDULED: <2026-10-05 Mon +1w> <2026-10-05 Mon 09:00 +1w> <2026-10-05 Mon +1w>\n");
+        assert_eq!(expand_template(typed, now, "", ("", ""), ans2(["+1d", ""])), "* x \nSCHEDULED: <2026-10-03 Sat> <2026-10-03 Sat> <2026-10-03 Sat>\n");
+        assert_eq!(expand_template("%^t|%^g|%^x", now, "", ("", ""), ans2(["junk", " : "])), "||%^x");
         let ans = |p: &str| if p == "Title" { "Sync".into() } else { "Ann".into() };
         let e = expand_template(body, now, "sel", ("", ""), ans);
         assert_eq!(e, "* Sync <2026-10-02 Fri>\n[2026-10-02 Fri 14:30] <2026-10-02 Fri 14:30> [2026-10-02 Fri] 100% %x Ann Sync\nsel\u{1}");

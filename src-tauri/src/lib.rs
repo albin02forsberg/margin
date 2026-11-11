@@ -1371,7 +1371,7 @@ fn note_templates(s: State<App>) -> Vec<config::Template> {
 }
 
 #[tauri::command]
-fn template_prompts(body: String) -> Vec<String> {
+fn template_prompts(body: String) -> Vec<org::Prompt> {
     org::template_prompts(&body)
 }
 
