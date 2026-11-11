@@ -19,6 +19,8 @@ static SCHEME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z][A-Za-z0
 static CUSTOM_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^\s*:CUSTOM_ID:\s*(\S+)\s*$").unwrap());
 /// `<<target>>` (a `<<<radio>>>` is checked for by the caller).
 static TARGET: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<<([^<>\n]+)>>").unwrap());
+/// `<<<Term>>>`, a radio target (same rule as radio.ts).
+static RADIO: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<<<([^<>\s](?:[^<>\n]*[^<>\s])?)>>>").unwrap());
 /// A bare link target that is a file, not a same-page fuzzy target: scheme, path separator, extension or `::search`.
 static FILE_LIKE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^[a-z][\w+.-]*:|[/\\]|\.\w+$|::").unwrap());
 
@@ -84,6 +86,53 @@ pub struct Doc {
     anchors: HashMap<String, String>,
     /// Prepended to every anchor id (`p-N-` for a note in a combined page).
     prefix: String,
+    /// The exported radio targets and what finds their mentions (see `link_anchors`).
+    radio: Option<Radio>,
+}
+
+/// A note's radio targets (#1270): ANY finds a candidate mention, TERMS (longest first, each anchored) the one
+/// that matches there as a whole word, with its anchor id; IDS: normalised term → anchor id.
+struct Radio {
+    any: Regex,
+    terms: Vec<(Regex, String)>,
+    ids: HashMap<String, String>,
+}
+
+/// A radio term as matched: whitespace runs collapsed, lowercased (`key` in radio.ts).
+fn radio_key(t: &str) -> String {
+    t.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+}
+
+/// Splits S's text into mentions of R's terms (case-insensitive, whole words, longest first), recursing into
+/// emphasis but not code/verbatim; links and targets are never text, so mentions never land in them.
+fn mentions(s: Vec<Span>, r: &Radio) -> Vec<Span> {
+    let word = |c: char| c.is_alphanumeric() || c == '_';
+    let mut out = vec![];
+    for sp in s {
+        match sp {
+            Span::Text(t) => {
+                let (mut last, mut pos) = (0, 0);
+                while let Some(m) = r.any.find_at(&t, pos) {
+                    let at = m.start();
+                    let end = (!t[..at].chars().next_back().is_some_and(word))
+                        .then(|| r.terms.iter().find_map(|(re, id)| re.find(&t[at..]).map(|m| (at + m.end(), id)).filter(|&(e, _)| !t[e..].chars().next().is_some_and(word))))
+                        .flatten();
+                    match end {
+                        Some((e, id)) => {
+                            out.extend((at > last).then(|| Span::Text(t[last..at].to_string())));
+                            out.push(Span::Mention(t[at..e].to_string(), id.clone()));
+                            (last, pos) = (e, e);
+                        }
+                        None => pos = at + t[at..].chars().next().map_or(1, char::len_utf8),
+                    }
+                }
+                out.extend((last < t.len()).then(|| Span::Text(t[last..].to_string())));
+            }
+            Span::Mark(c, inner) if !"=~".contains(c) => out.push(Span::Mark(c, mentions(inner, r))),
+            sp => out.push(sp),
+        }
+    }
+    out
 }
 
 impl Doc {
@@ -144,7 +193,7 @@ fn expand_links(text: &str) -> String {
 pub fn parse(text: &str, kw: &Kw) -> Doc {
     let text = expand_links(&crate::crypt::strip(text));
     let lines: Vec<&str> = text.lines().collect();
-    let mut d = Doc { title: None, subtitle: None, blocks: vec![], diagrams: HashMap::new(), anchors: HashMap::new(), prefix: String::new() };
+    let mut d = Doc { title: None, subtitle: None, blocks: vec![], diagrams: HashMap::new(), anchors: HashMap::new(), prefix: String::new(), radio: None };
     let b = blocks(&lines, kw, &mut d);
     d.blocks = b;
     link_anchors(&mut d);
@@ -184,8 +233,12 @@ fn headings(bs: &mut [Block]) -> Vec<&mut Heading> {
 /// Built from what is exported, so noexport subtrees and src blocks never resolve.
 fn link_anchors(d: &mut Doc) {
     let norm = crate::notes::heading_norm;
-    let (mut targets, mut names) = (vec![], vec![]);
-    let mut add = |s: &str| each_span(&spans(s), &mut |sp| if let Span::Target(t) = sp { targets.push(t.clone()) });
+    let (mut targets, mut names, mut radios) = (vec![], vec![], vec![]);
+    let mut add = |s: &str| each_span(&spans(s), &mut |sp| match sp {
+        Span::Target(t) => targets.push(t.clone()),
+        Span::Radio(t) => radios.push(t.clone()),
+        _ => {}
+    });
     d.title.iter().chain(&d.subtitle).for_each(|t| add(t));
     each_text(&d.blocks, &mut add);
     each_block(&d.blocks, &mut |b| if let Block::Anchor(n) = b { names.push(n.clone()) });
@@ -194,6 +247,27 @@ fn link_anchors(d: &mut Doc) {
         keys.entry(norm(t)).or_insert(id);
     }
     let mut used: std::collections::HashSet<String> = targets.iter().map(|t| target_id(t)).chain(names.iter().map(|n| name_id(n))).collect();
+    // Radio targets: first spelling of a term wins, at most 200 (radio.ts); a bare [[Term]] reaches them too.
+    let (mut terms, mut ids): (Vec<(String, String)>, HashMap<String, String>) = (vec![], HashMap::new());
+    for t in radios {
+        if ids.len() < 200 && !ids.contains_key(&radio_key(&t)) {
+            let base = format!("radio-{}", slug(&t));
+            let id = std::iter::once(base.clone()).chain((2..).map(|n| format!("{base}-{n}"))).find(|s| !used.contains(s)).unwrap();
+            used.insert(id.clone());
+            keys.entry(norm(&t)).or_insert(id.clone());
+            ids.insert(radio_key(&t), id.clone());
+            terms.push((t, id));
+        }
+    }
+    if !terms.is_empty() {
+        terms.sort_by_key(|(t, _)| std::cmp::Reverse(t.chars().count()));
+        let pat = |t: &str| t.split_whitespace().map(regex::escape).collect::<Vec<_>>().join(r"\s+");
+        d.radio = Some(Radio {
+            any: Regex::new(&format!("(?i){}", terms.iter().map(|(t, _)| pat(t)).collect::<Vec<_>>().join("|"))).unwrap(),
+            terms: terms.iter().map(|(t, id)| (Regex::new(&format!("(?i)^(?:{})", pat(t))).unwrap(), id.clone())).collect(),
+            ids,
+        });
+    }
     for h in headings(&mut d.blocks) {
         h.id = match &h.custom_id {
             Some(c) => c.clone(),
@@ -356,6 +430,10 @@ enum Span {
     Link(String, Option<String>),
     /// `<<target>>`: an invisible anchor.
     Target(String),
+    /// `<<<Term>>>`: an anchor and the term.
+    Radio(String),
+    /// A mention of a radio target: (text, the target's anchor id).
+    Mention(String, String),
 }
 
 const PRE: &str = " \t-({'\"";
@@ -371,6 +449,12 @@ fn spans(s: &str) -> Vec<Span> {
         if let Some(m) = LINK.captures(rest) {
             out.extend((!text.is_empty()).then(|| Span::Text(std::mem::take(&mut text))));
             out.push(Span::Link(m[1].to_string(), m.get(2).map(|d| d.as_str().to_string())));
+            i += m[0].len();
+            continue;
+        }
+        if let Some(m) = RADIO.captures(rest).filter(|_| !s[..i].ends_with('<')) {
+            out.extend((!text.is_empty()).then(|| Span::Text(std::mem::take(&mut text))));
+            out.push(Span::Radio(m[1].to_string()));
             i += m[0].len();
             continue;
         }
@@ -418,6 +502,7 @@ fn plain(s: &[Span]) -> String {
             Span::Mark(_, inner) => plain(inner),
             Span::Link(t, d) => d.clone().unwrap_or_else(|| t.clone()),
             Span::Target(_) => String::new(),
+            Span::Radio(t) | Span::Mention(t, _) => t.clone(),
         })
         .collect()
 }
@@ -518,6 +603,20 @@ impl Cx<'_> {
     /// An invisible `<a id>` (HTML, and inline HTML in Markdown) for anchor ID of the page.
     fn anchor(&self, id: &str) -> String {
         format!("<a id=\"{}{}\"></a>", esc(&self.doc.prefix), esc(id))
+    }
+
+    /// S's inline spans with mentions of the page's radio targets marked (not used for link descriptions).
+    fn spans(&self, s: &str) -> Vec<Span> {
+        let sp = spans(s);
+        match &self.doc.radio {
+            Some(r) => mentions(sp, r),
+            None => sp,
+        }
+    }
+
+    /// The anchor of radio target T (none past the 200-term cap).
+    fn radio(&self, t: &str) -> String {
+        self.doc.radio.as_ref().and_then(|r| r.ids.get(&radio_key(t))).map_or(String::new(), |id| self.anchor(id))
     }
 }
 
@@ -624,12 +723,14 @@ fn html_spans(s: &[Span], cx: &Cx) -> String {
                 Ok(u) => format!("<a href=\"{}\">{}</a>", esc(&u), d.as_deref().map_or_else(|| esc(t.strip_prefix('*').unwrap_or(t)), |d| html_spans(&spans(d), cx))),
             },
             Span::Target(t) => cx.anchor(&target_id(t)),
+            Span::Radio(t) => cx.radio(t) + &esc(t),
+            Span::Mention(t, id) => format!("<a href=\"#{}{}\">{}</a>", esc(&cx.doc.prefix), esc(id), esc(t)),
         })
         .collect()
 }
 
 fn html_blocks(bs: &[Block], cx: &Cx) -> String {
-    let inl = |s: &str| html_spans(&spans(s), cx);
+    let inl = |s: &str| html_spans(&cx.spans(s), cx);
     let dg = &cx.doc.diagrams;
     let mut o = String::new();
     for b in bs {
@@ -734,9 +835,9 @@ pub fn html(d: &Doc, fallback_title: &str, base: &Path, ids: &Ids, print: bool) 
 pub fn html_body(d: &Doc, fallback_title: &str, base: &Path, ids: &Ids) -> String {
     let cx = Cx { base, ids, doc: d };
     let title = d.title.as_deref().unwrap_or(fallback_title);
-    let mut o = format!("<h1>{}</h1>\n", html_spans(&spans(title), &cx));
+    let mut o = format!("<h1>{}</h1>\n", html_spans(&cx.spans(title), &cx));
     if let Some(s) = &d.subtitle {
-        o += &format!("<p class=\"subtitle\">{}</p>\n", html_spans(&spans(s), &cx));
+        o += &format!("<p class=\"subtitle\">{}</p>\n", html_spans(&cx.spans(s), &cx));
     }
     o + &html_blocks(&d.blocks, &cx)
 }
@@ -888,12 +989,14 @@ fn md_spans(s: &[Span], cx: &Cx) -> String {
                 }
             },
             Span::Target(t) => cx.anchor(&target_id(t)),
+            Span::Radio(t) => cx.radio(t) + &md_esc(t),
+            Span::Mention(t, id) => format!("[{}](#{}{id})", md_esc(t), cx.doc.prefix),
         })
         .collect()
 }
 
 fn md_blocks(bs: &[Block], cx: &Cx) -> String {
-    let inl = |s: &str| md_spans(&spans(s), cx);
+    let inl = |s: &str| md_spans(&cx.spans(s), cx);
     let mut parts: Vec<String> = vec![];
     for b in bs {
         parts.push(match b {
@@ -958,9 +1061,9 @@ fn md_blocks(bs: &[Block], cx: &Cx) -> String {
 pub fn markdown(d: &Doc, fallback_title: &str, base: &Path, ids: &Ids) -> String {
     let cx = Cx { base, ids, doc: d };
     let title = d.title.as_deref().unwrap_or(fallback_title);
-    let mut o = format!("# {}\n\n", md_spans(&spans(title), &cx));
+    let mut o = format!("# {}\n\n", md_spans(&cx.spans(title), &cx));
     if let Some(s) = &d.subtitle {
-        o += &format!("*{}*\n\n", md_spans(&spans(s), &cx));
+        o += &format!("*{}*\n\n", md_spans(&cx.spans(s), &cx));
     }
     o + &md_blocks(&d.blocks, &cx) + "\n"
 }
@@ -1119,7 +1222,7 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
             "See <a href=\"#plan\">plan</a>, <a href=\"#cid\">custom</a>, <a href=\"#target-goals\">Goals</a>, <a href=\"#name-tbl\">Tbl</a>, <a href=\"#cid\">Ship  IT</a> and <a href=\"#target-top\">top</a>.",
             "<h2 id=\"plan-2\">Plan</h2>",
             "<h2 id=\"cid\">Ship it</h2>",
-            "The <a id=\"target-goals\"></a> are <b><a id=\"target-b\"></a>bold</b>; &lt;&lt;&lt;radio&gt;&gt;&gt; stays.",
+            "The <a id=\"target-goals\"></a> are <b><a id=\"target-b\"></a>bold</b>; <a id=\"radio-radio\"></a>radio stays.",
             "<a id=\"name-tbl\"></a>\n<table>",
             "<h2 id=\"goals\">Goals</h2>",
             "<p>Missing gone Nowhere Hidden inside <a href=\"doc.org\">doc.org</a> <a href=\"sub/x\">sub/x</a> <a href=\"b.org::*H\">b.org::*H</a> <a href=\"https://x.org\">",
@@ -1136,6 +1239,40 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
         // Site publish resolves them the same way, before the file lookup.
         let site = Ids { ids: HashMap::new(), site: Some(HashMap::new()) };
         assert!(html_body(&d, "x", Path::new("/n"), &site).contains("See <a href=\"#plan\">plan</a>, <a href=\"#cid\">custom</a>, <a href=\"#target-goals\">Goals</a>"));
+    }
+
+    #[test]
+    fn radio_targets() {
+        let t = "#+title: About Margin\n* Margin notes\nA <<<Margin>>> and <<<margin notes>>> plus <<<C++>>>; <<< bad>>>.\n\
+MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. *Bold margin* =margin= ~margin~ \
+[[https://x.org][margin]] [[margin]] <<margin>> C++ and C++x.\n#+begin_src sh\nmargin\n#+end_src\n* Hidden :noexport:\n<<<Ghost>>>\nGhost\n";
+        let d = parse(t, &kw());
+        let h = html_body(&d, "x", Path::new("/n"), &Ids::new());
+        for want in [
+            "<h1>About <a href=\"#radio-margin\">Margin</a></h1>",
+            "<h2 id=\"margin-notes\"><a href=\"#radio-margin-notes\">Margin notes</a></h2>",
+            "A <a id=\"radio-margin\"></a>Margin and <a id=\"radio-margin-notes\"></a>margin notes plus <a id=\"radio-c\"></a>C++; &lt;&lt;&lt; bad&gt;&gt;&gt;.",
+            "<a href=\"#radio-margin\">MARGIN</a> is here, <a href=\"#radio-margin-notes\">margin  notes</a> too; Margins, xmargin, margin_x and _margin stay.",
+            "<b>Bold <a href=\"#radio-margin\">margin</a></b> <code>margin</code> <code>margin</code> <a href=\"https://x.org\">margin</a> <a href=\"#target-margin\">margin</a> <a id=\"target-margin\"></a> <a href=\"#radio-c\">C++</a> and C++x.",
+            "<code>margin</code></pre>",
+        ] {
+            assert!(h.contains(want), "missing {want:?} in\n{h}");
+        }
+        assert!(!h.contains("Ghost") && !h.contains("radio-ghost"));
+        let m = markdown(&d, "x", Path::new("/n"), &Ids::new());
+        for want in ["# About [Margin](#radio-margin)", "A <a id=\"radio-margin\"></a>Margin and", "[MARGIN](#radio-margin) is here"] {
+            assert!(m.contains(want), "missing {want:?} in\n{m}");
+        }
+        // Published sites keep them as links; a combined page prefixes each note's ids.
+        let site = Ids { ids: HashMap::new(), site: Some(HashMap::new()) };
+        assert!(html_body(&d, "x", Path::new("/n"), &site).contains("<a href=\"#radio-margin\">MARGIN</a> is here"));
+        let p = |path: &str, text: &str| org::parse(Path::new(path), text, &kw());
+        let (a, b) = (p("/n/a.org", "<<<Term>>> a\n\nterm\n"), p("/n/b.org", "<<<Term>>> b\n\nTERM\n"));
+        let (pages, ids) = name_pages(vec![&a, &b], "html", "");
+        let c = combined(&pages, &[a.text.clone(), b.text.clone()], &ids, &kw(), &HashMap::new());
+        for want in ["<a id=\"p-0-radio-term\"></a>Term a", "<a href=\"#p-0-radio-term\">term</a>", "<a id=\"p-1-radio-term\"></a>Term b", "<a href=\"#p-1-radio-term\">TERM</a>"] {
+            assert!(c.contains(want), "missing {want:?} in\n{c}");
+        }
     }
 
     #[test]

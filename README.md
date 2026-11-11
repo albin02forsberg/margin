@@ -1355,7 +1355,9 @@ in the HTML, so the page works on its own; bare URLs become links, and
 (Markdown keeps the fence). Headings get anchors (their `:CUSTOM_ID:`, else a slug of the
 title), as do `<<target>>`s and `#+NAME`s, so same-note links work in the exported page:
 `[[*Heading]]`, `[[#custom-id]]` and a bare `[[Target]]` (a `<<target>>`, else `#+NAME`, else
-heading) jump there; one pointing at nothing in the export becomes plain text. Markdown
+heading) jump there; one pointing at nothing in the export becomes plain text. A radio
+target `<<<Term>>>` becomes an anchor and every whole-word mention of "Term" (any case,
+outside code and links) a link to it, as in the editor. Markdown
 uses inline `<a id>` anchors so the links don't depend on the renderer's own heading slugs.
 
 `e a` exports the note plus the notes it links to by `id:` (one hop, or two) as
