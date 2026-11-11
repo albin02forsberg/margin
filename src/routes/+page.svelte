@@ -507,7 +507,8 @@
     const text = stateOf(t).doc.toString();
     let warn: string;
     try {
-      warn = await call("write_file", { path: t.path, text, expect: force ? undefined : t.saved });
+      const w = () => call<string>("write_file", { path: t.path, text, expect: force ? undefined : t.saved });
+      warn = await (t.path === cfg.config_path ? ownCfg(w) : w());
     } catch (e) {
       if (e !== "changed-on-disk") throw e;
       // Edited elsewhere since the last sync (the watcher hasn't caught up): merge or flag it, then save the result.
@@ -4204,13 +4205,14 @@
     const unlisten = listen<{ paths: string[]; refresh: string[] }>("fs-changed", (e) => syncFromDisk(e.payload.paths, e.payload.refresh));
     // config.toml edited outside the app: apply it (a broken file keeps the current settings).
     const unlistenCfg = listen("config-changed", () => act(async () => {
+      const own = Date.now() < ownCfgUntil; // judged on arrival: the awaits below can outlast the window
       let warn = "";
       const err = await call<string>("reload_config").then((w) => ((warn = w), ""), String);
       cfg = await call("config");
       reload++;
       syncFromDisk();
       await refreshTc();
-      if (!err && Date.now() < ownCfgUntil) return; // our own write: "recreated" stays
+      if (!err && own) return; // our own write: "recreated" stays
       flash(err ? `⚠ config.toml changed on disk: ${err}` : `config.toml changed on disk — settings reloaded.${warn ? ` ⚠ ${warn}` : ""}`);
     }));
     // A real quit (tray Quit, closing the window when it doesn't hide to the tray): save, ask about clashing edits, then answer (quit.rs).
