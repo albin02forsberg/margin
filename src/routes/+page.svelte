@@ -1,6 +1,6 @@
 <script lang="ts">
   import "$lib/theme.css";
-  import { applyLook, applyTheme, nextTheme } from "$lib/theme";
+  import { applyLook, applyTheme, nextTheme, setUserLook } from "$lib/theme";
   import { onMount, tick, untrack } from "svelte";
   import { Channel, invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -178,7 +178,16 @@
     // window frame (#1092): light/dark forces it, anything else hands it back to the OS
     try { getCurrentWindow().setTheme(t === "light" || t === "dark" ? t : null).catch(() => {}); } catch {}
   });
-  $effect(() => applyLook(cfg?.config.look));
+  /** Bumped by "looks-changed", so an edited user look file is read again. */
+  let looksRev = $state(0);
+  $effect(() => {
+    const l = cfg?.config.look;
+    void looksRev;
+    applyLook(l);
+    // A user look (<config>/looks/<name>.css) layers its CSS on top; built-ins and missing files leave none.
+    if (!l) return setUserLook(null);
+    invoke<string | null>("read_look", { name: l }).then((css) => cfg?.config.look === l && setUserLook(css), () => setUserLook(null));
+  });
   const isText = (t?: Tab) => t?.kind === "file" || t?.kind === "report";
   const call = <T = any,>(cmd: string, args?: Record<string, unknown>) => invoke<T>(cmd, args);
   const pick = (o: PickOpts) => picker!.open(o);
@@ -4253,6 +4262,7 @@
     }));
     // A real quit (tray Quit, closing the window when it doesn't hide to the tray): save, ask about clashing edits, then answer (quit.rs).
     let quitting = false;
+    const unlistenLooks = listen("looks-changed", () => looksRev++);
     const unlistenQuit = listen("quit-requested", () => act(async () => {
       if (quitting) return;
       quitting = true;
@@ -4320,6 +4330,7 @@
       unlistenCfg.then((f) => f());
       unlistenTray.then((f) => f());
       unlistenQuit.then((f) => f());
+      unlistenLooks.then((f) => f());
       unlistenOpen.then((f) => f());
       unlistenIdle.then((f) => f());
       unlistenForget.then((f) => f());

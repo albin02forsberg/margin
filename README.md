@@ -753,6 +753,24 @@ Set `spellcheck = true` (Settings, Editor) to underline misspelled words in org 
 
 Margin follows the OS light/dark setting. `theme = "light"` or `"dark"` (Settings, Editor) overrides it, applied without a restart (`Space v d` cycles system / light / dark; diagrams re-render too; exports stay light; the native window frame follows it too). `look = "retro"` (Settings, Editor) switches to the built-in retro look: flat, square corners, 1px borders, monospace everywhere, no animations, with a terminal-style dark and a classic grey light palette that still follow the theme (empty is the default look). It works by setting a `data-look` attribute on the window root.
 
+**Your own look:** drop a CSS file into `looks/` beside `config.toml` (the folder Settings shows for config.toml, e.g. `~/.config/dev.albin.margin/looks/paper.css` on Linux)
+and pick `paper` under Look in Settings (or set `look = "paper"`). Margin adds the file after its own styles, sets
+`data-look="paper"` on the root and re-reads the file whenever it changes, so edits show up live. A file named like a
+built-in look (`classic`, `retro`) is ignored, and a look whose file is missing falls back to classic. A look restyles
+but can't move panels. The easiest route is to override the design tokens: colours `--bg`, `--fg`, `--panel`,
+`--border`, `--dim`, `--active`, `--sel`, `--accent`, `--link`, `--todo`, `--done`, `--date`, `--code`, `--kw`,
+headings `--h1` to `--h6`, surfaces `--card`, `--canvas`, fonts `--sans`, `--mono`, `--editor-font`, sizes `--fs-xs` to
+`--fs-title`, spacing `--s1` to `--s6`, corners `--radius`, `--radius-sm`, `--r` and shadows `--soft`, `--lift`, `--pshadow`
+(all in `src/lib/theme.css`):
+
+```css
+/* looks/paper.css */
+:root[data-look] { --accent: #b5442c; --radius: 2px; --r: 4px; --sans: Georgia, serif; }
+:root[data-look][data-theme="light"] { --bg: #f7f1e3; --panel: #efe6d2; --card: #f7f1e3; }
+```
+
+Use `:root[data-look]` (not plain `:root`) so your values win over the built-in light palette.
+
 Notes render like a document: markup (stars, link brackets, `*bold*` markers,
 checkbox brackets, block delimiters) is hidden except on the line you're on, so
 the file stays plain org text. Prose uses a proportional font; tables, code and

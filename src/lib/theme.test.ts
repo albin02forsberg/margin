@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { applyLook, effectiveTheme, nextTheme } from "./theme.ts";
+import { applyLook, effectiveTheme, nextTheme, setUserLook } from "./theme.ts";
 
 test("effectiveTheme", () => {
   assert.equal(effectiveTheme("", true), "light");
@@ -47,4 +47,14 @@ test("applyLook sets, replaces and clears data-look", () => {
   applyLook("mine"); assert.equal(el.dataset.look, "mine");
   applyLook(""); assert.equal(el.dataset.look, undefined);
   applyLook("retro"); applyLook(undefined); assert.equal(el.dataset.look, undefined);
+});
+
+test("setUserLook adds, replaces and removes one style element", () => {
+  const head: any[] = [];
+  const mk = () => { const e: any = { id: "", textContent: "", remove: () => head.splice(head.indexOf(e), 1) }; return e; };
+  (globalThis as any).document = { head: { append: (e: any) => head.push(e) }, createElement: mk, getElementById: (id: string) => head.find((e) => e.id === id) ?? null };
+  setUserLook(null); assert.equal(head.length, 0);
+  setUserLook(":root{--bg:red}"); assert.equal(head.length, 1); assert.equal(head[0].id, "user-look"); assert.equal(head[0].textContent, ":root{--bg:red}");
+  setUserLook(":root{--bg:blue}"); assert.equal(head.length, 1); assert.equal(head[0].textContent, ":root{--bg:blue}");
+  setUserLook(null); assert.equal(head.length, 0);
 });

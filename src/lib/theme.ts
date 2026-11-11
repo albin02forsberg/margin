@@ -18,3 +18,11 @@ export function applyLook(name: unknown) {
   const el = document.documentElement;
   if (typeof name === "string" && name) el.dataset.look = name; else delete el.dataset.look;
 }
+
+/** Put a user look's CSS in `<style id="user-look">` (created on first use, after the built-in styles), or remove it when CSS is null. */
+export function setUserLook(css: string | null | undefined) {
+  let el = document.getElementById("user-look");
+  if (css == null) return el?.remove();
+  if (!el) (el = document.createElement("style")), (el.id = "user-look"), document.head.append(el);
+  el.textContent = css;
+}

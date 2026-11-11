@@ -172,6 +172,15 @@
     const offs = ["ai-index", "ai-index-progress"].map((e) => listen(e, () => loadIndex()));
     return () => offs.forEach((o) => void o.then((f) => f()));
   });
+  /** User looks (`looks/*.css` beside config.toml), offered after the built-ins; re-listed when that folder changes. */
+  let userLooks = $state<string[]>([]);
+  const loadLooks = () => invoke<string[]>("list_looks").then((l) => (userLooks = l), () => {});
+  $effect(() => {
+    if (active) untrack(loadLooks);
+    const off = listen("looks-changed", loadLooks);
+    return () => void off.then((f) => f());
+  });
+  const choices = (f: Field) => (f.key === "look" ? [...new Set([...f.choices!, ...userLooks])] : f.choices!);
   let macDialog: HTMLDialogElement;
   const MAC_OK = "activity-watcher-macos-ok";
   function check(f: Field, box: HTMLInputElement) {
@@ -250,7 +259,7 @@
             {:else}
               <span>{f.label}</span>
               {#if f.choices}
-                <select value={form[f.key] as string} onchange={(e) => (form[f.key] = e.currentTarget.value)}>{#each f.choices as o (o)}<option value={o}>{o || "system"}</option>{/each}</select>
+                <select value={form[f.key] as string} onchange={(e) => (form[f.key] = e.currentTarget.value)}>{#each choices(f) as o (o)}<option value={o}>{o || (f.key === "look" ? "classic" : "system")}</option>{/each}</select>
               {:else if f.kind === "list" || f.kind === "multiline"}
                 <textarea rows={Math.max(2, String(form[f.key] ?? "").split("\n").length)} value={form[f.key] as string} oninput={(e) => (form[f.key] = text(e))}></textarea>
               {:else}
