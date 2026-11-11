@@ -17,7 +17,7 @@
   import { srcAt, resultsChange } from "$lib/babel";
   import { svgs } from "$lib/diagram";
   import { accepted, changeLabel, hitKey, type Hit as ReplaceHit } from "$lib/replace";
-  import { bareTitle, bracketRetitle, expandLink, findTarget, fuzzyTarget, linkAbbrevs, linkHeadings, linkTarget, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
+  import { bareTitle, bracketRetitle, expandLink, findTarget, fuzzyTarget, hereLink, linkAbbrevs, linkHeadings, linkTarget, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
   import { type Goal, type HabitRow, type LedgerWeek, type LedgerYear, type ProjectHours, type ReviewKind, findReviewFile, goalWhen, monthBody, putReview, reviewBody, reviewEntry, reviewName, reviewRange, weekExtremes, yearBody, yearCount, yearLedgerLines } from "$lib/review";
@@ -1955,10 +1955,14 @@
       answers[p] = a;
     }
     const path: string = await call("capture_path", { file: t.file || cfg.config.inbox });
+    // %a / %f: where the capture started, read from the open buffer (no :ID: is added to it).
+    const src = !hidden && inFile() ? tab.path! : "";
+    const link = src ? hereLink(path, src, view.state.doc.toString(), curLine0(), [...(kw().todo ?? []), ...(kw().done ?? [])]) : "";
+    const file = src.split(/[\\/]/).pop() ?? "";
     let at = [0, 0];
     await recorded(() =>
       toFile(path, async (text) => {
-        const [next, line, col] = await call<[string, number, number]>("capture_template", { text, heading: t.heading ?? null, body: t.body, answers, selection });
+        const [next, line, col] = await call<[string, number, number]>("capture_template", { text, heading: t.heading ?? null, body: t.body, answers, selection, link, file });
         at = [line, col];
         return next;
       }),

@@ -2116,8 +2116,9 @@ const CURSOR: char = '\u{1}';
 
 /// Expand capture-template BODY: %t %T active date/timestamp, %u %U inactive ones, %^{Prompt}
 /// via ASK, %i the selection SEL (continuation lines indented like the line it's on), %? the
-/// cursor, %% a literal %.
-pub fn expand_template(body: &str, now: chrono::NaiveDateTime, sel: &str, mut ask: impl FnMut(&str) -> String) -> String {
+/// cursor, %a the link HERE.0 to where the capture started and %f that note's file name HERE.1
+/// (both empty without one), %% a literal %.
+pub fn expand_template(body: &str, now: chrono::NaiveDateTime, sel: &str, here: (&str, &str), mut ask: impl FnMut(&str) -> String) -> String {
     let (d, t) = (now.date(), now.format("%H:%M").to_string());
     let inactive = |s: String| format!("[{}]", &s[1..s.len() - 1]);
     let (mut out, mut rest) = (String::new(), body);
@@ -2135,6 +2136,8 @@ pub fn expand_template(body: &str, now: chrono::NaiveDateTime, sel: &str, mut as
                 (sel.split('\n').enumerate().map(|(k, l)| if k == 0 || l.is_empty() { l.into() } else { format!("{ind}{l}") }).collect::<Vec<_>>().join("\n"), 1)
             }
             (Some('?'), _) => (CURSOR.to_string(), 1),
+            (Some('a'), _) => (here.0.into(), 1),
+            (Some('f'), _) => (here.1.into(), 1),
             (Some('%'), _) => ("%".into(), 1),
             (Some('^'), Some(p)) => (ask(p), p.len() + 3),
             _ => ("%".into(), 0),
@@ -2148,7 +2151,7 @@ pub fn expand_template(body: &str, now: chrono::NaiveDateTime, sel: &str, mut as
 /// The distinct %^{Prompt} names in BODY, in order, for the UI to ask before expanding.
 pub fn template_prompts(body: &str) -> Vec<String> {
     let mut v: Vec<String> = vec![];
-    expand_template(body, chrono::NaiveDateTime::default(), "", |p| {
+    expand_template(body, chrono::NaiveDateTime::default(), "", ("", ""), |p| {
         if !v.iter().any(|x| x == p) {
             v.push(p.into());
         }
@@ -3536,19 +3539,23 @@ mod tests {
         let body = "* %^{Title} %t\n%U %T %u 100%% %x %^{Who} %^{Title}\n%i%?";
         assert_eq!(template_prompts(body), ["Title", "Who"]);
         let ans = |p: &str| if p == "Title" { "Sync".into() } else { "Ann".into() };
-        let e = expand_template(body, now, "sel", ans);
+        let e = expand_template(body, now, "sel", ("", ""), ans);
         assert_eq!(e, "* Sync <2026-10-02 Fri>\n[2026-10-02 Fri 14:30] <2026-10-02 Fri 14:30> [2026-10-02 Fri] 100% %x Ann Sync\nsel\u{1}");
-        assert_eq!(expand_template("%^{open %", now, "", ans), "%^{open %");
+        assert_eq!(expand_template("%^{open %", now, "", ("", ""), ans), "%^{open %");
+        // %a / %f: the link back and file name, inserted literally; empty with no note open.
+        let here = ("[[file:a.org::*50%% off][50%% off]]", "a.org");
+        assert_eq!(expand_template("* x\nFrom %a in %f\n", now, "", here, ans), "* x\nFrom [[file:a.org::*50%% off][50%% off]] in a.org\n");
+        assert_eq!(expand_template("* x %a%f.\n", now, "", ("", ""), ans), "* x .\n");
         let (t, l, c) = capture_template("* Meetings\n* Z\n", Some("Meetings"), &e, &kw());
         assert_eq!(t, "* Meetings\n** Sync <2026-10-02 Fri>\n[2026-10-02 Fri 14:30] <2026-10-02 Fri 14:30> [2026-10-02 Fri] 100% %x Ann Sync\nsel\n* Z\n");
         assert_eq!((l, c), (3, 3));
         assert_eq!(capture_template("", None, "* Ä\n", &kw()), ("* Ä\n".into(), 0, 3));
         // %? ending the body leaves no blank line; one mid-body stays put.
-        let e = expand_template("* N\n%U\n%i%?\n", now, "", ans);
+        let e = expand_template("* N\n%U\n%i%?\n", now, "", ("", ""), ans);
         assert_eq!(capture_template("", None, &e, &kw()), ("* N\n[2026-10-02 Fri 14:30]\n".into(), 1, 22));
         assert_eq!(capture_template("", None, "* N\n\u{1}\nx\n", &kw()), ("* N\n\nx\n".into(), 1, 0));
         // Multi-line %i lines up with the line it's inserted on.
-        assert_eq!(expand_template("* N\n  - %i\n%i", now, "a\n\nb", ans), "* N\n  - a\n\n  b\na\n\nb");
+        assert_eq!(expand_template("* N\n  - %i\n%i", now, "a\n\nb", ("", ""), ans), "* N\n  - a\n\n  b\na\n\nb");
     }
 
     #[test]

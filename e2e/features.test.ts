@@ -124,6 +124,11 @@ describe("Features", () => {
         `name = "Standup"`,
         `file = "standups.org"`,
         `body = "* Standup with %^{Who}\\n- %?topics\\n"`,
+        `[[templates]]`,
+        `key = "f"`,
+        `name = "Follow up"`,
+        `file = "followups.org"`,
+        `body = "* Follow up\\n%a in %f\\n"`,
       ],
       files: ({ notes }) => {
         writeFileSync(join(notes, "habits.org"), `* TODO Floss\nSCHEDULED: <${orgDay(new Date())} .+1d>\n:PROPERTIES:\n:STYLE: habit\n:END:\n`);
@@ -132,6 +137,7 @@ describe("Features", () => {
         writeFileSync(join(notes, "beta.org"), "#+title: Beta\n\nWe discussed the Alpha Project today.\n");
         writeFileSync(join(notes, "hub.org"), "#+title: Hub\n\nSee [[id:leaf-id][the leaf]].\n");
         writeFileSync(join(notes, "leaf.org"), ":PROPERTIES:\n:ID: leaf-id\n:END:\n#+title: Leaf\n\nA leaf.\n");
+        writeFileSync(join(notes, "origin.org"), "#+title: Origin\n\n* Ship it [1/2]\n- details\n");
         writeFileSync(join(notes, "exportme.org"), "#+title: Export me\n\nSome *bold* text.\n\n* A heading\n- one item\n");
         writeFileSync(join(notes, "draft.org"), "#+title: Draft\n\nDraft text.\n");
         writeFileSync(join(notes, "oldie.org"), "#+title: Oldie\n\nOld text.\n");
@@ -223,6 +229,20 @@ describe("Features", () => {
     await answer("Insert date", "today +1w");
     await browser.keys([Key.Ctrl, "s"]);
     await fileMatches(join(d.notes, "standups.org"), (s) => s.includes(`<${orgDay(new Date())} +1w>`), "stamp lost its repeater");
+  });
+
+  it("%a links a capture back to the heading it started from, leaving that note untouched (#1274)", async () => {
+    const src = join(d.notes, "origin.org"), before = read(src);
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Origin");
+    await find(".status .file", "origin.org");
+    await type("G"); // under the heading
+    await browser.keys(" ");
+    await browser.keys("c");
+    await answer("Capture with template", "Follow up");
+    await fileMatches(join(d.notes, "followups.org"), (s) => s.includes("* Follow up\n[[file:origin.org::*Ship it][Ship it]] in origin.org\n"), "no link back");
+    await find(".status .file", "followups.org");
+    assert.equal(read(src), before, "the source note was written to");
   });
 
   it("Ctrl+Shift+N creates a note from a templates/notes/ template, cursor at %? (#1253)", async () => {
