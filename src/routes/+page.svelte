@@ -17,7 +17,7 @@
   import { srcAt, resultsChange } from "$lib/babel";
   import { svgs } from "$lib/diagram";
   import { accepted, changeLabel, hitKey, type Hit as ReplaceHit } from "$lib/replace";
-  import { bareTitle, bracketRetitle, expandLink, findTarget, linkAbbrevs, linkHeadings, linkTarget, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
+  import { bareTitle, bracketRetitle, expandLink, findTarget, fuzzyTarget, linkAbbrevs, linkHeadings, linkTarget, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
   import { type Goal, type HabitRow, type LedgerWeek, type LedgerYear, type ProjectHours, type ReviewKind, findReviewFile, goalWhen, monthBody, putReview, reviewBody, reviewEntry, reviewName, reviewRange, weekExtremes, yearBody, yearCount, yearLedgerLines } from "$lib/review";
@@ -2051,6 +2051,9 @@
       return n ? openFile(n.path, n.line) : flash(`No note with ${target}`);
     }
     if (/^https?:\/\//.test(target)) return openUrl(target);
+    // A bare `[[Goals]]` is a fuzzy link into this note first (anchor, #+NAME, heading), a file otherwise.
+    const fz = fuzzyTarget(view.state.doc.toString(), target, [...(kw().todo ?? []), ...(kw().done ?? [])]);
+    if (fz != null) { navMark(tab.path ?? "", fz); ed.recordJump(view); return jumpTo(view.state.doc.line(fz + 1).from); }
     const { file, search } = splitTarget(target);
     const dir = tab?.path ? tab.path.replace(/[\\/][^\\/]*$/, "") : cfg.notes;
     if (file) await openFile(/^([\\/]|[A-Za-z]:)/.test(file) ? file : resolvePath(dir, file, sep()));
@@ -2066,7 +2069,13 @@
   async function peekLink(target = ed.linkAtCursor(view)) {
     if (!inFile()) return flash("Open a note first.");
     if (!target) return flash("No link here.");
-    const link = peekTarget(expandLink(target, linkAbbrevs(view.state.doc.toString())));
+    target = expandLink(target, linkAbbrevs(view.state.doc.toString()));
+    const fz = fuzzyTarget(view.state.doc.toString(), target, [...(kw().todo ?? []), ...(kw().done ?? [])]);
+    if (fz != null) { // a bare fuzzy link: peek the buffer at that line (1-based search = line number)
+      const b = peekBuffer(view.state.doc.toString(), String(fz + 1), [...(kw().todo ?? []), ...(kw().done ?? [])]);
+      if (b) return void (peek = { key: tab.key, path: tab.path ?? "", ...b });
+    }
+    const link = peekTarget(target);
     if (!link) return flash("Web links can't be peeked; Enter opens them.");
     // A note open with unsaved edits peeks from its buffer, not the disk (#871).
     if (!link.startsWith("id:")) {
