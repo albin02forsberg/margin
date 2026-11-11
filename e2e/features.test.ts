@@ -64,6 +64,33 @@ describe("Broken config.toml", () => {
   });
 });
 
+describe("User looks", () => {
+  let d: Dirs;
+  const css = () => browser.execute(() => document.getElementById("user-look")?.textContent ?? null);
+  before(async () => {
+    d = await launch({ config: [`look = "mine"`], files: ({ cfgDir }) => {
+      mkdirSync(join(cfgDir, "looks"));
+      writeFileSync(join(cfgDir, "looks", "mine.css"), ":root[data-look] { --accent: rgb(1, 2, 3); }");
+      writeFileSync(join(cfgDir, "looks", "retro.css"), "/* shadowed by the built-in */");
+    } });
+  });
+  after(close, { timeout: 30_000 });
+
+  it("applies looks/<name>.css, reloads it on edit and offers it in Settings", async () => {
+    await find(".agenda h1", "Today");
+    await browser.waitUntil(async () => (await css())?.includes("rgb(1, 2, 3)"), { timeoutMsg: "user look not injected" });
+    assert.equal(await browser.execute(() => document.documentElement.dataset.look), "mine");
+    assert.equal(await browser.execute(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()), "rgb(1, 2, 3)");
+    writeFileSync(join(d.cfgDir, "looks", "mine.css"), ":root[data-look] { --accent: rgb(4, 5, 6); }");
+    await browser.waitUntil(async () => (await css())?.includes("rgb(4, 5, 6)"), { timeoutMsg: "edited look not reloaded" });
+    await browser.keys([Key.Ctrl, ","]);
+    await find(".settings h1", "Settings");
+    const opts = await browser.execute(() => [...document.querySelectorAll(".settings select option")].map((o) => (o as HTMLOptionElement).value));
+    assert.ok(opts.includes("mine"), `mine not offered: ${opts}`);
+    assert.equal(opts.filter((o) => o === "retro").length, 1, "retro listed twice");
+  });
+});
+
 describe("Last session's tabs", () => {
   let d: Dirs;
   before(async () => {

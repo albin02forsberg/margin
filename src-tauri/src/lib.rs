@@ -186,6 +186,47 @@ fn tutorial(s: State<App>) -> R<(PathBuf, bool)> {
     Ok((p, new))
 }
 
+/// Looks shipped in theme.css: a user file with one of these names is ignored.
+const BUILTIN_LOOKS: [&str; 2] = ["classic", "retro"];
+
+/// Where user looks (`<name>.css`) live: `looks/` beside config.toml.
+fn looks_dir(s: &App) -> PathBuf {
+    s.cfg_path.with_file_name("looks")
+}
+
+/// A look name that stays a plain file name in the looks folder: no separators, no leading dot (so no `..`).
+fn look_ok(name: &str) -> bool {
+    !name.is_empty() && !name.starts_with('.') && !name.contains(['/', '\\', ':', '\0'])
+}
+
+/// The user looks in DIR: the sorted stems of its `.css` files, minus the built-in names and unusable ones.
+fn looks_in(dir: &Path) -> Vec<String> {
+    let mut v: Vec<String> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path())
+        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "css"))
+        .filter_map(|p| p.file_stem()?.to_str().map(String::from))
+        .filter(|n| look_ok(n) && !BUILTIN_LOOKS.contains(&n.as_str()))
+        .collect();
+    v.sort();
+    v
+}
+
+#[tauri::command]
+fn list_looks(s: State<App>) -> Vec<String> {
+    looks_in(&looks_dir(&s))
+}
+
+/// The CSS of user look NAME, or None for a built-in or a missing file (the look then falls back to classic).
+#[tauri::command]
+fn read_look(s: State<App>, name: String) -> R<Option<String>> {
+    if !look_ok(&name) {
+        return Err(format!("not a look name: {name}"));
+    }
+    if BUILTIN_LOOKS.contains(&name.as_str()) {
+        return Ok(None);
+    }
+    Ok(std::fs::read_to_string(looks_dir(&s).join(format!("{name}.css"))).ok())
+}
+
 #[tauri::command]
 fn config(s: State<App>) -> Value {
     let c = s.cfg();
@@ -387,7 +428,8 @@ fn needs_refresh(p: &Path, notes: &Path) -> bool {
 
 /// Watch the notes and data dirs; the UI gets an "fs-changed" event (with the
 /// changed paths and which of them `needs_refresh`) whenever anything there changes — our own writes, Emacs, sync tools.
-/// config.toml edited elsewhere (so it no longer matches the loaded config) gets "config-changed".
+/// config.toml edited elsewhere (so it no longer matches the loaded config) gets "config-changed",
+/// a change in the looks folder "looks-changed".
 fn watch(app: &AppHandle) {
     let s = app.state::<App>();
     let c = s.cfg();
@@ -395,9 +437,17 @@ fn watch(app: &AppHandle) {
     let (cfg_path, roots) = (s.cfg_path.clone(), [c.notes(), c.data()]);
     let cfg_real = std::fs::canonicalize(&cfg_path).unwrap_or_else(|_| cfg_path.clone());
     let real = cfg_real.clone();
+    let looks = looks_dir(&s);
+    let _ = std::fs::create_dir_all(&looks);
+    let looks_real = std::fs::canonicalize(&looks).unwrap_or_else(|_| looks.clone());
+    let (looks_w, looks_rw) = (looks.clone(), looks_real.clone());
     let debouncer = new_debouncer(std::time::Duration::from_millis(150), move |res: DebounceEventResult| {
         let Ok(events) = res else { return };
-        let (cfg_changed, paths) = split_changes(events.into_iter().map(|e| e.path).collect(), &cfg_path, &real, &roots);
+        let all: Vec<PathBuf> = events.into_iter().map(|e| e.path).collect();
+        if all.iter().any(|p| p.parent().is_some_and(|d| d == looks_w || d == looks_rw)) {
+            let _ = handle.emit("looks-changed", ());
+        }
+        let (cfg_changed, paths) = split_changes(all, &cfg_path, &real, &roots);
         if cfg_changed {
             let disk = std::fs::read_to_string(&cfg_path).ok().and_then(|t| toml::from_str::<Config>(&t).ok());
             let s = handle.state::<App>();
@@ -429,7 +479,7 @@ fn watch(app: &AppHandle) {
         }
     }
     // A symlinked config.toml: edits to its target land in the target's directory.
-    let mut dirs = vec![s.cfg_path.parent().unwrap(), cfg_real.parent().unwrap()];
+    let mut dirs = vec![s.cfg_path.parent().unwrap(), cfg_real.parent().unwrap(), looks.as_path(), looks_real.as_path()];
     dirs.dedup();
     for dir in dirs {
         if let Err(e) = d.watcher().watch(dir, notify::RecursiveMode::NonRecursive) {
@@ -3932,7 +3982,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             watcher::gnome_extension, watcher::screen_recording, remind::remind_snooze,
-            config, config_recreate, tutorial, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, md_import, highlights_import, unused_attachments, trash_attachments,
+            config, config_recreate, tutorial, list_looks, read_look, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, md_import, highlights_import, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, crypt_lock, crypt_unlock, crypt_rekey, crypt_relock, crypt_remove, crypt_forget, idle::idle_has_source, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_week, ledger_month_review, ledger_year, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, ledger_recurring, ledger_recurring_file, ledger_recurring_mark, capture_path, meeting_events, meeting_note, capture_templates, note_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, tc_project_hours, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, notes_crypt_unlocked, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, people_last, waiting_for, inbox_count, inbox_entries, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
@@ -3963,6 +4013,24 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn looks() {
+        for n in ["mine", "my look", "x.y"] {
+            assert!(super::look_ok(n), "{n}");
+        }
+        for n in ["", "..", "../x", "a/b", "a\\b", ".hidden", "c:x"] {
+            assert!(!super::look_ok(n), "{n}");
+        }
+        let d = std::env::temp_dir().join(format!("margin-looks-{}", std::process::id()));
+        std::fs::create_dir_all(d.join("sub.css")).unwrap();
+        for f in ["zed.css", "mine.css", "retro.css", "classic.css", "notes.txt", ".hidden.css"] {
+            std::fs::write(d.join(f), "").unwrap();
+        }
+        assert_eq!(super::looks_in(&d), ["mine", "zed"]);
+        assert!(super::looks_in(&d.join("missing")).is_empty());
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
     use super::*;
 
     #[test]
