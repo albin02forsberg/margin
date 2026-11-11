@@ -10,10 +10,19 @@ export function splitTarget(t: string): { file: string; search: string } {
 }
 
 const RESERVED = new Set(["file", "id", "http", "https", "mailto"]);
-/** `#+LINK: name template` abbreviations of TEXT (first definition wins; built-in prefixes can't be redefined). Mirrored by `export::expand_links`. */
+/** `#+LINK: name template` abbreviations of TEXT (first definition wins; built-in prefixes can't be redefined; src/example blocks are code, an unterminated one runs to the end). Mirrored by `export::expand_links`. */
 export function linkAbbrevs(text: string): Map<string, string> {
   const m = new Map<string, string>();
-  for (const [, name, tpl] of text.matchAll(/^[ \t]*#\+link:[ \t]+([^\s:[\]]+)[ \t]+(\S.*?)\s*$/gim)) if (!RESERVED.has(name) && !m.has(name)) m.set(name, tpl);
+  let code = false;
+  for (const l of text.split("\n")) {
+    const s = l.trimStart(), t = s.toLowerCase();
+    if (code || t.startsWith("#+begin_src") || t.startsWith("#+begin_example")) {
+      code = !(code && (t.startsWith("#+end_src") || t.startsWith("#+end_example")));
+      continue;
+    }
+    const d = /^#\+link:[ \t]+([^\s:[\]]+)[ \t]+(\S.*?)\s*$/i.exec(s);
+    if (d && !RESERVED.has(d[1]) && !m.has(d[1])) m.set(d[1], d[2]);
+  }
   return m;
 }
 
