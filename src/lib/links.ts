@@ -9,6 +9,22 @@ export function splitTarget(t: string): { file: string; search: string } {
   return i < 0 ? { file: s, search: "" } : { file: s.slice(0, i), search: s.slice(i + 2) };
 }
 
+const RESERVED = new Set(["file", "id", "http", "https", "mailto"]);
+/** `#+LINK: name template` abbreviations of TEXT (first definition wins; built-in prefixes can't be redefined). Mirrored by `export::expand_links`. */
+export function linkAbbrevs(text: string): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const [, name, tpl] of text.matchAll(/^[ \t]*#\+link:[ \t]+([^\s:[\]]+)[ \t]+(\S.*?)\s*$/gim)) if (!RESERVED.has(name) && !m.has(name)) m.set(name, tpl);
+  return m;
+}
+
+/** TARGET `name:tag` with an abbreviation: `%s` in the template becomes the tag, `%h` its URL-encoding, none: the tag is appended. Expanded once. */
+export function expandLink(target: string, abbrevs: Map<string, string>): string {
+  const i = target.indexOf(":"), tpl = i > 0 ? abbrevs.get(target.slice(0, i)) : undefined;
+  if (tpl == null) return target;
+  const tag = target.slice(i + 1);
+  return /%[sh]/.test(tpl) ? tpl.replace(/%([sh])/g, (_, c) => (c === "s" ? tag : encodeURIComponent(tag))) : tpl + tag;
+}
+
 /** Link T as `transclude_text` takes it, for the peek panel (#849): bare paths get `file:`; null for URLs and other schemes. */
 export function peekTarget(t: string): string | null {
   if (/^(id|file):|^[*#]/.test(t)) return t;

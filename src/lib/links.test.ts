@@ -1,6 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bareTitle, bracketRetitle, completionAt, findTarget, linkHeadings, linkTarget, norm, peekBuffer, peekTarget, retitlePlan, splitTarget } from "./links.ts";
+import { bareTitle, bracketRetitle, completionAt, findTarget, linkHeadings, linkTarget, norm, peekBuffer, peekTarget, retitlePlan, splitTarget, linkAbbrevs, expandLink } from "./links.ts";
+
+test("#+LINK abbreviations", () => {
+  const a = linkAbbrevs("#+LINK: gh https://g/i/%s\n#+link: q https://x/?q=%h\n#+LINK: p https://p/\n#+LINK: gh dup\n#+LINK: id https://evil/%s\n#+LINK: file x%s\n");
+  assert.equal(expandLink("gh:12", a), "https://g/i/12");
+  assert.equal(expandLink("q:a b&c", a), "https://x/?q=a%20b%26c");
+  assert.equal(expandLink("p:x", a), "https://p/x");
+  assert.equal(expandLink("zz:1", a), "zz:1");
+  assert.equal(expandLink("id:1", a), "id:1");
+  assert.equal(expandLink("file:a.org", a), "file:a.org");
+  assert.equal(expandLink("gh:%s", a), "https://g/i/%s"); // no recursion
+});
 
 const doc = "#+title: T\n* TODO [#A] Install :tag:\n:PROPERTIES:\n:CUSTOM_ID: setup\n:END:\nbody text\n** Usage\r\nmore\n";
 
