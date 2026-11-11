@@ -2,6 +2,66 @@
 
 Grouped by `.github/scripts/changelog.sh`, the same generator that writes the GitHub release notes. The releaser agent adds a section here in each release PR.
 
+## v0.7.0 - 2026-11-11
+
+### Features
+- invoice table shows an Exact (unrounded) row when rounding changes the total (#1254) (#1258)
+- per-heading :VISIBILITY: property sets initial folding (#1245) (#1249)
+- Space x K turns sibling task headings into a checklist (#1242) (#1247)
+- Space n N can list another day's events via Other day… (#1244) (#1248)
+- #+STARTUP: fold, nofold and show2levels..show5levels (#1243) (#1246)
+- remember folded headings per note across tab close and restart (#1236) (#1239)
+- new meeting notes offer to clock in (#1234) (#1237)
+- #+STARTUP: overview/content folds a note on first open (#1235) (#1238)
+- Space n N opens a meeting note from today's calendar event or an ad-hoc meeting (#1227) (#1233)
+- per-weekday journal templates from templates/journal/mon.org..sun.org (#1229) (#1231)
+- Space x k turns a checklist into task headings (#1228) (#1230)
+- Space t R Year writes a yearly review: busiest/quietest week, notes edited, habit streaks, ledger vs last year (#1221) (#1225)
+- Space t R picks Week / Month; monthly review note with its own markers (#1220) (#1224)
+- wide org table rows are centred on the text column (#1218) (#1223)
+- vim_init setting runs vim ex commands like a vimrc (#1209) (#1215)
+- bank import fills a missing #category from the latest ledger entry with the same text (#1211) (#1216)
+- org table rows never wrap; wide tables scroll sideways (#1212) (#1214)
+- #+WORDGOAL: and journal_word_goal show progress in the status-bar word count (#1206) (#1208)
+- ledger quick-add fills a missing #category from the latest entry with the same @payee or text (#1205) (#1207)
+- :RESET_SUBTASKS: t reopens a repeating task's done sub-headings on completion (#1203) (#1204)
+- :RESET_CHECK_BOXES: t unticks a repeating task's checklist on completion (#1201) (#1202)
+- Ledger year view with a month-by-category table and savings rate (#1196) (#1199)
+- filter the ledger month's entries by text, #category or @payee (#1195) (#1198)
+- weekly review gets a Ledger line (spent vs last week, top category, over budget) (#1197) (#1200)
+- Agenda copy includes the time of timed tasks (#1194)
+- recurring ledger entries (rent, subscriptions) from config rules (#1182) (#1190)
+- anniversaries, birthdays in the month calendar, snoozed file-level birthdays (#1187) (#1189)
+- birthdays from :BIRTHDAY: on a person surface in Today, the agenda and reminders (#1183) (#1185)
+- monthly category budgets in the Ledger view (#1181) (#1184)
+- word count covers only the narrowed heading (#1178) (#1180)
+- remove the encryption from a locked heading, back to plain text (#1168) (#1171)
+- list :crypt: headings whose body isn't locked across all notes (#1169) (#1170)
+- edit a locked heading in its decrypted tab, :w re-locks it (#1154) (#1165)
+- close decrypted tabs when the passphrase is forgotten (#1156) (#1164)
+- mark a :crypt: heading whose body isn't locked (#1157) (#1163)
+
+### Fixes
+- config.toml echo of our own write no longer overwrites flash (#1250) (#1256)
+- Space x K refuses when conversion would reparent headings (#1251) (#1257)
+- Space x K keeps relative indentation of task bodies (#1252) (#1255)
+- remembered folds no longer defeat #+STARTUP:, and survive TODO/tag edits (#1240) (#1241)
+- review file lookup reads journals newest first in parallel chunks (#1226) (#1232)
+- bank import treats #1234 / @1234 as numbers, not tags (#1217) (#1222)
+- bank import dedupe ignores tags, payee and links (#1210) (#1213)
+- Agenda copy ignores birthday-only lists and counts only tasks (#1191) (#1192)
+- decrypted tab survives one change span covering its unchanged heading (#1174) (#1176)
+- decrypted tab follows its heading when lines change above it (#1172) (#1173)
+- verify a fresh crypt block with the key already derived, one argon2 run per lock (#1166) (#1167)
+- rekey never writes ciphertext into the plaintext backup slot (#1160) (#1162)
+- unlock/rekey a locked heading that has plaintext children (#1159) (#1161)
+
+### Other
+- ledger month view screenshot with demo entries and budgets (#1186) (#1188)
+- debounce the word count while typing (#1177)
+
+…and 20 more.
+
 ## v0.6.0 - 2026-10-25
 
 ### Features
