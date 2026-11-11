@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bareTitle, bracketRetitle, completionAt, findTarget, linkHeadings, linkTarget, norm, peekBuffer, peekTarget, retitlePlan, splitTarget, linkAbbrevs, expandLink } from "./links.ts";
+import { bareTitle, bracketRetitle, completionAt, findTarget, fuzzyTarget, linkHeadings, linkTarget, norm, peekBuffer, peekTarget, retitlePlan, splitTarget, linkAbbrevs, expandLink } from "./links.ts";
 
 test("#+LINK abbreviations", () => {
   const a = linkAbbrevs("#+LINK: gh https://g/i/%s\n#+link: q https://x/?q=%h\n#+LINK: p https://p/\n#+LINK: gh dup\n#+LINK: id https://evil/%s\n#+LINK: file x%s\n");
@@ -25,6 +25,19 @@ test("splitTarget", () => {
   // A radio mention's target (#1265): the current note, found by plain search.
   assert.deepEqual(splitTarget("::<<<Margin App>>>"), { file: "", search: "<<<Margin App>>>" });
   assert.equal(findTarget("* Glossary\nThe <<<Margin App>>> is it.\n", "<<<Margin App>>>"), 1);
+});
+
+test("fuzzyTarget", () => {
+  const t = "* TODO [#A] Goals [1/2] :work:\nsome <<Anchor Here>> text\n#+NAME: tbl one\n| a |\n<<<radio>>>\n#+BEGIN_SRC\n<<hidden>>\n#+END_SRC\n* v1.2 notes";
+  assert.equal(fuzzyTarget(t, "goals"), 0);
+  assert.equal(fuzzyTarget(t, "anchor  here"), 1);
+  assert.equal(fuzzyTarget(t, "Tbl One"), 2);
+  assert.equal(fuzzyTarget(t, "v1.2 notes"), 8); // dotted bare name still fuzzy
+  assert.equal(fuzzyTarget(t, "radio"), null);
+  assert.equal(fuzzyTarget(t, "hidden"), null);
+  assert.equal(fuzzyTarget(t, "nothing"), null);
+  for (const x of ["goals.org", "sub/goals", "file:goals", "https://x", "*Goals", "#id"]) assert.equal(fuzzyTarget(t, x), null, x);
+  assert.equal(fuzzyTarget("<<x>>\n* x", "x"), 0);
 });
 
 test("findTarget", () => {

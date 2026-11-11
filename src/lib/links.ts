@@ -96,6 +96,29 @@ export function findTarget(text: string, search: string, keywords?: string[]): n
   return i < 0 ? null : i;
 }
 
+/** 0-based line a bare TARGET (`[[Goals]]`: no scheme, path separator or file extension) points at in the current note, as org's
+ *  fuzzy links do: a `<<target>>` anchor, else `#+NAME: target`, else a heading titled target; null otherwise (then it's a file).
+ *  Case-insensitive, whitespace-normalised; `<<<radio>>>` targets and src/example blocks are skipped. */
+export function fuzzyTarget(text: string, target: string, keywords?: string[]): number | null {
+  if (/^[a-z][\w+.-]*:|[/\\]|\.\w+$|^[*#]/i.test(target)) return null;
+  const want = norm(target);
+  if (!want) return null;
+  const lines = text.split(/\r?\n/), blocks: number[] = [], clean = (l: string) => l.replace(/\s+/g, " ").toLowerCase();
+  let inBlock = false;
+  lines.forEach((l, i) => {
+    if (/^\s*#\+begin_(src|example)\b/i.test(l)) inBlock = true;
+    else if (/^\s*#\+end_(src|example)\b/i.test(l)) inBlock = false;
+    else if (!inBlock) blocks.push(i);
+  });
+  const find = (f: (l: string) => boolean) => blocks.find((i) => f(lines[i])) ?? null;
+  const anchor = find((l) => [...l.matchAll(/(?<!<)<<([^<>\n]+)>>(?!>)/g)].some((m) => clean(m[1]).trim() === want));
+  if (anchor != null) return anchor;
+  const name = find((l) => { const m = /^\s*#\+name:\s*(.*?)\s*$/i.exec(l); return !!m && clean(m[1]) === want; });
+  if (name != null) return name;
+  const re = head(keywords);
+  return find((l) => { const m = re.exec(l); return !!m && norm(m[1]) === want; });
+}
+
 /** Link titles for renaming heading LINE (0-based) of BEFORE to its title in AFTER: {old: normalised old title,
  *  new: bare new title} to rewrite `::*Old` links with, a reason to leave them alone, or null when there is nothing
  *  to do (not a heading, or only case/cookies changed). Links are left alone when the old title isn't unique in
