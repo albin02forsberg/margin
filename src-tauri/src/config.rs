@@ -190,15 +190,18 @@ pub struct Template {
     pub file: String,
     /// File under this heading (created if missing) instead of at the end.
     pub heading: Option<String>,
+    /// File under today's `YYYY` > `YYYY-MM Month` > `YYYY-MM-DD Weekday` headings (org datetree), below HEADING if set.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub datetree: bool,
     pub body: String,
 }
 
 impl Template {
-    /// A template file named STEM: leading `#+key:` `#+title:` `#+file:` `#+heading:` lines (other
+    /// A template file named STEM: leading `#+key:` `#+title:` `#+file:` `#+heading:` `#+datetree:` lines (other
     /// keywords, blank lines and an ID drawer skipped), then the body. Key defaults to STEM's first letter.
     pub fn from_file(stem: &str, text: &str) -> Template {
         let key = stem.chars().next().map(String::from).unwrap_or_default();
-        let mut t = Template { key, name: stem.into(), file: String::new(), heading: None, body: String::new() };
+        let mut t = Template { key, name: stem.into(), file: String::new(), heading: None, datetree: false, body: String::new() };
         let (mut off, mut drawer) = (0, false);
         for l in text.split_inclusive('\n') {
             let s = l.trim();
@@ -213,6 +216,7 @@ impl Template {
                     "title" => t.name = v,
                     "file" => t.file = v,
                     "heading" => t.heading = Some(v).filter(|h| !h.is_empty()),
+                    "datetree" => t.datetree = matches!(v.to_ascii_lowercase().as_str(), "t" | "true" | "yes"),
                     _ => {}
                 }
             } else if !s.is_empty() {
@@ -318,9 +322,9 @@ impl Default for Config {
             views: vec![],
             calendar_file: String::new(),
             templates: vec![
-                Template { key: "n".into(), name: "Note".into(), file: String::new(), heading: None, body: "* %^{Title}\n%U\n%i%?".into() },
-                Template { key: "m".into(), name: "Meeting notes".into(), file: "meetings.org".into(), heading: None, body: "* %^{Meeting} :meeting:\n%U\n- %?".into() },
-                Template { key: "r".into(), name: "Reading list".into(), file: String::new(), heading: Some("Reading".into()), body: "* TODO Read %^{clip-link} :read:\n%U\n%?".into() },
+                Template { key: "n".into(), name: "Note".into(), file: String::new(), heading: None, datetree: false, body: "* %^{Title}\n%U\n%i%?".into() },
+                Template { key: "m".into(), name: "Meeting notes".into(), file: "meetings.org".into(), heading: None, datetree: false, body: "* %^{Meeting} :meeting:\n%U\n- %?".into() },
+                Template { key: "r".into(), name: "Reading list".into(), file: String::new(), heading: Some("Reading".into()), datetree: false, body: "* TODO Read %^{clip-link} :read:\n%U\n%?".into() },
             ],
             templates_dir: "templates".into(),
             feeds: vec![],
@@ -958,7 +962,8 @@ mod tests {
         // A block line with a colon later on is body, not a header keyword.
         assert_eq!(Template::from_file("s", "#+begin_src sh :results output\nls\n").body, "#+begin_src sh :results output\nls\n");
         let t = Template::from_file("journal", "#+key: J\n- %?");
-        assert_eq!((t.key.as_str(), t.name.as_str(), t.file.as_str(), t.heading, t.body.as_str()), ("J", "journal", "", None, "- %?"));
+        assert_eq!((t.key.as_str(), t.name.as_str(), t.file.as_str(), t.heading, t.datetree, t.body.as_str()), ("J", "journal", "", None, false, "- %?"));
+        assert!(Template::from_file("log", "#+DATETREE: t\n* %?").datetree);
     }
 
     #[test]

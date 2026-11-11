@@ -54,6 +54,8 @@ test("templates need a unique one-character key and a name", () => {
   assert.throws(() => checkTemplates([{ ...t, key: "" }]), /one-character/);
   assert.throws(() => checkTemplates([t, { ...t, key: "k" }, { ...t, key: "j" }]), /Templates 1 and 3/);
   assert.throws(() => checkTemplates([{ ...t, name: "" }]), /needs a name/);
+  // datetree: the checkbox's "t" (or the config's true) saves as a TOML bool, unchecked leaves it out.
+  assert.deepEqual(checkTemplates([{ ...t, datetree: "t" }, { ...t, key: "k", datetree: "" }]).map((r) => r.datetree), [true, undefined]);
   assert.deepEqual(refreshRows([], [], [{ key: "n", heading: null }])[1], [{ key: "n", heading: "" }]);
 });
 

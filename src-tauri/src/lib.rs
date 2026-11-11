@@ -1326,13 +1326,15 @@ fn template_prompts(body: String) -> Vec<String> {
 }
 
 /// Expand template BODY with ANSWERS and file it into TEXT: [new text, cursor line, cursor column].
+/// DATETREE files it under today in an org datetree.
 /// LINK / FILE are %a / %f: the link back to where the capture started and that note's file name.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-fn capture_template(s: State<App>, text: String, heading: Option<String>, body: String, answers: std::collections::HashMap<String, String>, selection: String, link: Option<String>, file: Option<String>) -> (String, usize, usize) {
+fn capture_template(s: State<App>, text: String, heading: Option<String>, body: String, answers: std::collections::HashMap<String, String>, selection: String, link: Option<String>, file: Option<String>, datetree: Option<bool>) -> (String, usize, usize) {
     let here = (link.as_deref().unwrap_or(""), file.as_deref().unwrap_or(""));
-    let entry = org::expand_template(&body, timeclock::now(), &selection, here, |p| answers.get(p).cloned().unwrap_or_default());
-    org::capture_template(&text, heading.as_deref(), &entry, &s.kw())
+    let now = timeclock::now();
+    let entry = org::expand_template(&body, now, &selection, here, |p| answers.get(p).cloned().unwrap_or_default());
+    org::capture_template(&text, heading.as_deref(), datetree.unwrap_or(false).then(|| now.date()), &entry, &s.kw())
 }
 
 /// Resolve a strftime file pattern under the notes dir for DATE_INPUT (default

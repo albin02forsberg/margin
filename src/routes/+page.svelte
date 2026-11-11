@@ -1934,7 +1934,7 @@
     });
   }
 
-  type Tpl = { key: string; name: string; file: string; heading: string | null; body: string };
+  type Tpl = { key: string; name: string; file: string; heading: string | null; datetree?: boolean; body: string };
   const tplItems = (tpls: Tpl[]) => tpls.map((t) => ({ label: `${t.key}  ${t.name}`, detail: t.file || cfg.config.inbox, value: t }));
 
   /** Capture with a template (settings or templates folder): ask its prompts, file it, open at %?. */
@@ -1963,7 +1963,7 @@
     let at = [0, 0];
     await recorded(() =>
       toFile(path, async (text) => {
-        const [next, line, col] = await call<[string, number, number]>("capture_template", { text, heading: t.heading ?? null, body: t.body, answers, selection, link, file });
+        const [next, line, col] = await call<[string, number, number]>("capture_template", { text, heading: t.heading ?? null, body: t.body, answers, selection, link, file, datetree: !!t.datetree });
         at = [line, col];
         return next;
       }),
