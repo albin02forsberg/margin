@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bareTitle, bracketRetitle, completionAt, findTarget, fuzzyTarget, linkHeadings, linkTarget, norm, peekBuffer, peekTarget, retitlePlan, splitTarget, linkAbbrevs, expandLink } from "./links.ts";
+import { bareTitle, bracketRetitle, completionAt, findTarget, fuzzyTarget, linkHeadings, linkTarget, norm, peekBuffer, peekTarget, retitlePlan, splitTarget, linkAbbrevs, expandLink, hereLink } from "./links.ts";
 
 test("#+LINK abbreviations", () => {
   const a = linkAbbrevs("#+LINK: gh https://g/i/%s\n#+link: q https://x/?q=%h\n#+LINK: p https://p/\n#+LINK: gh dup\n#+LINK: id https://evil/%s\n#+LINK: file x%s\n");
@@ -145,4 +145,19 @@ test("completionAt: [[ links, @ people after whitespace, :tags only on heading l
   assert.equal(completionAt("note :wo", false), null);
   assert.equal(completionAt("* Time: 10", true), null);
   assert.equal(completionAt("plain text", false), null);
+});
+
+test("hereLink: %a links back to the heading at the cursor without writing to the note", () => {
+  const note = "#+title: Proj [x]\n* Intro\ntext\n** TODO [#A] Fix [1/3] the bug :work:\nSCHEDULED: <2026-10-02 Fri>\n:PROPERTIES:\n:EFFORT: 1h\n:END:\nbody\n* With id\n:PROPERTIES:\n:ID: abc-1\n:END:\nmore\n* Odd [[x]]\n";
+  const from = "/n/inbox.org", at = "/n/sub/proj.org";
+  assert.equal(hereLink(from, at, note, 8), "[[file:sub/proj.org::*Fix the bug][Fix the bug]]");
+  assert.equal(hereLink(from, at, note, 3), "[[file:sub/proj.org::*Fix the bug][Fix the bug]]");
+  assert.equal(hereLink(from, at, note, 13), "[[id:abc-1][With id]]");
+  assert.equal(hereLink(at, at, note, 2), "[[*Intro][Intro]]");
+  // Above the first heading, or a title `::*` can't carry: the note itself.
+  assert.equal(hereLink(from, at, note, 0), "[[file:sub/proj.org][Proj x]]");
+  assert.equal(hereLink(from, at, note, 14), "[[file:sub/proj.org][Proj x]]");
+  assert.equal(hereLink(from, at, ":PROPERTIES:\n:ID: n-1\n:END:\nhi\n", 3), "[[id:n-1][proj.org]]");
+  // A child's drawer isn't its parent's: the ID scan stops at the next heading.
+  assert.equal(hereLink(from, at, "* P\n** C\n:PROPERTIES:\n:ID: c\n:END:\n", 0), "[[file:sub/proj.org::*P][P]]");
 });

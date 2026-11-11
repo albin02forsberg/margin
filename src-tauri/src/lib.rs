@@ -1326,9 +1326,12 @@ fn template_prompts(body: String) -> Vec<String> {
 }
 
 /// Expand template BODY with ANSWERS and file it into TEXT: [new text, cursor line, cursor column].
+/// LINK / FILE are %a / %f: the link back to where the capture started and that note's file name.
 #[tauri::command]
-fn capture_template(s: State<App>, text: String, heading: Option<String>, body: String, answers: std::collections::HashMap<String, String>, selection: String) -> (String, usize, usize) {
-    let entry = org::expand_template(&body, timeclock::now(), &selection, |p| answers.get(p).cloned().unwrap_or_default());
+#[allow(clippy::too_many_arguments)]
+fn capture_template(s: State<App>, text: String, heading: Option<String>, body: String, answers: std::collections::HashMap<String, String>, selection: String, link: Option<String>, file: Option<String>) -> (String, usize, usize) {
+    let here = (link.as_deref().unwrap_or(""), file.as_deref().unwrap_or(""));
+    let entry = org::expand_template(&body, timeclock::now(), &selection, here, |p| answers.get(p).cloned().unwrap_or_default());
     org::capture_template(&text, heading.as_deref(), &entry, &s.kw())
 }
 
@@ -1389,7 +1392,7 @@ fn append_journal_template(p: &Path, template: &str, day: NaiveDate) -> R<()> {
     if template.trim().is_empty() {
         return Ok(());
     }
-    let mut body = org::expand_template(template, day.and_hms_opt(0, 0, 0).unwrap(), "", |_| String::new()).replace('\u{1}', ""); // %? marker
+    let mut body = org::expand_template(template, day.and_hms_opt(0, 0, 0).unwrap(), "", ("", ""), |_| String::new()).replace('\u{1}', ""); // %? marker
     if !body.ends_with('\n') {
         body.push('\n');
     }
@@ -1479,7 +1482,7 @@ fn context_of(f: &org::OrgFile, line: usize) -> Value {
 #[tauri::command]
 fn notes_new(s: State<App>, title: String, body: Option<String>, answers: Option<std::collections::HashMap<String, String>>) -> R<notes::Node> {
     let answers = answers.unwrap_or_default();
-    let body = org::expand_template(&body.unwrap_or_default(), timeclock::now(), "", |p| answers.get(p).cloned().unwrap_or_default());
+    let body = org::expand_template(&body.unwrap_or_default(), timeclock::now(), "", ("", ""), |p| answers.get(p).cloned().unwrap_or_default());
     new_note_at_cursor(&s.cfg().notes(), title, &body).map_err(|e| e.to_string())
 }
 
@@ -3980,7 +3983,7 @@ mod tests {
     fn new_note_from_template_returns_cursor_line() {
         let d = std::env::temp_dir().join(format!("margin-note-new-{}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();
-        let body = org::expand_template("* Goal %^{Goal}\n* Next\n- \n%?\n* Log\n", timeclock::now(), "", |p| format!("<{p}>"));
+        let body = org::expand_template("* Goal %^{Goal}\n* Next\n- \n%?\n* Log\n", timeclock::now(), "", ("", ""), |p| format!("<{p}>"));
         let n = new_note_at_cursor(&d, "Proj".into(), &body).unwrap();
         let text = std::fs::read_to_string(&n.path).unwrap();
         assert!(text.ends_with("#+title: Proj\n\n* Goal <Goal>\n* Next\n- \n\n* Log\n"), "{text}");

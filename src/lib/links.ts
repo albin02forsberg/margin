@@ -151,6 +151,37 @@ export function linkTarget(from: string, to: { id: string } | { path: string; he
   return `${to.path === from ? "" : `file:${relativeTo(from, to.path)}::`}*${to.head}`;
 }
 
+/** `:ID:` in the property drawer starting at LINES[I] (past a planning line when PLANNING), or "". */
+function drawerId(lines: string[], i: number, planning: boolean) {
+  if (planning && /^\s*(SCHEDULED|DEADLINE|CLOSED):/.test(lines[i] ?? "")) i++;
+  if (!/^\s*:PROPERTIES:\s*$/i.test(lines[i] ?? "")) return "";
+  for (let j = i + 1; j < lines.length && !/^\s*:END:\s*$/i.test(lines[j]) && !/^\*+\s/.test(lines[j]); j++) {
+    const m = /^\s*:ID:\s+(\S+)/i.exec(lines[j]);
+    if (m) return m[1];
+  }
+  return "";
+}
+
+/** `%a` of a capture template filed into note FROM (#1274): an org link to the heading at or above LINE (0-based) of
+ *  note PATH's buffer TEXT, by its `:ID:` when it has one, else by bare title; above the first heading (or for a title
+ *  `::*` can't carry), the note itself by its file `:ID:` or path. Read-only: unlike copy-link it never adds an ID. */
+export function hereLink(from: string, path: string, text: string, line: number, keywords?: string[]): string {
+  const lines = text.split(/\r?\n/), name = path.split(/[\\/]/).pop()!;
+  const desc = (s: string) => s.replace(/[[\]]/g, "");
+  for (let h = Math.min(line, lines.length - 1); h >= 0; h--) {
+    const t = headTitle(lines[h], keywords);
+    if (t == null) continue;
+    const bare = bareTitle(t), id = drawerId(lines, h + 1, true);
+    if (id) return `[[id:${id}][${desc(bare) || name}]]`;
+    if (bare && !/[[\]]/.test(bare)) return `[[${linkTarget(from, { path, head: bare })}][${bare}]]`;
+    break;
+  }
+  const first = lines.findIndex((l) => l.trim() !== "");
+  const id = first < 0 ? "" : drawerId(lines, first, false);
+  const title = desc(lines.find((l) => /^#\+title:/i.test(l))?.replace(/^#\+title:/i, "").trim() ?? "") || name;
+  return `[[${id ? `id:${id}` : linkTarget(from, { path })}][${title}]]`;
+}
+
 /** What to complete at the end of BEFORE, the line up to the cursor (#899): `[[` + text (a link), `@` + name after
  *  whitespace (a person), or `:tag` after the title when HEADING (a heading line). QUERY is the part typed so far. */
 export function completionAt(before: string, heading: boolean): { kind: "link" | "person" | "tag"; query: string } | null {

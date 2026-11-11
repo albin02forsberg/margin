@@ -590,7 +590,11 @@ body = "* %^{Title} :meeting:\n%U\n- %?"
 
 `%t`/`%T` date / date+time (`<2026-10-02 Fri 14:30>`), `%u`/`%U` the inactive
 `[…]` forms, `%^{Prompt}` asks (repeat a name to reuse the answer), `%i` the
-selected text (extra lines indented like its line), `%?` cursor, `%%` a literal `%`.
+selected text (extra lines indented like its line), `%a` a link back to where you
+were (the heading at the cursor in the open note, by its `:ID:` if it has one, else
+`[[file:note.org::*Heading][Heading]]`; the note itself above its first heading; capturing
+never adds an ID to that note), `%f` that note's file name (`%a`/`%f` are empty with no
+note open, e.g. quick capture from the tray), `%?` cursor, `%%` a literal `%`.
 The reserved prompt `%^{clip-link}` isn't asked: it becomes the clipboard URL as
 `[[url][page title]]` (a bare `[[url]]` if the title can't be fetched; if the clipboard
 isn't an http(s) URL it asks for one). New configs include a "Reading list" template
