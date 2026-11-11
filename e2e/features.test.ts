@@ -156,6 +156,12 @@ describe("Features", () => {
         `name = "Follow up"`,
         `file = "followups.org"`,
         `body = "* Follow up\\n%a in %f\\n"`,
+        `[[templates]]`,
+        `key = "d"`,
+        `name = "Diary"`,
+        `file = "diary.org"`,
+        `datetree = true`,
+        `body = "* Entry\\n"`,
       ],
       files: ({ notes }) => {
         writeFileSync(join(notes, "habits.org"), `* TODO Floss\nSCHEDULED: <${orgDay(new Date())} .+1d>\n:PROPERTIES:\n:STYLE: habit\n:END:\n`);
@@ -270,6 +276,20 @@ describe("Features", () => {
     await fileMatches(join(d.notes, "followups.org"), (s) => s.includes("* Follow up\n[[file:origin.org::*Ship it][Ship it]] in origin.org\n"), "no link back");
     await find(".status .file", "followups.org");
     assert.equal(read(src), before, "the source note was written to");
+  });
+
+  it("a datetree template files two captures under one Year > Month > Day (#1276)", async () => {
+    for (let i = 0; i < 2; i++) {
+      await browser.keys([Key.Ctrl, "1"]);
+      await find(".agenda h1", "Today");
+      await browser.keys(" ");
+      await browser.keys("c");
+      await answer("Capture with template", "Diary");
+      await find(".status .file", "diary.org");
+    }
+    const n = new Date(), en = (o: Intl.DateTimeFormatOptions) => n.toLocaleString("en-US", o), day = isoDay(n);
+    const tree = `* ${n.getFullYear()}\n** ${day.slice(0, 7)} ${en({ month: "long" })}\n*** ${day} ${en({ weekday: "long" })}\n**** Entry\n**** Entry\n`;
+    await fileMatches(join(d.notes, "diary.org"), (s) => s.endsWith(tree), "not one day heading with both entries");
   });
 
   it("Ctrl+Shift+N creates a note from a templates/notes/ template, cursor at %? (#1253)", async () => {

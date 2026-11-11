@@ -2099,16 +2099,51 @@ fn append_archived(dst: &str, src_path: &str, now: chrono::NaiveDateTime, subs: 
 /// Insert a captured ENTRY into DST: as last child of the first heading titled
 /// HEADING (created at the end if missing), or at the end of the file.
 pub fn capture_insert(dst: &str, heading: Option<&str>, entry: &str, kw: &Kw) -> String {
+    capture_dated(dst, heading, None, entry, kw)
+}
+
+/// capture_insert, with DATETREE under that day's heading of an org datetree (see datetree_day).
+fn capture_dated(dst: &str, heading: Option<&str>, datetree: Option<chrono::NaiveDate>, entry: &str, kw: &Kw) -> String {
     let mut d = to_lines(dst);
-    let target = heading.filter(|h| !h.is_empty()).map(|h| match d.iter().position(|l| split_headline(l, kw).is_some_and(|p| p.3 == h)) {
+    let mut target = heading.filter(|h| !h.is_empty()).map(|h| match d.iter().position(|l| split_headline(l, kw).is_some_and(|p| p.3 == h)) {
         Some(i) => i,
         None => {
             d.push(format!("* {h}"));
             d.len() - 1
         }
     });
+    if let Some(day) = datetree {
+        target = Some(datetree_day(&mut d, target, day));
+    }
     insert_subtree(&mut d, target, to_lines(entry.trim_end()));
     join_nl(d)
+}
+
+/// Index of DAY's heading in an org datetree under the heading at PARENT (else at top level):
+/// `YYYY` > `YYYY-MM Month` > `YYYY-MM-DD Weekday`, one level apart. Existing levels are found by
+/// their leading date (so trees made by Emacs or with other text are reused) and never moved; a
+/// missing one goes before its first later dated sibling, else at the end of its parent.
+fn datetree_day(d: &mut Vec<String>, parent: Option<usize>, day: chrono::NaiveDate) -> usize {
+    let mut at = parent;
+    for (key, title) in [("%Y", "%Y"), ("%Y-%m", "%Y-%m %B"), ("%Y-%m-%d", "%Y-%m-%d %A")] {
+        let (key, title) = (day.format(key).to_string(), day.format(title).to_string());
+        let (lvl, start, end) = match at {
+            Some(p) => (heading_level(&d[p]).unwrap_or(0) + 1, p + 1, subtree_range(d, p).1),
+            None => (1, 0, d.len()),
+        };
+        let dated = |l: &str| l[lvl..].split_whitespace().next().filter(|t| t.len() == key.len() && t.bytes().all(|b| b.is_ascii_digit() || b == b'-')).map(String::from);
+        let kids: Vec<(usize, String)> = (start..end).filter(|&i| heading_level(&d[i]) == Some(lvl)).filter_map(|i| dated(&d[i]).map(|t| (i, t))).collect();
+        let i = match kids.iter().find(|(_, t)| *t >= key) {
+            Some((i, t)) if *t == key => *i,
+            found => {
+                let i = found.map_or(end, |k| k.0);
+                d.insert(i, format!("{} {title}", "*".repeat(lvl)));
+                i
+            }
+        };
+        at = Some(i);
+    }
+    at.unwrap_or_default()
 }
 
 /// Stands in for %? between expanding a template and filing it.
@@ -2162,15 +2197,15 @@ pub fn template_prompts(body: &str) -> Vec<String> {
 
 /// capture_insert an expanded template ENTRY; returns the new text and the (line, UTF-16 column)
 /// of its %? cursor, or of the entry's end if it has none. A %? alone on the last line joins the
-/// line before, so it leaves no blank line.
-pub fn capture_template(dst: &str, heading: Option<&str>, entry: &str, kw: &Kw) -> (String, usize, usize) {
+/// line before, so it leaves no blank line. With DATETREE it's filed under that day (datetree_day).
+pub fn capture_template(dst: &str, heading: Option<&str>, datetree: Option<chrono::NaiveDate>, entry: &str, kw: &Kw) -> (String, usize, usize) {
     let e = entry.trim_end();
     let entry = match e.strip_suffix(CURSOR) {
         Some(p) => format!("{}{CURSOR}", p.trim_end_matches('\n')),
         None if e.contains(CURSOR) => entry.to_string(),
         None => format!("{e}{CURSOR}"),
     };
-    let text = capture_insert(dst, heading, &entry, kw);
+    let text = capture_dated(dst, heading, datetree, &entry, kw);
     let i = text.find(CURSOR).unwrap_or(text.len());
     let bol = text[..i].rfind('\n').map_or(0, |j| j + 1);
     (text.replacen(CURSOR, "", 1), text[..i].matches('\n').count(), text[bol..i].encode_utf16().count())
@@ -3546,16 +3581,36 @@ mod tests {
         let here = ("[[file:a.org::*50%% off][50%% off]]", "a.org");
         assert_eq!(expand_template("* x\nFrom %a in %f\n", now, "", here, ans), "* x\nFrom [[file:a.org::*50%% off][50%% off]] in a.org\n");
         assert_eq!(expand_template("* x %a%f.\n", now, "", ("", ""), ans), "* x .\n");
-        let (t, l, c) = capture_template("* Meetings\n* Z\n", Some("Meetings"), &e, &kw());
+        let (t, l, c) = capture_template("* Meetings\n* Z\n", Some("Meetings"), None, &e, &kw());
         assert_eq!(t, "* Meetings\n** Sync <2026-10-02 Fri>\n[2026-10-02 Fri 14:30] <2026-10-02 Fri 14:30> [2026-10-02 Fri] 100% %x Ann Sync\nsel\n* Z\n");
         assert_eq!((l, c), (3, 3));
-        assert_eq!(capture_template("", None, "* Ä\n", &kw()), ("* Ä\n".into(), 0, 3));
+        assert_eq!(capture_template("", None, None, "* Ä\n", &kw()), ("* Ä\n".into(), 0, 3));
         // %? ending the body leaves no blank line; one mid-body stays put.
         let e = expand_template("* N\n%U\n%i%?\n", now, "", ("", ""), ans);
-        assert_eq!(capture_template("", None, &e, &kw()), ("* N\n[2026-10-02 Fri 14:30]\n".into(), 1, 22));
-        assert_eq!(capture_template("", None, "* N\n\u{1}\nx\n", &kw()), ("* N\n\nx\n".into(), 1, 0));
+        assert_eq!(capture_template("", None, None, &e, &kw()), ("* N\n[2026-10-02 Fri 14:30]\n".into(), 1, 22));
+        assert_eq!(capture_template("", None, None, "* N\n\u{1}\nx\n", &kw()), ("* N\n\nx\n".into(), 1, 0));
         // Multi-line %i lines up with the line it's inserted on.
         assert_eq!(expand_template("* N\n  - %i\n%i", now, "a\n\nb", ("", ""), ans), "* N\n  - a\n\n  b\na\n\nb");
+    }
+
+    #[test]
+    fn datetree() {
+        let day = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+        let cap = |dst: &str, h: Option<&str>, d: &str| capture_template(dst, h, Some(day(d)), "* E\n** sub\n", &kw()).0;
+        // Creates every level, then reuses them for a second entry that day.
+        let t = cap("#+title: Log\n", None, "2026-11-11");
+        assert_eq!(t, "#+title: Log\n* 2026\n** 2026-11 November\n*** 2026-11-11 Wednesday\n**** E\n***** sub\n");
+        assert_eq!(cap(&t, None, "2026-11-11"), "#+title: Log\n* 2026\n** 2026-11 November\n*** 2026-11-11 Wednesday\n**** E\n***** sub\n**** E\n***** sub\n");
+        // A new month goes between the existing ones; Emacs-made days with other text are reused.
+        let t = "* 2026\n** 2026-10 Oct\n*** 2026-10-02 fre\n**** a\n** 2026-12 December\n* Notes\n";
+        assert_eq!(cap(t, None, "2026-11-11"), "* 2026\n** 2026-10 Oct\n*** 2026-10-02 fre\n**** a\n** 2026-11 November\n*** 2026-11-11 Wednesday\n**** E\n***** sub\n** 2026-12 December\n* Notes\n");
+        assert_eq!(cap(t, None, "2026-10-02"), "* 2026\n** 2026-10 Oct\n*** 2026-10-02 fre\n**** a\n**** E\n***** sub\n** 2026-12 December\n* Notes\n");
+        // Under a heading (created if missing), looking only below it: the top-level 2026 isn't reused.
+        assert_eq!(cap("* 2026\n* Log\n** old\n* Z\n", Some("Log"), "2026-01-05"), "* 2026\n* Log\n** old\n** 2026\n*** 2026-01 January\n**** 2026-01-05 Monday\n***** E\n****** sub\n* Z\n");
+        assert_eq!(cap("", Some("Log"), "2026-01-05"), "* Log\n** 2026\n*** 2026-01 January\n**** 2026-01-05 Monday\n***** E\n****** sub\n");
+        // Never reorders: out-of-order existing headings stay exactly as they were, the new year goes before the first later one.
+        let before = "* 2027\n** 2027-01 January\n* 2025\n* Ideas\n* 2024\n";
+        assert_eq!(cap(before, None, "2026-03-01"), "* 2026\n** 2026-03 March\n*** 2026-03-01 Sunday\n**** E\n***** sub\n* 2027\n** 2027-01 January\n* 2025\n* Ideas\n* 2024\n");
     }
 
     #[test]

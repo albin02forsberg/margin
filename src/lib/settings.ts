@@ -177,9 +177,9 @@ export function checkViews(views: Row[]): Row[] {
   return out;
 }
 
-/** TEMPLATES trimmed for save_config (empty file and heading left out); throws unless each has
- *  a one-character key of its own and a name. */
-export function checkTemplates(tpls: Row[]): Row[] {
+/** TEMPLATES trimmed for save_config (empty file and heading left out, `datetree = true` only when set:
+ *  the row holds it as any truthy value); throws unless each has a one-character key of its own and a name. */
+export function checkTemplates(tpls: Row[]): Record<string, string | boolean>[] {
   return tpls.map((t, i) => {
     const r: Row = { key: (t.key ?? "").trim(), name: (t.name ?? "").trim(), body: t.body ?? "" };
     for (const k of ["file", "heading"]) if ((t[k] ?? "").trim()) r[k] = t[k].trim();
@@ -187,7 +187,7 @@ export function checkTemplates(tpls: Row[]): Row[] {
     if ([...r.key].length !== 1) throw new Error(`Template ${i + 1} needs a one-character key`);
     if (other < i) throw new Error(`Templates ${other + 1} and ${i + 1} have the same key`);
     if (!r.name) throw new Error(`Template ${i + 1} needs a name`);
-    return r;
+    return t.datetree ? { ...r, datetree: true } : r;
   });
 }
 

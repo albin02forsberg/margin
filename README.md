@@ -588,6 +588,20 @@ heading = "Meetings"    # optional: file under this heading, created if missing
 body = "* %^{Title} :meeting:\n%U\n- %?"
 ```
 
+`datetree = true` (`#+datetree: t` in a template file, or the Date tree box in
+settings) files each capture under today in an org datetree, below `heading` if set,
+so a single-file log stays browsable by year:
+
+```org
+* 2026
+** 2026-11 November
+*** 2026-11-11 Wednesday
+**** the captured entry
+```
+
+Missing levels are created in date order among their siblings; existing ones are
+found by their leading date (trees made in Emacs work) and never moved.
+
 `%t`/`%T` date / date+time (`<2026-10-02 Fri 14:30>`), `%u`/`%U` the inactive
 `[…]` forms, `%^{Prompt}` asks (repeat a name to reuse the answer), `%i` the
 selected text (extra lines indented like its line), `%a` a link back to where you

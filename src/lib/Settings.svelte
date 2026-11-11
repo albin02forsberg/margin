@@ -202,7 +202,7 @@
   let q = $state("");
   let filterInput = $state<HTMLInputElement>();
   const fieldsOf = (g: (typeof GROUPS)[number]) => g.fields.filter((f) => (!f.when || f.when(config)) && shows(cat, q, g.name, f.label, f.hint, f.key));
-  const VIEWS = "task searches query", TPLS = "capture key file heading body", SNIPS = "editor tab key text insert", FEEDS = "rss atom url reading subscribe";
+  const VIEWS = "task searches query", TPLS = "capture key file heading date tree datetree body", SNIPS = "editor tab key text insert", FEEDS = "rss atom url reading subscribe";
   const showRules = $derived(!!(rules.length || errors.rules) && shows(cat, q, "Integrations", "Learned activity rules"));
   const none = $derived(!GROUPS.some((g) => fieldsOf(g).length) && !shows(cat, q, "Saved views", VIEWS) && !shows(cat, q, "Capture templates", TPLS) && !shows(cat, q, "Snippets", SNIPS) && !shows(cat, q, "Feeds", FEEDS) && !showRules);
   function key(e: KeyboardEvent) {
@@ -367,7 +367,7 @@
   <form class="card wide" hidden={!shows(cat, q, "Capture templates", TPLS)} onsubmit={(e) => { e.preventDefault(); saveRows("templates"); }}>
     <fieldset disabled={!!error} class="list">
       <legend>Capture templates</legend>
-      <small>Picked with Space c. File: strftime pattern relative to the notes folder, empty = the inbox. Heading: filed under it (created if missing). Body: {"%^{Prompt}"} asks, %U is now, %i the selection, %? the cursor. Templates folder files aren't listed here. Saving rewrites the [[templates]] tables of config.toml; comments inside them are not kept.</small>
+      <small>Picked with Space c. File: strftime pattern relative to the notes folder, empty = the inbox. Heading: filed under it (created if missing). Date tree: under today's 2026 › 2026-11 November › 2026-11-11 Wednesday headings (org datetree), created as needed. Body: {"%^{Prompt}"} asks, %U is now, %i the selection, %? the cursor. Templates folder files aren't listed here. Saving rewrites the [[templates]] tables of config.toml; comments inside them are not kept.</small>
       {#each rows.templates as t, i}
         <div class="tpl">
           <div class="row key">
@@ -379,6 +379,7 @@
             <input aria-label="Template file" placeholder="File (empty = inbox)" bind:value={t.file} />
             <input aria-label="Template heading" placeholder="Under heading (optional)" bind:value={t.heading} />
           </div>
+          <label class="check"><input type="checkbox" aria-label="Template date tree" checked={!!t.datetree} onchange={(e) => (t.datetree = e.currentTarget.checked ? "t" : "")} /><span>Date tree: file under Year › Month › Day headings</span></label>
           <textarea aria-label="Template body" rows={Math.max(2, t.body.split("\n").length)} placeholder={"* %^{Title}\n%U\n%?"} bind:value={t.body}></textarea>
         </div>
       {/each}
