@@ -1296,6 +1296,11 @@ pub fn invoice_table(sessions: &[Session], projects: &Projects, project: &str, f
         rows.push(vec![t.replace('|', "\\vert{}"), format!("{h:.2}"), format!("{rate:.2}"), format!("{:.2}", earned(*h, rate))]);
     }
     let total = tasks.iter().fold(0.0, |a, t| a + t.1);
+    // Clocked time before rounding/carry, shown (as a table row, so `put_invoice` replaces it) when billing differs.
+    let exact = prepare_report_sessions(sessions).iter().filter(|s| s.project == project && from <= s.date && s.date <= to).fold(0.0, |a, s| a + s.hours);
+    if (exact - total).abs() >= 0.005 {
+        rows.push(vec!["Exact (unrounded)".into(), format!("{exact:.2}"), String::new(), String::new()]);
+    }
     rows.push(vec!["*Total*".into(), format!("*{total:.2}*"), String::new(), format!("*{}*", money(earned(total, rate), cur))]);
     Ok(format!("#+NAME: invoice\n{}", org_table(&rows)))
 }
@@ -1876,6 +1881,7 @@ mod tests {
         let row = report.lines().find(|l| l.starts_with("| Acme")).unwrap();
         let billable = row.split('|').nth(4).unwrap().trim().trim_end_matches(" h").to_string();
         assert_eq!(billable, "3.00");
+        assert!(t.contains("| Exact (unrounded)   | 3.30   |"), "{t}");
         let total = t.lines().last().unwrap();
         assert!(total.contains(&format!("*{billable}*")), "{total} vs {report}");
         let hours: f64 = billable.parse().unwrap();
@@ -1883,6 +1889,10 @@ mod tests {
         assert!(!t.contains("Old"), "September stays out: {t}");
         assert_eq!(invoice_table(&ss, &p, "Free", from, to).unwrap_err(), "Free has no hourly rate: set one in Time: project settings (Space t P)");
         assert!(invoice_table(&ss, &p, "Nope", from, to).is_err());
+        // Without rounding exact equals billed: no row; and the row survives a re-run of put_invoice.
+        let none = Projects::from([("Acme".into(), Project { rate: Some(95.5), rounding: None, ..Project::new("A") })]);
+        assert!(!invoice_table(&ss, &none, "Acme", from, to).unwrap().contains("Exact"));
+        assert_eq!(put_invoice(&put_invoice("", &t), &t), put_invoice("", &t));
         // An empty month: just the total row.
         assert!(invoice_table(&ss, &p, "Acme", d("2026-11-01"), d("2026-11-30")).unwrap().ends_with("| *Total* | *0.00* |      | *0.00 EUR* |\n"));
     }

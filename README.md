@@ -934,7 +934,7 @@ customer or project); the CSV export and reports keep their format.
 `Space t I` (Time: invoice for project…) picks a project with a rate and a month and
 writes the note `invoices/<project>-<YYYY-MM>.org`: a `#+NAME: invoice` table of the
 month's billable hours per task (rounded like the month report, so the totals match),
-the rate, each amount and a total in the project's currency. Running it again replaces
+the rate, each amount and a total in the project's currency (an "Exact (unrounded)" row shows the clocked time when rounding changed it). Running it again replaces
 only that table, so text you add around it stays; export it with `Space e p` / `e h`.
 Below it, Time off sets each kind's export code (kept in `leave.toml`, apart from
 the projects, so time off is never offered when you start tracking; no code means
