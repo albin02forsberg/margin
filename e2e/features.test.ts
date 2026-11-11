@@ -162,6 +162,11 @@ describe("Features", () => {
         `file = "diary.org"`,
         `datetree = true`,
         `body = "* Entry\\n"`,
+        `[[templates]]`,
+        `key = "u"`,
+        `name = "Due task"`,
+        `file = "due.org"`,
+        `body = "* TODO Pay %^g\\nSCHEDULED: %^t\\n"`,
       ],
       files: ({ notes }) => {
         writeFileSync(join(notes, "habits.org"), `* TODO Floss\nSCHEDULED: <${orgDay(new Date())} .+1d>\n:PROPERTIES:\n:STYLE: habit\n:END:\n`);
@@ -276,6 +281,19 @@ describe("Features", () => {
     await fileMatches(join(d.notes, "followups.org"), (s) => s.includes("* Follow up\n[[file:origin.org::*Ship it][Ship it]] in origin.org\n"), "no link back");
     await find(".status .file", "followups.org");
     assert.equal(read(src), before, "the source note was written to");
+  });
+
+  it("%^g / %^t ask with the tag and date pickers (#1274)", async () => {
+    await browser.keys([Key.Ctrl, "1"]);
+    await find(".agenda h1", "Today");
+    await browser.keys(" ");
+    await browser.keys("c");
+    await answer("Capture with template", "Due task");
+    await answer("Tags: none", "money");
+    await answer("Tags: money", "Done");
+    await answer("Date", "Tomorrow");
+    const tomorrow = orgDay(new Date(Date.now() + 86_400_000));
+    await fileMatches(join(d.notes, "due.org"), (s) => s.includes(`* TODO Pay :money:\nSCHEDULED: <${tomorrow}>\n`), "tags or date not filled in");
   });
 
   it("a datetree template files two captures under one Year > Month > Day (#1276)", async () => {

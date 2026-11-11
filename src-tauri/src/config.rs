@@ -951,7 +951,7 @@ mod tests {
     fn default_reading_template() {
         let c = Config::default();
         let t = c.templates.iter().find(|t| t.key == "r").unwrap();
-        assert_eq!(crate::org::template_prompts(&t.body), ["clip-link"]);
+        assert_eq!(crate::org::template_prompts(&t.body), [crate::org::Prompt { name: "clip-link".into(), kind: "text" }]);
     }
 
     #[test]

@@ -603,7 +603,10 @@ Missing levels are created in date order among their siblings; existing ones are
 found by their leading date (trees made in Emacs work) and never moved.
 
 `%t`/`%T` date / date+time (`<2026-10-02 Fri 14:30>`), `%u`/`%U` the inactive
-`[…]` forms, `%^{Prompt}` asks (repeat a name to reuse the answer), `%i` the
+`[…]` forms, `%^{Prompt}` asks (repeat a name to reuse the answer), `%^t` / `%^T`
+ask for a date / date+time with the date picker (`fri`, `+3d`, `12-24 14:00`, a repeater
+like `+1w`; `<2026-10-02 Fri>`), `%^g` for tags with the tag picker (`:a:b:`, nothing if
+none; each is asked once and reused), `%i` the
 selected text (extra lines indented like its line), `%a` a link back to where you
 were (the heading at the cursor in the open note, by its `:ID:` if it has one, else
 `[[file:note.org::*Heading][Heading]]`; the note itself above its first heading; capturing

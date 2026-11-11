@@ -1744,7 +1744,12 @@
   async function editTags(loc: Loc) {
     const h = await heading(loc);
     if (!h) return flash("Not on a task.");
-    let tags = [...h.tags];
+    const tags = await pickTags(h.tags);
+    if (tags) await edit(loc, "tags", tags.join(":"));
+  }
+
+  /** Toggle known or typed tags, starting from TAGS, until ✓ Done; null when cancelled. */
+  async function pickTags(tags: string[]): Promise<string[] | null> {
     const all: string[] = await call("org_tags");
     const DONE = {};
     for (;;) {
@@ -1755,12 +1760,11 @@
         allowCustom: true,
         hint: "pick to toggle · type a new tag and press Ctrl+↵",
       });
-      if (v == null) return;
-      if (v === DONE || v === "") break;
+      if (v == null) return null;
+      if (v === DONE || v === "") return tags;
       const t = String(v).trim().replace(/\s+/g, "_");
       tags = tags.includes(t) ? tags.filter((x) => x !== t) : [...tags, t];
     }
-    await edit(loc, "tags", tags.join(":"));
   }
 
   /** `+ tag` / `- tag` for a bulk `#` on LOCS (#638): add any known or typed tag to all, or remove one some of them have. */
@@ -1954,16 +1958,27 @@
     if (t) await fileTemplate(t);
   }
 
+  /** Ask template BODY's prompts: %^{Name} as text (clip-link from the clipboard), %^t / %^T with the date picker
+   *  (asked again while unreadable), %^g with the tag picker. Null when one is cancelled. */
+  async function askPrompts(body: string): Promise<Record<string, string> | null> {
+    const answers: Record<string, string> = {};
+    for (const p of await call<{ name: string; kind: string }[]>("template_prompts", { body })) {
+      let a: string | null;
+      if (p.kind === "tags") a = (await pickTags([]))?.join(":") ?? null;
+      else if (p.kind === "text") a = p.name === "clip-link" ? await clipLink() : await ask(p.name);
+      else while ((a = await datePick(p.kind === "date" ? "Date" : "Date and time", false, undefined, false)) != null && (await call<string>("date_preview", { input: a })).startsWith("✗"));
+      if (a == null) return null;
+      answers[p.name] = a;
+    }
+    return answers;
+  }
+
   /** File template T; HIDDEN (quick capture from a hidden window): don't open the file, just flash. */
   async function fileTemplate(t: Tpl, hidden = false) {
     const s = view.state.selection.main;
     const selection = !hidden && inFile() ? view.state.sliceDoc(s.from, s.to) : "";
-    const answers: Record<string, string> = {};
-    for (const p of await call<string[]>("template_prompts", { body: t.body })) {
-      const a = p === "clip-link" ? await clipLink() : await ask(p);
-      if (a == null) return;
-      answers[p] = a;
-    }
+    const answers = await askPrompts(t.body);
+    if (!answers) return;
     const path: string = await call("capture_path", { file: t.file || cfg.config.inbox });
     // %a / %f: where the capture started, read from the open buffer (no :ID: is added to it).
     const src = !hidden && inFile() ? tab.path! : "";
@@ -2461,12 +2476,8 @@
     }
     const title = await ask("New note title");
     if (!title) return;
-    const answers: Record<string, string> = {};
-    for (const p of t ? await call<string[]>("template_prompts", { body: t.body }) : []) {
-      const a = p === "clip-link" ? await clipLink() : await ask(p);
-      if (a == null) return;
-      answers[p] = a;
-    }
+    const answers = t ? await askPrompts(t.body) : {};
+    if (!answers) return;
     await createNote(title, t?.body, answers);
   }
 
