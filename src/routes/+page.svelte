@@ -2073,7 +2073,10 @@
       const { file, search } = splitTarget(link);
       const cur = tab.path ?? "", dir = cur.replace(/[\\/][^\\/]*$/, "");
       const path = !file ? cur : /^([\\/]|[A-Za-z]:)/.test(file) ? file : resolvePath(dir, file, sep());
-      const t = tabs.find((t) => t.kind === "file" && t.dirty && t.path === path);
+      // A radio target (`::<<<Term>>>`) isn't a heading/id/line search, so the backend can't resolve it: always peek from the buffer.
+      const radio = search.startsWith("<<<");
+      const t = tabs.find((t) => t.kind === "file" && (t.dirty || radio) && t.path === path);
+      if (radio && !t) return flash(`No match for "${search}"`);
       if (t) {
         const b = peekBuffer(stateOf(t).doc.toString(), search, [...(kw().todo ?? []), ...(kw().done ?? [])]);
         return b ? void (peek = { key: tab.key, path, ...b }) : flash(`No match for "${search}" in ${t.title}`);
