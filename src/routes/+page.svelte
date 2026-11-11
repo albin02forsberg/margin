@@ -2056,7 +2056,7 @@
     if (!search) return;
     const line = findTarget(view.state.doc.toString(), search, [...(kw().todo ?? []), ...(kw().done ?? [])]);
     if (line == null) return flash(`No match for "${search}" in ${tab?.title ?? "note"}`);
-    if (!file) navMark(tab.path ?? "", line);
+    if (!file) { navMark(tab.path ?? "", line); ed.recordJump(view); } // Ctrl+O comes back from an in-note link
     const pos = view.state.doc.line(line + 1).from;
     jumpTo(pos);
   }

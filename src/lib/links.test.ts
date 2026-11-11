@@ -11,6 +11,9 @@ test("splitTarget", () => {
   assert.deepEqual(splitTarget("#setup"), { file: "", search: "#setup" });
   assert.deepEqual(splitTarget("C:\\n\\a.org::5"), { file: "C:\\n\\a.org", search: "5" });
   assert.deepEqual(splitTarget("a.org"), { file: "a.org", search: "" });
+  // A radio mention's target (#1265): the current note, found by plain search.
+  assert.deepEqual(splitTarget("::<<<Margin App>>>"), { file: "", search: "<<<Margin App>>>" });
+  assert.equal(findTarget("* Glossary\nThe <<<Margin App>>> is it.\n", "<<<Margin App>>>"), 1);
 });
 
 test("findTarget", () => {

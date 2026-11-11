@@ -1986,6 +1986,7 @@ describe("Org structure keys", () => {
       writeFileSync(join(dir, "long.org"), title("long") + "x\n".repeat(40));
       writeFileSync(join(dir, "prio.org"), title("prio") + prio);
       writeFileSync(join(dir, "links.org"), title("links") + links);
+      writeFileSync(join(dir, "radio.org"), title("radio") + "* Glossary\n<<<Margin>>> is the app.\n* Later\nI use margin daily.\n");
       writeFileSync(join(dir, "sort.org"), title("sort") + sortOrg);
       writeFileSync(join(dir, "other.org"), title("other") + "* Lead\n* Other heading\n* Tail\n");
     } });
@@ -2087,6 +2088,15 @@ describe("Org structure keys", () => {
     await browser.keys(Key.Enter);
     await find(".status .file", "other.org");
     await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("* Other heading")), { timeoutMsg: "[[file:…::*heading]] link not followed" });
+  });
+
+  it("Enter on a radio mention jumps to its <<<target>>> and Ctrl+O comes back (#1265)", async () => {
+    await open("radio", 6, "6G02w"); // on "margin"
+    await browser.waitUntil(async () => (await texts(".cm-org-radio")).includes("margin"), { timeoutMsg: "mention not shown as a link" });
+    await browser.keys(Key.Enter);
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("<<<Margin>>>")), { timeoutMsg: "radio mention not followed" });
+    await browser.keys([Key.Ctrl, "o"]);
+    await browser.waitUntil(async () => (await texts(".cm-activeLine")).some((t) => t.includes("I use margin")), { timeoutMsg: "Ctrl+O didn't come back" });
   });
 
   it("Tab on a heading folds its subtree and Tab again unfolds it", async () => {
