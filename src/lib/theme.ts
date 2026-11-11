@@ -12,3 +12,9 @@ export function applyTheme(setting: unknown) {
   if (setting === "light" || setting === "dark") el.dataset.theme = setting; else delete el.dataset.theme;
   window.dispatchEvent(new Event("margin-theme"));
 }
+
+/** Set (or, when empty, clear) `data-look` on the root; any non-empty name is accepted so CSS can key off it. */
+export function applyLook(name: unknown) {
+  const el = document.documentElement;
+  if (typeof name === "string" && name) el.dataset.look = name; else delete el.dataset.look;
+}

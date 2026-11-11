@@ -1,6 +1,6 @@
 <script lang="ts">
   import "$lib/theme.css";
-  import { applyTheme, nextTheme } from "$lib/theme";
+  import { applyLook, applyTheme, nextTheme } from "$lib/theme";
   import { onMount, tick, untrack } from "svelte";
   import { Channel, invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -178,6 +178,7 @@
     // window frame (#1092): light/dark forces it, anything else hands it back to the OS
     try { getCurrentWindow().setTheme(t === "light" || t === "dark" ? t : null).catch(() => {}); } catch {}
   });
+  $effect(() => applyLook(cfg?.config.look));
   const isText = (t?: Tab) => t?.kind === "file" || t?.kind === "report";
   const call = <T = any,>(cmd: string, args?: Record<string, unknown>) => invoke<T>(cmd, args);
   const pick = (o: PickOpts) => picker!.open(o);
