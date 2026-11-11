@@ -22,6 +22,7 @@ import { FN, addFootnote, footnoteTarget } from "./footnote";
 import { cryptUnlocked, headingAt, level, narrowField, subtreeEnd } from "./narrow";
 import { startupFolds, startupMode } from "./startup";
 import { foldsToStore, headingKeys, keyLines } from "./folds";
+import { reparents } from "./checklistfit";
 import { checklistToTasks, levelAt, listRange, tasksToChecklist } from "./checklist";
 import { transclusion, transcludeTarget } from "./transclude";
 import { completionAt } from "./links";
@@ -925,6 +926,8 @@ export function tasksToChecklistAt(v: EditorView, todo: string[], done: string[]
   }
   const old = all.slice(a, b + 1), now = tasksToChecklist(old, todo, done);
   if (!now) return -1;
+  // the items become the body of the heading above, so it must be the parent, and the heading below must not be reparented
+  if (reparents(all, a, b)) return -1;
   v.dispatch({ changes: { from: d.line(a + 1).from, to: d.line(b + 1).to, insert: now.join("\n") } });
   return old.filter((l) => /^\*+\s/.test(l)).length;
 }
