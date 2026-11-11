@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { effectiveTheme, nextTheme } from "./theme.ts";
+import { applyLook, effectiveTheme, nextTheme } from "./theme.ts";
 
 test("effectiveTheme", () => {
   assert.equal(effectiveTheme("", true), "light");
@@ -24,4 +24,13 @@ test("nextTheme cycles system -> light -> dark -> system", () => {
   assert.equal(nextTheme("dark"), "");
   assert.equal(nextTheme("junk"), "light");
   assert.equal(nextTheme(undefined), "light");
+});
+
+test("applyLook sets, replaces and clears data-look", () => {
+  const el = { dataset: {} as Record<string, string | undefined> };
+  (globalThis as any).document = { documentElement: el };
+  applyLook("retro"); assert.equal(el.dataset.look, "retro");
+  applyLook("mine"); assert.equal(el.dataset.look, "mine");
+  applyLook(""); assert.equal(el.dataset.look, undefined);
+  applyLook("retro"); applyLook(undefined); assert.equal(el.dataset.look, undefined);
 });

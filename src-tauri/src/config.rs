@@ -148,6 +148,8 @@ pub struct Config {
     pub zen_fullscreen: bool,
     /// Colour theme: `light` or `dark`; anything else (empty) follows the system.
     pub theme: String,
+    /// Visual look layered on the theme (`data-look` on the root): empty is the default, `retro` the first alternative.
+    pub look: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -357,6 +359,7 @@ impl Default for Config {
             hidden_areas: vec![],
             zen_fullscreen: false,
             theme: String::new(),
+            look: String::new(),
         }
     }
 }
@@ -711,6 +714,13 @@ mod tests {
         assert!(Config::default().spellcheck_languages.is_empty());
         let c = toml::from_str::<Config>("spellcheck_languages = [\"sv_SE\", \"en_US\"]").unwrap();
         assert_eq!(c.spellcheck_languages, ["sv_SE", "en_US"]);
+    }
+
+    #[test]
+    fn look_optional() {
+        assert_eq!(Config::default().look, "");
+        assert_eq!(toml::from_str::<Config>("look = \"retro\"").unwrap().look, "retro");
+        assert_eq!(toml::from_str::<Config>("").unwrap().look, "");
     }
 
     #[test]
