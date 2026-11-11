@@ -105,6 +105,8 @@ push it a day, or `s` to schedule it. `Y` copies the shown list as Markdown chec
 
 <img src="docs/gifs/time.gif" width="800" alt="The Time view: pausing, resuming and switching the running timer to another project">
 
+**Link abbreviations** — `#+LINK: gh https://github.com/me/repo/issues/%s` in a note makes `[[gh:123]]` open that URL (`%s` is the tag, `%h` its URL-encoding; without either the tag is appended). Peek and HTML/Markdown export expand them too; `file`, `id`, `http`, `https` and `mailto` can't be redefined.
+
 **Links and backlinks** — `Space n b` shows the notes linking here, `Space n g` the local
 graph, and `Enter` on a link follows it. `Shift+Enter` (or `Space l p`) on a link peeks at its target instead:
 the linked note or heading shows read-only in a side panel, `Enter` there opens it, `Esc` closes it (a note with unsaved edits peeks from its buffer, not the disk). `Space n O` lists notes with no links in or out

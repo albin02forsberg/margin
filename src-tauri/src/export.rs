@@ -87,8 +87,32 @@ fn indent(l: &str) -> usize {
     l.len() - l.trim_start().len()
 }
 
+/// Expands `#+LINK: name template` abbreviations in `[[name:tag]]` links (first definition wins; `file`, `id`, `http`, `https`, `mailto` can't be redefined). Mirrors `expandLink` in links.ts.
+fn expand_links(text: &str) -> String {
+    static DEF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?im)^[ \t]*#\+link:[ \t]+([^\s:\[\]]+)[ \t]+(\S.*?)\s*$").unwrap());
+    static REF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[([^\s:\[\]]+):([^\]]*)\]").unwrap());
+    let mut ab: HashMap<String, String> = HashMap::new();
+    for c in DEF.captures_iter(text) {
+        if !["file", "id", "http", "https", "mailto"].contains(&&c[1]) {
+            ab.entry(c[1].to_string()).or_insert_with(|| c[2].to_string());
+        }
+    }
+    if ab.is_empty() {
+        return text.to_string();
+    }
+    REF.replace_all(text, |c: &regex::Captures| match ab.get(&c[1]) {
+        Some(t) if t.contains("%s") || t.contains("%h") => {
+            let enc: String = c[2].bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect();
+            format!("[[{}]", t.replace("%h", &enc).replace("%s", &c[2]))
+        }
+        Some(t) => format!("[[{t}{}]", &c[2]),
+        None => c[0].to_string(),
+    })
+    .into_owned()
+}
+
 pub fn parse(text: &str, kw: &Kw) -> Doc {
-    let text = crate::crypt::strip(text);
+    let text = expand_links(&crate::crypt::strip(text));
     let lines: Vec<&str> = text.lines().collect();
     let mut d = Doc { title: None, subtitle: None, blocks: vec![], diagrams: HashMap::new() };
     let b = blocks(&lines, kw, &mut d);
@@ -810,6 +834,14 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
         assert!(matches!(&items[0].children[..], [Block::List(false, _)]));
         let Block::Table(g) = &d.blocks[4] else { panic!() };
         assert_eq!((g.len(), g[1][0][0].as_str()), (3, "<a>"));
+    }
+
+    #[test]
+    fn link_abbreviations() {
+        let t = "#+LINK: gh https://github.com/a/b/issues/%s\n#+LINK: s https://x/?q=%h\n#+LINK: p https://p/\n#+LINK: gh nope\n#+LINK: id https://evil/%s\n[[gh:12][i]] [[s:a b&c]] [[p:x]] [[zz:1]] [[id:q]]\n";
+        let e = expand_links(t);
+        assert!(e.contains("[[https://github.com/a/b/issues/12][i]]") && e.contains("[[https://x/?q=a%20b%26c]]") && e.contains("[[https://p/x]]"));
+        assert!(e.contains("[[zz:1]] [[id:q]]"));
     }
 
     #[test]

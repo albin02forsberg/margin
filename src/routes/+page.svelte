@@ -17,7 +17,7 @@
   import { srcAt, resultsChange } from "$lib/babel";
   import { svgs } from "$lib/diagram";
   import { accepted, changeLabel, hitKey, type Hit as ReplaceHit } from "$lib/replace";
-  import { bareTitle, bracketRetitle, findTarget, linkHeadings, linkTarget, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
+  import { bareTitle, bracketRetitle, expandLink, findTarget, linkAbbrevs, linkHeadings, linkTarget, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
   import { type Goal, type HabitRow, type LedgerWeek, type LedgerYear, type ProjectHours, type ReviewKind, findReviewFile, goalWhen, monthBody, putReview, reviewBody, reviewEntry, reviewName, reviewRange, weekExtremes, yearBody, yearCount, yearLedgerLines } from "$lib/review";
@@ -2044,6 +2044,7 @@
 
   async function followLink(target = ed.linkAtCursor(view)) {
     if (!target) return followFootnote() || flash("No link here.");
+    target = expandLink(target, linkAbbrevs(view.state.doc.toString()));
     if (target.startsWith("id:")) {
       const nodes: NoteNode[] = await call("notes_nodes");
       const n = nodes.find((n) => n.id === target.slice(3));
@@ -2065,7 +2066,7 @@
   async function peekLink(target = ed.linkAtCursor(view)) {
     if (!inFile()) return flash("Open a note first.");
     if (!target) return flash("No link here.");
-    const link = peekTarget(target);
+    const link = peekTarget(expandLink(target, linkAbbrevs(view.state.doc.toString())));
     if (!link) return flash("Web links can't be peeked; Enter opens them.");
     // A note open with unsaved edits peeks from its buffer, not the disk (#871).
     if (!link.startsWith("id:")) {
