@@ -709,7 +709,7 @@
   /** Run a config-writing command, covering its in-flight time plus the watcher's debounce afterwards (not longer: a hand edit right after must still be announced). */
   async function ownCfg<T>(p: () => Promise<T>): Promise<T> {
     ownCfgUntil = Infinity;
-    try { return await p(); } finally { ownCfgUntil = Date.now() + 1500; }
+    try { return await p(); } finally { ownCfgUntil = Date.now() + 600; }
   }
   async function recreateConfig() {
     const warn: string = await ownCfg(() => call("config_recreate"));
