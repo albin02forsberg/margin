@@ -64,3 +64,8 @@ test("nested :VISIBILITY: inside a handled subtree is skipped; ancestors keep th
   assert.deepEqual(startupFolds(e, "overview"), [{ from: 1, to: 8 }, { from: 2, to: 6 }]);
   assert.deepEqual(startupFolds(e, "showall"), [{ from: 2, to: 6 }]);
 });
+
+test(":VISIBILITY: children under overview drops the outer fold and keeps the rest", () => {
+  const d = ["* A", ...P("children"), "** B", "b", "** C", "c", "* D", "d"];
+  assert.deepEqual(startupFolds(d, "overview"), [{ from: 5, to: 6 }, { from: 7, to: 8 }, { from: 9, to: 10 }]);
+});

@@ -48,3 +48,20 @@ test("foldsToStore: null when equal to the #+STARTUP: folds", () => {
   assert.equal(foldsToStore("* A\nx", []), null);
   assert.deepEqual(foldsToStore("* A\nx", ["h:*|A#0"]), ["h:*|A#0"]);
 });
+
+test("sameKeys is set equality with equal lengths", () => {
+  assert.ok(sameKeys([], []));
+  assert.ok(sameKeys(["a", "a"], ["a", "a"]));
+  assert.ok(sameKeys(["a", "a", "b"], ["a", "b", "b"]));
+  assert.ok(!sameKeys(["a", "b"], ["a", "c"]));
+});
+
+test("foldsToStore stays correct and fast on 10000 headings", () => {
+  const doc = "#+STARTUP: overview\n" + Array.from({ length: 10000 }, (_, i) => `* H${i}\nbody`).join("\n");
+  const lines = doc.split("\n");
+  const all = headingKeys(lines, lines.map((_, i) => i + 1));
+  const t = Date.now();
+  assert.equal(foldsToStore(doc, all.slice().reverse()), null);
+  assert.deepEqual(foldsToStore(doc, all.slice(1)), all.slice(1));
+  assert.ok(Date.now() - t < 1000);
+});

@@ -46,8 +46,8 @@ export function startupFolds(lines: string[], mode: StartupMode): { from: number
   // Index of the last heading in heading K's subtree (SUB) or K itself, and the last line that covers.
   const last = (k: number, sub = true) => { let j = k; while (sub && j + 1 < hs.length && hs[j + 1][1] > hs[k][1]) j++; return j; };
   const end = (k: number, sub = true) => (hs[last(k, sub) + 1]?.[0] ?? lines.length + 1) - 1;
-  let out: { from: number; to: number }[] = [];
-  const add = (k: number, sub = true) => { const to = end(k, sub); if (to > hs[k][0]) out.push({ from: hs[k][0], to }); };
+  const out: { from: number; to: number }[] = [], vis: typeof out = [], cut: [number, number][] = [];
+  const add = (k: number, sub = true, dst = out) => { const to = end(k, sub); if (to > hs[k][0]) dst.push({ from: hs[k][0], to }); };
   if (mode !== "showall") {
     const top = Math.min(...hs.map(([, l]) => l));
     // show<N>levels: headings above level N fold their body only, level N folds its whole subtree (overview = 1).
@@ -59,11 +59,14 @@ export function startupFolds(lines: string[], mode: StartupMode): { from: number
     const v = headProp(lines, hs[k][0], "VISIBILITY")?.toLowerCase();
     if (!v || !VIS.includes(v)) continue;
     const n = hs[k][0], e = end(k), z = last(k);
-    out = out.filter((f) => f.from < n || f.from > e);
-    if (v === "folded") add(k);
-    else if (v === "children") for (let j = k + 1; j <= z; j = last(j) + 1) add(j);
-    else if (v === "content") for (let j = k; j <= z; j++) add(j, false);
+    cut.push([n, e]);
+    if (v === "folded") add(k, true, vis);
+    else if (v === "children") for (let j = k + 1; j <= z; j = last(j) + 1) add(j, true, vis);
+    else if (v === "content") for (let j = k; j <= z; j++) add(j, false, vis);
     k = z;
   }
-  return out.sort((a, b) => a.from - b.from);
+  // `cut` is ascending and disjoint, `out` ascending: drop the folds inside a range in one sweep.
+  let c = 0;
+  const kept = out.filter((f) => { while (c < cut.length && cut[c][1] < f.from) c++; return c >= cut.length || f.from < cut[c][0]; });
+  return kept.concat(vis).sort((a, b) => a.from - b.from);
 }

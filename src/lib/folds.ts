@@ -45,7 +45,10 @@ export function keyLines(lines: string[], keys: string[], kw: string[] = ["TODO"
 }
 
 /** Whether A and B hold the same keys, in any order. */
-export const sameKeys = (a: string[], b: string[]) => a.length === b.length && a.every((k) => b.includes(k)) && b.every((k) => a.includes(k));
+export function sameKeys(a: string[], b: string[]) {
+  const sb = new Set(b);
+  return a.length === b.length && new Set(a).size === sb.size && a.every((k) => sb.has(k));
+}
 
 /** KEYS to remember for DOC, or null when they equal what `#+STARTUP:` folds anyway (so editing that line still applies later). */
 export function foldsToStore(doc: string, keys: string[], kw?: string[]): string[] | null {
