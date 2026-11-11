@@ -129,6 +129,7 @@ describe("Features", () => {
         `name = "Follow up"`,
         `file = "followups.org"`,
         `body = "* Follow up\\n%a in %f\\n"`,
+        `[[templates]]`,
         `key = "d"`,
         `name = "Diary"`,
         `file = "diary.org"`,
