@@ -91,24 +91,39 @@ fn indent(l: &str) -> usize {
 fn expand_links(text: &str) -> String {
     static DEF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?im)^[ \t]*#\+link:[ \t]+([^\s:\[\]]+)[ \t]+(\S.*?)\s*$").unwrap());
     static REF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[([^\s:\[\]]+):([^\]]*)\]").unwrap());
+    // Lines inside src/example blocks (an unterminated one runs to the end) are code: no definitions, no rewriting; same rule as radio.ts.
+    let mut in_code = false;
+    let lines: Vec<(&str, bool)> = text
+        .split_inclusive('\n')
+        .map(|l| {
+            let t = l.trim_start().to_lowercase();
+            let code = in_code || t.starts_with("#+begin_src") || t.starts_with("#+begin_example");
+            if code {
+                in_code = !(in_code && (t.starts_with("#+end_src") || t.starts_with("#+end_example")));
+            }
+            (l, code)
+        })
+        .collect();
     let mut ab: HashMap<String, String> = HashMap::new();
-    for c in DEF.captures_iter(text) {
-        if !["file", "id", "http", "https", "mailto"].contains(&&c[1]) {
-            ab.entry(c[1].to_string()).or_insert_with(|| c[2].to_string());
+    for (l, _) in lines.iter().filter(|(_, code)| !code) {
+        if let Some(c) = DEF.captures(l) {
+            if !["file", "id", "http", "https", "mailto"].contains(&&c[1]) {
+                ab.entry(c[1].to_string()).or_insert_with(|| c[2].to_string());
+            }
         }
     }
     if ab.is_empty() {
         return text.to_string();
     }
-    REF.replace_all(text, |c: &regex::Captures| match ab.get(&c[1]) {
+    let sub = |l: &str| REF.replace_all(l, |c: &regex::Captures| match ab.get(&c[1]) {
         Some(t) if t.contains("%s") || t.contains("%h") => {
             let enc: String = c[2].bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect();
             format!("[[{}]", t.replace("%h", &enc).replace("%s", &c[2]))
         }
         Some(t) => format!("[[{t}{}]", &c[2]),
         None => c[0].to_string(),
-    })
-    .into_owned()
+    }).into_owned();
+    lines.iter().map(|&(l, code)| if code { l.to_string() } else { sub(l) }).collect()
 }
 
 pub fn parse(text: &str, kw: &Kw) -> Doc {
@@ -842,6 +857,15 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
         let e = expand_links(t);
         assert!(e.contains("[[https://github.com/a/b/issues/12][i]]") && e.contains("[[https://x/?q=a%20b%26c]]") && e.contains("[[https://p/x]]"));
         assert!(e.contains("[[zz:1]] [[id:q]]"));
+    }
+
+    #[test]
+    fn link_abbreviations_skip_code() {
+        let t = "#+LINK: gh https://g/%s\n#+BEGIN_SRC org\n#+LINK: x https://x/%s\n[[gh:1]] [[x:2]]\n#+END_SRC\n[[gh:3]] [[x:4]]\n";
+        let e = expand_links(t);
+        assert!(e.contains("#+BEGIN_SRC org\n#+LINK: x https://x/%s\n[[gh:1]] [[x:2]]\n#+END_SRC\n[[https://g/3]] [[x:4]]\n"));
+        // Unterminated block: code to the end.
+        assert_eq!(expand_links("#+LINK: gh https://g/%s\n#+begin_example\n[[gh:1]]\n"), "#+LINK: gh https://g/%s\n#+begin_example\n[[gh:1]]\n");
     }
 
     #[test]

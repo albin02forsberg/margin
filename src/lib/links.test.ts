@@ -99,6 +99,12 @@ test("peekTarget passes org targets, prefixes bare paths and refuses URLs", () =
   assert.equal(peekTarget("mailto:a@b.c"), null);
 });
 
+test("peekBuffer finds a radio target", () => {
+  const buf = "* A\nsee <<<Term>>> here\nmore\n";
+  assert.deepEqual(peekBuffer(buf, "<<<Term>>>")?.line, 1);
+  assert.equal(peekBuffer(buf, "<<<Nope>>>"), null);
+});
+
 test("peekBuffer reads the unsaved buffer", () => {
   const buf = "#+title: T\n* A\nbody a\n** Sub\nsub\n* New name\nnew body\n";
   assert.deepEqual(peekBuffer(buf, "*New name"), { line: 5, text: "new body" });
