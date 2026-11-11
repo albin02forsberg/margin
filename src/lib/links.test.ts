@@ -161,3 +161,9 @@ test("hereLink: %a links back to the heading at the cursor without writing to th
   // A child's drawer isn't its parent's: the ID scan stops at the next heading.
   assert.equal(hereLink(from, at, "* P\n** C\n:PROPERTIES:\n:ID: c\n:END:\n", 0), "[[file:sub/proj.org::*P][P]]");
 });
+
+test("linkAbbrevs skips src/example blocks", () => {
+  assert.equal(linkAbbrevs("#+begin_src org\n#+LINK: gh https://x/%s\n#+end_src\n").size, 0);
+  assert.equal(linkAbbrevs("#+BEGIN_EXAMPLE\n#+LINK: gh https://x/%s\n#+END_EXAMPLE\n#+LINK: gh https://real/%s\n").get("gh"), "https://real/%s");
+  assert.equal(linkAbbrevs("#+begin_src\n#+LINK: gh https://x/%s\n").size, 0);
+});
