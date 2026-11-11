@@ -218,6 +218,13 @@ describe("Features", () => {
     await fileMatches(file, (s) => s.includes("* Standup with Alice\n- budget topics\n"), "cursor wasn't at %?");
   });
 
+  it("Insert date keeps the repeater", async () => {
+    await palette("Insert date");
+    await answer("Insert date", "today +1w");
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "standups.org"), (s) => s.includes(`<${orgDay(new Date())} +1w>`), "stamp lost its repeater");
+  });
+
   it("Ctrl+Shift+N creates a note from a templates/notes/ template, cursor at %? (#1253)", async () => {
     await browser.keys([Key.Ctrl, "1"]);
     await find(".agenda h1", "Today");
@@ -233,13 +240,6 @@ describe("Features", () => {
     const f = readdirSync(d.notes).find((n) => n.endsWith("-garden_shed.org"));
     assert.ok(f, "note not created");
     await fileMatches(join(d.notes, f), (s) => s.includes("#+title: Garden shed\n\n* Goal: Build it\n* Next actions\n- buy wood\n* Log\n"), "template body or cursor wrong");
-  });
-
-  it("Insert date keeps the repeater", async () => {
-    await palette("Insert date");
-    await answer("Insert date", "today +1w");
-    await browser.keys([Key.Ctrl, "s"]);
-    await fileMatches(join(d.notes, "standups.org"), (s) => s.includes(`<${orgDay(new Date())} +1w>`), "stamp lost its repeater");
   });
 
   it("lists an unlinked mention and links it", async () => {
