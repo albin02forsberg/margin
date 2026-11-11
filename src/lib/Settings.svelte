@@ -193,7 +193,7 @@
   let q = $state("");
   let filterInput = $state<HTMLInputElement>();
   const fieldsOf = (g: (typeof GROUPS)[number]) => g.fields.filter((f) => (!f.when || f.when(config)) && shows(cat, q, g.name, f.label, f.hint, f.key));
-  const VIEWS = "task searches query", TPLS = "capture key file heading body", SNIPS = "editor tab key text insert", FEEDS = "rss atom url reading subscribe";
+  const VIEWS = "task searches query", TPLS = "capture key file heading date tree datetree body", SNIPS = "editor tab key text insert", FEEDS = "rss atom url reading subscribe";
   const showRules = $derived(!!(rules.length || errors.rules) && shows(cat, q, "Integrations", "Learned activity rules"));
   const none = $derived(!GROUPS.some((g) => fieldsOf(g).length) && !shows(cat, q, "Saved views", VIEWS) && !shows(cat, q, "Capture templates", TPLS) && !shows(cat, q, "Snippets", SNIPS) && !shows(cat, q, "Feeds", FEEDS) && !showRules);
   function key(e: KeyboardEvent) {

@@ -578,6 +578,15 @@ async function pngs() {
     await shot("builtin-embedder");
   }
 
+  if (want("capture-datetree")) { // #1276: the Date tree box on a capture template
+    await (await find(".settings .chips button", "Capture templates")).click();
+    await (await find(".settings button", "Add template")).click();
+    const box = await browser.$(`.settings input[aria-label="Template date tree"]`);
+    await box.click();
+    await box.scrollIntoView({ block: "center" });
+    await shot("capture-datetree");
+  }
+
   if (want("long-session")) { // #970: the demo clock has run 2h 20m, past a 2 h limit; last, as it tints the chip
     await (await find(".settings .chips button", "Time")).click();
     await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Ask if still working after")]]/input`)).click();
