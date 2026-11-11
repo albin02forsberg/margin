@@ -26,6 +26,7 @@ import { reparents } from "./checklistfit";
 import { checklistToTasks, levelAt, listRange, tasksToChecklist } from "./checklist";
 import { transclusion, transcludeTarget } from "./transclude";
 import { completionAt } from "./links";
+import { mentions, radio, type Radio } from "./radio";
 import { diagrams } from "./diagram";
 export { directive as transcludeLine } from "./transclude";
 import { block, expandSnippet, snippetAt, snippetPrompts, type Snippet } from "./snippet";
@@ -419,11 +420,18 @@ function codeTokens(lang: Language, code: string): [number, number, string][] {
   return toks;
 }
 
+/** The note's radio targets, built once per document (cursor moves reuse it). */
+const radioCache = new WeakMap<EditorState["doc"], Radio>();
+function radioOf(state: EditorState): Radio {
+  if (!radioCache.has(state.doc)) radioCache.set(state.doc, radio(state.doc.toString()));
+  return radioCache.get(state.doc)!;
+}
+
 const markCache = new Map<string, Decoration>();
 const tokMark = (cls: string) => markCache.get(cls) ?? (markCache.set(cls, Decoration.mark({ class: cls })), markCache.get(cls)!);
 
-/** Inline markup on one line: links, dates, emphasis, footnotes, cookies. */
-function inline(out: Range<Decoration>[], text: string, from: number, active: boolean, conf: OrgConf) {
+/** Inline markup on one line: links, dates, emphasis, footnotes, cookies, radio mentions. */
+function inline(out: Range<Decoration>[], text: string, from: number, active: boolean, conf: OrgConf, rad: Radio) {
   const taken: [number, number][] = [];
   const free = (a: number, b: number) => !taken.some(([x, y]) => a < y && b > x);
   for (const m of text.matchAll(LINK)) {
@@ -455,6 +463,7 @@ function inline(out: Range<Decoration>[], text: string, from: number, active: bo
     const s = from + m.index!, e = s + m[0].length;
     if (free(s, e)) { taken.push([s, e]); out.push(mark("cm-org-fn").range(s, e)); }
   }
+  for (const m of mentions(text, rad)) if (free(from + m.from, from + m.to)) out.push(mark("cm-org-link cm-org-radio").range(from + m.from, from + m.to));
   const EM: Record<string, string> = { "*": "b", "/": "i", _: "u", "=": "v", "~": "c", "+": "s" };
   for (const m of text.matchAll(EMPH)) {
     const s = from + m.index! + m[1].length, e = s + m[3].length + 2;
@@ -472,6 +481,7 @@ function decorate(view: EditorView, blocks: Block[], tables: Tbl[]): DecorationS
   const activeLines = new Set(view.state.selection.ranges.map((r) => doc.lineAt(r.head).number));
   const isKw = (w: string) => conf.todo.includes(w) || conf.done.includes(w);
   const highlighted = new Set<Block>();
+  const rad = radioOf(view.state);
   let last = 0;
   for (const vr of view.visibleRanges) {
     for (let pos = vr.from; pos <= vr.to; ) {
@@ -502,7 +512,7 @@ function decorate(view: EditorView, blocks: Block[], tables: Tbl[]): DecorationS
           if (!active && t.length) out.push(hide.range(from, ln.to));
         } else {
           out.push(line(cls).range(from));
-          if (!code) inline(out, t, from, active, conf);
+          if (!code) inline(out, t, from, active, conf, rad);
         }
         continue;
       }
@@ -546,7 +556,7 @@ function decorate(view: EditorView, blocks: Block[], tables: Tbl[]): DecorationS
         }
         if (cryptUnlocked(view.state, n)) out.push(Decoration.widget({ widget: new Glyph(" 🔓 not locked · Space n q", "cm-org-crypt"), side: 1 }).range(ln.to));
         if (done && at < end) out.push(mark("cm-org-done-title").range(at, end));
-        if (at < end) inline(out, doc.sliceString(at, end), at, active, conf);
+        if (at < end) inline(out, doc.sliceString(at, end), at, active, conf, rad);
         continue;
       }
 
@@ -562,7 +572,7 @@ function decorate(view: EditorView, blocks: Block[], tables: Tbl[]): DecorationS
       }
       if (/^\s*#\+\w+/.test(t)) { out.push(line("cm-org-meta").range(from)); continue; }
       if (/^\s*#(\s|$)/.test(t)) { out.push(line("cm-org-comment").range(from)); continue; }
-      if (/^\s*(SCHEDULED|DEADLINE|CLOSED):/.test(t)) { out.push(line("cm-org-planning").range(from)); inline(out, t, from, active, conf); continue; }
+      if (/^\s*(SCHEDULED|DEADLINE|CLOSED):/.test(t)) { out.push(line("cm-org-planning").range(from)); inline(out, t, from, active, conf, rad); continue; }
       if (/^\s*:[\w-]+:/.test(t)) { out.push(line("cm-org-drawer").range(from)); continue; }
       if (/^\s*-{5,}\s*$/.test(t)) {
         out.push(line("cm-org-hr").range(from));
@@ -586,7 +596,7 @@ function decorate(view: EditorView, blocks: Block[], tables: Tbl[]): DecorationS
           else out.push(mark("cm-org-check-raw").range(cb, cb + 3));
         }
       }
-      inline(out, t, from, active, conf);
+      inline(out, t, from, active, conf, rad);
     }
   }
   return Decoration.set(out, true);
@@ -618,6 +628,9 @@ export function linkAt(state: EditorState, pos: number): string | null {
   for (const m of ln.text.matchAll(LINK)) {
     if (m.index! <= col && col <= m.index! + m[0].length) return m[1];
   }
+  // A radio mention (#1265) goes to its target in this note, spelled as there (`findTarget` is case-sensitive).
+  const rad = radioOf(state);
+  if (!rad?.code.has(ln.number - 1)) for (const m of mentions(ln.text, rad)) if (m.from <= col && col <= m.to) return `::<<<${m.target}>>>`;
   return null;
 }
 
@@ -637,7 +650,7 @@ export function followFootnote(v: EditorView, pos = v.state.selection.main.head)
 
 /** Put the cursor on vim's jump list (Ctrl+O comes back to it). The list is global
  *  and keeps marks from other tabs' documents, which can be out of range here. */
-function recordJump(v: EditorView) {
+export function recordJump(v: EditorView) {
   const cm = getCM(v) as any;
   try { if (cm) Vim.getVimGlobalState_().jumpList.add(cm, cm.getCursor(), cm.getCursor()); } catch { /* stale mark */ }
 }

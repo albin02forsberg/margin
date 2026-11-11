@@ -179,6 +179,18 @@ A table wider than the text column stays on one line and scrolls sideways.
 | US     | 2026-04-15  | Sam   | beta   | Waiting on the payment provider's sandbox keys       |
 `);
 
+  write(join(notes, "glossary.org"), `
+#+title: Harbor glossary
+
+* Terms
+- <<<Berth>>> :: a slot a vessel is assigned for one visit.
+- <<<Manifest>>> :: the cargo list a vessel files before it docks.
+
+* Notes
+Every berth gets one manifest per visit; a missing Manifest blocks the berth.
+Late manifests go to the harbor master, not to [[file:harbor.org][the Harbor app]].
+`);
+
   write(join(notes, "home.org"), `
 #+title: Home
 
@@ -326,6 +338,14 @@ async function pngs() {
     await browser.keys(Key.Escape);
     await browser.keys("}");
     await shot("wide-table");
+    await open("Orchard platform", "orchard.org");
+  }
+
+  if (want("radio-targets")) { // #1265: mentions of <<<Berth>>> / <<<Manifest>>> render as links
+    await open("Harbor glossary", "glossary.org");
+    await browser.keys(Key.Escape);
+    await browser.keys("}"); // cursor off the title line, so it renders
+    await shot("radio-targets");
     await open("Orchard platform", "orchard.org");
   }
 
