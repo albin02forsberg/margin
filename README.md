@@ -1360,7 +1360,10 @@ title), as do `<<target>>`s and `#+NAME`s, so same-note links work in the export
 `[[*Heading]]`, `[[#custom-id]]` and a bare `[[Target]]` (a `<<target>>`, else `#+NAME`, else
 heading) jump there; one pointing at nothing in the export becomes plain text. A radio
 target `<<<Term>>>` becomes an anchor and every whole-word mention of "Term" (any case,
-outside code and links) a link to it, as in the editor. Markdown
+outside code and links) a link to it, as in the editor. A `#+TOC: headlines` line
+(`#+TOC: headlines 2` stops at level 2) becomes a nested table of contents linking to the
+exported headings (`:noexport:`/`COMMENT` subtrees left out, transcluded headings not listed;
+nothing is written into the note). Markdown
 uses inline `<a id>` anchors so the links don't depend on the renderer's own heading slugs.
 
 `e a` exports the note plus the notes it links to by `id:` (one hop, or two) as
