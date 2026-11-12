@@ -181,6 +181,7 @@ A table wider than the text column stays on one line and scrolls sideways.
 
   write(join(notes, "glossary.org"), `
 #+title: Harbor glossary
+#+TOC: headlines 2
 
 * Terms
 - <<<Berth>>> :: a slot a vessel is assigned for one visit.
@@ -346,6 +347,7 @@ async function pngs() {
     await browser.keys(Key.Escape);
     await browser.keys("}"); // cursor off the title line, so it renders
     await shot("radio-targets");
+    await shot("toc"); // #1295: the #+TOC: line shows the outline under it
     await open("Orchard platform", "orchard.org");
   }
 

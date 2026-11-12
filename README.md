@@ -1364,7 +1364,8 @@ target `<<<Term>>>` becomes an anchor and every whole-word mention of "Term" (an
 outside code and links) a link to it, as in the editor. A `#+TOC: headlines` line
 (`#+TOC: headlines 2` stops at level 2) becomes a nested table of contents linking to the
 exported headings (`:noexport:`/`COMMENT` subtrees left out, transcluded headings not listed;
-nothing is written into the note). Markdown
+nothing is written into the note). In the editor the same line shows the outline read-only
+under it (click an entry to jump to the heading). Markdown
 uses inline `<a id>` anchors so the links don't depend on the renderer's own heading slugs.
 
 `e a` exports the note plus the notes it links to by `id:` (one hop, or two) as

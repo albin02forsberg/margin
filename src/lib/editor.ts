@@ -24,6 +24,7 @@ import { startupFolds, startupMode } from "./startup";
 import { foldsToStore, headingKeys, keyLines } from "./folds";
 import { reparents } from "./checklistfit";
 import { checklistToTasks, levelAt, listRange, tasksToChecklist } from "./checklist";
+import { toc } from "./toc";
 import { transclusion, transcludeTarget } from "./transclude";
 import { completionAt } from "./links";
 import { mentions, radio, type Radio } from "./radio";
@@ -1444,7 +1445,7 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
   ];
   if (opts.org) {
     ext.push(
-      spellConf.of(spellExt()), orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path }), orgStyle, orgFold, clicks, tableTools, narrowField, transclusion(opts.path, (t) => hooks.follow(t)), diagrams, completion,
+      spellConf.of(spellExt()), orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path }), orgStyle, orgFold, clicks, tableTools, narrowField, transclusion(opts.path, (t) => hooks.follow(t)), toc(() => opts.todo, () => opts.done), diagrams, completion,
       Prec.high(keymap.of([{ key: "Tab", run: orgTab }, { key: "Shift-Tab", run: orgShiftTab }, { key: "Enter", run: smartEnter },
         // Insert mode only: in normal / visual mode Ctrl+B stays vim's page up.
         { key: "Mod-b", run: (v) => vimInsert(v) && emphasis(v, "*") }, { key: "Mod-i", run: (v) => vimInsert(v) && emphasis(v, "/") }])),
