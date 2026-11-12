@@ -92,7 +92,8 @@ describe("User looks", () => {
   });
 
   it("picking a theme whose file starts with /* layout: rail */ sets the look and the layout (#1310)", async () => {
-    const root = () => browser.execute(() => ({ look: document.documentElement.dataset.look, layout: document.documentElement.dataset.layout }));
+    // WebDriver returns an unset property as null (its JSON clone), never undefined.
+    const root = () => browser.execute(() => ({ look: document.documentElement.dataset.look ?? null, layout: document.documentElement.dataset.layout ?? null }));
     await palette("View: pick a theme");
     await answer("Theme", "railed");
     await browser.waitUntil(async () => (await root()).layout === "rail", { timeoutMsg: "layout not applied" });
@@ -103,7 +104,7 @@ describe("User looks", () => {
     // A built-in has no header: the look changes, the layout stays.
     await palette("View: pick a theme");
     await answer("Theme", "classic");
-    await browser.waitUntil(async () => (await root()).look === undefined, { timeoutMsg: "look not reset" });
+    await browser.waitUntil(async () => (await root()).look === null, { timeoutMsg: "look not reset" });
     assert.equal((await root()).layout, "rail");
   });
 });
