@@ -950,6 +950,7 @@ one is an empty cell). `:sort COL` (`-COL` descending) compares numbers and dura
 last; `:limit` caps the rows (default 50, at most 500); `:cols` defaults to `ITEM`. `|` in a value is written `\vert{}`.
 Archived headings are skipped. Emacs-only options (`:id`, `:hlines`, …) leave the block alone.
 `Space t j` (or `j` in the Time view) clocks in on the last stopped session's project and task again (Emacs's org-clock-in-last); on a break use `Space t r`.
+`Space t !` interrupts the running clock (a call, a colleague): pick the interruption's project (Enter takes "Interruption", added to your projects on first use) and it clocks in on that. However you then stop the interruption, a prompt offers to resume the previous project and task (Enter accepts). Interrupt again during one and they resume in order. The list lives in memory only, so a restart or a profile switch drops it.
 `Space t a` ("I started earlier") and `Space t O` ("I stopped earlier", for when you forgot to stop) take minutes ago (`25`) or a time (`14:05`). A start can't move before the previous session's end.
 
 `Space t n` (or `n` in the Time view) logs a finished session after the fact: pick a day (Today, Yesterday, the last days by name, or type `fri`, `-2d`, `2026-10-12`; a weekday name means its most recent past occurrence), a start and end (`09:00`), a project and a note. It must not overlap logged time, reach into the future or cross midnight.

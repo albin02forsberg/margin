@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { answer, browser, close, fileMatches, find, isoDay, Key, launch, noPicker, pad, palette, read, texts, timeFocused, type, type Dirs } from "./setup.ts";
 
 let d: Dirs, log: string;
-type Ev = { ev: string; t: string; project?: string; note?: string };
+type Ev = { ev: string; t: string; project?: string; task?: string; note?: string };
 const events = (s: string): Ev[] => s.split("\n").filter(Boolean).map((l) => JSON.parse(l));
 const evs = (s: string) => events(s).map((e) => e.ev + (e.ev === "in" ? ":" + e.project : "")).join(" ");
 const hm = (t: Date) => `${pad(t.getHours())}:${pad(t.getMinutes())}`;
@@ -113,6 +113,22 @@ describe("Time tracking", () => {
     await press("Stop");
     await answer("What did you do?", "beta part");
     await fileMatches(log, (s) => evs(s).endsWith("in:Beta out"), "Beta not stopped");
+  });
+
+  it("Space t ! interrupts the clock; stopping the interruption offers the previous one back (#1293)", async () => {
+    await start("Acme", "deep work");
+    await palette("Time: interrupt");
+    await answer("Interrupt “Acme” for", "Interruption");
+    await answer("Export code for the new project", "CALL");
+    await find(".time .status.on h2", "Interruption");
+    await press("Stop");
+    await answer("What did you do?", "phone call");
+    await find(".picker label span", "Interruption over");
+    await browser.keys(Key.Enter); // Resume Acme / deep work
+    await fileMatches(log, (s) => { const e = events(s).at(-1); return evs(s).endsWith("in:Acme out in:Interruption out in:Acme") && e?.task === "deep work"; }, "Acme not resumed after the interruption");
+    await press("Stop");
+    await answer("What did you do?", "after the call");
+    await fileMatches(log, (s) => evs(s).endsWith("in:Acme out"), "Acme not stopped");
   });
 
   it("exports a CSV with the project's export code and no 0 h rows", async () => {
