@@ -89,12 +89,13 @@
   import { marked, markKey, reresolve, type Mark } from "./bulk";
   import { visible } from "./blocked";
   import { weekStartOf } from "./week";
+  import { tagStyle } from "./tagColor";
 
   /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions.
    *  LOGDONE: config `log_done` (the Done log needs its CLOSED: stamps). GOTO (agenda mode): show that day (month calendar, #1039).
    *  WEEKSTART: config `week_start`, where the week view and the board's "this week" begin. */
-  let { mode, api, active, reload, todo, done, query, title, time, logDone = false, goto = null, weekStart }: {
-    mode: "agenda" | "todo"; api: AgendaApi; active: boolean; reload: number; todo: string[]; done: string[]; query?: string; title?: string; time?: TimeApi; logDone?: boolean; goto?: { day: string } | null; weekStart?: string;
+  let { mode, api, active, reload, todo, done, query, title, time, logDone = false, goto = null, weekStart, tagColors }: {
+    mode: "agenda" | "todo"; api: AgendaApi; active: boolean; reload: number; todo: string[]; done: string[]; query?: string; title?: string; time?: TimeApi; logDone?: boolean; goto?: { day: string } | null; weekStart?: string; tagColors?: Record<string, string>;
   } = $props();
   const firstOfWeek = (d: Date) => weekStartOf(d, weekStart);
 
@@ -420,7 +421,7 @@
       <span class="title">{it.title}</span>
     </div>
     <div class="kmeta">
-      {#each it.tags as t}<span class="tag">{t}</span>{/each}{#each it.inherited ?? [] as t}<span class="tag inh" title="Inherited">{t}</span>{/each}
+      {#each it.tags as t}<span class="tag" style={tagStyle(t, tagColors)}>{t}</span>{/each}{#each it.inherited ?? [] as t}<span class="tag inh" style={tagStyle(t, tagColors)} title="Inherited">{t}</span>{/each}
       {@render effort(it)}
       {#if it.blocked}<span class="blk-chip" title={waitsOn(it)}>blocked</span>{/if}
       {#if dateChip(it.date)}<span class="meta">{dateChip(it.date)}</span>{/if}
@@ -438,7 +439,7 @@
     {#if it.priority}<span class="prio p{it.priority}">{it.priority}</span>{/if}
     {#if it.keyword && it.keyword !== todo[0] && !isDone(it)}<span class="kw">{it.keyword}</span>{/if}
     <span class="title">{it.title}</span>
-    {#each it.tags as t}<span class="tag">{t}</span>{/each}{#each it.inherited ?? [] as t}<span class="tag inh" title="Inherited">{t}</span>{/each}
+    {#each it.tags as t}<span class="tag" style={tagStyle(t, tagColors)}>{t}</span>{/each}{#each it.inherited ?? [] as t}<span class="tag inh" style={tagStyle(t, tagColors)} title="Inherited">{t}</span>{/each}
     <span class="spacer"></span>
     {#if it.blocked}<span class="blk-chip" title={waitsOn(it)}>blocked</span>{/if}
     {@render effort(it)}
@@ -693,7 +694,7 @@
   .kw { font-size: var(--fs-xs); font-weight: 700; color: var(--link); letter-spacing: 0.03em; }
   .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .tag.inh { opacity: 0.6; }
-  .tag { font-size: var(--fs-xs); color: var(--dim); background: var(--active); border-radius: 999px; padding: 0 7px; white-space: nowrap; }
+  .tag { font-size: var(--fs-xs); color: var(--tag-color, var(--dim)); background: var(--tag-bg, var(--active)); border-radius: 999px; padding: 0 7px; white-space: nowrap; }
   .spacer { flex: 1; }
   .habit { display: inline-flex; gap: 1px; }
   .habit i { width: 4px; height: 12px; border-radius: 1px; background: var(--active); }

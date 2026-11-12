@@ -4466,7 +4466,7 @@
               {:else if v.kind === "settings"}
                 <Settings {version} active={v === leftTab} {reload} config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} missing={cfg.config_missing} save={saveSettings} recreate={recreateConfig} edit={() => act(editConfig)} />
               {:else}
-                <Agenda mode={v.kind as "agenda" | "todo"} goto={v.kind === "agenda" ? agendaGoto : null} api={agendaApi} active={v === leftTab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} time={timeApi} logDone={!!cfg.config.log_done} weekStart={cfg.config.week_start} />
+                <Agenda mode={v.kind as "agenda" | "todo"} goto={v.kind === "agenda" ? agendaGoto : null} api={agendaApi} active={v === leftTab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} time={timeApi} logDone={!!cfg.config.log_done} weekStart={cfg.config.week_start} tagColors={cfg.config.tag_colors} />
               {/if}
             </div>
           {/each}
@@ -4477,7 +4477,7 @@
       {#if showOutline}
         <aside class="links outline">
           <h3>Outline <small>{tab?.kind === "file" ? outline.length : 0}</small></h3>
-          {#if tab?.kind === "file"}<Outline items={outline} active={outlineActive} jump={(l) => act(() => openFile(tab.path!, l))} />{:else}<p>Open a note to see its outline.</p>{/if}
+          {#if tab?.kind === "file"}<Outline tagColors={cfg?.config.tag_colors} items={outline} active={outlineActive} jump={(l) => act(() => openFile(tab.path!, l))} />{:else}<p>Open a note to see its outline.</p>{/if}
         </aside>
       {/if}
       {#if showGraph}
