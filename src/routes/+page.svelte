@@ -62,7 +62,8 @@
   import { stuckMenu, cancelKeyword, type StuckAction } from "$lib/pushed";
   import { entryKeys, inboxKeys, summariseInbox, type InboxAction, type InboxCounts } from "$lib/inbox";
   import { morningKeys, planCandidates, planSummary, type MorningAction } from "$lib/morning";
-  import { parseSession, type Entry } from "$lib/session";
+  import { parseSession, type Entry, type Session as TabSession } from "$lib/session";
+  import { dropWorkspace, parseWorkspaces, putWorkspace, workspaceName, type Workspaces } from "$lib/workspaces";
   import { parseFolds, putFolds } from "$lib/folds";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
   import { parseWordGoal, wordCount, wordsLabel } from "$lib/words";
@@ -762,9 +763,9 @@
     }
     store("folds", JSON.stringify(folds));
   }
-  function saveSession() {
-    saveFolds(tabs);
-    if (!restored || !cfg?.config.restore_tabs) return;
+  /** The open tabs as a session: notes under the notes folder (or the config / log / projects files) at their cursor line,
+   *  views and searches; no report or agenda tabs. */
+  function currentSession(): TabSession {
     const ok = (t: Tab) => (t.kind === "file" ? !t.missing && ([cfg.config_path, cfg.log_path, cfg.projects_path].includes(t.path) || t.path!.startsWith(cfg.notes)) : t.kind !== "report" && t.kind !== "agenda");
     const keep = tabs.filter(ok);
     const entries = keep.map((t): Entry => {
@@ -774,7 +775,11 @@
     });
     const right = key2 != null && !narrow ? (side ? tabs[cur] : tabs.find((t) => t.key === key2)) : undefined; // the right pane's tab
     const split = right ? keep.indexOf(right) : -1;
-    store("session", JSON.stringify({ tabs: entries, active: keep.indexOf(split >= 0 ? leftTab! : tabs[cur]), split }));
+    return { tabs: entries, active: keep.indexOf(split >= 0 ? leftTab! : tabs[cur]), split };
+  }
+  function saveSession() {
+    saveFolds(tabs);
+    if (restored && cfg?.config.restore_tabs) store("session", JSON.stringify(currentSession()));
   }
   let sessionTimer: ReturnType<typeof setTimeout>;
   $effect(() => {
@@ -783,9 +788,14 @@
     sessionTimer = setTimeout(saveSession, 1000);
   });
 
-  /** Reopen the last session's tabs after Today (missing notes are skipped) and show its active one. */
+  /** Reopen the last session's tabs after Today and show its active one. */
   async function restoreSession() {
-    const { tabs: entries, active, split } = cfg.config.restore_tabs ? parseSession(stored("session", "")) : { tabs: [], active: -1, split: -1 };
+    if (cfg.config.restore_tabs) await openSession(parseSession(stored("session", "")));
+    restored = true;
+  }
+
+  /** Open a session's tabs (missing notes are skipped, hidden areas stay closed), then show its active tab and split. */
+  async function openSession({ tabs: entries, active, split }: TabSession) {
     const r = recent; // reopening shouldn't reorder Recent
     let at = -1, right = ""; // RIGHT: the split pane's note, when its tab came back
     for (const [i, c] of entries.entries()) {
@@ -806,7 +816,47 @@
       // the split comes back when both panes' notes did and the window is wide enough; focus stays left
       if (right && !narrow && tab?.path !== right) try { await showSplit(right, false); } catch { /* the note vanished */ }
     }
-    restored = true;
+  }
+
+  /** Named workspaces (#1300): the open tabs and split under a name; WORKSPACE is the one switched to last, whose tabs a switch saves first. */
+  let workspaces = parseWorkspaces(stored("workspaces", ""));
+  let workspace = stored("workspace", "");
+  const saveWorkspaces = (ws: Workspaces, name = workspace) => {
+    store("workspaces", JSON.stringify((workspaces = ws)));
+    store("workspace", (workspace = name in ws ? name : ""));
+  };
+  async function saveWorkspaceAs() {
+    const s = currentSession();
+    if (!s.tabs.length) return flash("No tabs to save (Today and reports aren't kept)");
+    const name = workspaceName(await ask("Save the open tabs as workspace", workspace));
+    if (!name) return;
+    if (name in workspaces && name !== workspace && !(await pick({ prompt: `Replace workspace “${name}”?`, items: [{ label: "Replace it", value: true }, { label: "Cancel", value: false }] }))) return;
+    saveWorkspaces(putWorkspace(workspaces, name, s), name);
+    flash(`Saved ${s.tabs.length} tab${s.tabs.length === 1 ? "" : "s"} as workspace ${name}`);
+  }
+  const pickWorkspace = async (prompt: string) => {
+    const names = Object.keys(workspaces);
+    if (!names.length) return (flash("No workspaces yet: “Workspace: save open tabs and split as…” adds one"), null);
+    const n = (k: string) => workspaces[k].tabs.length;
+    return (await pick({ prompt, items: names.map((k) => ({ label: k, detail: `${n(k)} tab${n(k) === 1 ? "" : "s"}${k === workspace ? " · current" : ""}`, value: k as unknown })) })) as string | null;
+  };
+  /** Save the current workspace's tabs, close all tabs (unsaved-edit prompts apply) and open workspace NAME after Today. */
+  async function switchWorkspace() {
+    const name = await pickWorkspace("Switch to workspace");
+    if (!name) return;
+    if (workspace) saveWorkspaces(putWorkspace(workspaces, workspace, currentSession()));
+    const s = workspaces[name];
+    if (!s) return; // it was the current one, and is empty now
+    await closeOthers(true);
+    if (!tabs.some((t) => t.kind === "agenda")) await openView("agenda");
+    saveWorkspaces(workspaces, name);
+    await openSession(s);
+  }
+  async function deleteWorkspace() {
+    const name = await pickWorkspace("Delete workspace");
+    if (!name) return;
+    saveWorkspaces(dropWorkspace(workspaces, name));
+    flash(`Deleted workspace ${name}`);
   }
 
   /** Keep only the recent and pinned notes (Ctrl P's order) and the closed tabs whose path passes KEEP (for trashed or vanished notes). */
@@ -3831,6 +3881,9 @@
     { label: "Split view: close the split", leader: "w c", run: closeSplitSaved },
     { label: "Close other tabs", leader: "b o", run: () => closeOthers() },
     { label: "Close all tabs", leader: "b D", run: () => closeOthers(true) },
+    { label: "Workspace: switch (save these tabs, open a saved set)…", leader: "w W", run: () => act(switchWorkspace) },
+    { label: "Workspace: save open tabs and split as…", run: () => act(saveWorkspaceAs) },
+    { label: "Workspace: delete…", run: () => act(deleteWorkspace) },
     { label: "Navigate: back (to where the last jump left from)", leader: "b h", run: () => navStep("back") },
     { label: "Navigate: forward", leader: "b l", run: () => navStep("forward") },
     { label: "Reopen closed tab", keys: ["Ctrl+Shift+T"], leader: "b u", run: reopenTab },

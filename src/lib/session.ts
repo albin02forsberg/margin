@@ -12,10 +12,12 @@ const ok = (e: any): e is Entry =>
  *  ACTIVE (the left pane's tab) and SPLIT (the right pane's, -1 without a split) indexes into them or -1;
  *  anything unreadable is an empty session. */
 export function parseSession(raw: string | null, max = 20): Session {
-  const none = { tabs: [], active: -1, split: -1 };
-  let s: any;
-  try { s = JSON.parse(raw ?? ""); } catch { return none; }
-  if (!s || !Array.isArray(s.tabs)) return none;
+  try { return toSession(JSON.parse(raw ?? ""), max); } catch { return { tabs: [], active: -1, split: -1 }; }
+}
+
+/** `parseSession` for an already parsed value S (a named workspace's, #1300). */
+export function toSession(s: any, max = 20): Session {
+  if (!s || !Array.isArray(s.tabs)) return { tabs: [], active: -1, split: -1 };
   const keep: [Entry, number][] = s.tabs.flatMap((e: unknown, i: number) => (ok(e) ? [[e, i]] : [])).slice(0, max);
   const at = (n: unknown) => keep.findIndex(([, i]) => i === n);
   return { tabs: keep.map(([e]) => e), active: at(s.active), split: at(s.split) };

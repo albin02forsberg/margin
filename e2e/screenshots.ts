@@ -418,6 +418,17 @@ async function pngs() {
   await shot("palette");
   await browser.keys(Key.Escape);
 
+  if (want("workspaces")) { // #1300: Space w W lists the saved sets of tabs
+    await command("Workspace: save open tabs");
+    await type("Harbor launch");
+    await browser.keys(Key.Enter);
+    await pause();
+    await command("Workspace: switch");
+    await shot("workspaces");
+    await browser.keys(Key.Escape);
+    await pause();
+  }
+
   if (want("search-regex")) { // #968
     await command("Search in all notes");
     await type('re:"harbou?r|orchard" -todo');
