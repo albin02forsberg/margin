@@ -63,7 +63,7 @@
   import { entryKeys, inboxKeys, summariseInbox, type InboxAction, type InboxCounts } from "$lib/inbox";
   import { morningKeys, planCandidates, planSummary, type MorningAction } from "$lib/morning";
   import { parseSession, type Entry, type Session as TabSession } from "$lib/session";
-  import { dropWorkspace, parseWorkspaces, putWorkspace, workspaceName, type Workspaces } from "$lib/workspaces";
+  import { dropWorkspace, parseWorkspaces, putWorkspace, renameInWorkspaces, workspaceName, type Workspaces } from "$lib/workspaces";
   import { parseFolds, putFolds } from "$lib/folds";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
   import { parseWordGoal, wordCount, wordsLabel } from "$lib/words";
@@ -2674,6 +2674,8 @@
     store("recent", JSON.stringify(recent));
     if (pinned.includes(from)) savePinned(pinned.map((p) => (p === from ? to : p)));
     if (bookmarks.some((b) => b.file === from)) saveBookmarks(moveBookmarks(bookmarks, from, to));
+    const rw = renameInWorkspaces(workspaces, from, to);
+    if (rw !== workspaces) saveWorkspaces(rw);
     for (const c of closed) if ("path" in c && c.path === from) c.path = to; // so "Reopen closed tab" finds it
     syncFromDisk();
     return [to, changed];
