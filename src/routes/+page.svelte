@@ -4454,7 +4454,7 @@
 
 <div class="app" class:mono={monoFont} class:zen>
   {#if topbar && !zen && cfg}
-    <header class="topnav">
+    <header class="topnav" data-region="nav">
       <span class="logo" aria-hidden="true">m</span>
       <nav class="views" class:has-ind={ind.on} bind:this={viewsEl}>
         <span class="ind" class:slide={motion} class:on={ind.on} style:transform="translate({ind.x}px, {ind.y}px)" style:width="{ind.w}px" style:height="{ind.h}px" aria-hidden="true"></span>
@@ -4492,8 +4492,8 @@
     </header>
   {/if}
 
-  <div class="maincol">
-    <nav class="tabs">
+  <div class="maincol" data-region="body">
+    <nav class="tabs" data-region="tabs">
       {#each tabs as t, i (t.key)}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="tab" class:cur={i === cur} class:cur2={t.key === key2} class:dragging={dragTab?.from === i} class:dropat={dragTab && dragTab.over === i && dragTab.from !== i} onpointerdown={(e) => tabPointerDown(e, i)} onmousedown={(e) => e.button === 1 && e.preventDefault()} onauxclick={(e) => e.button === 1 && act(() => closeTab(i))}>
@@ -4503,7 +4503,7 @@
       {/each}
     </nav>
 
-    <main>
+    <main data-region="main">
       {#if dropCue}<div class="drop-cue" style={dropCue.style}>Drop to attach to {dropCue.title}</div>{/if}
       <div class="pane" onpointerdowncapture={() => { if (drawerOpen()) closeDrawer(); act(() => focusPane(0, false)); }} onfocusin={() => focusIn(0)}>
         <div class="editor" bind:this={editorEl} style:display={isText(leftTab) ? "block" : "none"}></div>
@@ -4532,30 +4532,30 @@
       <!-- split view (#874): the right pane's editor; hidden, not removed, so its view survives closing the split -->
       <div class="editor split" bind:this={splitEl} style:display={key2 != null ? "block" : "none"} onpointerdowncapture={() => act(() => focusPane(1, false))} onfocusin={() => focusIn(1)}></div>
       {#if showOutline}
-        <aside class="links outline">
+        <aside class="links outline" data-region="side">
           <h3>Outline <small>{tab?.kind === "file" ? outline.length : 0}</small></h3>
           {#if tab?.kind === "file"}<Outline tagColors={cfg?.config.tag_colors} items={outline} active={outlineActive} jump={(l) => act(() => openFile(tab.path!, l))} />{:else}<p>Open a note to see its outline.</p>{/if}
         </aside>
       {/if}
       {#if showGraph}
-        <aside class="links">
+        <aside class="links" data-region="side">
           <h3>Graph <small>{graph?.nodes.length ?? 0}</small></h3>
           {#if graph?.nodes.length}<Graph {graph} open={(p) => act(() => openFile(p))} />{:else}<p>Open a note to see its links.</p>{/if}
         </aside>
       {/if}
       <!-- hidden, not removed, so the chat survives closing the panel -->
-      <aside class="links chat" style:display={showChat ? null : "none"}><Chat bind:this={chat} ask={chatAsk} open={(p, l) => openFile(p, l)} note={tab?.kind === "file" ? tab.title : null} noteLabel={() => chatPart().label} insert={tab?.kind === "file" ? insertAtCursor : undefined} excluded={chatExcluded} /></aside>
+      <aside class="links chat" data-region="side" style:display={showChat ? null : "none"}><Chat bind:this={chat} ask={chatAsk} open={(p, l) => openFile(p, l)} note={tab?.kind === "file" ? tab.title : null} noteLabel={() => chatPart().label} insert={tab?.kind === "file" ? insertAtCursor : undefined} excluded={chatExcluded} /></aside>
       {#if peek}
         {#key peek}
           <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-          <aside class="links peek" tabindex="0" use:peekView={peek}>
+          <aside class="links peek" data-region="side" tabindex="0" use:peekView={peek}>
             <h3 title={peek.path}>Peek · {niceName(peek.path)}{peek.line ? `:${peek.line + 1}` : ""}</h3>
             <p>Enter opens · Esc closes</p>
           </aside>
         {/key}
       {/if}
       {#if showBacklinks}
-        <aside class="links">
+        <aside class="links" data-region="side">
           <h3>Linked from <small>{backlinks.length}</small></h3>
           {#each backlinks as b}
             <button onclick={() => act(() => openFile(b.path, b.line))}><strong>{b.title}</strong><span>{b.text}</span></button>
@@ -4575,7 +4575,7 @@
       {/if}
     </main>
 
-    <footer class="status">
+    <footer class="status" data-region="status">
       {#if isText(tab)}<span class="mode">{mode.toUpperCase()}</span>{/if}
       <span class="file">{tab?.path ? rel(tab.path) : ""}{tab?.missing ? " • deleted on disk (:w recreates it)" : tab?.conflict ? " • changed on disk (:w keeps yours, Space f r reloads)" : tab?.dirty ? " • unsaved" : ""}</span>
       {#if isText(tab)}<span class="words" class:done={wordsDone}>{words}</span>{/if}
@@ -4601,13 +4601,13 @@
 <style>
   :global(html, body) { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: var(--fs-base) var(--sans); overflow: hidden; }
   :global(button) { font-family: inherit; }
-  .app { display: flex; flex-direction: column; height: 100vh; }
+  .app { display: flex; flex-direction: var(--layout-shell); height: 100vh; }
   .app.mono { --editor-font: var(--mono); }
   :global(.cm-plain) { font-family: var(--mono); }
   .maincol { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--canvas); }
 
   /* top bar (round-5 mockups, #251): logo, views (the open one a raised card), search, settings, clock chip */
-  .topnav { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s4); background: var(--canvas); flex: none; min-width: 0; }
+  .topnav { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s4); background: var(--canvas); flex: none; min-width: 0; order: var(--layout-nav-order); }
   .topnav button { background: none; border: 0; color: var(--dim); cursor: pointer; font-size: var(--fs-md); display: flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: 10px; white-space: nowrap; transition: background-color 120ms var(--ease), color 120ms var(--ease), box-shadow 120ms var(--ease); }
   .topnav button:hover { color: var(--fg); }
   .topnav button:focus-visible { outline: none; box-shadow: var(--ring); }
@@ -4644,7 +4644,7 @@
   .warn { color: var(--todo); font-size: var(--fs-xs); padding-right: var(--s2); white-space: nowrap; }
 
   /* open tabs as pills on the canvas, the current one a raised card (round-5 mockups, #251) */
-  .tabs { display: flex; gap: var(--s1); padding: var(--s1) var(--s4) var(--s2); overflow-x: auto; scrollbar-width: none; flex: none; min-height: 26px; }
+  .tabs { display: flex; gap: var(--s1); padding: var(--s1) var(--s4) var(--s2); overflow-x: auto; scrollbar-width: none; flex: none; min-height: 26px; order: var(--layout-tabs-order); }
   .tab { display: flex; align-items: center; border-radius: 20px; flex: none; transition: background-color 120ms var(--ease), box-shadow 120ms var(--ease); }
   .tab:hover { background: var(--active); }
   .tab button { background: none; border: 0; color: var(--dim); padding: var(--s1) 2px var(--s1) var(--s3); font-size: var(--fs-sm); cursor: pointer; white-space: nowrap; display: flex; align-items: center; width: 100%; border-radius: 20px; }
@@ -4656,7 +4656,7 @@
   .tab.cur { background: var(--card); box-shadow: var(--soft); }
   .tab.cur button { color: var(--fg); font-weight: 500; }
   .tab.cur2 { background: color-mix(in srgb, var(--card) 50%, transparent); } /* the other pane's note (#874) */
-  main { flex: 1; display: flex; min-height: 0; }
+  main { flex: 1; display: flex; flex-direction: var(--layout-main); min-height: 0; }
   .pane { flex: 1; min-width: 0; position: relative; }
   .drop-cue { position: fixed; z-index: 5; border: 2px dashed var(--accent); border-radius: 8px; pointer-events: none; display: flex; align-items: flex-end; justify-content: center; padding-bottom: var(--s5); color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--accent) 6%, transparent); }
   .editor, .view { height: 100%; }
@@ -4678,7 +4678,7 @@
   .mention button:first-child { min-width: 0; }
   .links .link-it { width: auto; flex: none; color: var(--link); font-size: var(--fs-sm); }
   .zen .status { display: none; }
-  .status { display: flex; gap: var(--s3); align-items: center; padding: 0 var(--s4) var(--s2); color: var(--dim); font: var(--fs-xs) var(--mono); flex: none; min-height: 20px; }
+  .status { display: flex; gap: var(--s3); align-items: center; padding: 0 var(--s4) var(--s2); color: var(--dim); font: var(--fs-xs) var(--mono); flex: none; min-height: 20px; order: var(--layout-status-order); }
   .mode { color: var(--bg); background: var(--accent); padding: 0 6px; border-radius: var(--radius-sm); font-weight: 700; }
   .file, .words { color: var(--dim); }
   .words.done { color: var(--accent, var(--dim)); }

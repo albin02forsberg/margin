@@ -25,6 +25,24 @@ describe("Responsive layout", () => {
     assert.ok(await displayed(".topnav .lbl"), "labels not back at 1200 px");
   });
 
+  it("keeps the default region order, and a layout variable moves the top bar to a left rail that still works", async () => {
+    const boxes = () => browser.execute(() => Object.fromEntries(["nav", "body", "tabs", "main", "status"].map((r) => {
+      const b = document.querySelector(`[data-region="${r}"]`)?.getBoundingClientRect();
+      return [r, b && { top: b.top, bottom: b.bottom, left: b.left, right: b.right }];
+    })));
+    let b = await boxes();
+    for (const r of ["nav", "body", "tabs", "main", "status"]) assert.ok(b[r], `no [data-region=${r}]`);
+    assert.ok(b.nav!.bottom <= b.tabs!.top + 0.5 && b.tabs!.bottom <= b.main!.top + 0.5 && b.main!.bottom <= b.status!.top + 0.5, `default order changed: ${JSON.stringify(b)}`);
+    await browser.execute(() => document.head.insertAdjacentHTML("beforeend", `<style id="rail-test">:root { --layout-shell: row; }</style>`));
+    b = await boxes();
+    assert.ok(b.nav!.right <= b.body!.left + 0.5, `top bar not left of the body: ${JSON.stringify(b)}`);
+    await (await find(".topnav .views button", "Tasks")).click();
+    await find(".topnav .views button.on", "Tasks");
+    await (await find(".topnav .views button", "Today")).click();
+    await find(".agenda h1", "Today");
+    await browser.execute(() => document.getElementById("rail-test")?.remove());
+  });
+
   it("toggles the top bar with Ctrl+\\", async () => {
     await browser.keys([Key.Ctrl, "\\"]);
     await browser.waitUntil(async () => !(await browser.$(".topnav").isExisting()), { timeoutMsg: "top bar still shown" });
