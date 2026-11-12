@@ -39,6 +39,85 @@ pub fn babel_run(s: tauri::State<crate::App>, lang: String, code: String) -> Res
     run(&c.babel_languages, &lang, &code, &c.notes(), TIMEOUT)
 }
 
+/// One file to tangle (`tangleFiles` in babel.ts): PATH relative to the note's folder, its CONTENT,
+/// `0755` if EXEC (`:shebang`), missing folders created if MKDIRP.
+#[derive(serde::Deserialize, Debug)]
+pub struct Tangle {
+    pub path: String,
+    pub content: String,
+    pub exec: bool,
+    pub mkdirp: bool,
+}
+
+/// Where REL lands under DIR, if it stays inside NOTES, through symlinks too: only plain relative parts, and the
+/// nearest existing ancestor (the file itself if it exists) must resolve inside NOTES.
+fn target(notes: &Path, dir: &Path, rel: &str) -> Result<std::path::PathBuf, String> {
+    use std::path::Component;
+    let r = Path::new(rel);
+    if rel.trim().is_empty() || !r.components().all(|c| matches!(c, Component::Normal(_) | Component::CurDir)) {
+        return Err(format!("{rel}: a tangle path must be relative to the note's folder, without .."));
+    }
+    let p = dir.join(r);
+    let notes = notes.canonicalize().map_err(|e| format!("notes folder: {e}"))?;
+    let mut a = p.as_path();
+    while !a.exists() {
+        a = a.parent().ok_or_else(|| format!("{rel}: no existing folder"))?;
+    }
+    if !a.canonicalize().is_ok_and(|a| a.starts_with(&notes)) {
+        return Err(format!("{rel} is outside the notes folder"));
+    }
+    Ok(p)
+}
+
+/// Org-babel-tangle FILES of NOTE (in NOTES): every path is checked first, then, if WRITE, each file whose
+/// content changes is copied to `<file>.bak` and replaced atomically. Returns the paths whose content changes.
+pub fn tangle(notes: &Path, note: &Path, files: &[Tangle], write: bool) -> Result<Vec<String>, String> {
+    let dir = note.parent().ok_or("the note has no folder")?;
+    let mut plan = Vec::new();
+    for f in files {
+        let p = target(notes, dir, &f.path)?;
+        if p.is_dir() {
+            return Err(format!("{} is a folder", f.path));
+        }
+        if !f.mkdirp && !p.parent().is_some_and(Path::is_dir) {
+            return Err(format!("{}: its folder doesn't exist (add :mkdirp yes)", f.path));
+        }
+        let changes = std::fs::read(&p).is_ok_and(|old| old != f.content.as_bytes());
+        plan.push((p, f, changes));
+    }
+    if write {
+        for (p, f, changes) in &plan {
+            let err = |e: std::io::Error| format!("{}: {e}", f.path);
+            if let Some(d) = p.parent().filter(|_| f.mkdirp) {
+                std::fs::create_dir_all(d).map_err(err)?;
+            }
+            if *changes {
+                let mut bak = p.clone().into_os_string();
+                bak.push(".bak");
+                let _ = std::fs::remove_file(&bak); // a link there must not redirect the copy
+                std::fs::copy(p, &bak).map_err(err)?;
+            }
+            crate::config::write_atomic(p, &f.content).map_err(err)?;
+            #[cfg(unix)]
+            if f.exec {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).map_err(err)?;
+            }
+        }
+    }
+    Ok(plan.into_iter().filter(|x| x.2).map(|x| x.1.path.clone()).collect())
+}
+
+/// "Notes: tangle code blocks to files": WRITE false only lists the files that would change (for the confirm).
+/// NOTE and every target are checked here again, whatever the webview sends.
+#[tauri::command(async)]
+pub fn babel_tangle(s: tauri::State<crate::App>, note: std::path::PathBuf, files: Vec<Tangle>, write: bool) -> Result<Vec<String>, String> {
+    s.check(&note)?;
+    let notes = s.cfg().notes();
+    crate::in_notes(&notes, &note)?;
+    tangle(&notes, &note, &files, write)
+}
+
 #[cfg(not(unix))]
 fn sh(_: &str, _: &Path, _: Duration) -> Result<Out, String> {
     Err("sh not available on this system".into())
@@ -201,5 +280,45 @@ mod tests {
         let late = d.join("late").exists();
         std::fs::remove_dir_all(&d).unwrap();
         assert!(!late, "the subshell kept running after the timeout");
+    }
+
+    #[test]
+    fn tangle_writes_inside_the_notes_folder_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("margin-tangle-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (notes, outside) = (root.join("notes"), root.join("outside"));
+        std::fs::create_dir_all(notes.join("sub")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, notes.join("sub/out")).unwrap();
+        let note = notes.join("sub/n.org");
+        let f = |path: &str, content: &str, exec: bool, mkdirp: bool| Tangle { path: path.into(), content: content.into(), exec, mkdirp };
+        let err = |path: &str, mkdirp: bool| tangle(&notes, &note, &[f(path, "x", false, mkdirp)], true).unwrap_err();
+
+        assert!(err("../../outside/x", true).contains("without .."));
+        assert!(err(outside.join("x").to_str().unwrap(), true).contains("without .."));
+        assert!(err("out/x", true).contains("outside the notes"), "a symlink out is refused");
+        assert!(err("out/new/x", true).contains("outside the notes"));
+        assert!(err("new/x", false).contains(":mkdirp"));
+        assert!(err("", false).contains("relative"));
+        assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 0);
+
+        // New files: nothing would change, so no confirm; :mkdirp creates folders, :shebang makes it executable.
+        let files = [f("bin/run.sh", "#!/bin/sh\necho\n", true, true), f("a.conf", "a\n", false, false)];
+        assert_eq!(tangle(&notes, &note, &files, false).unwrap(), Vec::<String>::new());
+        assert!(!notes.join("sub/bin").exists(), "a dry run writes nothing");
+        tangle(&notes, &note, &files, true).unwrap();
+        assert_eq!(std::fs::read_to_string(notes.join("sub/bin/run.sh")).unwrap(), "#!/bin/sh\necho\n");
+        assert_eq!(std::fs::metadata(notes.join("sub/bin/run.sh")).unwrap().permissions().mode() & 0o777, 0o755);
+        // Same content again: nothing to confirm or back up. Changed content: listed, and the old one kept as .bak.
+        assert!(tangle(&notes, &note, &files, true).unwrap().is_empty());
+        assert!(!notes.join("sub/a.conf.bak").exists());
+        let changed = [f("a.conf", "b\n", false, false)];
+        assert_eq!(tangle(&notes, &note, &changed, false).unwrap(), ["a.conf"]);
+        assert_eq!(std::fs::read_to_string(notes.join("sub/a.conf")).unwrap(), "a\n");
+        tangle(&notes, &note, &changed, true).unwrap();
+        assert_eq!(std::fs::read_to_string(notes.join("sub/a.conf")).unwrap(), "b\n");
+        assert_eq!(std::fs::read_to_string(notes.join("sub/a.conf.bak")).unwrap(), "a\n");
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

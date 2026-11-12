@@ -1,6 +1,42 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { srcAt, srcBlocks, resultsChange, diagramKey } from "./babel.ts";
+import { srcAt, srcBlocks, resultsChange, diagramKey, headerArgs, tangleFiles } from "./babel.ts";
+
+test("headerArgs reads :key value pairs, quoted values and bare keys", () => {
+  assert.deepEqual(headerArgs('  #+BEGIN_SRC sh :tangle bin/x.sh :shebang "#!/bin/sh -e"  :mkdirp yes :noweb'), { tangle: "bin/x.sh", shebang: "#!/bin/sh -e", mkdirp: "yes", noweb: "" });
+  assert.deepEqual(headerArgs("#+begin_src sh"), {});
+  assert.deepEqual(headerArgs("#+begin_src python :var a=1 b=2"), { var: "a=1 b=2" });
+});
+
+test("tangleFiles groups blocks by target, in order, and skips the rest", () => {
+  const t = [
+    "* Setup",
+    '#+begin_src sh :tangle ./bin/run.sh :shebang "#!/bin/sh"',
+    "echo one",
+    "#+end_src",
+    "#+begin_src sh",
+    "not tangled",
+    "#+end_src",
+    "  #+begin_src conf :tangle no",
+    "  skipped",
+    "  #+end_src",
+    "  #+begin_src sh :tangle bin\\run.sh :mkdirp yes",
+    "    if true; then",
+    "      echo two",
+    "    fi",
+    "",
+    "  #+end_src",
+    "#+begin_src python :tangle yes",
+    "print(1)",
+    "#+end_src",
+  ].join("\n");
+  assert.deepEqual(tangleFiles(t, "setup.org"), [
+    { path: "bin/run.sh", content: "#!/bin/sh\necho one\n\nif true; then\n  echo two\nfi\n", exec: true, mkdirp: true, blocks: 2 },
+    { path: "setup.py", content: "print(1)\n", exec: false, mkdirp: false, blocks: 1 },
+  ]);
+  assert.deepEqual(tangleFiles("#+begin_src sh\nls\n#+end_src", "a.org"), []);
+  assert.deepEqual(tangleFiles("#+begin_src sh :tangle e.sh\n#+end_src", "a.org"), [{ path: "e.sh", content: "\n", exec: false, mkdirp: false, blocks: 1 }]);
+});
 
 test("diagramKey ignores indentation, escapes and blank lines (same fixture as export.rs)", () => {
   const [b] = srcBlocks("  #+begin_src mermaid\n    graph TD  \n\n      A --> B\n    ,* x\n  #+end_src\n");
