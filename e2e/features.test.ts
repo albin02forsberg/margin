@@ -141,6 +141,53 @@ describe("Last session's tabs", () => {
   });
 });
 
+describe("Workspaces", () => {
+  before(async () => {
+    await launch({
+      files: ({ notes }) => {
+        for (const n of ["one", "two", "three"]) writeFileSync(join(notes, `${n}.org`), `#+title: ${n}\n\nText.\n`);
+      },
+    });
+  });
+  after(close, { timeout: 30_000 });
+
+  const tabNames = () => texts(".tabs .tab > button:not(.x)");
+  const openNote = async (n: string) => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", n);
+    await find(".status .file", `${n}.org`);
+  };
+
+  it("saves the open tabs under a name and switches between sets (Space w W)", async () => {
+    await find(".agenda h1", "Today");
+    await openNote("one");
+    await openNote("two");
+    await palette("Workspace: save open tabs");
+    await answer("Save the open tabs as workspace", "Client");
+    await find(".msg", "Saved 2 tabs as workspace Client");
+    await palette("Close all tabs");
+    await browser.waitUntil(async () => (await tabNames()).length === 1, { timeoutMsg: "tabs not closed" });
+    await openNote("three");
+    await palette("Workspace: save open tabs");
+    await answer("Save the open tabs as workspace", "Home");
+
+    await find(".msg", "Saved 1 tab as workspace Home");
+    await browser.keys(Key.Escape);
+    await browser.keys(" "); await type("wW");
+    await answer("Switch to workspace", "Client");
+    await browser.waitUntil(async () => (await tabNames()).length === 3, { timeoutMsg: "Client not opened" });
+    const names = await tabNames();
+    assert.match(names[0], /Today/);
+    assert.ok(names.some((t) => t.includes("one")) && names.some((t) => t.includes("two")) && !names.some((t) => t.includes("three")), names.join(" | "));
+    await find(".tabs .tab.cur button", "two");
+
+    await palette("Workspace: switch");
+    await answer("Switch to workspace", "Home");
+    await browser.waitUntil(async () => (await tabNames()).length === 2, { timeoutMsg: "Home not opened" });
+    await find(".tabs .tab.cur button", "three");
+  });
+});
+
 describe("Features", () => {
   let d: Dirs;
   before(async () => {
