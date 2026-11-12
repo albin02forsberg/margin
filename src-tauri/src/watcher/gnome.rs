@@ -76,6 +76,19 @@ mod tests {
         assert_eq!(parse(&wrong), None);
     }
 
+    /// No Shell extension answers on a test machine (no session bus, or nobody owns the name).
+    #[test]
+    fn without_the_extension() {
+        assert_eq!(active(), None);
+        let data = std::env::temp_dir().join(format!("margin-gnome-status-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        assert_eq!(status(&data), "missing");
+        install(&data).unwrap();
+        assert_eq!(status(&data), "installed");
+        std::fs::remove_dir_all(&data).unwrap();
+        let _ = session(); // reads the environment; true only on a GNOME desktop
+    }
+
     #[test]
     fn install_copies_the_extension() {
         let data = std::env::temp_dir().join(format!("margin-gnome-{}", std::process::id()));
