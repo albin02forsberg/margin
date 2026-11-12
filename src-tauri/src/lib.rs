@@ -3894,7 +3894,7 @@ fn write_calendar(app: &AppHandle) {
 }
 
 /// Quick capture: show the new-task form, telling the frontend whether the window was hidden.
-fn capture(app: &AppHandle) {
+pub(crate) fn capture(app: &AppHandle) {
     let hidden = app.get_webview_window("main").is_some_and(|w| !w.is_visible().unwrap_or(true));
     tray::show(app);
     let _ = app.emit("capture", hidden);

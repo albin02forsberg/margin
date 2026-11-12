@@ -4287,7 +4287,7 @@
         await call("quit_reply", { answer: ok ? "go" : "cancel" });
       }
     }));
-    const unlistenTray = listen<string>("tray", (e) => act(() => timeActions[e.payload]()));
+    const unlistenTray = listen<string>("tray", (e) => act(() => (e.payload === "today" ? journal() : timeActions[e.payload]?.())));
     const unlistenOpen = listen<{ path: string; line: number }>("open-entry", (e) => act(() => openFile(e.payload.path, e.payload.line)));
     const unlistenForget = listen("crypt-forget", () => act(cryptForget));
     // Without an idle source in the backend, forget after idle_threshold_minutes without input here instead.

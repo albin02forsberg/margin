@@ -26,7 +26,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let sep = || PredefinedMenuItem::separator(app);
     let menu = Menu::with_items(
         app,
-        &[&status, &sep()?, &start, &pause, &resume, &switch, &stop, &sep()?, &item("show", "Show Margin")?, &item("quit", "Quit")?],
+        &[&status, &sep()?, &start, &pause, &resume, &switch, &stop, &sep()?, &item("capture", "Quick capture…")?, &item("today", "Open Today")?, &item("show", "Show Margin")?, &item("quit", "Quit")?],
     )?;
     let icon = TrayIconBuilder::with_id("main")
         .icon(app.default_window_icon().unwrap().clone())
@@ -34,6 +34,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, ev| match ev.id().as_ref() {
             "show" => show(app),
             "quit" => crate::quit::ask(app),
+            "capture" => crate::capture(app),
             id => {
                 if id != "pause" && id != "resume" {
                     show(app); // these ask for a project or a note

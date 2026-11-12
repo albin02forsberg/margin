@@ -1004,7 +1004,7 @@ the project picker show the error instead of an empty list, and Time → Check l
 (also run after saving `projects.toml`) lists the error.
 
 The tray icon shows what you're tracking and for how long, and has start,
-break, resume, switch and stop. Closing the window while a timer runs hides it
+break, resume, switch and stop, plus Quick capture… and Open Today. Closing the window while a timer runs hides it
 to the tray (`close_to_tray = false` in settings to quit instead).
 
 Coming back after 10 minutes idle (or asleep) with a timer running asks whether
