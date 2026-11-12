@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { applyLook, effectiveTheme, nextTheme, setUserLook } from "./theme.ts";
+import { applyLayout, applyLook, effectiveTheme, nextTheme, setUserLook } from "./theme.ts";
 
 test("effectiveTheme", () => {
   assert.equal(effectiveTheme("", true), "light");
@@ -47,6 +47,15 @@ test("applyLook sets, replaces and clears data-look", () => {
   applyLook("mine"); assert.equal(el.dataset.look, "mine");
   applyLook(""); assert.equal(el.dataset.look, undefined);
   applyLook("retro"); applyLook(undefined); assert.equal(el.dataset.look, undefined);
+});
+
+test("applyLayout sets, replaces and clears data-layout", () => {
+  const el = { dataset: {} as Record<string, string | undefined> };
+  (globalThis as any).document = { documentElement: el };
+  applyLayout("compact"); assert.equal(el.dataset.layout, "compact");
+  applyLayout("rail"); assert.equal(el.dataset.layout, "rail");
+  applyLayout(""); assert.equal(el.dataset.layout, undefined);
+  applyLayout("rail"); applyLayout(undefined); assert.equal(el.dataset.layout, undefined);
 });
 
 test("setUserLook adds, replaces and removes one style element", () => {

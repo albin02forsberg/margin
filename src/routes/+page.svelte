@@ -1,6 +1,6 @@
 <script lang="ts">
   import "$lib/theme.css";
-  import { applyLook, applyTheme, nextTheme, setUserLook } from "$lib/theme";
+  import { applyLayout, applyLook, applyTheme, nextTheme, setUserLook } from "$lib/theme";
   import { onMount, tick, untrack } from "svelte";
   import { Channel, invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -190,6 +190,7 @@
     if (!l) return setUserLook(null);
     invoke<string | null>("read_look", { name: l }).then((css) => cfg?.config.look === l && setUserLook(css), () => setUserLook(null));
   });
+  $effect(() => applyLayout(cfg?.config.layout));
   const isText = (t?: Tab) => t?.kind === "file" || t?.kind === "report";
   const call = <T = any,>(cmd: string, args?: Record<string, unknown>) => invoke<T>(cmd, args);
   const pick = (o: PickOpts) => picker!.open(o);

@@ -19,6 +19,12 @@ export function applyLook(name: unknown) {
   if (typeof name === "string" && name) el.dataset.look = name; else delete el.dataset.look;
 }
 
+/** Set (or, when empty, clear) `data-layout` on the root, so CSS can move the shell's regions. */
+export function applyLayout(name: unknown) {
+  const el = document.documentElement;
+  if (typeof name === "string" && name) el.dataset.layout = name; else delete el.dataset.layout;
+}
+
 /** Put a user look's CSS in `<style id="user-look">` (created on first use, after the built-in styles), or remove it when CSS is null. */
 export function setUserLook(css: string | null | undefined) {
   let el = document.getElementById("user-look");

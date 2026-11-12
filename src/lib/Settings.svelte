@@ -259,7 +259,7 @@
             {:else}
               <span>{f.label}</span>
               {#if f.choices}
-                <select value={form[f.key] as string} onchange={(e) => (form[f.key] = e.currentTarget.value)}>{#each choices(f) as o (o)}<option value={o}>{o || (f.key === "look" ? "classic" : "system")}</option>{/each}</select>
+                <select value={form[f.key] as string} onchange={(e) => (form[f.key] = e.currentTarget.value)}>{#each choices(f) as o (o)}<option value={o}>{o || (f.key === "look" ? "classic" : f.key === "layout" ? "default" : "system")}</option>{/each}</select>
               {:else if f.kind === "list" || f.kind === "multiline"}
                 <textarea rows={Math.max(2, String(form[f.key] ?? "").split("\n").length)} value={form[f.key] as string} oninput={(e) => (form[f.key] = text(e))}></textarea>
               {:else}
