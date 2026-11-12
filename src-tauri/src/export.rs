@@ -251,12 +251,13 @@ fn link_anchors(d: &mut Doc) {
         keys.entry(norm(t)).or_insert(id);
     }
     let mut used: std::collections::HashSet<String> = targets.iter().map(|t| target_id(t)).chain(names.iter().map(|n| name_id(n))).collect();
+    let mut next: HashMap<String, usize> = HashMap::new();
     // Radio targets: first spelling of a term wins, at most 200 (radio.ts); a bare [[Term]] reaches them too.
     let (mut terms, mut ids): (Vec<(String, String)>, HashMap<String, String>) = (vec![], HashMap::new());
     for t in radios {
         if ids.len() < 200 && !ids.contains_key(&radio_key(&t)) {
             let base = format!("radio-{}", slug(&t));
-            let id = std::iter::once(base.clone()).chain((2..).map(|n| format!("{base}-{n}"))).find(|s| !used.contains(s)).unwrap();
+            let id = free_id(&base, &used, &mut next);
             used.insert(id.clone());
             keys.entry(norm(&t)).or_insert(id.clone());
             ids.insert(radio_key(&t), id.clone());
@@ -277,7 +278,7 @@ fn link_anchors(d: &mut Doc) {
             Some(c) => c.clone(),
             None => {
                 let base = slug(&crate::notes::heading_bare(&plain(&spans(&h.title))));
-                std::iter::once(base.clone()).chain((2..).map(|n| format!("{base}-{n}"))).find(|s| !used.contains(s)).unwrap()
+                free_id(&base, &used, &mut next)
             }
         };
         used.insert(h.id.clone());
@@ -290,6 +291,18 @@ fn link_anchors(d: &mut Doc) {
         d.toc.push((h.level, crate::notes::heading_bare(&plain(&spans(&h.title))), h.id.clone()));
     }
     d.anchors = keys;
+}
+
+/// First unused `base`, `base-2`, `base-3`, …; `next` remembers where each base's search left off (N same-title headings cost O(N), not O(N²)).
+fn free_id(base: &str, used: &std::collections::HashSet<String>, next: &mut HashMap<String, usize>) -> String {
+    let n = next.entry(base.to_string()).or_insert(1);
+    loop {
+        let id = if *n == 1 { base.to_string() } else { format!("{base}-{n}") };
+        *n += 1;
+        if !used.contains(&id) {
+            return id;
+        }
+    }
 }
 
 fn blocks(lines: &[&str], kw: &Kw, doc: &mut Doc) -> Vec<Block> {
@@ -1127,6 +1140,17 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
 1. first\n2) second\n\n| Name | Qty |\n|------+-----|\n| <a> | 1 |\n|------+-----|\n| Sum | 1 |\n#+TBLFM: $2=vsum(@I..@II)\n\n\
 #+begin_src rust\nfn x() -> &'a str { \"<\" }\n#+end_src\n#+begin_quote\nQuoted /line/.\n#+end_quote\n#+BEGIN_EXAMPLE\n  <raw>\n#+END_EXAMPLE\n\
 ** DONE See [[id:abc][Other note]] and [[file:pic.png]] and [[file:doc.org][doc]]\n-----\n";
+
+    #[test]
+    fn duplicate_heading_ids_count_up_and_skip_taken() {
+        let h = |t: &str| html(&parse(t, &kw()), "x", Path::new("/n"), &Ids::new(), false);
+        let o = h("* X\n* A\n:PROPERTIES:\n:CUSTOM_ID: x-2\n:END:\n* X\n* X\n* X\n");
+        for id in ["id=\"x\"", "id=\"x-2\"", "id=\"x-3\"", "id=\"x-4\"", "id=\"x-5\""] {
+            assert!(o.contains(id), "{id} in {o}");
+        }
+        let big = h(&"* X\n".repeat(5000));
+        assert!(big.contains("id=\"x-5000\"") && !big.contains("id=\"x-5001\""));
+    }
 
     #[test]
     fn export_skips_encrypted_blocks() {
