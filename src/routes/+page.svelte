@@ -1,6 +1,6 @@
 <script lang="ts">
   import "$lib/theme.css";
-  import { applyLayout, applyLook, applyTheme, nextTheme, setUserLook } from "$lib/theme";
+  import { applyLayout, applyLook, applyTheme, lookLayout, nextTheme, setUserLook } from "$lib/theme";
   import { onMount, tick, untrack } from "svelte";
   import { Channel, invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -3993,6 +3993,17 @@
       await ownCfg(() => call("save_config", { values: { theme: next }, reset: [] }));
       cfg = await call("config");
       flash(`Theme: ${next || "system"}`);
+    } },
+    { label: "View: pick a theme (look and its layout)", run: async () => {
+      const names = ["classic", "retro", ...(await call<string[]>("list_looks"))];
+      const cur = cfg?.config.look || "classic";
+      const name = (await pick({ prompt: "Theme", items: names.map((n) => ({ label: n, detail: n === cur ? "current" : undefined, value: n as unknown })) })) as string | null;
+      if (name == null) return;
+      // A user look's `/* layout: NAME */` header sets the layout too; built-ins and header-less files leave it alone.
+      const layout = lookLayout(name === "classic" || name === "retro" ? null : await call<string | null>("read_look", { name }));
+      await ownCfg(() => call("save_config", { values: { look: name === "classic" ? "" : name, ...(layout != null && { layout }) }, reset: [] }));
+      cfg = await call("config");
+      flash(`Theme: ${name}${layout ? ` · layout ${layout}` : ""}`);
     } },
     { label: "View: reset zoom (Ctrl/Cmd+= / - / 0 zoom in / out / reset)", leader: "v 0", run: resetZoom },
     { label: "Fold / unfold all headings (Tab folds one)", keys: ["Shift+Tab"], ctx: "normal", run: () => ed.orgShiftTab(view) },

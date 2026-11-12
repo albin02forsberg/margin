@@ -769,7 +769,7 @@ The `s`/`d` prompts offer *Every day* / *Every week* picks (the New task dialog 
 
 Set `spellcheck = true` (Settings, Editor) to underline misspelled words in org notes with the system spell checker. On Linux the webview needs a system checker (hunspell/enchant) installed; Margin turns on WebKitGTK's checker for you, and toggling the setting applies without a restart. On Linux, `spellcheck_languages = ["sv_SE", "en_US"]` (one per line in Settings) picks the dictionaries instead of the system locale; each needs its hunspell dictionary installed.
 
-Margin follows the OS light/dark setting. `theme = "light"` or `"dark"` (Settings, Editor) overrides it, applied without a restart (`Space v d` cycles system / light / dark; diagrams re-render too; exports stay light; the native window frame follows it too). `look = "retro"` (Settings, Editor) switches to the built-in retro look: flat, square corners, 1px borders, monospace everywhere, no animations, with a terminal-style dark and a classic grey light palette that still follow the theme (empty is the default look). It works by setting a `data-look` attribute on the window root. `layout` (Settings, Editor) does the same for placement: it sets `data-layout` on the root, so CSS can move the top bar, tabs and side panels (only the default layout so far).
+Margin follows the OS light/dark setting. `theme = "light"` or `"dark"` (Settings, Editor) overrides it, applied without a restart (`Space v d` cycles system / light / dark; diagrams re-render too; exports stay light; the native window frame follows it too). `look = "retro"` (Settings, Editor) switches to the built-in retro look: flat, square corners, 1px borders, monospace everywhere, no animations, with a terminal-style dark and a classic grey light palette that still follow the theme (empty is the default look). It works by setting a `data-look` attribute on the window root. `layout` (Settings, Editor) does the same for placement: it sets `data-layout` on the root, so CSS can move the top bar, tabs and side panels. Besides the default there are two built-in layouts: `compact` tightens the spacing everywhere, and `rail` turns the top bar into a column on the left (views stacked, search, settings and the clock at its foot).
 
 **Your own look:** drop a CSS file into `looks/` beside `config.toml` (the folder Settings shows for config.toml, e.g. `~/.config/dev.albin.margin/looks/paper.css` on Linux)
 and pick `paper` under Look in Settings (or set `look = "paper"`). Margin adds the file after its own styles, sets
@@ -788,6 +788,11 @@ headings `--h1` to `--h6`, surfaces `--card`, `--canvas`, fonts `--sans`, `--mon
 ```
 
 Use `:root[data-look]` (not plain `:root`) so your values win over the built-in light palette.
+
+**Themes:** a look file can bring its layout along. Start it with a `/* layout: rail */` comment (any layout name;
+`/* layout: */` means the default), then pick it with **View: pick a theme** in the palette (`Ctrl+K`): that saves both
+`look` and `layout` to config.toml. After that `layout` is a normal setting, so changing it in Settings sticks. Picking a
+built-in look or a file without the comment leaves the layout as it is (choosing a look under Settings never touches it).
 
 A look can also move the shell's regions. Each one carries a `data-region` attribute (`nav` for the top bar, `body`
 around tabs, editor and status bar, `tabs`, `main`, `side` for the outline, graph, chat, peek and backlinks panels, and

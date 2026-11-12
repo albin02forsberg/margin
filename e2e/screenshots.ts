@@ -374,6 +374,11 @@ async function pngs() {
     await shot("retro");
     await browser.execute(() => { delete document.documentElement.dataset.look; });
   }
+  for (const l of ["rail", "compact"]) if (want(l)) { // #1310: the built-in layouts
+    await browser.execute((l) => { document.documentElement.dataset.layout = l; }, l);
+    await shot(l);
+    await browser.execute(() => { delete document.documentElement.dataset.layout; });
+  }
   if (want("birthday")) { // #1183: Maja's birthday heads-up in Today
     await find(".agenda .row .title", "Maja");
     await shot("birthday");
