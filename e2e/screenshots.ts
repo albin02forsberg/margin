@@ -31,7 +31,7 @@ function write(path: string, text: string) {
 }
 
 /** config.toml lines on top of setup.ts's. */
-const config = [`templates = []`, `ledger_budgets = ["food=200", "transport=60"]`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`, ``, `[[feeds]]`, `name = "Orchard blog"`, `url = "https://blog.example/feed.xml"`, ``, `[[feeds]]`, `name = "Release notes"`, `url = "https://releases.example/atom.xml"`, `heading = "Upgrades"`];
+const config = [`templates = []`, `ledger_budgets = ["food=200", "transport=60"]`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`, ``, `[[feeds]]`, `name = "Orchard blog"`, `url = "https://blog.example/feed.xml"`, ``, `[[feeds]]`, `name = "Release notes"`, `url = "https://releases.example/atom.xml"`, `heading = "Upgrades"`, ``, `[tag_colors]`, `work = "#3b82f6"`, `docs = "#16a34a"`];
 
 /** A small Markdown vault outside the notes folder, for the import preview (#900). */
 let vault = "";

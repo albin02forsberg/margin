@@ -883,7 +883,7 @@ key matches, Tab folds the heading as usual.
 
 ### Tag colors
 
-Give tag chips in the agenda and the outline panel a color in `config.toml`
+Give tag chips in the agenda, the outline panel and the editor headings a color in `config.toml`
 (`#rrggbb`, exact tag name; quote tags with `@` or other non-bare characters):
 
 ```toml

@@ -311,6 +311,7 @@
       startup,
       folds: foldKeys ?? (startup && path ? folds[path] : undefined),
       ...kw(),
+      tagColors: cfg.config.tag_colors,
       path,
       onUpdate: countWords,
       onChange: (u) => {

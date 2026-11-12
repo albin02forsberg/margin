@@ -1,5 +1,6 @@
 // CodeMirror 6 setup: vim, org styling (decorations that hide markup except on
 // the line being edited), folding, tables, blocks and the structure-editing ops.
+import { tagStyle } from "./tagColor";
 import { Compartment, EditorState, Facet, Prec, StateEffect, StateField, type Extension, type Range, type TransactionSpec } from "@codemirror/state";
 import {
   Decoration, EditorView, GutterMarker, ViewPlugin, WidgetType, drawSelection, gutter, highlightActiveLine, keymap, lineNumbers, showPanel, type DecorationSet, type Panel, type ViewUpdate,
@@ -247,7 +248,7 @@ for (const [keys, d] of [["g;", -1], ["g,", 1]] as const) {
   Vim.mapCommand(keys, "action", `change${d}`, {}, { context: "normal" });
 }
 
-type OrgConf = { todo: string[]; done: string[]; path?: string };
+type OrgConf = { todo: string[]; done: string[]; path?: string; tagColors?: Record<string, string> };
 const orgConf = Facet.define<OrgConf, OrgConf>({ combine: (v) => v[0] ?? { todo: [], done: [] } });
 
 // ---------------------------------------------------------------- document structure
@@ -551,7 +552,7 @@ function decorate(view: EditorView, blocks: Block[], tables: Tbl[]): DecorationS
           let p = ts;
           for (const part of tm[1].split(/(:)/)) {
             if (part === ":") { if (!active) out.push(hide.range(p, p + 1)); }
-            else if (part) out.push(mark("cm-org-tag").range(p, p + part.length));
+            else if (part) { const st = tagStyle(part, conf.tagColors); out.push((st ? Decoration.mark({ class: "cm-org-tag", attributes: { style: st } }) : mark("cm-org-tag")).range(p, p + part.length)); }
             p += part.length;
           }
         }
@@ -1341,7 +1342,7 @@ const theme = EditorView.theme({
   ".cm-org-prio": { fontSize: "0.68em", fontWeight: "700", color: "var(--dim)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "0 0.35em", verticalAlign: "0.18em", fontFamily: "var(--sans)", display: "inline-block", textDecoration: "none" },
   ".cm-org-prio-A": { color: "var(--todo)", borderColor: "color-mix(in srgb, var(--todo) 45%, transparent)" },
   ".cm-org-prio-B": { color: "var(--h5)", borderColor: "color-mix(in srgb, var(--h5) 45%, transparent)" },
-  ".cm-org-tag": { fontSize: "0.68em", fontWeight: "500", color: "var(--dim)", background: "var(--active)", borderRadius: "999px", padding: "0.1em 0.6em", marginLeft: "0.3em", verticalAlign: "0.18em", fontFamily: "var(--sans)", display: "inline-block" },
+  ".cm-org-tag": { fontSize: "0.68em", fontWeight: "500", color: "var(--tag-color, var(--dim))", background: "var(--tag-bg, var(--active))", borderRadius: "999px", padding: "0.1em 0.6em", marginLeft: "0.3em", verticalAlign: "0.18em", fontFamily: "var(--sans)", display: "inline-block" },
   ".cm-org-cookie": { fontSize: "0.75em", color: "var(--dim)", fontFamily: "var(--mono)" },
   ".cm-org-cookie-done": { color: "var(--done)" },
 
@@ -1422,7 +1423,7 @@ export function foldsToKeep(state: EditorState): string[] | null {
 }
 
 /** FOLDS: saved heading folds (`foldKeys`), which replace the `#+STARTUP:` ones. */
-export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; path?: string; startup?: boolean; folds?: string[]; onChange: (u: ViewUpdate) => void; onUpdate?: (s: EditorState, docChanged: boolean) => void }) {
+export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; path?: string; tagColors?: Record<string, string>; startup?: boolean; folds?: string[]; onChange: (u: ViewUpdate) => void; onUpdate?: (s: EditorState, docChanged: boolean) => void }) {
   const ext: Extension[] = [
     vim({ status: true }),
     numConf.of(numExt(eff({}))),
@@ -1445,7 +1446,7 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
   ];
   if (opts.org) {
     ext.push(
-      spellConf.of(spellExt()), orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path }), orgStyle, orgFold, clicks, tableTools, narrowField, transclusion(opts.path, (t) => hooks.follow(t)), toc(() => opts.todo, () => opts.done), diagrams, completion,
+      spellConf.of(spellExt()), orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path, tagColors: opts.tagColors }), orgStyle, orgFold, clicks, tableTools, narrowField, transclusion(opts.path, (t) => hooks.follow(t)), toc(() => opts.todo, () => opts.done), diagrams, completion,
       Prec.high(keymap.of([{ key: "Tab", run: orgTab }, { key: "Shift-Tab", run: orgShiftTab }, { key: "Enter", run: smartEnter },
         // Insert mode only: in normal / visual mode Ctrl+B stays vim's page up.
         { key: "Mod-b", run: (v) => vimInsert(v) && emphasis(v, "*") }, { key: "Mod-i", run: (v) => vimInsert(v) && emphasis(v, "/") }])),
