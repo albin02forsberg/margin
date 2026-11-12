@@ -20,4 +20,10 @@ export function parseWorkspaces(raw: string | null): Workspaces {
 export const workspaceName = (name: string | null | undefined) => name?.trim() || null;
 /** WS with NAME set to S (replacing one with that name); an empty S removes it instead. */
 export const putWorkspace = (ws: Workspaces, name: string, s: Session): Workspaces => (s.tabs.length ? { ...ws, [name]: s } : dropWorkspace(ws, name));
-export const dropWorkspace = (ws: Workspaces, name: string): Workspaces => Object.fromEntries(Object.entries(ws).filter(([k]) => k !== name));
+/** WS with every tab on FROM pointing at TO (a renamed or moved note); WS itself when none does. */
+export function renameInWorkspaces(ws: Workspaces, from: string, to: string): Workspaces {
+  const on = (e: Session["tabs"][number]) => "path" in e && e.path === from;
+  if (!Object.values(ws).some((s) => s.tabs.some(on))) return ws;
+  return Object.fromEntries(Object.entries(ws).map(([k, s]) => [k, { ...s, tabs: s.tabs.map((e) => (on(e) ? { ...e, path: to } : e)) }]));
+}
+export const dropWorkspace =(ws: Workspaces, name: string): Workspaces => Object.fromEntries(Object.entries(ws).filter(([k]) => k !== name));
