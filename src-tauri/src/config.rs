@@ -152,6 +152,8 @@ pub struct Config {
     pub theme: String,
     /// Visual look layered on the theme (`data-look` on the root): empty is the default, `retro` the first alternative.
     pub look: String,
+    /// Placement of the shell's regions (`data-layout` on the root): empty is the default.
+    pub layout: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -367,6 +369,7 @@ impl Default for Config {
             zen_fullscreen: false,
             theme: String::new(),
             look: String::new(),
+            layout: String::new(),
         }
     }
 }
@@ -737,6 +740,13 @@ mod tests {
         assert_eq!(Config::default().look, "");
         assert_eq!(toml::from_str::<Config>("look = \"retro\"").unwrap().look, "retro");
         assert_eq!(toml::from_str::<Config>("").unwrap().look, "");
+    }
+
+    #[test]
+    fn layout_optional() {
+        assert_eq!(Config::default().layout, "");
+        assert_eq!(toml::from_str::<Config>("layout = \"compact\"").unwrap().layout, "compact");
+        assert_eq!(toml::from_str::<Config>("").unwrap().layout, "");
     }
 
     #[test]
