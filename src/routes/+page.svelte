@@ -3663,7 +3663,7 @@
   }
 
   const timeActions: Record<string, (arg?: any) => unknown> = {
-    start: (p?: string) => clockIn(p), stop: clockOut, pause: () => tcDo("tc_break"), resume: () => tcDo("tc_resume"),
+    start: (p?: string) => clockIn(p), stop: clockOut, pause: () => tcDo("tc_break"), resume: () => tcDo("tc_resume"), last: () => tcDo("tc_in_last"),
     switch: changeProject, adjust: adjustStart, stopEarlier, editSession: (s) => editSession(s), export: exportCsv, exportReport, projects: () => openView("projects"),
     profile: (n) => switchProfile(n), holidays: () => report("holidays", "Holidays"), daily: dailyReport,
     weekly: weeklyReport, monthly: monthlyReport, doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
@@ -3918,6 +3918,7 @@
     { label: "Time: stop", leader: "t o", run: t("stop") },
     { label: "Time: take a break", leader: "t b", run: t("pause") },
     { label: "Time: resume after break", leader: "t r", run: t("resume") },
+    { label: "Time: clock in last session (its project and task again)", leader: "t j", run: t("last") },
     { label: "Time: switch project", leader: "t c", run: t("switch") },
     { label: "Time: I started earlier…", leader: "t a", run: t("adjust") },
     { label: "Time: I stopped earlier…", leader: "t O", run: t("stopEarlier") },

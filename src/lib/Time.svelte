@@ -3,7 +3,7 @@
   export type Session = { date: string; project: string; desc: string; hours: number; start: string; end: string; line: number | null };
   export type TimeApi = {
     act: (f: () => unknown) => void;
-    /** Named actions: start, stop, pause, resume, switch, adjust, editSession, export, exportReport, projects, timeOff,
+    /** Named actions: start, stop, pause, resume, last, switch, adjust, editSession, export, exportReport, projects, timeOff,
      *  open ({path, line?}), profile, holidays, daily, weekly, doctor, backup, backupLog, rawLog, import, acceptSuggestion, editSuggestion, logSession, estimates, rhythm, activity. */
     run: (name: string, arg?: unknown) => Promise<void>;
   };
@@ -79,7 +79,7 @@
   const removeOff = (line: number) => api.act(async () => { await invoke("tc_leave_remove", { line }); await refresh(); });
   const offHours = (l: any) => (l.rest ? "rest of day" : l.hours ? `${hm(l.hours)}/day` : "full day");
 
-  const KEYS: Record<string, string> = { i: "start", o: "stop", p: "pause", r: "resume", c: "switch", a: "adjust", n: "logSession", e: "export", E: "exportReport", O: "stopEarlier", S: "editSession", L: "timeOff", t: "daily", w: "weekly" };
+  const KEYS: Record<string, string> = { i: "start", o: "stop", p: "pause", r: "resume", j: "last", c: "switch", a: "adjust", n: "logSession", e: "export", E: "exportReport", O: "stopEarlier", S: "editSession", L: "timeOff", t: "daily", w: "weekly" };
   function key(e: KeyboardEvent) {
     if (e.ctrlKey || e.metaKey || e.altKey || (e.target as HTMLElement).closest("input, select")) return;
     if (sugg && (e.key === "h" || e.key === "l")) return shiftDay(e.key === "h" ? -1 : 1);
@@ -134,6 +134,7 @@
               <button class="primary" onclick={() => run("resume")}><kbd>r</kbd>Resume</button>
             {:else}
               <button class="primary" onclick={() => run("start")}><kbd>i</kbd>Start tracking</button>
+              <button onclick={() => run("last")}><kbd>j</kbd>Clock in last session</button>
             {/if}
             <button onclick={() => run("logSession")}><kbd>n</kbd>Log a past session…</button>
           </div>
