@@ -1375,7 +1375,8 @@ title), as do `<<target>>`s and `#+NAME`s, so same-note links work in the export
 heading) jump there; one pointing at nothing in the export becomes plain text. A radio
 target `<<<Term>>>` becomes an anchor and every whole-word mention of "Term" (any case,
 outside code and links) a link to it, as in the editor. A `#+TOC: headlines` line
-(`#+TOC: headlines 2` stops at level 2) becomes a nested table of contents linking to the
+(`#+TOC: headlines 2` stops at level 2; add `local`, as in `#+TOC: headlines local`, to list only
+the subtree of the heading it sits under, depth counted from it) becomes a nested table of contents linking to the
 exported headings (`:noexport:`/`COMMENT` subtrees left out, transcluded headings not listed;
 nothing is written into the note). In the editor the same line shows the outline read-only
 under it (click an entry to jump to the heading). Markdown
