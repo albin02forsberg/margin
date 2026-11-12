@@ -26,6 +26,7 @@
   import { fmtEffort } from "$lib/effort";
   import { buildTimeline, timelineMarkdown, type Entry as TimelineEntry } from "$lib/timeline";
   import { clockBlocks } from "$lib/clocktable";
+  import { resumeOffer, type Clock } from "$lib/interrupt";
   import { pickStale } from "$lib/stale";
   import { visibleCmds } from "$lib/areas";
   import { lineDiff } from "$lib/linediff";
@@ -3250,8 +3251,33 @@
     call<number>("inbox_count").then((n) => (inboxCount = n), () => {});
   });
 
+  /** Clocks Space t ! interrupted, innermost last (in memory only: dropped on restart, #1293). */
+  const interrupted: Clock[] = [];
+
   async function refreshTc() {
-    tc = await call("tc_status");
+    const next = await call<any>("tc_status");
+    const c = resumeOffer(interrupted, tc, next); // compared after the await, so concurrent refreshes don't both pop
+    tc = next;
+    if (c) act(() => offerResume(c));
+  }
+
+  /** Space t !: stack the running clock (or the break's project) and clock in on an interruption; stopping it offers the stacked one back. */
+  async function interrupt() {
+    await refreshTc();
+    const cur = tc.project != null ? { project: tc.project, task: tc.task ?? "" } : tc.on_break != null ? { project: tc.on_break, task: "" } : null;
+    const p = await pickProject(cur ? `Interrupt “${cur.project || "Other"}” for` : "Track the interruption on", "Interruption");
+    if (!p) return;
+    await tcDo("tc_in", { project: p.project || "Interruption", task: "", exportCode: p.code }); // its auto clock-out closes the running session
+    if (cur) interrupted.push(cur);
+  }
+
+  async function offerResume(c: Clock) {
+    const what = (c.project || "Other") + (c.task ? ` / ${c.task}` : "");
+    const yes = await pick({ prompt: "Interruption over", items: [{ label: `Resume ${what}`, value: true }, { label: "Not now", value: false }] });
+    if (!yes) return;
+    await refreshTc();
+    if (tc.project != null) return flash(`Already tracking “${tc.project || "Other"}”; ${what} not resumed.`);
+    await tcDo("tc_in", { project: c.project, task: c.task, exportCode: null });
   }
 
   async function tcDo(cmd: string, args?: Record<string, unknown>) {
@@ -3663,7 +3689,7 @@
   }
 
   const timeActions: Record<string, (arg?: any) => unknown> = {
-    start: (p?: string) => clockIn(p), stop: clockOut, pause: () => tcDo("tc_break"), resume: () => tcDo("tc_resume"), last: () => tcDo("tc_in_last"),
+    start: (p?: string) => clockIn(p), stop: clockOut, pause: () => tcDo("tc_break"), resume: () => tcDo("tc_resume"), last: () => tcDo("tc_in_last"), interrupt,
     switch: changeProject, adjust: adjustStart, stopEarlier, editSession: (s) => editSession(s), export: exportCsv, exportReport, projects: () => openView("projects"),
     profile: (n) => switchProfile(n), holidays: () => report("holidays", "Holidays"), daily: dailyReport,
     weekly: weeklyReport, monthly: monthlyReport, doctor: () => report("doctor", "Log check"), backup: () => tcDo("backup_now"),
@@ -3920,6 +3946,7 @@
     { label: "Time: resume after break", leader: "t r", run: t("resume") },
     { label: "Time: clock in last session (its project and task again)", leader: "t j", run: t("last") },
     { label: "Time: switch project", leader: "t c", run: t("switch") },
+    { label: "Time: interrupt (clock in on an interruption; stopping it offers the previous clock back)", leader: "t !", run: t("interrupt") },
     { label: "Time: I started earlier…", leader: "t a", run: t("adjust") },
     { label: "Time: I stopped earlier…", leader: "t O", run: t("stopEarlier") },
     { label: "Time: day report", leader: "t t", run: t("daily") },
