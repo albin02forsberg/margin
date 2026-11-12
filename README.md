@@ -112,7 +112,12 @@ graph, and `Enter` on a link follows it. `Shift+Enter` (or `Space l p`) on a lin
 the linked note or heading shows read-only in a side panel, `Enter` there opens it, `Esc` closes it (a note with unsaved edits peeks from its buffer, not the disk). `Space n O` lists notes with no links in or out
 (journal and inbox left out), most recently changed first. `Space n L` lists broken links: `[[id:]]` links to an
 unknown ID, `[[file:]]` links to a missing file or to a `::*Heading` / `::#custom-id` the file lacks,
-and same-file `[[*Heading]]` / `[[#custom-id]]` links; `Enter` opens the note at the link. `Space n T` browses notes by tag:
+and same-file `[[*Heading]]` / `[[#custom-id]]` links; `Enter` opens the note at the link. `Space n W` checks the
+web links (`[[https://…]]`, with or without a description) in every note outside the trash, 6 at a time: dead ones (an HTTP error,
+a timeout, an unknown host) are listed first, then moved ones (a permanent 301/308 redirect, with the new URL). `Enter`
+opens the note at the link, and `Ctrl+R` on a moved link rewrites it to the new URL through the text replace preview
+(old copies in `.trash`, undone like a text replace). It only runs when asked and only contacts the linked hosts; over
+200 links it asks first, `Esc` stops it, and results are kept for the session so a rerun only checks new links. `Space n T` browses notes by tag:
 pick a tag from `#+FILETAGS:` or a non-task heading's own tags (with counts, any case), then
 the note or heading to open. `Ctrl+R` on a tag there (or *Notes: rename or merge a tag…* in the
 palette) renames it everywhere: heading tags (tasks too), `#+FILETAGS:` and `tag:` terms in saved
@@ -729,6 +734,7 @@ Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`) show l
 | Space x a | Archive every done task of the note to `<note>.org_archive` (top-most done subtrees, in order; repeaters and `:ARCHIVE:` subtrees stay); `u` / Space n u undoes both files |
 | Space n b | Notes linking here, plus unlinked mentions of this note's title (**Link** turns one into an `[[id:]]` link; Space n u undoes) |
 | Space n L | Broken links in notes (journal, inbox and trash not scanned; links inside src/example/export blocks ignored): unknown `[[id:]]`, missing `[[file:]]` targets, headings or `CUSTOM_ID`s; Enter opens the note at the link |
+| Space n W | Check the web links in notes: dead and moved (301/308) URLs; Enter opens the note at the link, Ctrl+R rewrites a moved one (preview first); Esc stops the check |
 | Space n g | Graph of notes within two links of this one; click a note to open it |
 | Shift+Enter / Space l p | Peek at the link at the cursor: its note or heading shows read-only beside the editor (a drawer under 1000 px); Enter opens it, Esc closes |
 | Space n r | Rename this note (same folder, `.org` added if missing); `[[file:]]` links to it in other notes are updated after a backup, `[[id:]]` links need nothing |

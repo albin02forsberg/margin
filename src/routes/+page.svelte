@@ -72,6 +72,7 @@
   import * as nav from "$lib/navhistory";
   import { birthdayPerson, byLastContact, lastLine, peopleFrom, personName, personRows, type LastContact } from "$lib/people";
   import { waitingRows, type Waiting } from "$lib/waiting";
+  import { failing, linkLabel, pool, rewrite, type LinkStatus, type WebLink } from "$lib/linkcheck";
   import { addBookmark, bookmarkAt, mergeBookmarks, moveBookmarks, parseBookmarks, removeBookmark, resolveBookmark, retitleBookmarks, type Bookmark } from "$lib/bookmarks";
   import Chat, { type ChatMsg, type Source } from "$lib/Chat.svelte";
   import { pushRecent, sortByRecent, parseRecents } from "$lib/recents";
@@ -2299,6 +2300,34 @@
     if (r) { const b = r as (typeof o)[number]; await openFile(b.path, b.line); }
   }
 
+  /** Web link checks of this session, by URL, so a rerun only checks new links (#1325). */
+  const linkChecks = new Map<string, LinkStatus>();
+  /** Space n W: check the web links in notes (#1325), 6 at a time, asking first above 200; lists dead and moved
+   *  ones. Enter opens the note at the link, Ctrl+R rewrites a moved one via the text replace preview. */
+  async function checkWebLinks() {
+    const links = await call<WebLink[]>("notes_web_links");
+    if (!links.length) return flash("No web links in notes");
+    const todo = links.filter((l) => !linkChecks.has(l.url));
+    if (todo.length > 200 && (await pick({ prompt: `Check ${todo.length} web links? Each linked host gets a request.`, items: [{ label: "Check them", value: true }, { label: "Cancel", value: null }] })) !== true) return;
+    let stop = false, open = !!todo.length, n = 0;
+    if (open) pick({ prompt: `Checking ${todo.length} web links…`, hint: "Esc stops; the links checked so far are listed", items: [{ label: "Stop", value: null }] }).then(() => { if (open) [stop, open] = [true, false]; });
+    await pool(todo, 6, async (l) => {
+      linkChecks.set(l.url, await call<LinkStatus>("link_status", { url: l.url }).catch((e) => ({ kind: "dead" as const, reason: String(e) })));
+      flash(`Checked ${++n} of ${todo.length} web links`);
+    }, () => stop);
+    if (open) { open = false; picker!.close(); }
+    const bad = failing(links, linkChecks);
+    const unchecked = links.filter((l) => !linkChecks.has(l.url)).length;
+    if (!bad.length) return flash(`All ${links.length - unchecked} checked web links work${unchecked ? `; ${unchecked} not checked` : ""}`);
+    const r = await pick({ prompt: `Web links: ${bad.length} dead or moved of ${links.length}${unchecked ? ` (${unchecked} not checked)` : ""}`, hint: "Ctrl+R rewrites a moved link (preview first)", actions: { r: "rewrite" },
+      items: bad.map((b) => ({ label: linkLabel(b.link, b.status), detail: `${rel(b.link.path)}:${b.link.line + 1}`, warn: b.status.kind === "dead", value: b as unknown })) });
+    if (!r) return;
+    const { action, value } = (typeof r === "object" && "action" in r ? r : { action: null, value: r }) as { action: string | null; value: (typeof bad)[number] };
+    if (!action) return openFile(value.link.path, value.link.line);
+    if (value.status.kind !== "moved") return flash("Only a moved link can be rewritten");
+    await replaceInNotes(rewrite(value.link.url, value.status.to));
+  }
+
   /** `:crypt:` headings whose body isn't locked (#1169); Enter opens the note at the heading. */
   async function findUnlockedCrypt() {
     const o = await call<{ path: string; line: number; title: string; text: string }[]>("notes_crypt_unlocked");
@@ -2447,17 +2476,17 @@
   type TextReplace = { hits: ReplaceHit[]; lines: number; notes: number; stale: string[]; skipped: string[]; errors: string[]; copies: string | null };
   /** Space n S: replace literal text in all notes after a preview of every changed line, each ticked until ↵
    *  unticks it (#872). Notes with unsaved edits are skipped; old copies go to .trash (undo like a tag rename). */
-  async function replaceInNotes() {
-    const find = await ask("Replace in all notes", "", "literal text on one line");
+  async function replaceInNotes(pre?: [string, string]) {
+    const find = pre ? pre[0] : await ask("Replace in all notes", "", "literal text on one line");
     if (!find) return;
-    const repl = await ask(`Replace “${find}” with`, find);
+    const repl = pre ? pre[1] : await ask(`Replace “${find}” with`, find);
     if (repl == null) return;
     const skip = () => tabs.filter((t) => t.kind === "file" && t.dirty).map((t) => t.path!); // never overwrite unsaved edits
     const s = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
     // The preview lists 298 hits at most, with lines/notes counting all; past 297 the apply is "all" (#902).
     const args = (caseOn: boolean, accept: [string, number, string][] | "all" | null) =>
       ({ find, replace: repl, opts: { case: caseOn, word, links }, skip: skip(), accept, limit: 298 });
-    let caseOn = true, word = false, links = false, p: TextReplace | null = null, off = new Set<string>(), at = 0;
+    let caseOn = true, word = false, links = !!pre, p: TextReplace | null = null, off = new Set<string>(), at = 0;
     for (;;) {
       p ??= await call<TextReplace>("notes_replace", args(caseOn, null)).catch((e) => (flash(`⚠ ${e}`), null));
       if (!p) return;
@@ -3838,6 +3867,7 @@
     { label: "Jump to a note linking here…", leader: "n l", run: pickBacklink },
     { label: "Notes: find notes with no links…", leader: "n O", run: findOrphans },
     { label: "Notes: find broken links…", leader: "n L", run: findBrokenLinks },
+    { label: "Notes: check web links (dead or moved)…", leader: "n W", run: checkWebLinks },
     { label: "Notes: find :crypt: headings that aren't locked…", run: findUnlockedCrypt },
     { label: "Notes: recently changed…", leader: "n C", run: recentlyChanged },
     { label: "Notes: open a random note, older ones likelier", leader: "n *", run: () => staleNotes(true) },
