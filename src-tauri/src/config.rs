@@ -76,6 +76,8 @@ pub struct Config {
     pub templates_dir: String,
     /// RSS/Atom feeds whose new items `Fetch feeds` files as reading-list TODOs: `[[feeds]] name url file heading`.
     pub feeds: Vec<Feed>,
+    /// Tag chip colors, `[tag_colors]` tag = "#rrggbb" (exact tag; quote keys like "@home"). Config-file only.
+    pub tag_colors: std::collections::BTreeMap<String, String>,
     /// Editor snippets: `<key` + Tab inserts text (`[[snippets]] key text`, %t/%U dates, %? cursor).
     pub snippets: Vec<Snippet>,
     /// Dropped and pasted files go to <attachments_dir>/<note name>/, relative to notes_dir.
@@ -328,6 +330,7 @@ impl Default for Config {
             ],
             templates_dir: "templates".into(),
             feeds: vec![],
+            tag_colors: Default::default(),
             snippets: vec![],
             attachments_dir: "attachments".into(),
             images_dir: "images".into(),
@@ -712,6 +715,15 @@ pub fn remove_key(text: &str, key: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tag_colors_parse_and_roundtrip() {
+        assert!(Config::default().tag_colors.is_empty());
+        let c = toml::from_str::<Config>("[tag_colors]\nwork = \"#ff8800\"\n\"@home\" = \"#00aa00\"").unwrap();
+        assert_eq!(c.tag_colors["@home"], "#00aa00");
+        let back = toml::from_str::<Config>(&toml::to_string(&c).unwrap()).unwrap();
+        assert_eq!(back.tag_colors, c.tag_colors);
+    }
 
     #[test]
     fn spellcheck_languages_parse() {

@@ -1,8 +1,9 @@
 <script lang="ts">
   // Outline panel (#915): the note's headings; ACTIVE is the line of the heading holding the cursor.
   import { visibleOutline, type OutlineItem } from "$lib/outline";
+  import { tagStyle } from "$lib/tagColor";
 
-  let { items, active, jump }: { items: OutlineItem[]; active: number; jump: (line: number) => void } = $props();
+  let { items, active, jump, tagColors }: { items: OutlineItem[]; active: number; jump: (line: number) => void; tagColors?: Record<string, string> } = $props();
   let filter = $state("");
   let hideDone = $state(false);
   let list = $state<HTMLElement>();
@@ -21,7 +22,7 @@
       {#if it.keyword}<em class="kw">{it.keyword}</em>{/if}
       <span class="t">{it.title || "(untitled)"}</span>
       {#if it.cookie}<small>{it.cookie}</small>{/if}
-      {#each it.tags as tag}<small class="tag">:{tag}:</small>{/each}
+      {#each it.tags as tag}<small class="tag" style={tagStyle(tag, tagColors)}>:{tag}:</small>{/each}
     </button>
   {:else}
     <p>{items.length ? "No matching headings." : "This note has no headings."}</p>
@@ -41,4 +42,5 @@
   .done .kw { color: var(--done); background: color-mix(in srgb, var(--done) 18%, transparent); }
   small { color: var(--dim); font: var(--fs-xs) var(--mono); }
   p { color: var(--dim); margin: 6px; font-size: var(--fs-sm); }
+  .tag { color: var(--tag-color, var(--dim)); background: var(--tag-bg, none); border-radius: var(--radius-sm); }
 </style>

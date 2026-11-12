@@ -880,6 +880,17 @@ text), `%%` is a literal `%`. Lines after the first get the indent of the line y
 typed the key on. Your keys win over the built-in blocks (`<s`, `<q`, …). When no
 key matches, Tab folds the heading as usual.
 
+### Tag colors
+
+Give tag chips in the agenda and the outline panel a color in `config.toml`
+(`#rrggbb`, exact tag name; quote tags with `@` or other non-bare characters):
+
+```toml
+[tag_colors]
+work = "#3b82f6"
+"@home" = "#16a34a"
+```
+
 ### Table formulas
 
 Put formulas on a `#+TBLFM:` line under the table, separated by `::` — or type
