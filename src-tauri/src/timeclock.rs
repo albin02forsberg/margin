@@ -522,6 +522,25 @@ impl Tc {
         Ok(Some(project))
     }
 
+    /// Project and task of the last stopped session (org-clock-in-last); None while clocked in or on a break.
+    pub fn last_session(&self) -> Option<(String, String)> {
+        let ev = self.events();
+        if !matches!(ev.last(), Some((_, Event::Out { .. }))) {
+            return None;
+        }
+        ev.into_iter().rev().find_map(|(_, e)| match e {
+            Event::In { project, task, .. } => Some((project, task)),
+            _ => None,
+        })
+    }
+
+    /// Clock in on `last_session`; returns its project and task, or None if there is none.
+    pub fn clock_in_last(&self) -> Result<Option<(String, String)>, String> {
+        let Some((project, task)) = self.last_session() else { return Ok(None) };
+        self.append(&Event::In { t: now(), project: project.clone(), task: task.clone() })?;
+        Ok(Some((project, task)))
+    }
+
     /// Move the current session's start back by MINUTES, but not before the previous session's end.
     pub fn adjust_start(&self, minutes: i64) -> Result<bool, String> {
         let mut ev = self.events();
@@ -1972,6 +1991,25 @@ mod tests {
         assert!(diary.contains("*Acme* (30m): Automatically switched to Other"), "{diary}");
         assert!(diary.contains("*Other* (0m): done"));
         assert!(doctor(&tc.read_log(), now()).is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn clock_in_last_session() {
+        let dir = std::env::temp_dir().join(format!("tc-last-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let tc = Tc { dir: dir.join("work"), diary: dir.join("notes/dagbok-work.org"), cal: w(8.0) };
+        assert_eq!(tc.clock_in_last().unwrap(), None); // never clocked in
+        tc.clock_in("Acme", "Review", None).unwrap();
+        assert_eq!(tc.last_session(), None); // clocked in
+        tc.take_break().unwrap();
+        assert_eq!(tc.last_session(), None); // on a break: `resume` handles it
+        tc.resume().unwrap();
+        tc.clock_in("Other", "Call", None).unwrap();
+        tc.clock_out("").unwrap();
+        assert_eq!(tc.clock_in_last().unwrap(), Some(("Other".into(), "Call".into())));
+        assert_eq!(tc.current().map(|c| (c.1, c.2)), Some(("Other".into(), "Call".into())));
+        assert_eq!(tc.clock_in_last().unwrap(), None); // already in
         let _ = fs::remove_dir_all(&dir);
     }
 
