@@ -4,14 +4,22 @@ import { StateField, type EditorState, type Extension, type Range } from "@codem
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 import { bareTitle, headTitle } from "./links.ts";
 
-const DIRECTIVE = /^\s*#\+toc:\s*headlines(?:\s+(\d+))?\s*$/i;
+const DIRECTIVE = /^\s*#\+toc:\s*headlines(?:\s+(\d+))?(\s+local)?\s*$/i;
+/** `#+TOC: headlines [N] [local]` line: depth N (0 = all levels) and `local`; null when LINE isn't one. */
+export const tocDirective = (line: string) => { const m = DIRECTIVE.exec(line); return m ? { depth: Number(m[1] ?? 0), local: !!m[2] } : null; };
 /** Depth of a `#+TOC: headlines [N]` line (0 = all levels), or null when LINE isn't one. */
-export const tocDepth = (line: string) => { const m = DIRECTIVE.exec(line); return m ? Number(m[1] ?? 0) : null; };
+export const tocDepth = (line: string) => tocDirective(line)?.depth ?? null;
 
 export type Entry = { line: number; level: number; title: string };
 const MAX = 500;
-/** Headings of DOC (0-based `line`) down to level DEPTH (0 = all); skips `* ` lines in blocks and noexport/COMMENT subtrees. */
-export function tocEntries(doc: string, todo: string[], done: string[], depth = 0): Entry[] {
+/** Headings of DOC (0-based `line`) down to level DEPTH (0 = all); skips `* ` lines in blocks and noexport/COMMENT subtrees.
+ *  With AT (0-based line of a `local` TOC): only the subtree of the heading above it, DEPTH counted from it (none above: all). */
+export function tocEntries(doc: string, todo: string[], done: string[], depth = 0, at = -1): Entry[] {
+  if (at >= 0) {
+    const all = tocEntries(doc, todo, done), i = all.findLastIndex((e) => e.line < at), base = i < 0 ? 0 : all[i].level;
+    const sub = all.slice(i + 1), n = sub.findIndex((e) => e.level <= base);
+    return (n < 0 || i < 0 ? sub : sub.slice(0, n)).filter((e) => !depth || e.level <= base + depth);
+  }
   const out: Entry[] = [], kw = [...todo, ...done];
   let block = false, skip = 0; // skip: level of the excluded heading whose subtree we're in
   doc.split("\n").forEach((text, line) => {
@@ -66,9 +74,9 @@ export function toc(todo: () => string[], done: () => string[]): Extension {
       const l = s.doc.line(i);
       if (/^\s*#\+begin_/i.test(l.text)) block = true;
       else if (/^\s*#\+end_/i.test(l.text)) block = false;
-      const depth = !block && l.text.includes("#+") ? tocDepth(l.text) : null;
-      if (depth == null) continue;
-      const entries = tocEntries((doc ??= s.doc.toString()), todo(), done(), depth);
+      const dir = !block && l.text.includes("#+") ? tocDirective(l.text) : null;
+      if (!dir) continue;
+      const entries = tocEntries((doc ??= s.doc.toString()), todo(), done(), dir.depth, dir.local ? i - 1 : -1);
       if (entries.length) ranges.push(Decoration.widget({ widget: new Toc(entries), block: true, side: 1 }).range(l.to));
     }
     return Decoration.set(ranges);

@@ -59,8 +59,9 @@ pub enum Block {
     Rule,
     /// `#+NAME: name`: an anchor for links to it.
     Anchor(String),
-    /// `#+TOC: headlines [N]`: the page's headings down to level N (all when None) as nested links.
-    Toc(Option<usize>),
+    /// `#+TOC: headlines [N] [local]`: the page's headings down to level N (all when None) as nested links; `local`
+    /// holds (headings before it, enclosing level) and limits it to that heading's subtree, N counted from it.
+    Toc(Option<usize>, Option<(usize, usize)>),
 }
 
 /// Where an export's links go. IDS: id → file name of the exported page holding it (or its `#p-N` section in a
@@ -380,7 +381,17 @@ fn blocks(lines: &[&str], kw: &Kw, doc: &mut Doc) -> Vec<Block> {
             } else if let Some(v) = lower.strip_prefix("#+toc:") {
                 let mut w = v.split_whitespace();
                 if w.next() == Some("headlines") {
-                    out.push(Block::Toc(w.next().and_then(|n| n.parse().ok()).filter(|&n| n > 0)));
+                    let (mut depth, mut local) = (None, false);
+                    for x in w {
+                        match x.parse::<usize>() {
+                            Ok(n) => depth = Some(n).filter(|&n| n > 0),
+                            _ => local |= x == "local",
+                        }
+                    }
+                    // Above the first heading `local` means the whole document, as in org.
+                    let at = out.iter().filter(|b| matches!(b, Block::Heading(_))).count();
+                    let lv = out.iter().rev().find_map(|b| if let Block::Heading(h) = b { Some(h.level) } else { None });
+                    out.push(Block::Toc(depth, lv.filter(|_| local).map(|l| (at, l))));
                 }
             }
         } else if t.starts_with('|') {
@@ -575,9 +586,11 @@ fn each_block(bs: &[Block], f: &mut impl FnMut(&Block)) {
 
 /// D's `#+TOC:` entries down to level DEPTH as (nesting depth, title, id): a heading nests under the nearest
 /// shallower one listed before it, so skipped levels nest one step.
-fn toc(d: &Doc, depth: Option<usize>) -> Vec<(usize, &str, &str)> {
+fn toc(d: &Doc, depth: Option<usize>, local: Option<(usize, usize)>) -> Vec<(usize, &str, &str)> {
     let mut open: Vec<usize> = vec![];
-    d.toc.iter().filter(|(l, ..)| depth.is_none_or(|n| *l <= n)).map(|(l, t, id)| {
+    let (from, base) = local.unwrap_or((0, 0));
+    let sub = d.toc.iter().skip(from).take_while(|(l, ..)| local.is_none() || *l > base);
+    sub.filter(|(l, ..)| depth.is_none_or(|n| *l <= base + n)).map(|(l, t, id)| {
         while open.last().is_some_and(|o| o >= l) {
             open.pop();
         }
@@ -827,8 +840,8 @@ fn html_blocks(bs: &[Block], cx: &Cx) -> String {
             Block::Quote(inner) => o += &format!("<blockquote>\n{}</blockquote>\n", html_blocks(inner, cx)),
             Block::Rule => o += "<hr>\n",
             Block::Anchor(n) => o += &(cx.anchor(&name_id(n)) + "\n"),
-            Block::Toc(depth) => {
-                let es = toc(cx.doc, *depth);
+            Block::Toc(depth, local) => {
+                let es = toc(cx.doc, *depth, *local);
                 if es.is_empty() {
                     continue;
                 }
@@ -1105,7 +1118,7 @@ fn md_blocks(bs: &[Block], cx: &Cx) -> String {
             Block::Quote(inner) => md_blocks(inner, cx).lines().map(|l| if l.is_empty() { ">".into() } else { format!("> {l}") }).collect::<Vec<_>>().join("\n"),
             Block::Rule => "---".into(),
             Block::Anchor(n) => cx.anchor(&name_id(n)),
-            Block::Toc(depth) => match toc(cx.doc, *depth) {
+            Block::Toc(depth, local) => match toc(cx.doc, *depth, *local) {
                 es if es.is_empty() => continue,
                 es => es.iter().map(|&(n, t, id)| format!("{}- [{}](#{}{id})", "  ".repeat(n), md_esc(t), cx.doc.prefix)).collect::<Vec<_>>().join("\n"),
             },
@@ -1165,7 +1178,7 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
         let d = parse(NOTE, &kw());
         assert_eq!(d.title.as_deref(), Some("Plans <&>"));
         let kinds: Vec<&str> = d.blocks.iter().map(|b| match b {
-            Block::Heading(_) => "h", Block::Para(_) => "p", Block::List(..) => "l", Block::Table(_) => "t", Block::Pre(..) => "pre", Block::Quote(_) => "q", Block::Rule => "hr", Block::Anchor(_) => "a", Block::Toc(_) => "toc",
+            Block::Heading(_) => "h", Block::Para(_) => "p", Block::List(..) => "l", Block::Table(_) => "t", Block::Pre(..) => "pre", Block::Quote(_) => "q", Block::Rule => "hr", Block::Anchor(_) => "a", Block::Toc(..) => "toc",
         }).collect();
         assert_eq!(kinds, ["h", "p", "l", "l", "t", "pre", "q", "pre", "h", "hr"]);
         let Block::List(false, items) = &d.blocks[2] else { panic!() };
@@ -1354,6 +1367,11 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         assert!(h.contains("<code>#+TOC: headlines</code>") && !h.contains("Hidden") && !h.contains("Draft") && !h.contains("tables"));
         let m = markdown(&d, "x", Path::new("/n"), &Ids::new());
         assert!(m.starts_with("# x\n\n- [Intro](#intro)\n  - [Deep](#deep)\n  - [Intro](#intro-2)\n- [Custom \\<&\\>](#own)\n\n- [Intro](#intro)\n  - [Intro](#intro-2)\n- [Custom \\<&\\>](#own)\n\n```org"), "{m}");
+        // `local`: only the enclosing heading's subtree, depth counted from it; above any heading it is the whole page.
+        let l = parse("#+TOC: headlines local\n* A\n** A1\n#+toc: headlines local\n*** A11\n* B\n#+TOC: headlines 1 local\n** B1\n*** B11\n", &kw());
+        let m = markdown(&l, "x", Path::new("/n"), &Ids::new());
+        let lists: Vec<&str> = m.lines().filter(|l| l.contains("](#")).collect();
+        assert_eq!(lists, ["- [A](#a)", "  - [A1](#a1)", "    - [A11](#a11)", "- [B](#b)", "  - [B1](#b1)", "    - [B11](#b11)","- [A11](#a11)", "- [B1](#b1)"], "{m}");
         // No headings: nothing, not even an empty list; a combined page prefixes each note's links.
         let none = parse("#+TOC: headlines\ntext\n", &kw());
         assert!(!html(&none, "x", Path::new("/n"), &Ids::new(), false).contains("toc"));
