@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { applyLayout, applyLook, effectiveTheme, nextTheme, setUserLook } from "./theme.ts";
+import { applyLayout, applyLook, effectiveTheme, lookLayout, nextTheme, setUserLook } from "./theme.ts";
 
 test("effectiveTheme", () => {
   assert.equal(effectiveTheme("", true), "light");
@@ -56,6 +56,21 @@ test("applyLayout sets, replaces and clears data-layout", () => {
   applyLayout("rail"); assert.equal(el.dataset.layout, "rail");
   applyLayout(""); assert.equal(el.dataset.layout, undefined);
   applyLayout("rail"); applyLayout(undefined); assert.equal(el.dataset.layout, undefined);
+});
+
+test("lookLayout reads a leading layout comment only", () => {
+  assert.equal(lookLayout("/* layout: rail */\n:root[data-look] { --accent: red; }"), "rail");
+  assert.equal(lookLayout("\uFEFF\n  /*layout:compact*/"), "compact");
+  assert.equal(lookLayout("/* layout: */ :root {}"), "");
+  assert.equal(lookLayout(":root {}\n/* layout: rail */"), null);
+  assert.equal(lookLayout("/* paper */\n/* layout: rail */"), null);
+  assert.equal(lookLayout(""), null);
+  assert.equal(lookLayout(null), null);
+});
+
+test("theme.css has a block for every built-in layout offered in Settings", () => {
+  const css = readFileSync(new URL("./theme.css", import.meta.url), "utf8");
+  for (const l of ["compact", "rail"]) assert.ok(css.includes(`:root[data-layout="${l}"] {`), l);
 });
 
 test("setUserLook adds, replaces and removes one style element", () => {

@@ -25,6 +25,10 @@ export function applyLayout(name: unknown) {
   if (typeof name === "string" && name) el.dataset.layout = name; else delete el.dataset.layout;
 }
 
+/** The layout a user look asks for in a leading `/* layout: NAME *\/` comment ("" for the default), or null without one. */
+export const lookLayout = (css: string | null | undefined): string | null =>
+  css?.match(/^\uFEFF?\s*\/\*\s*layout:\s*([\w-]*)\s*\*\//)?.[1] ?? null;
+
 /** Put a user look's CSS in `<style id="user-look">` (created on first use, after the built-in styles), or remove it when CSS is null. */
 export function setUserLook(css: string | null | undefined) {
   let el = document.getElementById("user-look");

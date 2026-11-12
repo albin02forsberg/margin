@@ -72,6 +72,7 @@ describe("User looks", () => {
       mkdirSync(join(cfgDir, "looks"));
       writeFileSync(join(cfgDir, "looks", "mine.css"), ":root[data-look] { --accent: rgb(1, 2, 3); }");
       writeFileSync(join(cfgDir, "looks", "retro.css"), "/* shadowed by the built-in */");
+      writeFileSync(join(cfgDir, "looks", "railed.css"), "/* layout: rail */\n:root[data-look] { --accent: rgb(7, 8, 9); }");
     } });
   });
   after(close, { timeout: 30_000 });
@@ -88,6 +89,22 @@ describe("User looks", () => {
     const opts = await browser.execute(() => [...document.querySelectorAll(".settings select option")].map((o) => (o as HTMLOptionElement).value));
     assert.ok(opts.includes("mine"), `mine not offered: ${opts}`);
     assert.equal(opts.filter((o) => o === "retro").length, 1, "retro listed twice");
+  });
+
+  it("picking a theme whose file starts with /* layout: rail */ sets the look and the layout (#1310)", async () => {
+    const root = () => browser.execute(() => ({ look: document.documentElement.dataset.look, layout: document.documentElement.dataset.layout }));
+    await palette("View: pick a theme");
+    await answer("Theme", "railed");
+    await browser.waitUntil(async () => (await root()).layout === "rail", { timeoutMsg: "layout not applied" });
+    assert.deepEqual(await root(), { look: "railed", layout: "rail" });
+    assert.match(readFileSync(join(d.cfgDir, "config.toml"), "utf8"), /^layout = "rail"$/m);
+    const [navRight, bodyLeft] = await browser.execute(() => [document.querySelector('[data-region="nav"]')!.getBoundingClientRect().right, document.querySelector('[data-region="body"]')!.getBoundingClientRect().left]);
+    assert.ok(navRight <= bodyLeft + 0.5, "rail not left of the body");
+    // A built-in has no header: the look changes, the layout stays.
+    await palette("View: pick a theme");
+    await answer("Theme", "classic");
+    await browser.waitUntil(async () => (await root()).look === undefined, { timeoutMsg: "look not reset" });
+    assert.equal((await root()).layout, "rail");
   });
 });
 
