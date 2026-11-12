@@ -64,3 +64,44 @@ export function resultsChange(text: string, src: Src, output: string): { from: n
   }
   return { from: src.end, to: src.end, insert: "\n\n" + res };
 }
+
+/** Header arguments of a `#+begin_src LANG :key value …` line: lowercased keys (without `:`), values joined by
+ *  single spaces, double quotes removed (`:shebang "#!/bin/sh -e"`); a key with no value maps to "". */
+export function headerArgs(line: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  let key = "";
+  for (const t of line.replace(BEGIN, "").match(/"[^"]*"|\S+/g) ?? []) {
+    if (t.startsWith(":")) out[(key = t.slice(1).toLowerCase())] = "";
+    else if (key) out[key] += (out[key] ? " " : "") + t.replace(/^"(.*)"$/, "$1");
+  }
+  return out;
+}
+
+/** One file `tangleFiles` writes: PATH relative to the note's folder, its CONTENT, whether it gets `0755`
+ *  (a block set `:shebang`), whether missing folders are created (`:mkdirp yes`) and how many blocks went in. */
+export type Tangled = { path: string; content: string; exec: boolean; mkdirp: boolean; blocks: number };
+
+const EXT: Record<string, string> = { python: "py", shell: "sh", "emacs-lisp": "el", elisp: "el", javascript: "js", typescript: "ts", ruby: "rb", rust: "rs" };
+
+/** Org-babel-tangle for one note (NOTE: its file name): the blocks with `:tangle path` grouped by target in order,
+ *  common indentation removed and joined by a blank line; `:tangle no` or none skips a block, `:tangle yes` names the
+ *  file after the note (`notes.org` + sh → `notes.sh`). A file's first `:shebang` heads it. */
+export function tangleFiles(text: string, note: string): Tangled[] {
+  const out = new Map<string, Tangled & { parts: string[]; shebang: string }>();
+  for (const s of srcBlocks(text)) {
+    const a = headerArgs(text.slice(s.from).split("\n", 1)[0]);
+    let p = a.tangle?.trim();
+    if (!p || p === "no") continue;
+    if (p === "yes") p = note.replace(/\.org$/i, "") + "." + (EXT[s.lang.toLowerCase()] ?? s.lang.toLowerCase());
+    p = p.replace(/\\/g, "/").replace(/^(\.\/)+/, "");
+    const f = out.get(p) ?? { path: p, content: "", exec: false, mkdirp: false, blocks: 0, parts: [], shebang: "" };
+    const ls = s.code.split("\n"), cut = Math.min(...ls.filter((l) => l.trim()).map((l) => /^\s*/.exec(l)![0].length));
+    f.parts.push(ls.map((l) => l.slice(Math.min(cut, /^\s*/.exec(l)![0].length))).join("\n").replace(/\n+$/, ""));
+    f.shebang ||= a.shebang ?? "";
+    f.exec ||= !!a.shebang;
+    f.mkdirp ||= a.mkdirp === "yes" || a.mkdirp === "t";
+    f.blocks++;
+    out.set(p, f);
+  }
+  return [...out.values()].map(({ parts, shebang, ...f }) => ({ ...f, content: (shebang ? shebang + "\n" : "") + parts.join("\n\n") + "\n" }));
+}

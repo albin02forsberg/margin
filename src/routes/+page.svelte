@@ -14,7 +14,7 @@
   import type { ChangeSet, ChangeSpec, EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
   import { linkFor, asUrl, asWebUrl } from "$lib/weblink";
-  import { srcAt, resultsChange } from "$lib/babel";
+  import { srcAt, resultsChange, tangleFiles } from "$lib/babel";
   import { svgs } from "$lib/diagram";
   import { accepted, changeLabel, hitKey, type Hit as ReplaceHit } from "$lib/replace";
   import { bareTitle, bracketRetitle, expandLink, findTarget, fuzzyTarget, hereLink, linkAbbrevs, linkHeadings, linkTarget, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
@@ -1600,6 +1600,23 @@
       view.dispatch({ changes: resultsChange(text, now, r.output) });
       flash(r.exit === 0 ? "Ran the block." : `⚠ The block ${r.exit == null ? "was stopped" : `exited with ${r.exit}`}.`);
     })();
+  }
+
+  /** Palette: org-babel-tangle the note's (unsaved too) `:tangle` blocks into files beside it. Files whose content
+   *  would change are listed first (Cancel preselected) and kept as `<file>.bak`. */
+  async function tangleNote() {
+    if (!inFile()) return flash("Open a note first.");
+    const note = tab.path!, files = tangleFiles(view.state.doc.toString(), base(note));
+    if (!files.length) return flash("No code blocks with :tangle in this note.");
+    const lose = await call<string[]>("babel_tangle", { note, files, write: false });
+    if (lose.length) {
+      const go = await pick({ prompt: `Overwrite ${lose.length} changed file${lose.length > 1 ? "s" : ""}? Each is kept as <file>.bak first:`, body: lose.join("\n"), items: [{ label: "Cancel", value: false }, { label: "Overwrite", value: true }] });
+      view.focus();
+      if (go !== true) return;
+    }
+    await call("babel_tangle", { note, files, write: true });
+    const n = files.reduce((a, f) => a + f.blocks, 0);
+    flash(`Tangled ${n} block${n > 1 ? "s" : ""} to ${files.length} file${files.length > 1 ? "s" : ""}`);
   }
 
   /** The clipboard URL (else one asked for) as [[url][page title]], a bare [[url]] when the title can't be fetched; null if cancelled. */
@@ -3971,6 +3988,7 @@
     { label: "Insert transclusion (show a heading from another note here)…", leader: "i T", run: insertTransclusion },
     { label: "Insert link to the clipboard URL with its page title", leader: "i U", run: insertTitledLink },
     { label: "Run the code block at the cursor into #+RESULTS: (opt-in: Run code blocks setting)", keys: ["Ctrl+Enter"], leader: "i r", ctx: "editor", run: runBlock },
+    { label: "Notes: tangle code blocks to files (#+begin_src … :tangle path)", run: () => act(tangleNote) },
     { label: "Insert date…", leader: "i d", run: insertDate },
     { label: "Insert footnote (Enter on [fn:N] jumps there and back)", leader: "i f", run: () => inFile() && ed.insertFootnote(view) },
     { label: "Insert timestamp now (inactive)", leader: "i D", run: () => inFile() && ed.insertText(view, inactiveStamp(new Date())) },
