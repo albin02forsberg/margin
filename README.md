@@ -775,7 +775,7 @@ Margin follows the OS light/dark setting. `theme = "light"` or `"dark"` (Setting
 and pick `paper` under Look in Settings (or set `look = "paper"`). Margin adds the file after its own styles, sets
 `data-look="paper"` on the root and re-reads the file whenever it changes, so edits show up live. A file named like a
 built-in look (`classic`, `retro`) is ignored, and a look whose file is missing falls back to classic. A look restyles
-but can't move panels. The easiest route is to override the design tokens: colours `--bg`, `--fg`, `--panel`,
+and can move panels (below). The easiest route is to override the design tokens: colours `--bg`, `--fg`, `--panel`,
 `--border`, `--dim`, `--active`, `--sel`, `--accent`, `--link`, `--todo`, `--done`, `--date`, `--code`, `--kw`,
 headings `--h1` to `--h6`, surfaces `--card`, `--canvas`, fonts `--sans`, `--mono`, `--editor-font`, sizes `--fs-xs` to
 `--fs-title`, spacing `--s1` to `--s6`, corners `--radius`, `--radius-sm`, `--r` and shadows `--soft`, `--lift`, `--pshadow`
@@ -788,6 +788,17 @@ headings `--h1` to `--h6`, surfaces `--card`, `--canvas`, fonts `--sans`, `--mon
 ```
 
 Use `:root[data-look]` (not plain `:root`) so your values win over the built-in light palette.
+
+A look can also move the shell's regions. Each one carries a `data-region` attribute (`nav` for the top bar, `body`
+around tabs, editor and status bar, `tabs`, `main`, `side` for the outline, graph, chat, peek and backlinks panels, and
+`status`), and these variables place them: `--layout-shell: row` turns the top bar into a left rail,
+`--layout-main: row-reverse` puts the side panels left of the editor, and `--layout-nav-order`, `--layout-tabs-order` and
+`--layout-status-order` (`order`, default `0`) reorder them, e.g. `--layout-tabs-order: 1` puts the tabs below the editor:
+
+```css
+:root[data-look] { --layout-main: row-reverse; --layout-tabs-order: 1; }
+:root[data-look] [data-region="side"] { margin: 0 0 var(--s3) var(--s4); }
+```
 
 Notes render like a document: markup (stars, link brackets, `*bold*` markers,
 checkbox brackets, block delimiters) is hidden except on the line you're on, so

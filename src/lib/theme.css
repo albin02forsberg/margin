@@ -21,6 +21,10 @@
   --scrim: rgb(0 0 0 / .4);
   --ring: 0 0 0 2px color-mix(in srgb, var(--link) 70%, transparent);
   --ease: cubic-bezier(.2, 0, 0, 1);
+  /* shell layout (#1309): a [data-layout] or user look moves regions ([data-region] in +page.svelte) by overriding these */
+  --layout-shell: column; /* .app: row puts the top bar on the left as a rail */
+  --layout-main: row; /* main: row-reverse puts the side panels left of the editor */
+  --layout-nav-order: 0; --layout-tabs-order: 0; --layout-status-order: 0; /* e.g. 1 moves tabs below the editor */
   color-scheme: dark;
 }
 /* Light palette: forced by `theme = "light"` (data-theme), or by the OS unless `theme = "dark"`. Keep both blocks identical (theme.test.ts). */
