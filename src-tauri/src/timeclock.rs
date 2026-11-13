@@ -1296,6 +1296,29 @@ pub fn clocktable(sessions: &[Session], project: Option<&str>, start: NaiveDate,
     org_table(&rows)
 }
 
+/// Body of a `#+BEGIN: clocktable … :by tag` block (#1350): hours per tag (TAGS_OF a session, none: `(untagged)`),
+/// sessions filtered like `clocktable`. A session counts toward each of its tags but once in the total, so the
+/// Share column (of the total) can add up to more than 100%. Biggest tag first, ties by name.
+pub fn clocktable_by_tag(sessions: &[Session], tags_of: &dyn Fn(&Session) -> Vec<String>, project: Option<&str>, start: NaiveDate, end: NaiveDate) -> String {
+    let (mut by, mut total): (BTreeMap<String, f64>, f64) = (BTreeMap::new(), 0.0);
+    for s in prepare_report_sessions(sessions).iter().filter(|s| start <= s.date && s.date <= end && project.is_none_or(|p| s.project == p)) {
+        let mut tags = tags_of(s);
+        tags.sort();
+        tags.dedup();
+        if tags.is_empty() {
+            tags.push("(untagged)".into());
+        }
+        tags.into_iter().for_each(|t| *by.entry(t).or_default() += s.hours);
+        total += s.hours;
+    }
+    let mut tags: Vec<_> = by.into_iter().collect();
+    tags.sort_by(|a, b| b.1.total_cmp(&a.1)); // stable: ties keep name order
+    let mut rows = vec![["Tag", "Hours", "Share"].map(String::from).to_vec()];
+    tags.iter().for_each(|(t, h)| rows.push(vec![t.clone(), format!("{h:.2}"), format!("{:.0}%", if total > 0.0 { h / total * 100.0 } else { 0.0 })]));
+    rows.push(vec!["*Total*".into(), format!("*{total:.2}*"), String::new()]);
+    org_table(&rows)
+}
+
 /// The `#+NAME: invoice` table of PROJECT for FROM..=TO (#832): billable hours per task from the carry-rounded
 /// sessions (so they add up to the month report's billable), each at the project's rate; the total row prices
 /// the summed hours with `earned`, the report's number. An error without a rate.
@@ -1687,6 +1710,30 @@ mod tests {
         assert!(!acme.contains("Beta") && acme.contains("*Total*") && acme.contains("*3.00*"), "{acme}");
         let none = clocktable(&log, None, d("2020-01-01"), d("2020-01-31"));
         assert!(none.ends_with("| *Total* |                    | *0.00* |\n"), "{none}");
+    }
+
+    #[test]
+    fn clocktable_by_tag_counts_sessions_once_in_total() {
+        let s = |date: &str, p: &str, desc: &str, h| Session { date: d(date), project: p.into(), desc: desc.into(), hours: h, start: NaiveTime::MIN, end: NaiveTime::MIN, line: None };
+        let log = [s("2026-10-01", "Acme", "standup", 1.0), s("2026-10-02", "Acme", "fix", 2.0), s("2026-10-03", "Beta", "misc", 1.0), s("2026-11-01", "Acme", "fix", 9.0)];
+        let tags = |s: &Session| match s.desc.as_str() {
+            "standup" => vec!["meeting".to_string(), "acme".into()],
+            "fix" => vec!["acme".into(), "deep".into(), "acme".into()],
+            _ => vec![],
+        };
+        let t = clocktable_by_tag(&log, &tags, None, d("2026-10-01"), d("2026-10-31"));
+        let rows: Vec<Vec<&str>> = t.lines().map(|l| l.split('|').map(str::trim).collect()).collect();
+        assert!(t.starts_with("| Tag "), "{t}");
+        assert_eq!(rows[2][1..4], ["acme", "3.00", "75%"], "{t}"); // both sessions, duplicate tag once
+        assert_eq!(rows[3][1..4], ["deep", "2.00", "50%"], "{t}");
+        assert_eq!(rows[4][1..4], ["(untagged)", "1.00", "25%"], "{t}"); // tie: name order
+        assert_eq!(rows[5][1..4], ["meeting", "1.00", "25%"], "{t}");
+        assert_eq!(rows[6][1..4], ["*Total*", "*4.00*", ""], "{t}"); // each session once, November left out
+        let beta = clocktable_by_tag(&log, &tags, Some("Beta"), d("2026-10-01"), d("2026-10-31"));
+        assert_eq!(beta.lines().count(), 4, "{beta}");
+        let none = clocktable_by_tag(&log, &tags, None, d("2020-01-01"), d("2020-01-31"));
+        assert_eq!(none.lines().count(), 3, "{none}");
+        assert!(none.contains("*0.00*"), "{none}");
     }
 
     #[test]

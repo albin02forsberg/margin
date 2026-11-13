@@ -3509,14 +3509,31 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
     })
 }
 
-/// Options of a `#+BEGIN: clocktable` header after the name: `:block today|thisweek|thismonth|YYYY-MM` (required)
-/// and `:project NAME` ("quoted" for spaces). Any other option is an error, so Emacs-only blocks stay untouched.
-fn clocktable_opts(args: &str, today: NaiveDate, start: chrono::Weekday) -> R<(Option<String>, NaiveDate, NaiveDate)> {
-    let (mut project, mut range) = (None, None);
+/// Options of a `#+BEGIN: clocktable` header (see clocktable_opts).
+#[derive(Debug, PartialEq)]
+struct ClockOpts {
+    project: Option<String>,
+    from: NaiveDate,
+    to: NaiveDate,
+    /// `:by tag`: hours per tag instead of per project and task (#1350).
+    by_tag: bool,
+}
+
+/// Options of a `#+BEGIN: clocktable` header after the name: `:block today|thisweek|thismonth|YYYY-MM` (required),
+/// `:project NAME` ("quoted" for spaces) and `:by project|tag`. Any other option is an error, so Emacs-only blocks stay untouched.
+fn clocktable_opts(args: &str, today: NaiveDate, start: chrono::Weekday) -> R<ClockOpts> {
+    let (mut project, mut range, mut by_tag) = (None, None, false);
     for (key, val) in block_opts("clocktable", args)? {
         let val = val.as_str();
         match key.as_str() {
             ":project" => project = Some(val.to_string()),
+            ":by" => {
+                by_tag = match val {
+                    "tag" => true,
+                    "project" => false,
+                    b => return Err(format!("clocktable: unknown :by {b} (tag or project)")),
+                }
+            }
             ":block" => {
                 range = Some(match val {
                     "today" => (today, today),
@@ -3529,7 +3546,7 @@ fn clocktable_opts(args: &str, today: NaiveDate, start: chrono::Weekday) -> R<(O
         }
     }
     let (from, to) = range.ok_or("clocktable: needs :block today|thisweek|thismonth|YYYY-MM")?;
-    Ok((project, from, to))
+    Ok(ClockOpts { project, from, to, by_tag })
 }
 
 /// `:key value` pairs of the dynamic block NAME's header ARGS; a value may be "quoted", with `\"` for a quote.
@@ -3701,8 +3718,30 @@ fn columnview_block(s: State<App>, path: PathBuf, args: String) -> R<String> {
 /// Body of a clocktable block with header options ARGS (#693).
 #[tauri::command]
 fn tc_clocktable(s: State<App>, args: String) -> R<String> {
-    let (project, from, to) = clocktable_opts(&args, today(), s.cfg().week_start())?;
-    Ok(timeclock::clocktable(&s.tc().sessions(), project.as_deref(), from, to))
+    let o = clocktable_opts(&args, today(), s.cfg().week_start())?;
+    let tc = s.tc();
+    Ok(if o.by_tag {
+        timeclock::clocktable_by_tag(&tc.sessions(), &session_tags(&s.files(), &tc.projects()), o.project.as_deref(), o.from, o.to)
+    } else {
+        timeclock::clocktable(&tc.sessions(), o.project.as_deref(), o.from, o.to)
+    })
+}
+
+/// Tags (own, ancestors', `#+filetags:`) of a session's task for `:by tag` (#1350): the first task heading in FILES titled
+/// like the session description, in the session's project when the heading's category is one of PROJECTS (as spent_on
+/// matches). The first match wins, so a duplicated title doesn't count twice. No match: no tags.
+fn session_tags(files: &[Arc<org::OrgFile>], projects: &timeclock::Projects) -> impl Fn(&timeclock::Session) -> Vec<String> {
+    let norm = |x: &str| x.trim().to_lowercase();
+    let known: std::collections::HashSet<String> = projects.keys().map(|p| norm(p)).collect();
+    let mut by = std::collections::HashMap::<String, Vec<_>>::new();
+    for h in files.iter().flat_map(|f| &f.headlines).filter(|h| h.keyword.is_some()) {
+        let c = norm(&h.category);
+        by.entry(norm(&h.title)).or_default().push((known.contains(&c).then_some(c), h.tags.iter().chain(&h.inherited).cloned().collect::<Vec<_>>()));
+    }
+    move |s| {
+        let p = norm(&s.project);
+        by.get(&norm(&s.desc)).and_then(|v| v.iter().find(|(c, _)| c.as_ref().is_none_or(|c| *c == p))).map(|m| m.1.clone()).unwrap_or_default()
+    }
 }
 
 #[tauri::command]
@@ -4346,14 +4385,34 @@ mod tests {
         let d = |m, day| NaiveDate::from_ymd_opt(2026, m, day).unwrap();
         let t = d(10, 22); // a Thursday
         let clocktable_opts_mon = |a: &str, t| clocktable_opts(a, t, chrono::Weekday::Mon);
-        assert_eq!(clocktable_opts(":block thisweek", t, chrono::Weekday::Sun), Ok((None, d(10, 18), d(10, 24))));
-        assert_eq!(clocktable_opts_mon(":block today", t), Ok((None, t, t)));
-        assert_eq!(clocktable_opts_mon(":block thisweek", t), Ok((None, d(10, 19), d(10, 25))));
-        assert_eq!(clocktable_opts_mon(" :project \"Big Co\"  :block thismonth ", t), Ok((Some("Big Co".into()), d(10, 1), d(10, 31))));
-        assert_eq!(clocktable_opts_mon(":block 2026-02 :project Acme", t), Ok((Some("Acme".into()), d(2, 1), d(2, 28))));
-        for bad in [":scope file :block thismonth", ":block lastweek", ":block 2026-13", ":project Acme", ":block", ":project \"Acme :block today", ""] {
+        let o = |project: Option<&str>, from, to, by_tag| Ok(ClockOpts { project: project.map(Into::into), from, to, by_tag });
+        assert_eq!(clocktable_opts(":block thisweek", t, chrono::Weekday::Sun), o(None, d(10, 18), d(10, 24), false));
+        assert_eq!(clocktable_opts_mon(":block today", t), o(None, t, t, false));
+        assert_eq!(clocktable_opts_mon(":block thisweek", t), o(None, d(10, 19), d(10, 25), false));
+        assert_eq!(clocktable_opts_mon(" :project \"Big Co\"  :block thismonth ", t), o(Some("Big Co"), d(10, 1), d(10, 31), false));
+        assert_eq!(clocktable_opts_mon(":block 2026-02 :project Acme", t), o(Some("Acme"), d(2, 1), d(2, 28), false));
+        assert_eq!(clocktable_opts_mon(":block today :by tag", t), o(None, t, t, true));
+        assert_eq!(clocktable_opts_mon(":by project :block today", t), o(None, t, t, false));
+        for bad in [":scope file :block thismonth", ":block lastweek", ":block 2026-13", ":project Acme", ":block", ":project \"Acme :block today", "", ":block today :by nonsense", ":block today :by"] {
             assert!(clocktable_opts_mon(bad, t).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn session_tags_match_task_titles_like_spent_on() {
+        let files = [
+            Arc::new(org::parse(Path::new("/n/acme.org"), "#+category: Acme\n#+filetags: :work:\n* Ops :ops:\n** TODO Fix login :deep:\n* TODO Standup :meeting:\n* Fix login\n", &kw())),
+            Arc::new(org::parse(Path::new("/n/misc.org"), "* TODO Fix login :other:\n* TODO Read :learn:\n", &kw())),
+        ];
+        let projects = timeclock::Projects::from([("acme".into(), Project::new("A")), ("Beta".into(), Project::new("B"))]);
+        let tags = session_tags(&files, &projects);
+        let s = |p: &str, desc: &str| timeclock::Session { date: NaiveDate::MIN, project: p.into(), desc: desc.into(), hours: 1.0, start: chrono::NaiveTime::MIN, end: chrono::NaiveTime::MIN, line: None };
+        let mut own = tags(&s("Acme", " fix LOGIN"));
+        own.sort();
+        assert_eq!(own, ["deep", "ops", "work"]); // own, parent and filetags; first match wins
+        assert_eq!(tags(&s("Beta", "Fix login")), ["other"]); // Acme's task belongs to Acme; misc.org's isn't a project
+        assert_eq!(tags(&s("Beta", "read")), ["learn"]);
+        assert!(tags(&s("Acme", "ONGOING")).is_empty());
     }
 
     #[test]
