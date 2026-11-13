@@ -67,6 +67,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "log_done", label: "Record when tasks are done", kind: "bool", hint: "adds CLOSED: [date time] below the heading, as org-log-done does; the board's Done column shows this week's" },
     { key: "log_reschedule", label: "Record reschedules", kind: "bool", hint: "adds - Rescheduled from \"[old date]\" on [now] to the task's LOGBOOK when you move its scheduled day, as org-log-reschedule does" },
     { key: "calendar_file", label: "Calendar feed (.ics)", hint: "kept up to date with scheduled tasks and deadlines; empty = off" },
+    { key: "bibliography_file", label: "Bibliography (.bib)", hint: "a BibTeX file whose entries citation pickers read; empty = off" },
   ] },
   { name: "Ledger", fields: [
     { key: "ledger_file", label: "Ledger file", hint: `Space f l adds entries here, ${rel}` },

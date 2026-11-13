@@ -1488,6 +1488,13 @@ With the clock running, one more notification says "Today's hours are done." whe
 the day's expected hours are worked (not on a break, a day off or a rest-of-day leave);
 it follows the `reminders` setting.
 
+## Bibliography
+
+Set `bibliography_file` (e.g. `"~/papers/refs.bib"`) to a BibTeX file and Margin
+reads its entries (key, author, year, title, journal/booktitle/publisher and an
+author-year label such as "Smith & Lee 2020") for citation features. The file is
+only read, on each use; `@string` macros are not expanded.
+
 ## Calendar
 
 Set `calendar_file` (e.g. `"~/Sync/margin.ics"`) and Margin keeps an iCalendar
