@@ -28,7 +28,7 @@ import { checklistToTasks, levelAt, listRange, tasksToChecklist } from "./checkl
 import { toc } from "./toc";
 import { transclusion, transcludeTarget } from "./transclude";
 import { completionAt } from "./links";
-import { chip, citeAt, citeQuery, cites, citeText, type BibEntry } from "./cite";
+import { bibLine, bibliography, chip, citeAt, citeQuery, cites, citeText, printBibDirective, type BibEntry } from "./cite";
 import { mentions, radio, type Radio } from "./radio";
 import { diagrams } from "./diagram";
 export { directive as transcludeLine } from "./transclude";
@@ -667,6 +667,40 @@ export function setBibliography(entries: BibEntry[]) {
 export function citeAtCursor(v: EditorView): { key: string; entry?: BibEntry } | null {
   const ln = v.state.doc.lineAt(v.state.selection.main.head), key = bib.size ? citeAt(ln.text, v.state.selection.main.head - ln.from) : null;
   return key == null ? null : { key, entry: bib.get(key) };
+}
+
+/** The cited entries under a `#+PRINT_BIBLIOGRAPHY:` line (#1336), read-only. */
+class BibList extends WidgetType {
+  /** EMPTY: the message shown when LINES is empty. */
+  constructor(readonly lines: string[], readonly empty: string) { super(); }
+  eq(o: BibList) { return o.empty === this.empty && o.lines.join("\n") === this.lines.join("\n"); }
+  toDOM() {
+    const d = document.createElement(this.lines.length ? "ol" : "div");
+    d.className = "cm-org-bibliography";
+    for (const t of this.lines) d.appendChild(document.createElement("li")).textContent = t;
+    if (!this.lines.length) d.textContent = this.empty;
+    return d;
+  }
+}
+/** Block widgets can't come from the orgStyle plugin, hence a field; rebuilt on edits and when `setBibliography` loads entries. */
+const printBib = StateField.define<DecorationSet>({
+  create: (s) => bibDecos(s),
+  update: (d, tr) => (tr.docChanged || tr.effects.some((e) => e.is(langLoaded)) ? bibDecos(tr.state) : d),
+  provide: (f) => EditorView.decorations.from(f),
+});
+function bibDecos(s: EditorState): DecorationSet {
+  const out: Range<Decoration>[] = [];
+  let code = false, lines: string[] | null = null;
+  for (let i = 1; i <= s.doc.lines; i++) {
+    const l = s.doc.line(i);
+    if (/^\s*#\+begin_(src|example)\b/i.test(l.text)) code = true;
+    else if (/^\s*#\+end_(src|example)\b/i.test(l.text)) code = false;
+    else if (!code && l.text.includes("#+") && printBibDirective(l.text)) {
+      lines ??= bib.size ? bibliography(s.doc.toString(), bib).map((c) => bibLine(c.key, c.entry)) : [];
+      out.push(Decoration.widget({ widget: new BibList(lines, bib.size ? "No citations" : "No bibliography file set"), block: true, side: 1 }).range(l.to));
+    }
+  }
+  return Decoration.set(out);
 }
 
 /** Follow the footnote at POS (reference ⇄ definition) as a vim jump, so Ctrl+O
@@ -1385,6 +1419,8 @@ const theme = EditorView.theme({
   ".cm-org-link-raw": { color: "var(--link)" },
   ".cm-org-cite": { color: "var(--link)", fontSize: "0.9em", background: "color-mix(in srgb, var(--link) 12%, transparent)", borderRadius: "var(--radius-sm)", padding: "0.1em 0.35em", cursor: "help" },
   ".cm-org-cite-raw": { color: "var(--link)" },
+  ".cm-org-bibliography": { color: "var(--dim)", background: "var(--panel)", borderLeft: "3px solid var(--border)", padding: "0.2em 0.8em 0.2em 2.2em", margin: "0.1em 0 0.3em", fontSize: "0.92em", userSelect: "none", borderRadius: "0 var(--radius-sm) var(--radius-sm) 0" },
+  "div.cm-org-bibliography": { paddingLeft: "0.8em", fontStyle: "italic" },
   ".cm-org-cite-missing": { textDecoration: "underline wavy", textDecorationColor: "var(--todo)", textUnderlineOffset: "3px" },
   ".cm-org-ts": { fontFamily: "var(--mono)", fontSize: "0.82em", color: "var(--date)", background: "color-mix(in srgb, var(--date) 12%, transparent)", borderRadius: "var(--radius-sm)", padding: "0.1em 0.35em" },
   ".cm-org-ts-inactive": { color: "var(--dim)", background: "var(--active)" },
@@ -1483,7 +1519,7 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
   ];
   if (opts.org) {
     ext.push(
-      spellConf.of(spellExt()), orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path, tagColors: opts.tagColors }), orgStyle, orgFold, clicks, tableTools, narrowField, transclusion(opts.path, (t) => hooks.follow(t)), toc(() => opts.todo, () => opts.done), diagrams, completion,
+      spellConf.of(spellExt()), orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path, tagColors: opts.tagColors }), orgStyle, orgFold, clicks, tableTools, narrowField, transclusion(opts.path, (t) => hooks.follow(t)), toc(() => opts.todo, () => opts.done), printBib, diagrams, completion,
       Prec.high(keymap.of([{ key: "Tab", run: orgTab }, { key: "Shift-Tab", run: orgShiftTab }, { key: "Enter", run: smartEnter },
         // Insert mode only: in normal / visual mode Ctrl+B stays vim's page up.
         { key: "Mod-b", run: (v) => vimInsert(v) && emphasis(v, "*") }, { key: "Mod-i", run: (v) => vimInsert(v) && emphasis(v, "/") }])),

@@ -39,3 +39,21 @@ export function chip(keys: string[], bib: Map<string, BibEntry>): { text: string
   const text = keys.map((k) => bib.get(k)?.label || (bib.has(k) ? k : `@${k}`)).join("; ");
   return { text, missing: keys.some((k) => !bib.has(k)) };
 }
+
+/** A `#+PRINT_BIBLIOGRAPHY:` line (#1336): shown as the note's cited entries, expanded only at export, never written. */
+export const printBibDirective = (line: string) => /^\s*#\+print_bibliography:/i.test(line);
+
+/** The keys cited in TEXT in order of first citation, deduplicated, with their BIB entry (none: unknown); src/example blocks skipped. */
+export function bibliography(text: string, bib: Map<string, BibEntry>): { key: string; entry?: BibEntry }[] {
+  const seen = new Set<string>(), out: { key: string; entry?: BibEntry }[] = [];
+  let code = false;
+  for (const l of text.split("\n")) {
+    if (/^\s*#\+begin_(src|example)\b/i.test(l)) code = true;
+    else if (/^\s*#\+end_(src|example)\b/i.test(l)) code = false;
+    else if (!code) for (const c of cites(l)) for (const { key } of c.keys) if (!seen.has(key)) seen.add(key), out.push({ key, entry: bib.get(key) });
+  }
+  return out;
+}
+
+/** One bibliography line: `Smith 2020. Title. Journal.`; an unknown key as `[key?]`. */
+export const bibLine = (key: string, e?: BibEntry) => (e ? [e.label || e.key, e.title, e.container].filter(Boolean).join(". ") + "." : `[${key}?]`);

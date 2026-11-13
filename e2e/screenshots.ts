@@ -211,6 +211,9 @@ Conflict-free merges still need a review queue [cite:@missing21].
 
 * Next
 Compare with operational transforms.
+
+* References
+#+PRINT_BIBLIOGRAPHY:
 `);
 
   write(join(notes, "home.org"), `
@@ -381,6 +384,13 @@ async function pngs() {
     await browser.keys(Key.Escape); // closes the popup
     await browser.keys(Key.Escape);
     await type("u");
+    await open("Orchard platform", "orchard.org");
+  }
+
+  if (want("print-bibliography")) { // #1336: the cited entries listed under #+PRINT_BIBLIOGRAPHY:, unknown key as [key?]
+    await open("Sync literature", "literature.org");
+    await find(".cm-org-bibliography li", "Local-first software");
+    await shot("print-bibliography");
     await open("Orchard platform", "orchard.org");
   }
 

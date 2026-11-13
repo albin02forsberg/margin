@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chip, citeAt, citeQuery, cites, citeText, type BibEntry } from "./cite.ts";
+import { bibLine, bibliography, chip, citeAt, citeQuery, cites, citeText, printBibDirective, type BibEntry } from "./cite.ts";
 
 test("cites: keys with ranges, prefixes and suffixes ignored", () => {
   const l = "As [cite:@a;@b] and [cite/t:see @smith20 p. 3; @lee.] ok [[x]] [cite:no keys]";
@@ -34,4 +34,25 @@ test("chip and citeText", () => {
   assert.deepEqual(chip(["a"], bib), { text: "Smith 2020", missing: false });
   assert.equal(citeText(e), "Smith, Jane (2020). T. Nature.");
   assert.equal(citeText({ ...e, author: "", year: "", container: "" }), "a. T.");
+});
+
+test("bibliography: first-citation order, dedup, unknown keys, code blocks skipped", () => {
+  const e = (key: string): BibEntry => ({ key, author: "", year: "", title: `T${key}`, container: "", label: `L${key}` });
+  const bib = new Map([["a", e("a")], ["b", e("b")]]);
+  const text = "x [cite:@b;@a]\n#+begin_src org\n[cite:@c]\n#+END_SRC\n[cite/t:@zz] [cite:@a]\n#+begin_example\n[cite:@d]\n#+end_example";
+  const r = bibliography(text, bib);
+  assert.deepEqual(r.map((x) => x.key), ["b", "a", "zz"]);
+  assert.equal(r[0].entry, bib.get("b"));
+  assert.equal(r[2].entry, undefined);
+  assert.deepEqual(bibliography("no cites here", bib), []);
+  assert.equal(bibLine("a", e("a")), "La. Ta.");
+  assert.equal(bibLine("a", { ...e("a"), label: "", title: "" }), "a.");
+  assert.equal(bibLine("zz"), "[zz?]");
+});
+
+test("printBibDirective", () => {
+  assert.ok(printBibDirective("#+PRINT_BIBLIOGRAPHY:"));
+  assert.ok(printBibDirective("  #+print_bibliography: :style numeric"));
+  assert.ok(!printBibDirective("text #+PRINT_BIBLIOGRAPHY:"));
+  assert.ok(!printBibDirective("#+PRINT_BIBLIOGRAPHY"));
 });
