@@ -2679,6 +2679,8 @@
     await closeTab(tabs.indexOf(t));
     if (pinned.includes(from)) savePinned([...new Set(pinned.map((p) => (p === from ? into : p)))]);
     if (bookmarks.some((b) => b.file === from)) saveBookmarks(mergeBookmarks(bookmarks, from, into, r.title, r.line));
+    const rw = renameInWorkspaces(workspaces, from, into);
+    if (rw !== workspaces) saveWorkspaces(rw);
     pruneRecent((p) => p !== from);
     syncFromDisk();
     await syncChain; // reload the target and linking notes before showing the section
