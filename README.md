@@ -1505,6 +1505,11 @@ reads its entries (key, author, year, title, journal/booktitle/publisher and an
 author-year label such as "Smith & Lee 2020") for citation features. The file is
 only read, on each use; `@string` macros are not expanded.
 
+HTML, PDF, Markdown, linked and published exports render `[cite:@key]` as
+`(Smith 2020)` (in HTML a link to the entry) and expand `#+PRINT_BIBLIOGRAPHY:`
+into a numbered list of the cited entries, in order of first citation. Keys not in
+the file show as `[key?]`; without a bibliography file citations export as written.
+
 ## Calendar
 
 Set `calendar_file` (e.g. `"~/Sync/margin.ics"`) and Margin keeps an iCalendar

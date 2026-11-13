@@ -3750,10 +3750,15 @@ fn expand(s: &App, path: &Path, text: &str) -> String {
     notes::expand_transclusions(&s.files(), path, text, &|p| s.check(p))
 }
 
+/// The `bibliography_file` entries for citations in exports (#1337); none when unset or unreadable, never an error.
+fn bib(s: &App) -> Vec<bib::BibEntry> {
+    bib::entries_from(&s.cfg().bibliography_file).unwrap_or_default()
+}
+
 /// Export note TEXT (the buffer of PATH) to export_dir. FORMAT: html | md | pdf (HTML that opens the print dialog).
 #[tauri::command]
 fn export_note(s: State<App>, path: PathBuf, text: String, format: String, overwrite: Option<bool>, diagrams: Option<std::collections::HashMap<String, String>>) -> R<PathBuf> {
-    let d = export::parse(&expand(&s, &path, &text), &s.kw()).with_diagrams(diagrams.unwrap_or_default());
+    let d = export::parse(&expand(&s, &path, &text), &s.kw()).with_diagrams(diagrams.unwrap_or_default()).with_bib(&bib(&s));
     let stem = stem(&path);
     let base = path.parent().unwrap_or(Path::new(""));
     match format.as_str() {
@@ -3765,13 +3770,13 @@ fn export_note(s: State<App>, path: PathBuf, text: String, format: String, overw
 /// TEXT (the buffer or selection of PATH) as Markdown, for the clipboard; nothing is written.
 #[tauri::command]
 fn export_markdown(s: State<App>, path: PathBuf, text: String) -> String {
-    export::markdown(&export::parse(&expand(&s, &path, &text), &s.kw()), &stem(&path), path.parent().unwrap_or(Path::new("")), &export::Ids::new())
+    export::markdown(&export::parse(&expand(&s, &path, &text), &s.kw()).with_bib(&bib(&s)), &stem(&path), path.parent().unwrap_or(Path::new("")), &export::Ids::new())
 }
 
 /// TEXT (the buffer or selection of PATH) as an HTML fragment, for the rich-text clipboard; nothing is written.
 #[tauri::command]
 fn export_html_fragment(s: State<App>, path: PathBuf, text: String, diagrams: Option<std::collections::HashMap<String, String>>) -> String {
-    export::html_body(&export::parse(&expand(&s, &path, &text), &s.kw()).with_diagrams(diagrams.unwrap_or_default()), &stem(&path), path.parent().unwrap_or(Path::new("")), &export::Ids::new())
+    export::html_body(&export::parse(&expand(&s, &path, &text), &s.kw()).with_diagrams(diagrams.unwrap_or_default()).with_bib(&bib(&s)), &stem(&path), path.parent().unwrap_or(Path::new("")), &export::Ids::new())
 }
 
 /// Export note TEXT (the buffer of PATH) and the notes it reaches by id: links within DEPTH hops
@@ -3780,7 +3785,7 @@ fn export_html_fragment(s: State<App>, path: PathBuf, text: String, diagrams: Op
 #[tauri::command(async)]
 fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, format: String, overwrite: Option<bool>, diagrams: Option<std::collections::HashMap<String, String>>) -> R<PathBuf> {
     let diagrams = diagrams.unwrap_or_default();
-    let kw = s.kw();
+    let (kw, bib) = (s.kw(), bib(&s));
     let root = org::parse(&path, &text, &kw);
     let files = s.files();
     let files: Vec<&org::OrgFile> = files.iter().map(|f| &**f).collect();
@@ -3788,7 +3793,7 @@ fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, forma
     let (pages, ids) = export::bundle(&files, &root, depth, ext);
     let texts: Vec<String> = pages.iter().map(|(f, _)| expand(&s, &f.path, &f.text)).collect();
     if format == "pdf" {
-        return write_export(&s, &format!("{} (linked).html", stem(&path)), export::combined(&pages, &texts, &ids, &kw, &diagrams), overwrite);
+        return write_export(&s, &format!("{} (linked).html", stem(&path)), export::combined(&pages, &texts, &ids, &kw, &diagrams, &bib), overwrite);
     }
     let dir = export_path(&s, &stem(&path), overwrite)?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -3801,7 +3806,7 @@ fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, forma
         std::fs::rename(dir.join(&n), old.join(&n)).map_err(|e| e.to_string())?;
     }
     for ((f, name), text) in pages.iter().zip(&texts) {
-        let (d, title, base) = (export::parse(text, &kw).with_diagrams(diagrams.clone()), stem(&f.path), f.path.parent().unwrap_or(Path::new("")));
+        let (d, title, base) = (export::parse(text, &kw).with_diagrams(diagrams.clone()).with_bib(&bib), stem(&f.path), f.path.parent().unwrap_or(Path::new("")));
         let body = if ext == "md" { export::markdown(&d, &title, base, &ids) } else { export::html(&d, &title, base, &ids, false) };
         config::write_atomic(&dir.join(name), body).map_err(|e| e.to_string())?;
     }
@@ -3828,7 +3833,7 @@ fn publish_site(s: State<App>) -> R<(PathBuf, usize)> {
     publish_dest(&dir, &[c.notes(), c.data(), s.cfg_path.parent().unwrap().to_path_buf()])?;
     let files = s.files();
     let files: Vec<&org::OrgFile> = files.iter().map(|f| &**f).collect();
-    let n = export::publish(&dir, &c.notes(), &files, &c.publish_tag, &s.kw(), |f| expand(&s, &f.path, &f.text))?;
+    let n = export::publish(&dir, &c.notes(), &files, &c.publish_tag, &s.kw(), &bib(&s), |f| expand(&s, &f.path, &f.text))?;
     Ok((dir.join("index.html"), n))
 }
 

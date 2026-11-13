@@ -2,6 +2,7 @@
 // (headings, paragraphs, lists, tables, blocks) plus inline markup; drawers,
 // planning lines, comments and #+ keywords other than title/subtitle are dropped.
 
+use crate::bib::BibEntry;
 use crate::org::{self, Kw, OrgFile};
 use regex::Regex;
 use std::collections::HashMap;
@@ -62,6 +63,8 @@ pub enum Block {
     /// `#+TOC: headlines [N] [local]`: the page's headings down to level N (all when None) as nested links; `local`
     /// holds (headings before it, enclosing level) and limits it to that heading's subtree, N counted from it.
     Toc(Option<usize>, Option<(usize, usize)>),
+    /// `#+PRINT_BIBLIOGRAPHY:` (#1337): the cited entries, in order of first citation.
+    Bibliography,
 }
 
 /// Where an export's links go. IDS: id → file name of the exported page holding it (or its `#p-N` section in a
@@ -93,6 +96,8 @@ pub struct Doc {
     radio: Option<Radio>,
     /// Every exported heading as (level, bare title, anchor id), for `#+TOC:` (see `link_anchors`).
     toc: Vec<(usize, String, String)>,
+    /// `bibliography_file` entries by key for `[cite:@key]` (#1337); empty from `parse` (citations stay as written).
+    bib: HashMap<String, BibEntry>,
 }
 
 /// A note's radio targets (#1270): ANY finds a candidate mention, TERMS (longest first, each anchored) the one
@@ -143,6 +148,10 @@ fn mentions(s: Vec<Span>, r: &Radio) -> Vec<Span> {
 impl Doc {
     pub fn with_diagrams(self, diagrams: HashMap<String, String>) -> Doc {
         Doc { diagrams, ..self }
+    }
+
+    pub fn with_bib(self, entries: &[BibEntry]) -> Doc {
+        Doc { bib: entries.iter().map(|e| (e.key.clone(), e.clone())).collect(), ..self }
     }
 }
 
@@ -198,7 +207,7 @@ fn expand_links(text: &str) -> String {
 pub fn parse(text: &str, kw: &Kw) -> Doc {
     let text = expand_links(&crate::crypt::strip(text));
     let lines: Vec<&str> = text.lines().collect();
-    let mut d = Doc { title: None, subtitle: None, blocks: vec![], diagrams: HashMap::new(), anchors: HashMap::new(), prefix: String::new(), radio: None, toc: vec![] };
+    let mut d = Doc { title: None, subtitle: None, blocks: vec![], diagrams: HashMap::new(), anchors: HashMap::new(), prefix: String::new(), radio: None, toc: vec![], bib: HashMap::new() };
     let b = blocks(&lines, kw, &mut d);
     d.blocks = b;
     link_anchors(&mut d);
@@ -393,6 +402,8 @@ fn blocks(lines: &[&str], kw: &Kw, doc: &mut Doc) -> Vec<Block> {
                     let lv = out.iter().rev().find_map(|b| if let Block::Heading(h) = b { Some(h.level) } else { None });
                     out.push(Block::Toc(depth, lv.filter(|_| local).map(|l| (at, l))));
                 }
+            } else if lower.starts_with("#+print_bibliography:") {
+                out.push(Block::Bibliography);
             }
         } else if t.starts_with('|') {
             flush(&mut para, &mut out);
@@ -468,7 +479,13 @@ enum Span {
     Radio(String),
     /// A mention of a radio target: (text, the target's anchor id).
     Mention(String, String),
+    /// `[cite:@a;@b]` (#1337): (the text as written, its keys).
+    Cite(String, Vec<String>),
 }
+
+/// `[cite(/style):…@key…]` and the keys in it, as in cite.ts.
+static CITE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\[cite(?:/[\w/-]*)?:([^\]\n]*)\]").unwrap());
+static CITE_KEY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"@([\w\-.:?!'/*+|<>&^$#%~]+)").unwrap());
 
 const PRE: &str = " \t-({'\"";
 const POST: &str = " \t-.,:!?;'\")}[";
@@ -485,6 +502,15 @@ fn spans(s: &str) -> Vec<Span> {
             out.push(Span::Link(m[1].to_string(), m.get(2).map(|d| d.as_str().to_string())));
             i += m[0].len();
             continue;
+        }
+        if let Some(m) = CITE.captures(rest).filter(|_| !s[..i].ends_with('[')) {
+            let keys: Vec<String> = CITE_KEY.captures_iter(&m[1]).map(|k| k[1].trim_end_matches(['.', ':', '?', '!']).to_string()).filter(|k| !k.is_empty()).collect();
+            if !keys.is_empty() {
+                out.extend((!text.is_empty()).then(|| Span::Text(std::mem::take(&mut text))));
+                out.push(Span::Cite(m[0].to_string(), keys));
+                i += m[0].len();
+                continue;
+            }
         }
         if let Some(m) = RADIO.captures(rest).filter(|_| !s[..i].ends_with('<')) {
             out.extend((!text.is_empty()).then(|| Span::Text(std::mem::take(&mut text))));
@@ -536,9 +562,26 @@ fn plain(s: &[Span]) -> String {
             Span::Mark(_, inner) => plain(inner),
             Span::Link(t, d) => d.clone().unwrap_or_else(|| t.clone()),
             Span::Target(_) => String::new(),
-            Span::Radio(t) | Span::Mention(t, _) => t.clone(),
+            Span::Radio(t) | Span::Mention(t, _) | Span::Cite(t, _) => t.clone(),
         })
         .collect()
+}
+
+/// The keys D cites (title, subtitle and blocks, not src/example bodies), in order of first citation.
+fn cited(d: &Doc) -> Vec<String> {
+    let mut o: Vec<String> = vec![];
+    let mut add = |s: &str| each_span(&spans(s), &mut |sp| if let Span::Cite(_, ks) = sp { ks.iter().for_each(|k| if !o.contains(k) { o.push(k.clone()) }) });
+    d.title.iter().chain(&d.subtitle).for_each(|t| add(t));
+    each_text(&d.blocks, &mut add);
+    o
+}
+
+/// One bibliography entry: `Smith 2020. Title. Journal.` (bibLine in cite.ts); an unknown key as `[key?]`.
+fn bib_line(key: &str, e: Option<&BibEntry>) -> String {
+    match e {
+        Some(e) => [if e.label.is_empty() { &e.key } else { &e.label }, &e.title, &e.container].iter().filter(|s| !s.is_empty()).map(|s| s.as_str()).collect::<Vec<_>>().join(". ") + ".",
+        None => format!("[{key}?]"),
+    }
 }
 
 /// Every span of S, inside emphasis too.
@@ -663,6 +706,22 @@ impl Cx<'_> {
         }
     }
 
+    /// Citation T of KEYS: `(Smith 2020; [lee?])`, each key through KEY; without a bibliography T as written (through RAW).
+    fn cite(&self, t: &str, keys: &[String], key: impl Fn(&str, Option<&BibEntry>) -> String, raw: impl Fn(&str) -> String) -> String {
+        if self.doc.bib.is_empty() {
+            return raw(t);
+        }
+        format!("({})", keys.iter().map(|k| key(k, self.doc.bib.get(k))).collect::<Vec<_>>().join("; "))
+    }
+
+    /// The `#+PRINT_BIBLIOGRAPHY:` entries as (line, known, key); none without a bibliography.
+    fn bibliography(&self) -> Vec<(String, bool, String)> {
+        if self.doc.bib.is_empty() {
+            return vec![];
+        }
+        cited(self.doc).into_iter().map(|k| (bib_line(&k, self.doc.bib.get(&k)), self.doc.bib.contains_key(&k), k)).collect()
+    }
+
     /// The anchor of radio target T (none past the 200-term cap).
     fn radio(&self, t: &str) -> String {
         self.doc.radio.as_ref().and_then(|r| r.ids.get(&radio_key(t))).map_or(String::new(), |id| self.anchor(id))
@@ -774,6 +833,10 @@ fn html_spans(s: &[Span], cx: &Cx) -> String {
             Span::Target(t) => cx.anchor(&target_id(t)),
             Span::Radio(t) => cx.radio(t) + &esc(t),
             Span::Mention(t, id) => format!("<a href=\"#{}{}\">{}</a>", esc(&cx.doc.prefix), esc(id), esc(t)),
+            Span::Cite(t, keys) => cx.cite(t, keys, |k, e| match e {
+                Some(e) => format!("<a href=\"#{}bib-{}\">{}</a>", esc(&cx.doc.prefix), esc(k), esc(if e.label.is_empty() { k } else { &e.label })),
+                None => esc(&bib_line(k, None)),
+            }, esc),
         })
         .collect()
 }
@@ -857,6 +920,18 @@ fn html_blocks(bs: &[Block], cx: &Cx) -> String {
                 }
                 o += &("</li>".to_string() + &"</ul></li>".repeat(es[es.len() - 1].0) + "</ul>\n");
             }
+            Block::Bibliography => {
+                let es = cx.bibliography();
+                if es.is_empty() {
+                    continue;
+                }
+                o += "<ol class=\"bibliography\">\n";
+                for (line, known, k) in es {
+                    let id = if known { format!(" id=\"{}bib-{}\"", esc(&cx.doc.prefix), esc(&k)) } else { String::new() };
+                    o += &format!("<li{id}>{}</li>\n", esc(&line));
+                }
+                o += "</ol>\n";
+            }
         }
     }
     o
@@ -917,10 +992,10 @@ fn page(title: &str, body: &str, print: bool) -> String {
 }
 
 /// PAGES (from `bundle`) as one print page: a `<section id="p-N">` per note, each on a new sheet (its anchors
-/// prefixed `p-N-`), with IDS pointing at the sections instead of the page files and DIAGRAMS embedded in every note.
-pub fn combined(pages: &[(&OrgFile, String)], texts: &[String], ids: &Ids, kw: &Kw, diagrams: &HashMap<String, String>) -> String {
+/// prefixed `p-N-`), with IDS pointing at the sections instead of the page files and DIAGRAMS and BIB used in every note.
+pub fn combined(pages: &[(&OrgFile, String)], texts: &[String], ids: &Ids, kw: &Kw, diagrams: &HashMap<String, String>, bib: &[BibEntry]) -> String {
     let ids = Ids { ids: ids.ids.iter().filter_map(|(id, name)| Some((id.clone(), format!("#p-{}", pages.iter().position(|(_, n)| n == name)?)))).collect(), site: None };
-    let docs: Vec<(Doc, String)> = pages.iter().zip(texts).enumerate().map(|(i, ((f, _), t))| (Doc { prefix: format!("p-{i}-"), ..parse(t, kw).with_diagrams(diagrams.clone()) }, f.path.file_stem().map_or("note".into(), |s| s.to_string_lossy().to_string()))).collect();
+    let docs: Vec<(Doc, String)> = pages.iter().zip(texts).enumerate().map(|(i, ((f, _), t))| (Doc { prefix: format!("p-{i}-"), ..parse(t, kw).with_diagrams(diagrams.clone()).with_bib(bib) }, f.path.file_stem().map_or("note".into(), |s| s.to_string_lossy().to_string()))).collect();
     let body: String = docs.iter().zip(pages).enumerate().map(|(i, ((d, stem), (f, _)))| format!("<section id=\"p-{i}\">\n{}</section>\n", html_body(d, stem, f.path.parent().unwrap_or(Path::new("")), &ids))).collect();
     page(docs[0].0.title.as_deref().unwrap_or(&docs[0].1), &body, true)
 }
@@ -967,8 +1042,8 @@ fn manifest_stale(manifest: &str, keep: &[String]) -> Vec<String> {
 /// Publish the notes in FILES tagged TAG (file tags) to DIR as a static site: a page per note (its text from
 /// TEXT_OF), links between them relative, `index.html`, and the other local files they link to under NOTES
 /// copied to `assets/`. Files of an earlier run (DIR's MANIFEST) no longer generated are deleted; a file in
-/// the way that no earlier run wrote is an error. Returns the number of pages.
-pub fn publish(dir: &Path, notes: &Path, files: &[&OrgFile], tag: &str, kw: &Kw, text_of: impl Fn(&OrgFile) -> String) -> Result<usize, String> {
+/// the way that no earlier run wrote is an error. BIB renders citations. Returns the number of pages.
+pub fn publish(dir: &Path, notes: &Path, files: &[&OrgFile], tag: &str, kw: &Kw, bib: &[BibEntry], text_of: impl Fn(&OrgFile) -> String) -> Result<usize, String> {
     let io = |e: std::io::Error| e.to_string();
     let picked: Vec<&OrgFile> = files.iter().copied().filter(|f| f.tags.iter().any(|t| t.eq_ignore_ascii_case(tag))).collect();
     if picked.is_empty() {
@@ -976,7 +1051,7 @@ pub fn publish(dir: &Path, notes: &Path, files: &[&OrgFile], tag: &str, kw: &Kw,
     }
     let (pages, mut ids) = name_pages(picked, "html", "index.html");
     let mut site: HashMap<PathBuf, String> = pages.iter().map(|(f, n)| (norm(&f.path), n.clone())).collect();
-    let docs: Vec<Doc> = pages.iter().map(|(f, _)| parse(&text_of(f), kw)).collect();
+    let docs: Vec<Doc> = pages.iter().map(|(f, _)| parse(&text_of(f), kw).with_bib(bib)).collect();
     let (notes, mut assets) = (norm(notes), vec![]);
     for ((f, _), d) in pages.iter().zip(&docs) {
         let base = f.path.parent().unwrap_or(Path::new(""));
@@ -1057,6 +1132,7 @@ fn md_spans(s: &[Span], cx: &Cx) -> String {
             Span::Target(t) => cx.anchor(&target_id(t)),
             Span::Radio(t) => cx.radio(t) + &md_esc(t),
             Span::Mention(t, id) => format!("[{}](#{}{id})", md_esc(t), cx.doc.prefix),
+            Span::Cite(t, keys) => cx.cite(t, keys, |k, e| md_esc(&e.map_or_else(|| bib_line(k, None), |e| if e.label.is_empty() { k.to_string() } else { e.label.clone() })), md_esc),
         })
         .collect()
 }
@@ -1122,6 +1198,10 @@ fn md_blocks(bs: &[Block], cx: &Cx) -> String {
                 es if es.is_empty() => continue,
                 es => es.iter().map(|&(n, t, id)| format!("{}- [{}](#{}{id})", "  ".repeat(n), md_esc(t), cx.doc.prefix)).collect::<Vec<_>>().join("\n"),
             },
+            Block::Bibliography => match cx.bibliography() {
+                es if es.is_empty() => continue,
+                es => es.iter().enumerate().map(|(n, (line, ..))| format!("{}. {}", n + 1, md_esc(line))).collect::<Vec<_>>().join("\n"),
+            },
         });
     }
     parts.join("\n\n")
@@ -1178,7 +1258,7 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
         let d = parse(NOTE, &kw());
         assert_eq!(d.title.as_deref(), Some("Plans <&>"));
         let kinds: Vec<&str> = d.blocks.iter().map(|b| match b {
-            Block::Heading(_) => "h", Block::Para(_) => "p", Block::List(..) => "l", Block::Table(_) => "t", Block::Pre(..) => "pre", Block::Quote(_) => "q", Block::Rule => "hr", Block::Anchor(_) => "a", Block::Toc(..) => "toc",
+            Block::Heading(_) => "h", Block::Para(_) => "p", Block::List(..) => "l", Block::Table(_) => "t", Block::Pre(..) => "pre", Block::Quote(_) => "q", Block::Rule => "hr", Block::Anchor(_) => "a", Block::Toc(..) => "toc", Block::Bibliography => "bib",
         }).collect();
         assert_eq!(kinds, ["h", "p", "l", "l", "t", "pre", "q", "pre", "h", "hr"]);
         let Block::List(false, items) = &d.blocks[2] else { panic!() };
@@ -1350,7 +1430,7 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         let p = |path: &str, text: &str| org::parse(Path::new(path), text, &kw());
         let (a, b) = (p("/n/a.org", "<<<Term>>> a\n\nterm\n"), p("/n/b.org", "<<<Term>>> b\n\nTERM\n"));
         let (pages, ids) = name_pages(vec![&a, &b], "html", "");
-        let c = combined(&pages, &[a.text.clone(), b.text.clone()], &ids, &kw(), &HashMap::new());
+        let c = combined(&pages, &[a.text.clone(), b.text.clone()], &ids, &kw(), &HashMap::new(), &[]);
         for want in ["<a id=\"p-0-radio-term\"></a>Term a", "<a href=\"#p-0-radio-term\">term</a>", "<a id=\"p-1-radio-term\"></a>Term b", "<a href=\"#p-1-radio-term\">TERM</a>"] {
             assert!(c.contains(want), "missing {want:?} in\n{c}");
         }
@@ -1379,7 +1459,7 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         let p = |path: &str, text: &str| org::parse(Path::new(path), text, &kw());
         let (a, b) = (p("/n/a.org", "#+TOC: headlines\n* A\n"), p("/n/b.org", "#+TOC: headlines\n* B\n"));
         let (pages, ids) = name_pages(vec![&a, &b], "html", "");
-        let c = combined(&pages, &[a.text.clone(), b.text.clone()], &ids, &kw(), &HashMap::new());
+        let c = combined(&pages, &[a.text.clone(), b.text.clone()], &ids, &kw(), &HashMap::new(), &[]);
         assert!(c.contains("<li><a href=\"#p-0-a\">A</a>") && c.contains("<li><a href=\"#p-1-b\">B</a>"), "{c}");
     }
 
@@ -1438,7 +1518,7 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         assert!(markdown(&parse(&c.text, &kw()), "b", Path::new("/n/sub"), &ids).contains("Back to [A](a.md)."));
 
         let texts: Vec<String> = pages.iter().map(|(f, _)| f.text.clone()).collect();
-        let p = combined(&pages, &texts, &ids, &kw(), &HashMap::new());
+        let p = combined(&pages, &texts, &ids, &kw(), &HashMap::new(), &[]);
         assert_eq!(p.matches("<section id=").count(), 3);
         assert_eq!(p.matches("print()").count(), 1);
         for want in ["<title>a</title>", "<section id=\"p-0\">\n<h1>a</h1>", "To <a href=\"#p-1\">B&#39;s heading</a>, lost, <a href=\"#p-0\">me</a>.", "On to <a href=\"#p-2\">", "<h2 id=\"p-1-h\">H</h2>", ", up to <a href=\"#p-1-h\">H</a>.", "<section id=\"p-2\">\n<h1>b</h1>"] {
@@ -1477,7 +1557,7 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         std::fs::write(dir.join(MANIFEST), "A.html\nindex.html\n").unwrap();
         std::fs::write(dir.join("A.html"), "old").unwrap();
         let a = org::parse(&notes.join("a.org"), "#+filetags: :publish:\nHi.\n", &kw());
-        assert_eq!(publish(&dir, &notes, &[&a], "publish", &kw(), |f| f.text.clone()), Ok(1));
+        assert_eq!(publish(&dir, &notes, &[&a], "publish", &kw(), &[], |f| f.text.clone()), Ok(1));
         assert!(dir.join("a.html").exists(), "the renamed page must survive the stale sweep");
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -1497,7 +1577,7 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         let idx = p("sub/index.org", "#+filetags: :publish:\nI.\n");
         let secret = p("secret.org", "Private.\n");
         let files = [&a, &b, &idx, &secret];
-        let run = || publish(&dir, &notes, &files, "publish", &kw(), |f| f.text.clone());
+        let run = || publish(&dir, &notes, &files, "publish", &kw(), &[], |f| f.text.clone());
         assert_eq!(run(), Ok(3));
         let read = |n: &str| std::fs::read_to_string(dir.join(n)).unwrap_or_default();
         let h = read("a.html");
@@ -1526,7 +1606,7 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         // A file a run didn't write is never overwritten; nothing tagged is an error.
         std::fs::remove_file(dir.join(MANIFEST)).unwrap();
         assert!(run().is_err_and(|e| e.contains("a.html is in the way")));
-        assert!(publish(&dir, &notes, &[&secret], "publish", &kw(), |f| f.text.clone()).is_err_and(|e| e.contains("No notes tagged :publish:")));
+        assert!(publish(&dir, &notes, &[&secret], "publish", &kw(), &[], |f| f.text.clone()).is_err_and(|e| e.contains("No notes tagged :publish:")));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1542,7 +1622,7 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         let text = "#+title: T\n#+filetags: :publish:\n* H [[x/f.txt][in head]]\n- term :: [[y/f.txt][in term]] *[[x/f.txt][bold]]*\n  - [[y/f.txt]]\n| [[x/f.txt]] |\n#+begin_quote\n[[y/f.txt]]\n#+end_quote\n#+begin_verse\n[[x/f.txt]]\n#+end_verse\n";
         let mut a = org::parse(&notes.join("a.org"), text, &kw());
         a.mtime = Some(std::time::SystemTime::now());
-        assert_eq!(publish(&dir, &notes, &[&a], "publish", &kw(), |f| f.text.clone()), Ok(1));
+        assert_eq!(publish(&dir, &notes, &[&a], "publish", &kw(), &[], |f| f.text.clone()), Ok(1));
         let h = std::fs::read_to_string(dir.join("a.html")).unwrap();
         assert!(h.contains("assets/f.txt") && h.contains("assets/f (2).txt") || h.contains("assets/f.txt") && h.contains("assets/f.txt (2)"), "{h}");
         assert!(dir.join("assets").is_dir());
@@ -1551,7 +1631,7 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         // Errors surface instead of panicking: DIR is a file; an asset vanishes before it is copied.
         let file = root.join("file");
         std::fs::write(&file, "").unwrap();
-        assert!(publish(&file, &notes, &[&a], "publish", &kw(), |f| f.text.clone()).is_err());
+        assert!(publish(&file, &notes, &[&a], "publish", &kw(), &[], |f| f.text.clone()).is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1560,5 +1640,27 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         let v = |s: &[&str]| s.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(stale(&v(&["a.html", "old.html", "pic.png", "b.md", "x.html.bak"]), &v(&["a.html", "b.html"]), "html"), ["old.html"]);
         assert_eq!(stale(&v(&["a.html", "b.md", "old.md"]), &v(&["b.md"]), "md"), ["old.md"]);
+    }
+
+    #[test]
+    fn citations_and_bibliography() {
+        let bib = crate::bib::parse("@article{a, author={Smith, Jane}, title={Alpha}, journal={J}, year={2020}}\n@book{b, author={Lee, Bo and Ng, Al}, title={Beta}, year={2019}}");
+        let text = "Intro [cite:@b] and [cite/t:see @a p. 3;@zz].\n#+begin_src org\n[cite:@a]\n#+end_src\nAgain [cite:@a].\n* Refs\n#+PRINT_BIBLIOGRAPHY:\n";
+        let d = || parse(text, &kw()).with_bib(&bib);
+        let h = html_body(&d(), "x", Path::new(""), &Ids::new());
+        assert!(h.contains("Intro (<a href=\"#bib-b\">Lee &amp; Ng 2019</a>) and (<a href=\"#bib-a\">Smith 2020</a>; [zz?])."), "{h}");
+        assert!(h.contains("<pre class=\"src\" data-lang=\"org\"><code>[cite:@a]</code></pre>"), "{h}");
+        // First-citation order, deduplicated; the unknown key listed without an anchor.
+        assert!(h.contains("<ol class=\"bibliography\">\n<li id=\"bib-b\">Lee &amp; Ng 2019. Beta.</li>\n<li id=\"bib-a\">Smith 2020. Alpha. J.</li>\n<li>[zz?]</li>\n</ol>"), "{h}");
+        let m = markdown(&d(), "x", Path::new(""), &Ids::new());
+        assert!(m.contains("Intro (Lee & Ng 2019) and (Smith 2020; \\[zz?\\])."), "{m}");
+        assert!(m.contains("1. Lee & Ng 2019. Beta.\n2. Smith 2020. Alpha. J.\n3. \\[zz?\\]"), "{m}");
+        // No bibliography: citations as written, no list; `[[cite:x]]` stays a link.
+        let h = html_body(&parse(text, &kw()), "x", Path::new(""), &Ids::new());
+        assert!(h.contains("Intro [cite:@b] and") && !h.contains("bibliography"), "{h}");
+        assert_eq!(spans("[[cite:x]]"), [Span::Link("cite:x".into(), None)]);
+        assert_eq!(spans("[cite:no keys]"), [Span::Text("[cite:no keys]".into())]);
+        // Combined pages prefix the anchors.
+        assert!(combined(&[(&org::parse(Path::new("/n/a.org"), text, &kw()), "a.html".into())], &[text.into()], &Ids::new(), &kw(), &HashMap::new(), &bib).contains("<li id=\"p-0-bib-a\">"));
     }
 }

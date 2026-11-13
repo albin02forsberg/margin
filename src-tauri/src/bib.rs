@@ -1,9 +1,9 @@
-//! Read-only BibTeX reader: the `bibliography_file` setting's entries for citation pickers.
+//! Read-only BibTeX reader: the `bibliography_file` setting's entries for citation pickers and export.
 use crate::{config, App};
 use serde::Serialize;
 use tauri::State;
 
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug, PartialEq, Clone)]
 pub struct BibEntry {
     pub key: String,
     pub author: String,
@@ -115,15 +115,19 @@ pub fn parse(text: &str) -> Vec<BibEntry> {
     out
 }
 
-/// Entries of the `bibliography_file` (re-read each call); empty setting = none.
-#[tauri::command]
-pub fn bib_entries(s: State<App>) -> Result<Vec<BibEntry>, String> {
-    let file = s.cfg().bibliography_file;
+/// Entries of the BibTeX FILE (a `bibliography_file` setting, `~` expanded); empty setting = none.
+pub fn entries_from(file: &str) -> Result<Vec<BibEntry>, String> {
     if file.trim().is_empty() {
         return Ok(vec![]);
     }
     let path = config::expand(file.trim());
     std::fs::read_to_string(&path).map(|t| parse(&t)).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// Entries of the `bibliography_file` (re-read each call); empty setting = none.
+#[tauri::command]
+pub fn bib_entries(s: State<App>) -> Result<Vec<BibEntry>, String> {
+    entries_from(&s.cfg().bibliography_file)
 }
 
 #[cfg(test)]
