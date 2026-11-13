@@ -33,7 +33,7 @@ function write(path: string, text: string) {
 }
 
 /** config.toml lines on top of setup.ts's. */
-const config = [`templates = []`, `ledger_budgets = ["food=200", "transport=60"]`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`, ``, `[[feeds]]`, `name = "Orchard blog"`, `url = "https://blog.example/feed.xml"`, ``, `[[feeds]]`, `name = "Release notes"`, `url = "https://releases.example/atom.xml"`, `heading = "Upgrades"`, ``, `[tag_colors]`, `work = "#3b82f6"`, `docs = "#16a34a"`];
+const config = [`templates = []`, `bibliography_file = "~/refs.bib"`,`ledger_budgets = ["food=200", "transport=60"]`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`, ``, `[[feeds]]`, `name = "Orchard blog"`, `url = "https://blog.example/feed.xml"`, ``, `[[feeds]]`, `name = "Release notes"`, `url = "https://releases.example/atom.xml"`, `heading = "Upgrades"`, ``, `[tag_colors]`, `work = "#3b82f6"`, `docs = "#16a34a"`];
 
 /** A small Markdown vault outside the notes folder, for the import preview (#900). */
 let vault = "";
@@ -197,6 +197,22 @@ Every berth gets one manifest per visit; a missing Manifest blocks the berth.
 Late manifests go to the harbor master, not to [[file:harbor.org][the Harbor app]].
 `);
 
+  // #1335: the `bibliography_file` (config below, `~` = the temp root) and a note citing it, one key unknown.
+  write(join(root, "refs.bib"), `@article{kleppmann19, author = {Kleppmann, Martin and Wiggins, Adam and van Hardenberg, Peter}, title = {Local-first software}, journal = {Onward!}, year = {2019}}
+@book{shapiro11, author = {Shapiro, Marc and Preguiça, Nuno}, title = {Conflict-free replicated data types}, publisher = {INRIA}, year = {2011}}
+@inproceedings{terry95, author = {Terry, Douglas}, title = {Managing update conflicts in Bayou}, booktitle = {SOSP}, year = {1995}}
+`);
+  write(join(notes, "literature.org"), `
+#+title: Sync literature
+
+* Why local-first
+Offline edits merge without a server [cite:@kleppmann19], using CRDTs [cite:see @shapiro11 p. 3;@terry95].
+Conflict-free merges still need a review queue [cite:@missing21].
+
+* Next
+Compare with operational transforms.
+`);
+
   write(join(notes, "home.org"), `
 #+title: Home
 
@@ -353,6 +369,18 @@ async function pngs() {
     await browser.keys("}"); // cursor off the title line, so it renders
     await shot("radio-targets");
     await shot("toc"); // #1295: the #+TOC: line shows the outline under it
+    await open("Orchard platform", "orchard.org");
+  }
+
+  if (want("citations")) { // #1335: author-year chips, an unknown key flagged, `@` completion inside [cite:…]
+    await open("Sync literature", "literature.org");
+    await browser.keys(Key.Escape);
+    await type("GA [cite:@");
+    await find(".cm-tooltip-autocomplete li", "kleppmann19");
+    await shot("citations");
+    await browser.keys(Key.Escape); // closes the popup
+    await browser.keys(Key.Escape);
+    await type("u");
     await open("Orchard platform", "orchard.org");
   }
 

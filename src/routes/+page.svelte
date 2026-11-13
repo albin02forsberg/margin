@@ -17,6 +17,7 @@
   import { srcAt, resultsChange, tangleFiles } from "$lib/babel";
   import { svgs } from "$lib/diagram";
   import { accepted, changeLabel, hitKey, type Hit as ReplaceHit } from "$lib/replace";
+  import { citeText, type BibEntry } from "$lib/cite";
   import { bareTitle, bracketRetitle, expandLink, findTarget, fuzzyTarget, hereLink, linkAbbrevs, linkHeadings, linkTarget, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
@@ -100,6 +101,13 @@
   let cfg = $state<any>(null);
   $effect(() => ed.setSpellcheck(!!cfg?.config.spellcheck));
   $effect(() => ed.setVimInit(cfg?.config.vim_init ?? ""));
+  // Citation chips, completion and peek (#1335): re-read the bibliography when its setting changes or a note opens, not per keystroke.
+  $effect(() => {
+    const f: string = cfg?.config.bibliography_file ?? "";
+    void tab?.path;
+    if (!f.trim()) ed.setBibliography([]);
+    else call<BibEntry[]>("bib_entries").then(ed.setBibliography, () => ed.setBibliography([]));
+  });
   let tabs = $state<Tab[]>([]);
   let cur = $state(-1);
   let editorEl = $state<HTMLDivElement>();
@@ -2195,10 +2203,17 @@
     peek = { key: tab.key, ...r };
   }
 
+  /** Peek the bibliography entry of the cite at the cursor (#1335); its `path` is `@key`, which Enter doesn't open. */
+  function peekCite(c: { key: string; entry?: BibEntry }) {
+    if (!c.entry) return flash(`@${c.key} is not in the bibliography`);
+    const e = c.entry, text = [`* ${e.title || e.key}`, e.author, e.year, e.container].filter(Boolean).join("\n");
+    peek = { key: tab.key, path: `@${c.key}`, line: 0, text: `${text}\n\n${citeText(e)}` };
+  }
+
   function closePeek(open = false) {
     const p = peek;
     peek = null;
-    if (open && p) act(() => openFile(p.path, p.line));
+    if (open && p && !p.path.startsWith("@")) act(() => openFile(p.path, p.line));
     else view.focus();
   }
 
@@ -3888,7 +3903,7 @@
     { label: "Bookmark: add at cursor…", leader: "m m", run: addBookmarkHere },
     { label: "Bookmark: delete…", leader: "m d", run: deleteBookmark },
     { label: "Bookmark: jump to…", leader: "'", run: jumpBookmark },
-    { label: "Links: peek at the link at cursor (Enter opens, Esc closes)", keys: ["Shift+Enter"], ctx: "normal", leader: "l p", run: () => (ed.linkAtCursor(view) ? (act(() => peekLink()), true) : (flash("No link here."), false)) },
+    { label: "Links: peek at the link at cursor (Enter opens, Esc closes)", keys: ["Shift+Enter"], ctx: "normal", leader: "l p", run: () => { const c = inFile() && ed.citeAtCursor(view); return c ? (peekCite(c), true) : ed.linkAtCursor(view) ? (act(() => peekLink()), true) : (flash("No link here."), false); } },
     { label: "Show note graph", leader: "n g", run: () => { showGraph = !showGraph; return refreshBacklinks(); } },
     { label: "AI chat (local model)", leader: "n a", run: toggleChat },
     { label: "Undo last edit made from a task view or the links panel", leader: "n u", run: () => undo().then(refreshBacklinks) },
@@ -4611,7 +4626,7 @@
           <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <aside class="links peek" data-region="side" tabindex="0" use:peekView={peek}>
             <h3 title={peek.path}>Peek · {niceName(peek.path)}{peek.line ? `:${peek.line + 1}` : ""}</h3>
-            <p>Enter opens · Esc closes</p>
+            <p>{peek.path.startsWith("@") ? "Esc closes" : "Enter opens · Esc closes"}</p>
           </aside>
         {/key}
       {/if}
