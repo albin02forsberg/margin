@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bibLine, bibliography, chip, citeAt, citeQuery, cites, citeText, printBibDirective, type BibEntry } from "./cite.ts";
+import { bibEditMatters, bibLine, bibliography, chip, citeAt, citeQuery, cites, citeText, printBibDirective, type BibEntry } from "./cite.ts";
 
 test("cites: keys with ranges, prefixes and suffixes ignored", () => {
   const l = "As [cite:@a;@b] and [cite/t:see @smith20 p. 3; @lee.] ok [[x]] [cite:no keys]";
@@ -55,4 +55,11 @@ test("printBibDirective", () => {
   assert.ok(printBibDirective("  #+print_bibliography: :style numeric"));
   assert.ok(!printBibDirective("text #+PRINT_BIBLIOGRAPHY:"));
   assert.ok(!printBibDirective("#+PRINT_BIBLIOGRAPHY"));
+});
+
+test("bibEditMatters: only cite or #+ lines", () => {
+  assert.ok(!bibEditMatters("plain text", "plain texts"));
+  assert.ok(bibEditMatters("see [cite:@a]", "see [cite:@"));
+  assert.ok(bibEditMatters("x", "#+PRINT_BIBLIOGRAPHY:"));
+  assert.ok(bibEditMatters("#+begin_src", "x"));
 });

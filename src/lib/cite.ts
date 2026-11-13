@@ -21,6 +21,9 @@ export function cites(line: string): Cite[] {
   return out;
 }
 
+/** Whether an edit touching the lines OLD (before) and NEW (after) can change the `#+PRINT_BIBLIOGRAPHY:` list: either text has a `#+` line or a `[cite`. */
+export const bibEditMatters = (old: string, now: string) => /#\+|\[cite/i.test(old) || /#\+|\[cite/i.test(now);
+
 /** The key under column COL of LINE: the one the column is on, else the cite's first key; null outside a cite. */
 export function citeAt(line: string, col: number): string | null {
   const c = cites(line).find((c) => c.from <= col && col <= c.to);
