@@ -154,14 +154,19 @@ pub fn verdict(hops: &[(u16, Option<String>)], err: Option<String>) -> Status {
     }
 }
 
+/// The shared client of `link_status` (8 s timeout, no redirects), so connections are reused across checks.
+static CHECK: LazyLock<Result<reqwest::Client, String>> = LazyLock::new(|| {
+    tls();
+    reqwest::Client::builder().user_agent("Margin").timeout(std::time::Duration::from_secs(8)).redirect(reqwest::redirect::Policy::none()).build().map_err(|e| e.without_url().to_string())
+});
+
 /// Checks the http(s) URL (8 s per request): HEAD, or GET when HEAD fails with an HTTP error (hosts that
 /// refuse HEAD), following up to HOPS redirects itself so permanent ones show as moved. Errors leave the URL out.
 #[tauri::command]
 pub async fn link_status(url: String) -> Result<Status, String> {
     check_url(&url)?;
-    tls();
     let e = |e: reqwest::Error| e.without_url().to_string();
-    let client = reqwest::Client::builder().user_agent("Margin").timeout(std::time::Duration::from_secs(8)).redirect(reqwest::redirect::Policy::none()).build().map_err(e)?;
+    let client = CHECK.as_ref().map_err(Clone::clone)?;
     let mut url = reqwest::Url::parse(&url).map_err(|e| e.to_string())?;
     let mut hops = vec![];
     for _ in 0..=HOPS {
@@ -187,6 +192,11 @@ pub async fn link_status(url: String) -> Result<Status, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn check_client_builds() {
+        assert!(CHECK.is_ok());
+    }
 
     #[test]
     fn titles() {
