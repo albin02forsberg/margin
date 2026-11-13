@@ -28,7 +28,7 @@ import { checklistToTasks, levelAt, listRange, tasksToChecklist } from "./checkl
 import { toc } from "./toc";
 import { transclusion, transcludeTarget } from "./transclude";
 import { completionAt } from "./links";
-import { bibLine, bibliography, chip, citeAt, citeQuery, cites, citeText, printBibDirective, type BibEntry } from "./cite";
+import { bibEditMatters, bibLine, bibliography, chip, citeAt, citeQuery, cites, citeText, printBibDirective, type BibEntry } from "./cite";
 import { mentions, radio, type Radio } from "./radio";
 import { diagrams } from "./diagram";
 export { directive as transcludeLine } from "./transclude";
@@ -685,7 +685,15 @@ class BibList extends WidgetType {
 /** Block widgets can't come from the orgStyle plugin, hence a field; rebuilt on edits and when `setBibliography` loads entries. */
 const printBib = StateField.define<DecorationSet>({
   create: (s) => bibDecos(s),
-  update: (d, tr) => (tr.docChanged || tr.effects.some((e) => e.is(langLoaded)) ? bibDecos(tr.state) : d),
+  update: (d, tr) => {
+    if (tr.effects.some((e) => e.is(langLoaded))) return bibDecos(tr.state);
+    if (!tr.docChanged) return d;
+    // Rebuild only when a touched line (before or after) has a cite or `#+`; else just map the widgets.
+    let hit = false;
+    const text = (doc: EditorState["doc"], a: number, b: number) => doc.sliceString(doc.lineAt(a).from, doc.lineAt(b).to);
+    tr.changes.iterChangedRanges((fa, ta, fb, tb) => { hit ||= bibEditMatters(text(tr.startState.doc, fa, ta), text(tr.state.doc, fb, tb)); });
+    return hit ? bibDecos(tr.state) : d.map(tr.changes);
+  },
   provide: (f) => EditorView.decorations.from(f),
 });
 function bibDecos(s: EditorState): DecorationSet {
