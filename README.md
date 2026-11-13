@@ -107,6 +107,8 @@ push it a day, or `s` to schedule it. `Y` copies the shown list as Markdown chec
 
 **Link abbreviations** — `#+LINK: gh https://github.com/me/repo/issues/%s` in a note makes `[[gh:123]]` open that URL (`%s` is the tag, `%h` its URL-encoding; without either the tag is appended). Peek and HTML/Markdown export expand them too; `file`, `id`, `http`, `https` and `mailto` can't be redefined.
 
+**Citations** — with the *Bibliography (.bib)* setting pointing at a BibTeX file, org-cite citations such as `[cite:@smith20;@lee21]` or `[cite/t:see @smith20 p. 3]` show as an author-year chip (`Smith 2020; Lee 2021`) off the cursor line. Hovering the chip shows the full entries, and keys missing from the file get a red wavy underline. Typing `@` inside `[cite:…]` completes keys from the file, and `Shift+Enter` (or `Space l p`) on a citation peeks at its entry. With no bibliography set, citations stay plain text.
+
 **Links and backlinks** — `Space n b` shows the notes linking here, `Space n g` the local
 graph, and `Enter` on a link follows it. `Shift+Enter` (or `Space l p`) on a link peeks at its target instead:
 the linked note or heading shows read-only in a side panel, `Enter` there opens it, `Esc` closes it (a note with unsaved edits peeks from its buffer, not the disk). `Space n O` lists notes with no links in or out
@@ -736,7 +738,7 @@ Vim keys everywhere. `:set number` / `:set relativenumber` (`nu` / `rnu`) show l
 | Space n L | Broken links in notes (journal, inbox and trash not scanned; links inside src/example/export blocks ignored): unknown `[[id:]]`, missing `[[file:]]` targets, headings or `CUSTOM_ID`s; Enter opens the note at the link |
 | Space n W | Check the web links in notes: dead and moved (301/308) URLs; Enter opens the note at the link, Ctrl+R rewrites a moved one (preview first); Esc stops the check |
 | Space n g | Graph of notes within two links of this one; click a note to open it |
-| Shift+Enter / Space l p | Peek at the link at the cursor: its note or heading shows read-only beside the editor (a drawer under 1000 px); Enter opens it, Esc closes |
+| Shift+Enter / Space l p | Peek at the link at the cursor: its note or heading shows read-only beside the editor (a drawer under 1000 px); Enter opens it, Esc closes. On a `[cite:@key]` it shows the bibliography entry |
 | Space n r | Rename this note (same folder, `.org` added if missing); `[[file:]]` links to it in other notes are updated after a backup, `[[id:]]` links need nothing |
 | Space n p | Pin or unpin this note: pinned notes come first in Ctrl+P (marked ★, in pin order); pins are kept per machine and follow renames and moves |
 | Space n P | Open one of the pinned notes |

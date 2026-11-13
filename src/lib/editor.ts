@@ -28,6 +28,7 @@ import { checklistToTasks, levelAt, listRange, tasksToChecklist } from "./checkl
 import { toc } from "./toc";
 import { transclusion, transcludeTarget } from "./transclude";
 import { completionAt } from "./links";
+import { chip, citeAt, citeQuery, cites, citeText, type BibEntry } from "./cite";
 import { mentions, radio, type Radio } from "./radio";
 import { diagrams } from "./diagram";
 export { directive as transcludeLine } from "./transclude";
@@ -338,12 +339,13 @@ const orgFold = foldService.of((state, from) => {
 // ---------------------------------------------------------------- styling
 
 class Glyph extends WidgetType {
-  constructor(readonly text: string, readonly cls: string) { super(); }
-  eq(o: Glyph) { return o.text === this.text && o.cls === this.cls; }
+  constructor(readonly text: string, readonly cls: string, readonly title = "") { super(); }
+  eq(o: Glyph) { return o.text === this.text && o.cls === this.cls && o.title === this.title; }
   toDOM() {
     const s = document.createElement("span");
     s.className = this.cls;
     s.textContent = this.text;
+    if (this.title) s.title = this.title;
     return s;
   }
   ignoreEvent() { return false; }
@@ -382,6 +384,7 @@ function imageSrc(target: string, notePath?: string): string | null {
 
 const LANG_ALIAS: Record<string, string> = { elisp: "lisp", "emacs-lisp": "lisp", "c++": "cpp" };
 const langs = new Map<string, Language | null | "loading">();
+/** Also dispatched by `setBibliography`: both just ask orgStyle to redecorate. */
 const langLoaded = StateEffect.define<null>();
 
 /** The parser for a src block language, loading it on first use (then VIEW re-renders). */
@@ -444,6 +447,20 @@ function inline(out: Range<Decoration>[], text: string, from: number, active: bo
     if (active) { out.push(mark("cm-org-link-raw").range(s, e)); continue; }
     const textFrom = m[2] ? e - 2 - m[2].length : s + 2;
     out.push(hide.range(s, textFrom), mark("cm-org-link").range(textFrom, e - 2), hide.range(e - 2, e));
+  }
+  // Citations (#1335): an author-year chip off the cursor line, unknown keys flagged; nothing without a bibliography.
+  if (bib.size) for (const c of cites(text)) {
+    const s = from + c.from, e = from + c.to;
+    if (!free(s, e)) continue;
+    taken.push([s, e]);
+    if (active) {
+      out.push(mark("cm-org-cite-raw").range(s, e));
+      for (const k of c.keys) if (!bib.has(k.key)) out.push(mark("cm-org-cite-missing").range(from + k.from, from + k.to));
+      continue;
+    }
+    const keys = c.keys.map((k) => k.key), ch = chip(keys, bib);
+    const title = keys.map((k) => (bib.has(k) ? citeText(bib.get(k)!) : `@${k}: not in the bibliography`)).join("\n");
+    out.push(Decoration.replace({ widget: new Glyph(ch.text, `cm-org-cite${ch.missing ? " cm-org-cite-missing" : ""}`, title) }).range(s, e));
   }
   for (const m of text.matchAll(TS)) {
     const s = from + m.index!, e = s + m[0].length;
@@ -637,6 +654,20 @@ export function linkAt(state: EditorState, pos: number): string | null {
 }
 
 export const linkAtCursor = (v: EditorView) => linkAt(v.state, v.state.selection.main.head);
+
+/** The `bibliography_file` entries by key (#1335): cite chips, completion and peek read them. */
+let bib = new Map<string, BibEntry>(), bibJson = "[]";
+export function setBibliography(entries: BibEntry[]) {
+  const j = JSON.stringify(entries);
+  if (j === bibJson) return;
+  [bib, bibJson] = [new Map(entries.map((e) => [e.key, e])), j];
+  for (const v of views) v.dispatch({ effects: langLoaded.of(null) });
+}
+/** The cited key at the cursor and its entry (undefined when unknown); null outside a cite or without a bibliography. */
+export function citeAtCursor(v: EditorView): { key: string; entry?: BibEntry } | null {
+  const ln = v.state.doc.lineAt(v.state.selection.main.head), key = bib.size ? citeAt(ln.text, v.state.selection.main.head - ln.from) : null;
+  return key == null ? null : { key, entry: bib.get(key) };
+}
 
 /** Follow the footnote at POS (reference ⇄ definition) as a vim jump, so Ctrl+O
  *  returns; null when POS isn't on one, else its label, whether it's the
@@ -1260,7 +1291,10 @@ export function vimMode(v: EditorView): string {
 
 /** `[[` notes and headings, `@` people, `:` tags on a heading line, as you type (#899). A link replaces the `[[` and a `]]` right after it. */
 async function complete(cx: CompletionContext): Promise<CompletionResult | null> {
-  const ln = cx.state.doc.lineAt(cx.pos), at = completionAt(cx.state.sliceDoc(ln.from, cx.pos), !!level(ln.text));
+  const ln = cx.state.doc.lineAt(cx.pos), q = bib.size ? citeQuery(cx.state.sliceDoc(ln.from, cx.pos)) : null;
+  // `@` inside `[cite:…]`: bibliography keys (#1335), before the people below.
+  if (q != null) return { from: cx.pos - q.length, validFor: /^[\w\-.:/]*$/, options: [...bib.values()].map((e) => ({ label: e.key, detail: [e.label, e.title].filter(Boolean).join(" · ") })) };
+  const at = completionAt(cx.state.sliceDoc(ln.from, cx.pos), !!level(ln.text));
   if (!at) return null;
   const from = cx.pos - at.query.length, c = await hooks.completions();
   if (cx.aborted) return null;
@@ -1349,6 +1383,9 @@ const theme = EditorView.theme({
   // inline
   ".cm-org-link": { color: "var(--link)", textDecoration: "underline", textUnderlineOffset: "3px", textDecorationColor: "color-mix(in srgb, var(--link) 45%, transparent)", cursor: "pointer" },
   ".cm-org-link-raw": { color: "var(--link)" },
+  ".cm-org-cite": { color: "var(--link)", fontSize: "0.9em", background: "color-mix(in srgb, var(--link) 12%, transparent)", borderRadius: "var(--radius-sm)", padding: "0.1em 0.35em", cursor: "help" },
+  ".cm-org-cite-raw": { color: "var(--link)" },
+  ".cm-org-cite-missing": { textDecoration: "underline wavy", textDecorationColor: "var(--todo)", textUnderlineOffset: "3px" },
   ".cm-org-ts": { fontFamily: "var(--mono)", fontSize: "0.82em", color: "var(--date)", background: "color-mix(in srgb, var(--date) 12%, transparent)", borderRadius: "var(--radius-sm)", padding: "0.1em 0.35em" },
   ".cm-org-ts-inactive": { color: "var(--dim)", background: "var(--active)" },
   ".cm-org-fn": { color: "var(--link)", fontSize: "0.8em", verticalAlign: "0.3em" },
