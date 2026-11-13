@@ -72,6 +72,8 @@ pub struct Config {
     pub views: Vec<View>,
     /// Where to keep a calendar (.ics) of scheduled tasks and deadlines; empty for none.
     pub calendar_file: String,
+    /// A BibTeX (.bib) file whose entries citation pickers read; empty for none.
+    pub bibliography_file: String,
     /// Capture templates (`Space c`): `[[templates]] key name file heading body`.
     pub templates: Vec<Template>,
     /// More templates, one per .org file, relative to notes_dir; empty to disable.
@@ -328,6 +330,7 @@ impl Default for Config {
             birthday_lead_days: 3,
             views: vec![],
             calendar_file: String::new(),
+            bibliography_file: String::new(),
             templates: vec![
                 Template { key: "n".into(), name: "Note".into(), file: String::new(), heading: None, datetree: false, body: "* %^{Title}\n%U\n%i%?".into() },
                 Template { key: "m".into(), name: "Meeting notes".into(), file: "meetings.org".into(), heading: None, datetree: false, body: "* %^{Meeting} :meeting:\n%U\n- %?".into() },
