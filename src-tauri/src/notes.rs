@@ -568,7 +568,7 @@ fn search_miss(f: &OrgFile, search: &str) -> Option<String> {
 }
 
 /// 0-based line ranges of verbatim blocks (`#+begin_src|example|export` .. `#+end_`; unterminated runs to EOF).
-fn verbatim_lines(text: &str) -> Vec<std::ops::Range<usize>> {
+pub(crate) fn verbatim_lines(text: &str) -> Vec<std::ops::Range<usize>> {
     let (mut out, mut start) = (vec![], None);
     for (i, l) in text.lines().enumerate() {
         let l = l.trim_start().to_ascii_lowercase();

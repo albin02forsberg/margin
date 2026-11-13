@@ -4,6 +4,8 @@
 // manual "Screenshots" workflow). All content below is made up.
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { browser, close, find, Key, launch, texts, type Dirs } from "./setup.ts";
@@ -37,8 +39,11 @@ const config = [`templates = []`, `ledger_budgets = ["food=200", "transport=60"]
 let vault = "";
 /** A Kindle clippings file outside the notes folder, for the highlights import preview (#1040). */
 let clippings = "";
+/** The demo notes folder, for a note a shot adds and removes again. */
+let notesDir = "";
 
 function fixtures({ root, notes, data }: Dirs) {
+  notesDir = notes;
   vault = join(root, "Obsidian vault");
   write(join(vault, "Garden.md"), "---\ntags: [home]\n---\n# Garden\n- [ ] Plant tulips, see [[Bulbs]]\n![](img/bed.png)\n");
   write(join(vault, "plants/Bulbs.md"), "Order from the **spring** catalogue.\n");
@@ -431,6 +436,25 @@ async function pngs() {
     await command("Workspace: switch");
     await shot("workspaces");
     await browser.keys(Key.Escape);
+    await pause();
+  }
+
+  if (want("web-links")) { // #1325: Space n W against a local server (moved, gone, fine) and a host that doesn't exist
+    const server = createServer((req, res) => {
+      const to = req.url === "/docs/v1" ? "/docs/v2" : null;
+      res.writeHead(to ? 301 : req.url === "/blog/sync" ? 404 : 200, to ? { Location: to } : {}).end();
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const at = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const file = join(notesDir, "bookmarks.org");
+    write(file, `#+title: Bookmarks\n- [[${at}/docs/v1][Orchard API docs]]\n- [[${at}/blog/sync][Offline sync post]]\n- [[${at}/guide][Harbor guide]]\n- [[https://seed-catalogue.invalid/spring][Seed catalogue]]\n`);
+    await pause(1500); // the watcher indexes the new note
+    await command("Notes: check web links");
+    await browser.waitUntil(async () => (await texts(".picker label span")).some((t) => t.includes("dead or moved")), { timeout: 30_000, timeoutMsg: "no web link results" });
+    await shot("web-links");
+    await browser.keys(Key.Escape);
+    rmSync(file);
+    server.close();
     await pause();
   }
 

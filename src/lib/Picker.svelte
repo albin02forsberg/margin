@@ -66,6 +66,8 @@
   });
 
   export const isOpen = () => active;
+  /** Closes the picker as if cancelled (a progress prompt whose work finished). */
+  export const close = () => done(null);
 
   /** Resolves to the chosen item's value, the typed text (custom/plain prompt), or null on cancel. */
   export async function open(opts: PickOpts): Promise<any> {
