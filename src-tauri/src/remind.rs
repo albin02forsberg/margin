@@ -80,6 +80,9 @@ fn tick(app: &AppHandle) {
     let today = now.date();
     focus(app, &s, c.focus_minutes, c.focus_break_minutes, now);
     long_session(app, &s, c.max_session_hours, now);
+    if c.effort_nudge {
+        effort_session(app, &s, now);
+    }
     if !c.reminders {
         return;
     }
@@ -162,6 +165,54 @@ fn long_nudge(last: &mut Option<NaiveDateTime>, file: &Path, since: NaiveDateTim
     let _ = std::fs::write(file, format!("{since:?}"));
     let what = if project.is_empty() { String::new() } else { format!(" on {project}") };
     Some(format!("Still working{what}? Clock has run {}", crate::timeclock::format_hm((now - since).num_seconds() as f64 / 3600.0)))
+}
+
+/// Notify once when the running clock's task passes its `:EFFORT:` estimate (all its sessions counted,
+/// as in the estimates report); sent keys live in effort-sent.txt (a restart).
+fn effort_session(app: &AppHandle, s: &App, now: NaiveDateTime) {
+    let Some((_, project, task)) = s.tc().current() else { return };
+    let (files, projects) = (s.files(), s.tc().projects());
+    let Some(h) = effort_heading(&files, &projects, &project, &task) else { return };
+    let clocked = crate::timeclock::spent_on(&crate::timeclock::spent_by_task(&s.tc().events(), now), &projects, &h.category, &h.title).unwrap_or(0);
+    if let Some(body) = effort_nudge(&s.cfg().data().join("effort-sent.txt"), &project, &task, h.effort.unwrap_or(0), clocked) {
+        let _ = app.notification().builder().title("Margin").body(body).show();
+    }
+}
+
+/// The one estimated heading titled TASK (normalised), among those in category PROJECT when any are;
+/// None when there is none or more than one (rather than guess).
+fn effort_heading<'a>(files: &'a [std::sync::Arc<org::OrgFile>], projects: &crate::timeclock::Projects, project: &str, task: &str) -> Option<&'a org::Headline> {
+    let n = |s: &str| s.trim().to_lowercase();
+    let (t, p) = (n(task), n(project));
+    if t.is_empty() {
+        return None;
+    }
+    let all: Vec<_> = files.iter().flat_map(|f| &f.headlines).filter(|h| h.effort.is_some_and(|e| e > 0) && n(&h.title) == t).collect();
+    let mine: Vec<_> = all.iter().copied().filter(|h| n(&h.category) == p).collect();
+    // A heading filed under another project counts only that project's time (spent_on), so skip it.
+    let other = |h: &&org::Headline| !projects.keys().any(|k| n(k) == n(&h.category));
+    match if mine.is_empty() { all.into_iter().filter(other).collect() } else { mine }[..] {
+        [h] => Some(h),
+        _ => None,
+    }
+}
+
+/// The estimate notification's body once CLOCKED minutes reach EFFORT, unless FILE already lists
+/// this (project, task, estimate); records it there, so a changed estimate notifies again.
+fn effort_nudge(file: &Path, project: &str, task: &str, effort: u32, clocked: u32) -> Option<String> {
+    if effort == 0 || clocked < effort {
+        return None;
+    }
+    let key = format!("{}\t{}\t{effort}", project.trim(), task.trim());
+    let mut sent = std::fs::read_to_string(file).unwrap_or_default();
+    if sent.lines().any(|l| l == key) {
+        return None;
+    }
+    sent.push_str(&key);
+    sent.push('\n');
+    let _ = std::fs::write(file, sent);
+    let hm = |m: u32| crate::timeclock::format_hm(m as f64 / 60.0);
+    Some(format!("{}: {} estimate reached ({} clocked)", task.trim(), hm(effort), hm(clocked)))
 }
 
 /// Sent reminder keys from FILE, without those dated before TODAY; and whether any were dropped.
@@ -304,6 +355,39 @@ mod tests {
         assert_eq!(long_nudge(&mut fresh, &file, since, "Acme", now, 4.0), None);
         let later = day.and_hms_opt(13, 0, 0).unwrap(); // resumed or switched: a new session
         assert_eq!(long_nudge(&mut fresh, &file, later, "", day.and_hms_opt(17, 0, 0).unwrap(), 4.0).as_deref(), Some("Still working? Clock has run 4h 00m"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn effort_heading_matches_the_clocked_task() {
+        let kw = Kw { todo: vec!["TODO".into()], done: vec!["DONE".into()] };
+        let doc = "* TODO Write report\n:PROPERTIES:\n:EFFORT: 2h\n:CATEGORY: Acme\n:END:\n\
+                   * TODO Write report\n:PROPERTIES:\n:EFFORT: 1h\n:CATEGORY: Beta\n:END:\n\
+                   * TODO Review\n:PROPERTIES:\n:EFFORT: 30\n:END:\n* TODO Plan\n";
+        let files = [Arc::new(org::parse(Path::new("/n/work.org"), doc, &kw))];
+        let projects = crate::timeclock::Projects::from([("Acme".to_string(), crate::timeclock::Project::new("")), ("Beta".to_string(), crate::timeclock::Project::new(""))]);
+        let eff = |p: &str, t: &str| effort_heading(&files, &projects, p, t).and_then(|h| h.effort);
+        assert_eq!(eff("acme", " write REPORT "), Some(120));
+        assert_eq!(eff("Beta", "Write report"), Some(60));
+        assert_eq!(eff("Other", "Write report"), None, "two headings in other projects: skip rather than guess");
+        assert_eq!(eff("Acme", "Review"), Some(30), "a heading outside any project counts every project's time");
+        assert_eq!(eff("Acme", "Plan"), None, "no estimate");
+        assert_eq!(eff("Acme", ""), None);
+        let empty = crate::timeclock::Projects::new();
+        assert_eq!(effort_heading(&files, &empty, "Other", "Write report").map(|h| h.line), None);
+    }
+
+    #[test]
+    fn effort_nudges_once_per_estimate_across_restarts() {
+        let dir = std::env::temp_dir().join(format!("margin-effort-{}", crate::notes::gen_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("effort-sent.txt");
+        assert_eq!(effort_nudge(&file, "Acme", "Write report", 120, 119), None);
+        assert_eq!(effort_nudge(&file, "Acme", "Write report", 0, 500), None);
+        assert_eq!(effort_nudge(&file, "Acme", "Write report", 120, 125).as_deref(), Some("Write report: 2h 00m estimate reached (2h 05m clocked)"));
+        assert_eq!(effort_nudge(&file, "Acme", "Write report", 120, 140), None, "the file remembers it (also across a restart)");
+        assert!(effort_nudge(&file, "Beta", "Write report", 120, 125).is_some(), "another project's task");
+        assert!(effort_nudge(&file, "Acme", "Write report", 180, 185).is_some(), "a changed estimate notifies again");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

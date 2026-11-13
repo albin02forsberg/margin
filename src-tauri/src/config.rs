@@ -56,6 +56,8 @@ pub struct Config {
     /// Notify once when one running session passes this many hours (a forgotten timer); 0 = off.
     #[serde(deserialize_with = "max_session_hours")]
     pub max_session_hours: f64,
+    /// Notify once when the running clock's task passes its `:EFFORT:` estimate.
+    pub effort_nudge: bool,
     /// Fetch the `[[feeds]]` in the background every this many hours while the app runs; 0 = off.
     #[serde(deserialize_with = "feeds_auto_hours")]
     pub feeds_auto_hours: f64,
@@ -318,6 +320,7 @@ impl Default for Config {
             focus_minutes: 0,
             focus_break_minutes: 5,
             max_session_hours: 0.0,
+            effort_nudge: false,
             feeds_auto_hours: 0.0,
             reminders: true,
             remind_before_minutes: 10,

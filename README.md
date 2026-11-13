@@ -1063,6 +1063,14 @@ Acme? Clock has run 4h 12m" and the top-bar clock turns red. It never stops
 the clock. It notifies once per session (also across restarts) and works with
 `reminders` off; a pause and resume or switching project starts a new session.
 
+Estimates, live: turn on `effort_nudge` (Settings > Time, off by default) and,
+when the time clocked on the running clock's task (all its sessions, as in the
+estimates report) reaches the task's `:EFFORT:`, a notification says "Write
+report: 2h 00m estimate reached (2h 05m clocked)". It notifies once per task and
+estimate (also across restarts), again if you raise the estimate, and works with
+`reminders` off. The task is the heading with that title, in the clock's project
+when there is one; with two equally likely headings it stays quiet.
+
 ### Suggested time from ActivityWatch
 
 If you run [ActivityWatch](https://activitywatch.net/), set
