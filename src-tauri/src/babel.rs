@@ -57,6 +57,9 @@ fn target(notes: &Path, dir: &Path, rel: &str) -> Result<std::path::PathBuf, Str
     if rel.trim().is_empty() || !r.components().all(|c| matches!(c, Component::Normal(_) | Component::CurDir)) {
         return Err(format!("{rel}: a tangle path must be relative to the note's folder, without .."));
     }
+    if r.extension().is_some_and(|e| e.eq_ignore_ascii_case("org")) {
+        return Err(format!("{rel} is a note; tangle to a code file"));
+    }
     let p = dir.join(r);
     let notes = notes.canonicalize().map_err(|e| format!("notes folder: {e}"))?;
     let mut a = p.as_path();
@@ -301,6 +304,9 @@ mod tests {
         assert!(err("out/new/x", true).contains("outside the notes"));
         assert!(err("new/x", false).contains(":mkdirp"));
         assert!(err("", false).contains("relative"));
+        for p in ["n.org", "other.org", "sub/x.org", "X.ORG", "new/y.Org"] {
+            assert!(err(p, true).contains("is a note"), "{p}");
+        }
         assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 0);
 
         // New files: nothing would change, so no confirm; :mkdirp creates folders, :shebang makes it executable.

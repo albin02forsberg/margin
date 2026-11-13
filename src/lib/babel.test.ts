@@ -34,6 +34,7 @@ test("tangleFiles groups blocks by target, in order, and skips the rest", () => 
     { path: "bin/run.sh", content: "#!/bin/sh\necho one\n\nif true; then\n  echo two\nfi\n", exec: true, mkdirp: true, blocks: 2 },
     { path: "setup.py", content: "print(1)\n", exec: false, mkdirp: false, blocks: 1 },
   ]);
+  assert.deepEqual(tangleFiles("#+begin_src org :tangle yes\n* x\n#+end_src", "a.org"), []);
   assert.deepEqual(tangleFiles("#+begin_src sh\nls\n#+end_src", "a.org"), []);
   assert.deepEqual(tangleFiles("#+begin_src sh :tangle e.sh\n#+end_src", "a.org"), [{ path: "e.sh", content: "\n", exec: false, mkdirp: false, blocks: 1 }]);
 });
