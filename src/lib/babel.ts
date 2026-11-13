@@ -92,6 +92,7 @@ export function tangleFiles(text: string, note: string): Tangled[] {
     const a = headerArgs(text.slice(s.from).split("\n", 1)[0]);
     let p = a.tangle?.trim();
     if (!p || p === "no") continue;
+    if (p === "yes" && s.lang.toLowerCase() === "org") continue; // would overwrite the note itself
     if (p === "yes") p = note.replace(/\.org$/i, "") + "." + (EXT[s.lang.toLowerCase()] ?? s.lang.toLowerCase());
     p = p.replace(/\\/g, "/").replace(/^(\.\/)+/, "");
     const f = out.get(p) ?? { path: p, content: "", exec: false, mkdirp: false, blocks: 0, parts: [], shebang: "" };
