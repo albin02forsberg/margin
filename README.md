@@ -969,7 +969,7 @@ also changes the flex of past days. `week_start` (Settings → Time: `monday`, t
 Space t … has every timeclock command (same letters as the old Emacs menu).
 `Space t u` updates the clock reports in the open note: each `#+BEGIN: clocktable :block thismonth` … `#+END:`
 block gets an org table of worked hours per project and task (the session description) with a total row.
-`:block` is `today`, `thisweek` (from `week_start`, Mon-Sun by default), `thismonth` or a month like `2026-10`; `:project Acme` (or `"Big Co"`)
+`:block` is `today`, `yesterday`, `thisweek`/`lastweek` (from `week_start`, Mon-Sun by default), `thismonth`/`lastmonth`, `thisyear`/`lastyear`, a year `2026`, a month `2026-10` or a day `2026-10-22`; `:project Acme` (or `"Big Co"`)
 limits it to one project. `:by tag` lists hours per tag instead (`#+BEGIN: clocktable :block thisweek :by tag`): a session
 gets the tags (own, parent and `#+filetags:`) of the task heading titled like its description (in that project when the
 heading's category is a project), untagged time is `(untagged)`, and a session with several tags counts toward each,
