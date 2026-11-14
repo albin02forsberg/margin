@@ -436,6 +436,18 @@ async function pngs() {
     await find(".agenda .row .title", "Maja");
     await shot("birthday");
   }
+  if (want("dayplan-gap")) { // #1365: P picks an untimed task for a free gap (none after 18:00: no shot)
+    await browser.keys("w");
+    await browser.$(".dayplan").waitForDisplayed();
+    await browser.keys("P");
+    if (await browser.$(".picker").waitForDisplayed({ timeout: 3000 }).catch(() => false)) {
+      const which = async () => (await texts(".picker label span")).some((t) => t.includes("Plan which free time?"));
+      if (await which()) { await browser.keys(Key.Enter); await browser.waitUntil(async () => !(await which()), { timeoutMsg: "gap picker still open" }); }
+      await shot("dayplan-gap");
+      await browser.keys(Key.Escape);
+    } else console.log("dayplan-gap: no free gap left today, skipped");
+    await browser.keys("w");
+  }
   if (want("ledger")) { // #1186: month totals, per category and budget bars
     await command("Go to Ledger (month totals)");
     await browser.$(".ledger").waitForDisplayed();

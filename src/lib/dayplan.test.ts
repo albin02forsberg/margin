@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blocks, gapLabel, gaps, shiftTime } from "./dayplan.ts";
+import { blocks, candidates, gapLabel, gaps, shiftTime, stampFor } from "./dayplan.ts";
 
 const D = "2026-10-23";
 const it = (line: number, time: string | null, effort: number | null = null, done = false, date = D) => ({ date, time, title: `t${line}`, path: "/n/a.org", line, effort, done });
@@ -43,4 +43,25 @@ test("shiftTime: move keeps length (bare stays bare), H/L write a range, 15 min 
   assert.equal(shiftTime("23:00-23:50", 15, 0), "23:09-23:59");
   assert.equal(shiftTime("23:00-23:50", 0, 15), "23:00-23:59");
   assert.equal(shiftTime("23:50", 0, -15), null);
+});
+
+test("candidates: untimed open tasks of the day and undated NEXT ones, fitting first, then closest to the gap", () => {
+  const t = (line: number, kind: string, time: string | null, effort: number | null, o: object = {}) =>
+    ({ date: D, time, kind, path: "/n/a.org", line, keyword: "TODO", effort, blocked: false, ...o });
+  const agenda = [
+    t(1, "scheduled", null, 120), t(2, "scheduled", null, 45), t(3, "overdue", null, null), t(4, "deadline", null, 50),
+    t(5, "scheduled", "10:00", 30), t(5, "deadline", null, 30), // timed that day already
+    t(6, "scheduled", null, 30, { keyword: "DONE" }), t(7, "timestamp", null, 30), t(8, "warning", null, 30), t(9, "scheduled", null, 30, { date: "2026-10-24" }),
+    t(2, "deadline", null, 45), // same heading twice
+  ];
+  const todos = [t(10, "todo", null, 20, { date: "+262142-12-31", keyword: "NEXT" }), t(11, "todo", null, 20, { date: "+262142-12-31" }),
+    t(12, "todo", null, 20, { date: "2026-10-30", keyword: "NEXT" }), t(13, "todo", null, 20, { date: "+262142-12-31", keyword: "NEXT", blocked: true }), t(4, "todo", null, 50, { keyword: "NEXT", date: "+262142-12-31" })];
+  const cs = candidates(agenda, todos, D, (x) => x.keyword === "DONE", ["NEXT"], { start: 600, end: 660 });
+  assert.deepEqual(cs.map((c) => [c.it.line, c.fits]), [[4, true], [2, true], [3, true], [10, true], [1, false]]);
+});
+
+test("stampFor: start to start + effort (past the gap, cut at 23:59), bare without effort", () => {
+  assert.equal(stampFor({ start: 600, end: 630 }, 45), "10:00-10:45");
+  assert.equal(stampFor({ start: 600, end: 630 }, null), "10:00");
+  assert.equal(stampFor({ start: 23 * 60, end: 23 * 60 + 30 }, 120), "23:00-23:59");
 });

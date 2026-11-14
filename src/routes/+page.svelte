@@ -25,6 +25,7 @@
   import { weekStartOf } from "$lib/week";
   import { calibrate, estimates, pct } from "$lib/estimates";
   import { fmtEffort } from "$lib/effort";
+  import { candidates, gapLabel, stampFor, type Gap } from "$lib/dayplan";
   import { buildTimeline, timelineMarkdown, type Entry as TimelineEntry } from "$lib/timeline";
   import { clockBlocks } from "$lib/clocktable";
   import { resumeOffer, type Clock } from "$lib/interrupt";
@@ -1705,6 +1706,20 @@
     // bottom-up: the reschedule log adds lines, which would shift the later tasks of a file
     await recorded(async () => { for (const [path, line] of [...due].sort((a, b) => b[1] - a[1])) await edit({ path, line }, "move", `SCHEDULED ${input}`); });
     flash(`Moved ${n} — u (or Space n u) undoes.`);
+  }
+
+  /** Day plan (#1365): pick one of GS (asked when several) and an untimed task of DAY for it (AGENDA's, or an undated NEXT
+   *  one from `todos`); it gets SCHEDULED at the gap start (to start + effort), its deadline untouched. One undo step. */
+  async function planGap(day: string, gs: Gap[], agenda: AgendaItem[]) {
+    if (!gs.length) return flash("No free gap");
+    const g = gs.length === 1 ? gs[0] : ((await pick({ prompt: "Plan which free time?", items: gs.map((g) => ({ label: gapLabel(g), value: g })) })) as Gap | null);
+    if (!g) return;
+    const done = kw().done, isDone = (it: AgendaItem) => !!it.keyword && done.includes(it.keyword);
+    const cs = candidates(agenda, await call<AgendaItem[]>("todos"), day, isDone, cfg.config.stuck_next_keywords ?? [], g);
+    if (!cs.length) return flash("No untimed task to plan: schedule one for this day, or add a NEXT task");
+    const it = (await pick({ prompt: `Plan ${gapLabel(g)}`, items: cs.map(({ it, fits }) => ({ label: it.title, value: it, dim: !fits,
+      detail: [it.effort ? fmtEffort(it.effort) : "", fits ? "" : "too long", it.date === day ? "" : it.keyword ?? ""].filter(Boolean).join(" · ") })) })) as AgendaItem | null;
+    if (it) await recorded(() => setDate(it, "SCHEDULED", `${day} ${stampFor(g, it.effort)}`).then(() => {}));
   }
 
   /** Park (`:someday:` tag), drop (CANCELLED) or split (prompt for a subtask title; added as last child) a stuck task (#1061, #1098) as one undo group; false if cancelled. */
@@ -3881,6 +3896,7 @@
     undo,
     act,
     moveOverdue,
+    planGap,
     flash,
     confirm: async (msg) => (await pick({ prompt: msg, items: [{ label: "Mark done anyway", value: "yes" }, { label: "Cancel", value: "no" }] })) === "yes",
     pickDate: async () => {

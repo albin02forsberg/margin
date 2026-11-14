@@ -1642,10 +1642,10 @@ describe("Note pickers, pins and archive", () => {
 
 // Own launch: in the Tables suite the first keys typed into this note, and into the next one opened, got garbled.
 describe("Day plan", () => {
-  const at = (t: string) => `<${orgDay(new Date())} ${t}>`;
+  const at = (t: string) => `<${orgDay(new Date())} ${t}>`, tomorrow = orgDay(new Date(Date.now() + 86_400_000));
   let plan = "";
   before(async () => {
-    plan = join((await launch({ files: ({ notes }) => writeFileSync(join(notes, "plan.org"), `* TODO Plan e2e call\nSCHEDULED: ${at("14:00")}\n* TODO Plan e2e review\nSCHEDULED: ${at("14:00")}\n:PROPERTIES:\n:EFFORT: 1:00\n:END:\n* TODO Plan e2e untimed\nSCHEDULED: <${orgDay(new Date())}>\n* TODO Plan e2e daily\nSCHEDULED: ${at("09:00 +1d")}\n`) })).notes, "plan.org");
+    plan = join((await launch({ files: ({ notes }) => writeFileSync(join(notes, "plan.org"), `* TODO Plan e2e call\nSCHEDULED: ${at("14:00")}\n* TODO Plan e2e review\nSCHEDULED: ${at("14:00")}\n:PROPERTIES:\n:EFFORT: 1:00\n:END:\n* TODO Plan e2e untimed\nSCHEDULED: <${orgDay(new Date())}>\n* TODO Plan e2e daily\nSCHEDULED: ${at("09:00 +1d")}\n* TODO Plan e2e fill\nSCHEDULED: <${tomorrow}>\n:PROPERTIES:\n:EFFORT: 0:30\n:END:\n* NEXT Plan e2e next\n`) })).notes, "plan.org");
   });
   after(close, { timeout: 30_000 });
 
@@ -1677,6 +1677,22 @@ describe("Day plan", () => {
     await browser.keys("J");
     await find(".status .msg", "A repeat");
     assert.equal(read(plan), before);
+    await browser.keys(".");
+  });
+
+  it("P schedules an untimed task in a free gap, from its start to start + effort; undated NEXT tasks are offered; u undoes (#1365)", async () => {
+    const fill = (t: string) => (s: string) => s.includes(`* TODO Plan e2e fill\nSCHEDULED: <${tomorrow}${t}>\n`);
+    await find(".agenda h1", "Today");
+    await browser.keys("l"); // tomorrow: whole working day free but the daily task at 09:00
+    await find(".dayplan .gap", "free 08:00");
+    await browser.keys("P");
+    await answer("Plan which free time?", "08:00");
+    await find(".picker li span", "Plan e2e next");
+    await answer("Plan 1h free 08:00", "Plan e2e fill");
+    await fileMatches(plan, fill(" 08:00-08:30"), "P didn't schedule the task at 08:00-08:30");
+    await find(".dayplan .blk", "08:00 Plan e2e fill");
+    await browser.keys("u");
+    await fileMatches(plan, fill(""), "u didn't remove the time");
     await browser.keys(".");
   });
 });

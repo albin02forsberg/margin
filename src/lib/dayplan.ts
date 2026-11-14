@@ -70,3 +70,22 @@ export function shiftTime(time: string, dMove: number, dLen: number, effort?: nu
   if (s === s0 && e === e0) return null;
   return b || dLen ? `${hhmm(s)}-${hhmm(e)}` : hhmm(s);
 }
+
+type Task = { date: string; time: string | null; kind: string; path: string; line: number; keyword: string | null; effort?: number | null; blocked?: boolean };
+
+/** Tasks to fill gap G on DAY with (#1365): AGENDA's untimed open tasks on DAY (scheduled, due, overdue; not headings
+ *  already timed that day) and TODOS' undated open tasks with a NEXT keyword, not blocked. One per heading; those whose
+ *  effort (30 min without one) fits the gap first, then closest to its length, else in source order. */
+export function candidates<T extends Task>(agenda: T[], todos: T[], day: string, isDone: (it: T) => boolean, next: string[], g: Gap): { it: T; fits: boolean }[] {
+  const at = (it: T) => `${it.path}\n${it.line}`, len = g.end - g.start;
+  const timed = new Set(agenda.filter((it) => it.date === day && it.time).map(at)), seen = new Set<string>();
+  const xs = [
+    ...agenda.filter((it) => it.date === day && !it.time && ["scheduled", "deadline", "overdue"].includes(it.kind)),
+    ...todos.filter((it) => !/^\d{4}-\d\d-\d\d$/.test(it.date) && next.includes(it.keyword ?? "") && !it.blocked),
+  ].filter((it) => !isDone(it) && !timed.has(at(it)) && !seen.has(at(it)) && !!seen.add(at(it)));
+  const m = (it: T) => it.effort || 30;
+  return xs.map((it) => ({ it, fits: m(it) <= len })).sort((a, b) => +b.fits - +a.fits || Math.abs(m(a.it) - len) - Math.abs(m(b.it) - len));
+}
+
+/** The stamp time for a task planned at G's start: to start + EFFORT (cut at 23:59, past the gap if it is too long), bare without one. */
+export const stampFor = (g: Gap, effort?: number | null) => (effort ? `${hhmm(g.start)}-${hhmm(Math.min(24 * 60 - 1, g.start + effort))}` : hhmm(g.start));
