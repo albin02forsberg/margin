@@ -306,25 +306,28 @@
 
   /** Day plan (#1366): move the selected timed block DM minutes or change its length by DL; one undoable edit of its stamp. */
   function nudge(dm: number, dl: number) {
-    const it = selected;
-    if (!it?.time || it.kind === "closed") return api.flash("No time to move");
-    if (it.kind !== "scheduled" && it.kind !== "deadline") return api.flash("Only scheduled or due times can be moved");
-    const k = keyOf(it) + it.kind;
-    if (pend && pend.k !== k) return;
-    pend = { k, dm: (pend?.dm ?? 0) + dm, dl: (pend?.dl ?? 0) + dl };
+    if (!burst) {
+      const it = selected;
+      if (!it?.time || it.kind === "closed") return api.flash("No time to move");
+      if (it.kind !== "scheduled" && it.kind !== "deadline") return api.flash("Only scheduled or due times can be moved");
+      burst = keyOf(it) + it.kind; // fixed for the whole burst: `sel` can lag the list while a write reloads it
+    }
+    pend = { dm: (pend?.dm ?? 0) + dm, dl: (pend?.dl ?? 0) + dl };
     clearTimeout(nudgeTimer);
     nudgeTimer = setTimeout(flushNudge, 200);
   }
   /** A key-repeat burst of nudges is summed into one edit (one write, one undo step), applied once nothing is in flight. */
-  let pend: { k: string; dm: number; dl: number } | null = null, nudgeTimer: ReturnType<typeof setTimeout>, nudging = false;
+  let burst: string | null = null, pend: { dm: number; dl: number } | null = null, nudgeTimer: ReturnType<typeof setTimeout>, nudging = false;
   function flushNudge() {
-    if (!pend || nudging || busy) return;
-    const { k, dm, dl } = pend, it = shown.find((x) => keyOf(x) + x.kind === k);
+    if (nudging) return;
+    if (!pend) { burst = null; return; }
+    if (busy) { nudgeTimer = setTimeout(flushNudge, 50); return; }
+    const { dm, dl } = pend, it = shown.find((x) => keyOf(x) + x.kind === burst);
     pend = null;
     const t = it?.time && shiftTime(it.time, dm, dl, it.effort);
-    if (!it || !t) return;
+    if (!it || !t) { burst = null; return; }
     nudging = true;
-    op("time", it, t, false, () => { nudging = false; if (pend) flushNudge(); });
+    op("time", it, t, false, () => { nudging = false; flushNudge(); });
   }
 
   /** Run an op on the selected item (ARG for `keyword`), then reload; on the board the selection follows the card.
