@@ -58,3 +58,15 @@ export function gaps(bs: Block[], from = 8 * 60, to = 18 * 60, now?: number): Ga
 
 /** "1h 30m free 10:00–11:30". */
 export const gapLabel = (g: Gap) => `${fmtEffort(g.end - g.start)} free ${hhmm(g.start)}–${hhmm(g.end)}`;
+
+/** Day plan nudge (#1366): TIME ("09:00" / "09:00-10:30") moved DMOVE minutes and lengthened DLEN, as the new stamp time.
+ *  The end is the range end, else start + EFFORT (30 min); a move keeps the length and stops at 00:00 / 23:59 (no day
+ *  change), a block never gets shorter than 15 min. A bare time stays bare on a move; a length change writes a range.
+ *  Null when nothing changes. */
+export function shiftTime(time: string, dMove: number, dLen: number, effort?: number | null): string | null {
+  const [a, b] = time.split(/[-–]/), s0 = toMin(a), last = 24 * 60 - 1;
+  const e0 = Math.min(last, b && toMin(b) > s0 ? toMin(b) : s0 + (effort || 30));
+  const s = Math.max(0, Math.min(s0 + dMove, last - (e0 - s0))), e = Math.min(last, Math.max(s + 15, e0 + (s - s0) + dLen));
+  if (s === s0 && e === e0) return null;
+  return b || dLen ? `${hhmm(s)}-${hhmm(e)}` : hhmm(s);
+}
