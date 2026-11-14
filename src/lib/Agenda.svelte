@@ -67,7 +67,7 @@
   ];
   const MORE: [string, string][] = [
     ["j / k", "Move selection"], ["*", "Mark / unmark (x s d # m < > + - A apply to all marked; Esc clears)"], ["< / >", "Reschedule a day earlier / later"], ["+ / -", "Raise / lower priority"],
-    ["Y", "Copy the list as text"], ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["W", "Open the task a blocked task waits on"], ["B", "Show blocked tasks (else only ones due by today, dimmed)"], ["w", "Today: day plan on an hour grid (overlaps, free time)"], ["T", "Today: move all overdue tasks to a day"], ["H / L", "Board: move to the column left / right"], ["h / l", "Previous / next period"],
+    ["Y", "Copy the list as text"], ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["W", "Open the task a blocked task waits on"], ["B", "Show blocked tasks (else only ones due by today, dimmed)"], ["w", "Today: day plan on an hour grid (overlaps, free time)"], ["T", "Today: move all overdue tasks to a day"], ["H / L", "Board: move to the column left / right; day plan: shorten / lengthen the block 15 min"], ["J / K", "Day plan: move the block 15 min later / earlier"], ["h / l", "Previous / next period"],
     [".", "Jump to today"], ["D", "Go to a date"], ["/", "Filter"], ["r", "Refresh"], ["?", "Toggle this help"],
   ];
 </script>
@@ -85,7 +85,7 @@
   import { doneLog, withLog } from "./donelog";
   import { fmtEffort, fmtSpent, overbooked, planned, plannedLabel } from "./effort";
   import { agendaText, copyRows } from "./agendatext";
-  import { blocks, gapLabel, gaps, hhmm } from "./dayplan";
+  import { blocks, gapLabel, gaps, hhmm, shiftTime } from "./dayplan";
   import { marked, markKey, reresolve, type Mark } from "./bulk";
   import { visible } from "./blocked";
   import { weekStartOf } from "./week";
@@ -301,6 +301,15 @@
     if (k) op("keyword", selected, k);
   }
 
+  /** Day plan (#1366): move the selected timed block DM minutes or change its length by DL; one undoable edit of its stamp. */
+  function nudge(dm: number, dl: number) {
+    const it = selected;
+    if (!it?.time || it.kind === "closed") return api.flash("No time to move");
+    if (it.kind !== "scheduled" && it.kind !== "deadline") return api.flash("Only scheduled or due times can be moved");
+    const t = shiftTime(it.time, dm, dl, it.effort);
+    if (t) op("time", it, t, false);
+  }
+
   /** Run an op on the selected item (ARG for `keyword`), then reload; on the board the selection follows the card.
    *  With marks, a BULK op runs on every marked item instead (one undo step) and clears the marks (kept on cancel). */
   function op(name: string, it = selected, arg?: string, bulk = true) {
@@ -321,8 +330,8 @@
         busy = false;
       }
       if (name !== "open") await refresh();
-      if (boardOn && (name === "keyword" || name === "done")) {
-        const j = shown.findIndex((x) => keyOf(x) === keyOf(it));
+      if ((boardOn && (name === "keyword" || name === "done")) || name === "time") {
+        const j = shown.findIndex((x) => keyOf(x) === keyOf(it) && x.kind === it.kind);
         if (j >= 0) sel = j;
       }
       root?.focus();
@@ -372,8 +381,10 @@
       case "w": if (mode === "agenda") setGrid(!(gridOn && span === 1)); break;
       case "T": if (mode === "agenda") api.act(async () => { await api.moveOverdue(); await refresh(); }); break;
       case "v": if (mode === "agenda") setSpan(span === 1 ? 7 : 1); else setBoard(!board); break;
-      case "H": if (boardOn) shift(-1); break;
-      case "L": if (boardOn) shift(1); break;
+      case "H": if (boardOn) shift(-1); else if (plan) nudge(0, -15); break;
+      case "L": if (boardOn) shift(1); else if (plan) nudge(0, 15); break;
+      case "J": if (plan) nudge(15, 0); break;
+      case "K": if (plan) nudge(-15, 0); break;
       case "l": case "ArrowRight": case "f": if (mode === "agenda") move(1); break;
       case "h": case "ArrowLeft": case "b": if (mode === "agenda") move(-1); break;
       case ".": goToday(); sel = 0; break;

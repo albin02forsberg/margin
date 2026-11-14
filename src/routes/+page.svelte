@@ -1265,6 +1265,14 @@
     archive: (loc) => archiveTask(loc),
     later: (loc, it) => edit(loc, "shift", `${dateKind(it)} 1`),
     earlier: (loc, it) => edit(loc, "shift", `${dateKind(it)} -1`),
+    /** Day plan nudge (#1366): IT's SCHEDULED / DEADLINE stamp gets time T on its own date; a repeat shown on another day is left alone. */
+    async time(loc, it, t) {
+      if (!it) return;
+      const kind = it.kind === "deadline" ? "DEADLINE" : "SCHEDULED";
+      const at = (await textOf(loc.path)).split("\n")[loc.line + 1]?.match(new RegExp(`${kind}:\\s*<(\\d{4}-\\d\\d-\\d\\d)`))?.[1];
+      if (at !== it.date) return flash(`A repeat: move it on its own date${at ? ` (${at})` : ""}.`);
+      await setDate(loc, kind, `${it.date} ${t}`);
+    },
     clockIn: async (loc, it) => {
       const c = it ?? (await call<{ category: string; title: string }>("org_context", { path: loc.path, text: await textOf(loc.path), line: loc.line }));
       await clockIn(c.category, c.title);

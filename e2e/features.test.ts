@@ -1627,9 +1627,10 @@ describe("Note pickers, pins and archive", () => {
 
 // Own launch: in the Tables suite the first keys typed into this note, and into the next one opened, got garbled.
 describe("Day plan", () => {
+  const at = (t: string) => `<${orgDay(new Date())} ${t}>`;
+  let plan = "";
   before(async () => {
-    const at = (t: string) => `<${orgDay(new Date())} ${t}>`;
-    await launch({ files: ({ notes }) => writeFileSync(join(notes, "plan.org"), `* TODO Plan e2e call\nSCHEDULED: ${at("14:00")}\n* TODO Plan e2e review\nSCHEDULED: ${at("14:00")}\n:PROPERTIES:\n:EFFORT: 1:00\n:END:\n* TODO Plan e2e untimed\nSCHEDULED: <${orgDay(new Date())}>\n`) });
+    plan = join((await launch({ files: ({ notes }) => writeFileSync(join(notes, "plan.org"), `* TODO Plan e2e call\nSCHEDULED: ${at("14:00")}\n* TODO Plan e2e review\nSCHEDULED: ${at("14:00")}\n:PROPERTIES:\n:EFFORT: 1:00\n:END:\n* TODO Plan e2e untimed\nSCHEDULED: <${orgDay(new Date())}>\n* TODO Plan e2e daily\nSCHEDULED: ${at("09:00 +1d")}\n`) })).notes, "plan.org");
   });
   after(close, { timeout: 30_000 });
 
@@ -1641,6 +1642,27 @@ describe("Day plan", () => {
     assert.ok(!(await texts(".dayplan .blk")).some((t) => t.includes("untimed")), "untimed task on the grid");
     await browser.keys("w");
     await browser.waitUntil(async () => !(await browser.$(".dayplan").isExisting()), { timeoutMsg: "grid still shown" });
+  });
+
+  it("J / L move and lengthen the selected block by 15 min in the file, u undoes; a repeat on another day stays (#1366)", async () => {
+    const call = (t: string) => (s: string) => s.startsWith(`* TODO Plan e2e call\nSCHEDULED: ${at(t)}\n`);
+    await (await find(".agenda .row .title", "Plan e2e call")).click();
+    await browser.keys("w");
+    await find(".dayplan .blk.sel", "Plan e2e call");
+    await browser.keys("J");
+    await fileMatches(plan, call("14:15"), "J didn't move the block to 14:15");
+    await find(".dayplan .blk.sel", "14:15 Plan e2e call");
+    await browser.keys("L");
+    await fileMatches(plan, call("14:15-15:00"), "L didn't lengthen the block to 14:15-15:00");
+    await browser.keys("u");
+    await fileMatches(plan, call("14:15"), "u didn't undo the length change");
+    const before = read(plan);
+    await browser.keys("l"); // tomorrow: the daily task's repeat, not its own date
+    await (await find(".dayplan .blk", "Plan e2e daily")).click();
+    await browser.keys("J");
+    await find(".status .msg", "A repeat");
+    assert.equal(read(plan), before);
+    await browser.keys(".");
   });
 });
 

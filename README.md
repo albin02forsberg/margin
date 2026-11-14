@@ -406,6 +406,9 @@ overbooks the day's expected hours. `h`/`j`/`k`/`l` or the arrows move, `[`/`]` 
 (`SCHEDULED: <… 14:00>`) is a block from its start to the stamp's own end (`14:00-15:30`), else start plus its effort
 (30 minutes without one). Overlapping tasks sit side by side, highlighted, free working time is labelled
 (`1h 30m free 10:00–11:30`, from now on today) and a line marks the current time; untimed tasks stay in the list below.
+With a scheduled or due block selected, `J`/`K` move it 15 minutes later / earlier and `L`/`H` lengthen / shorten it by
+15 minutes (written as a range, `14:00-15:15`), each one undoable edit of its stamp that keeps the day and repeater; a
+repeating task moves only on its own date.
 Time clocked on a task shows in that badge against its estimate (`1:10 / 2:00`, in the warning colour once it runs over;
 just `1:10` without an estimate), on Today, Tasks and the Done log. It counts time-log sessions named like the heading
 (case and surrounding spaces ignored; the clock-out note, else the task clocked in on, including the running clock,
