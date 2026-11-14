@@ -2,6 +2,7 @@
   import { tick, untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
+  import { layoutForLook } from "$lib/theme";
   import { builtinEmbedder, CATEGORIES, changes, checkFeeds, checkSnippets, checkTemplates, checkViews, GROUPS, hide, needsMacPrompt, refresh, refreshRows, shows, toForm, type Field, type Form, type Row } from "$lib/settings";
 
   type List = "views" | "templates" | "snippets" | "feeds";
@@ -181,6 +182,11 @@
     return () => void off.then((f) => f());
   });
   const choices = (f: Field) => (f.key === "look" ? [...new Set([...f.choices!, ...userLooks])] : f.choices!);
+  /** Pick choice V; a user look's `/* layout: NAME *\/` header fills in Layout too (saved with the card). */
+  function choose(f: Field, v: string) {
+    form[f.key] = v;
+    if (f.key === "look") layoutForLook(v, (name) => invoke<string | null>("read_look", { name })).then((l) => { if (l != null && form.look === v) form.layout = l; });
+  }
   let macDialog: HTMLDialogElement;
   const MAC_OK = "activity-watcher-macos-ok";
   function check(f: Field, box: HTMLInputElement) {
@@ -259,7 +265,7 @@
             {:else}
               <span>{f.label}</span>
               {#if f.choices}
-                <select value={form[f.key] as string} onchange={(e) => (form[f.key] = e.currentTarget.value)}>{#each choices(f) as o (o)}<option value={o}>{o || (f.key === "look" ? "classic" : f.key === "layout" ? "default" : "system")}</option>{/each}</select>
+                <select value={form[f.key] as string} onchange={(e) => choose(f, e.currentTarget.value)}>{#each choices(f) as o (o)}<option value={o}>{o || (f.key === "look" ? "classic" : f.key === "layout" ? "default" : "system")}</option>{/each}</select>
               {:else if f.kind === "list" || f.kind === "multiline"}
                 <textarea rows={Math.max(2, String(form[f.key] ?? "").split("\n").length)} value={form[f.key] as string} oninput={(e) => (form[f.key] = text(e))}></textarea>
               {:else}

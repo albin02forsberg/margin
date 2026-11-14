@@ -83,6 +83,31 @@ describe("Responsive layout", () => {
     await width(1200);
   });
 
+  it("keeps every saved view in the rail, where the column has room (#1326)", async () => {
+    const folded = () => browser.execute(() => document.querySelectorAll(".topnav .views button.saved.fold").length);
+    await width(900);
+    await browser.waitUntil(async () => (await folded()) > 0, { timeoutMsg: "no view folded at 900 px" });
+    await browser.execute(() => void (document.documentElement.dataset.layout = "rail"));
+    await browser.waitUntil(async () => (await folded()) === 0, { timeoutMsg: "saved views still folded into More in the rail" });
+    assert.ok(await browser.execute(() => document.querySelector(".topnav .views button.more")!.classList.contains("fold")), "More shown with nothing in it");
+    await browser.execute(() => void delete document.documentElement.dataset.layout);
+    await browser.waitUntil(async () => (await folded()) > 0, { timeoutMsg: "views not folded again in the top bar" });
+    await width(1200);
+  });
+
+  it("opens the narrow drawer from the left when a look puts the side panels left (#1326)", async () => {
+    await browser.execute(() => document.head.insertAdjacentHTML("beforeend", `<style id="mirror-test">:root { --layout-main: row-reverse; }</style>`));
+    await width(900);
+    await palette("Show note graph");
+    await find(".links", "Graph");
+    const [links, main] = await browser.execute(() => [[...document.querySelectorAll<HTMLElement>(".links")].find((e) => e.offsetParent)!, document.querySelector("main")!].map((e) => e.getBoundingClientRect().left));
+    assert.ok(Math.abs(links - main) < 1, `drawer not at the left edge: ${links} vs ${main}`);
+    await browser.keys(Key.Escape);
+    await browser.waitUntil(async () => !(await displayed(".links")), { timeoutMsg: "drawer still open after Esc" });
+    await browser.execute(() => document.getElementById("mirror-test")?.remove());
+    await width(1200);
+  });
+
   it("keeps the Vim status line below the editor's scroller, inside the card", async () => {
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "vimbar");

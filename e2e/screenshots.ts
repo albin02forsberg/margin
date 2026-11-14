@@ -652,7 +652,7 @@ async function pngs() {
     await find(".status .msg", "Settings saved");
     const rebuild = await find(".settings button", "Rebuild");
     await rebuild.scrollIntoView({ block: "center" });
-    await browser.waitUntil(async () => (await browser.$$(".settings .error")).length > 0, { timeout: 10000 }).catch(() => {});
+    await browser.waitUntil(async () => (await browser.$$(".settings .error").length) > 0, { timeout: 10000 }).catch(() => {});
     await shot("semantic-index");
   }
 

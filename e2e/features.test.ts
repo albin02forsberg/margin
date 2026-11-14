@@ -107,6 +107,21 @@ describe("User looks", () => {
     await browser.waitUntil(async () => (await root()).look === null, { timeoutMsg: "look not reset" });
     assert.equal((await root()).layout, "rail");
   });
+
+  it("picking that look in Settings fills in its layout too (#1326)", async () => {
+    const layout = () => browser.execute(() => document.documentElement.dataset.layout ?? null);
+    await browser.keys([Key.Ctrl, ","]);
+    await find(".settings h1", "Settings");
+    const sel = (name: string) => browser.$(`//div[contains(@class, "settings")]//label[span[.="${name}"]]/select`);
+    await (await sel("Layout")).selectByAttribute("value", "");
+    await (await find(".settings button", "Save editor")).click();
+    await browser.waitUntil(async () => (await layout()) === null, { timeoutMsg: "layout not reset" });
+    await (await sel("Look")).selectByAttribute("value", "railed");
+    await browser.waitUntil(async () => (await (await sel("Layout")).getValue()) === "rail", { timeoutMsg: "Layout field not filled in" });
+    await (await find(".settings button", "Save editor")).click();
+    await browser.waitUntil(async () => (await layout()) === "rail", { timeoutMsg: "layout not applied" });
+    assert.match(readFileSync(join(d.cfgDir, "config.toml"), "utf8"), /^look = "railed"$/m);
+  });
 });
 
 describe("Last session's tabs", () => {
@@ -561,7 +576,7 @@ describe("Features", () => {
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "diagram");
     await find(".status .file", "diagram.org");
-    await browser.waitUntil(async () => (await browser.$$(".cm-diagram svg")).length === 1, { timeout: 20_000, timeoutMsg: "no diagram svg" });
+    await browser.waitUntil(async () => (await browser.$$(".cm-diagram svg").length) === 1, { timeout: 20_000, timeoutMsg: "no diagram svg" });
     await find(".cm-diagram svg", "Ship");
     await find(".cm-diagram-error", "⚠");
   });
@@ -2325,7 +2340,7 @@ describe("Web links and note graph", () => {
     await open("hub");
     await palette("Show note graph");
     await find(".links", "Graph");
-    await browser.waitUntil(async () => (await browser.$$(".links svg a")).length > 1, { timeoutMsg: "graph has no linked node" });
+    await browser.waitUntil(async () => (await browser.$$(".links svg a").length) > 1, { timeoutMsg: "graph has no linked node" });
     // SVG anchors aren't "interactable" to WebDriver; click through the DOM.
     await browser.execute(() => document.querySelector<SVGAElement>(".links svg g.h1 a")!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })));
     await find(".status .file", "spoke.org");

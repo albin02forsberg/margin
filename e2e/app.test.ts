@@ -65,13 +65,13 @@ describe("Margin", () => {
     await find(".cm-lineNumbers", "");
     await type(":set nonumber");
     await browser.keys(Key.Enter);
-    await browser.waitUntil(async () => (await browser.$$(".cm-lineNumbers")).length === 0);
+    await browser.waitUntil(async () => (await browser.$$(".cm-lineNumbers").length) === 0);
   });
 
   it(":set nowrap / wrap toggle line wrapping; an unknown option says so (#480)", async () => {
     const ex = async (s: string) => { await type(s); await browser.keys(Key.Enter); };
     await ex(":set nowrap");
-    await browser.waitUntil(async () => (await browser.$$(".cm-content.cm-lineWrapping")).length === 0, { timeoutMsg: "still wrapping" });
+    await browser.waitUntil(async () => (await browser.$$(".cm-content.cm-lineWrapping").length) === 0, { timeoutMsg: "still wrapping" });
     await ex(":set wrap");
     await browser.$(".cm-content.cm-lineWrapping").waitForExist();
     await ex(":set bogus");

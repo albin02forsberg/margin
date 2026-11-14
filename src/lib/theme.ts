@@ -29,6 +29,10 @@ export function applyLayout(name: unknown) {
 export const lookLayout = (css: string | null | undefined): string | null =>
   css?.match(/^\uFEFF?\s*\/\*\s*layout:\s*([\w-]*)\s*\*\//)?.[1] ?? null;
 
+/** The layout picking look NAME also sets (see lookLayout): null for built-ins ("", classic, retro), header-less or unreadable files. */
+export const layoutForLook = async (name: string, read: (name: string) => Promise<string | null>): Promise<string | null> =>
+  name === "" || name === "classic" || name === "retro" ? null : lookLayout(await read(name).catch(() => null));
+
 /** Put a user look's CSS in `<style id="user-look">` (created on first use, after the built-in styles), or remove it when CSS is null. */
 export function setUserLook(css: string | null | undefined) {
   let el = document.getElementById("user-look");
