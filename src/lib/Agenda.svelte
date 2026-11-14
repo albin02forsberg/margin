@@ -1,4 +1,5 @@
 <script lang="ts" module>
+  import type { Gap } from "./dayplan";
   export type AgendaItem = {
     date: string; kind: string; label: string; time: string | null; path: string; line: number;
     keyword: string | null; priority: string | null; title: string; tags: string[]; category: string;
@@ -29,6 +30,8 @@
     act: (f: () => unknown) => void;
     /** Ask for a day and move every overdue SCHEDULED task there (one undo step). */
     moveOverdue: () => Promise<void>;
+    /** Day plan (#1365): pick one of GAPS (asks when several) and an untimed task of DAY (from AGENDA, or an undated NEXT one) to schedule there. */
+    planGap: (day: string, gaps: Gap[], agenda: AgendaItem[]) => Promise<void>;
     /** Ask for a date ("Go to date"); ISO day, or null on cancel / unparsable input. */
     pickDate: () => Promise<string | null>;
     flash: (msg: string) => void;
@@ -67,7 +70,7 @@
   ];
   const MORE: [string, string][] = [
     ["j / k", "Move selection"], ["*", "Mark / unmark (x s d # m < > + - A apply to all marked; Esc clears)"], ["< / >", "Reschedule a day earlier / later"], ["+ / -", "Raise / lower priority"],
-    ["Y", "Copy the list as text"], ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["W", "Open the task a blocked task waits on"], ["B", "Show blocked tasks (else only ones due by today, dimmed)"], ["w", "Today: day plan on an hour grid (overlaps, free time)"], ["T", "Today: move all overdue tasks to a day"], ["H / L", "Board: move to the column left / right; day plan: shorten / lengthen the block 15 min"], ["J / K", "Day plan: move the block 15 min later / earlier"], ["h / l", "Previous / next period"],
+    ["Y", "Copy the list as text"], ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["W", "Open the task a blocked task waits on"], ["B", "Show blocked tasks (else only ones due by today, dimmed)"], ["w", "Today: day plan on an hour grid (overlaps, free time)"], ["T", "Today: move all overdue tasks to a day"], ["H / L", "Board: move to the column left / right; day plan: shorten / lengthen the block 15 min"], ["J / K", "Day plan: move the block 15 min later / earlier"], ["P", "Day plan: schedule an untimed task in a free gap (or click the gap)"], ["h / l", "Previous / next period"],
     [".", "Jump to today"], ["D", "Go to a date"], ["/", "Filter"], ["r", "Refresh"], ["?", "Toggle this help"],
   ];
 </script>
@@ -385,6 +388,7 @@
       case "L": if (boardOn) shift(1); else if (plan) nudge(0, 15); break;
       case "J": if (plan) nudge(15, 0); break;
       case "K": if (plan) nudge(-15, 0); break;
+      case "P": if (plan) planGap(plan.gaps); break;
       case "l": case "ArrowRight": case "f": if (mode === "agenda") move(1); break;
       case "h": case "ArrowLeft": case "b": if (mode === "agenda") move(-1); break;
       case ".": goToday(); sel = 0; break;
@@ -398,7 +402,20 @@
     e.preventDefault();
   }
 
+  /** Day plan (#1365): schedule an untimed task in one of GS (the clicked gap, or all of them for P). */
+  function planGap(gs: Gap[]) {
+    if (busy) return;
+    api.act(async () => {
+      busy = true;
+      try { await api.planGap(iso(start), gs, items); } finally { busy = false; }
+      await refresh();
+      root?.focus();
+    });
+  }
+
   function pointer(e: MouseEvent) {
+    const g = (e.target as HTMLElement).closest<HTMLElement>("[data-gap]");
+    if (g && plan && e.type === "click") return planGap([plan.gaps[+g.dataset.gap!]]);
     const el = (e.target as HTMLElement).closest<HTMLElement>("[data-i]");
     if (!el) return;
     sel = +el.dataset.i!;
@@ -563,7 +580,7 @@
         <h2>Day plan <small>{plan.blocks.some((b) => b.overlap) ? "overlaps highlighted" : ""}</small></h2>
         <div class="grid" style:height={y(plan.to)}>
           {#each plan.hours as h}<div class="hr" style:top={y(h)}><span>{hhmm(h)}</span></div>{/each}
-          {#each plan.gaps as g}<div class="gap" style:top={y(g.start)} style:height="{g.end - g.start}px">{#if g.end - g.start >= 20}<span>{gapLabel(g)}</span>{/if}</div>{/each}
+          {#each plan.gaps as g, gi}<div class="gap" data-gap={gi} title="Plan a task here (P)" style:top={y(g.start)} style:height="{g.end - g.start}px">{#if g.end - g.start >= 20}<span>{gapLabel(g)}</span>{/if}</div>{/each}
           {#each plan.blocks as b (b.i)}
             <div class="blk" class:sel={b.i === sel} class:done={b.done} class:overlap={b.overlap} data-i={b.i} role="option" aria-selected={b.i === sel}
               style:top={y(b.start)} style:height="{Math.max(b.end - b.start, 18)}px" style:left="calc(52px + (100% - 52px) * {b.lane / b.lanes})" style:width="calc((100% - 52px) / {b.lanes} - 4px)"
@@ -745,7 +762,8 @@
   .grid { position: relative; margin: var(--s2) var(--s2) 0; }
   .hr { position: absolute; left: 0; right: 0; border-top: 1px solid var(--border); }
   .hr span { position: absolute; top: -0.7em; left: 0; padding-right: 6px; background: var(--card); font: var(--fs-xs) var(--mono); color: var(--dim); }
-  .gap { position: absolute; left: 52px; right: 0; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--done) 7%, transparent) 6px 12px); }
+  .gap { position: absolute; left: 52px; right: 0; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--done) 7%, transparent) 6px 12px); cursor: pointer; }
+  .gap:hover { outline: 1px dashed var(--done); }
   .gap span { font-size: var(--fs-xs); color: var(--done); }
   .blk { position: absolute; box-sizing: border-box; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 1px 6px; border-radius: 6px; font-size: var(--fs-sm); background: color-mix(in srgb, var(--accent) 16%, var(--card)); border-left: 3px solid var(--accent); cursor: default; }
   .blk b { font: 500 var(--fs-xs) var(--mono); color: var(--date); }

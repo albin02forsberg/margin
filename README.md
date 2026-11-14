@@ -409,6 +409,11 @@ overbooks the day's expected hours. `h`/`j`/`k`/`l` or the arrows move, `[`/`]` 
 With a scheduled or due block selected, `J`/`K` move it 15 minutes later / earlier and `L`/`H` lengthen / shorten it by
 15 minutes (written as a range, `14:00-15:15`), each one undoable edit of its stamp that keeps the day and repeater; a
 repeating task moves only on its own date.
+`P` (or a click on a free gap) time-blocks: pick the gap (when there are several), then one of the day's untimed open
+tasks (scheduled, due or overdue) or an undated task with a next-action keyword (`NEXT`, `DOING`; Settings
+**Next-action keywords**). Ones whose effort fits the gap come first, longer ones are dimmed but allowed. The task gets
+`SCHEDULED` at the gap start, as a range to start plus its effort when it has one (`10:00-10:45`), keeping its repeater
+and deadline; `u` undoes it.
 Time clocked on a task shows in that badge against its estimate (`1:10 / 2:00`, in the warning colour once it runs over;
 just `1:10` without an estimate), on Today, Tasks and the Done log. It counts time-log sessions named like the heading
 (case and surrounding spaces ignored; the clock-out note, else the task clocked in on, including the running clock,
