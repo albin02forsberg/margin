@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { srcAt, srcBlocks, resultsChange, diagramKey, headerArgs, tangleFiles } from "./babel.ts";
+import { srcAt, srcBlocks, resultsChange, diagramKey, headerArgs, tangleFiles, parseVars, named, callAt, babelJob, shellVars } from "./babel.ts";
+import { execFileSync } from "node:child_process";
 
 test("headerArgs reads :key value pairs, quoted values and bare keys", () => {
   assert.deepEqual(headerArgs('  #+BEGIN_SRC sh :tangle bin/x.sh :shebang "#!/bin/sh -e"  :mkdirp yes :noweb'), { tangle: "bin/x.sh", shebang: "#!/bin/sh -e", mkdirp: "yes", noweb: "" });
@@ -97,4 +98,94 @@ test("resultsChange replaces block, drawer, table and file-link results; unclose
   assert.equal(run(open, 0, "n"), `${head}#+RESULTS:\n: n\n#+begin_example\nx\nafter`, "unclosed block kept");
   const drawer = `${head}#+RESULTS:\n:RESULTS:\nx`;
   assert.equal(run(drawer, 0, "n"), `${head}#+RESULTS:\n: n\n:RESULTS:\nx`, "unclosed drawer kept");
+});
+
+test("headerArgs keeps quoted var values whole and joins repeated :var", () => {
+  assert.deepEqual(headerArgs('#+begin_src sh :var a="x y" :results output :var b=totals'), { var: 'a="x y" b=totals', results: "output" });
+  assert.deepEqual(parseVars('a="x, y" b=totals,c=2'), [["a", '"x, y"'], ["b", "totals"], ["c", "2"]]);
+});
+
+test("shellVars quotes values so ', $() and backquotes stay text", { skip: process.platform === "win32" }, () => {
+  const v = "it's $(echo pwned) `id` \"q\"\nline 2";
+  assert.equal(shellVars([["x", "a'b"]]), "x='a'\\''b'\n");
+  assert.equal(execFileSync("sh", ["-c", shellVars([["x", v]]) + 'printf %s "$x"']).toString(), v);
+});
+
+const nb = [
+  "#+NAME: totals",
+  "#+begin_src sh",
+  "echo 42",
+  "#+end_src",
+  "",
+  "#+RESULTS: totals",
+  ": 42",
+  "",
+  "#+NAME: fresh",
+  "#+begin_src sh :var n=totals",
+  'echo "$n"',
+  "#+end_src",
+  "",
+  "#+NAME: greet",
+  "#+HEADER: :results output",
+  '#+begin_src sh :var who="world" n=fresh',
+  'echo "hi $who"',
+  "#+end_src",
+  "",
+  "#+NAME: tbl",
+  "| a | 1 |",
+  "",
+  "#+RESULTS: loose",
+  "#+begin_example",
+  "  x",
+  "    y",
+  "#+end_example",
+  "",
+  '#+CALL: greet(who="you", n=3)',
+  "#+CALL: nope()",
+].join("\n");
+
+test("named finds a named block with its results, a named table and #+RESULTS: name", () => {
+  assert.equal(named(nb, "totals")?.result, "42");
+  assert.equal(named(nb, "totals")?.src?.code, "echo 42");
+  assert.deepEqual([named(nb, "fresh")?.src?.code, named(nb, "fresh")?.result], ['echo "$n"', null]);
+  assert.deepEqual(named(nb, "tbl"), { src: null, result: "| a | 1 |" });
+  assert.deepEqual(named(nb, "loose"), { src: null, result: "x\n  y" });
+  assert.equal(named(nb, "missing"), null);
+});
+
+test("callAt reads a #+CALL: line and its arguments", () => {
+  assert.deepEqual(callAt('x\n  #+call: f(a=1, b="c d")\ny', 5), { name: "f", args: [["a", "1"], ["b", '"c d"']], indent: "  ", end: 27 });
+  assert.equal(callAt("#+CALL: f", 0)?.name, "f");
+  assert.equal(callAt("text", 0), null);
+});
+
+test("babelJob resolves :var from results, runs a missing dependency first and applies #+CALL: args", () => {
+  const at = (s: string) => nb.indexOf(s);
+  const fresh = babelJob(nb, at('echo "$n"'));
+  assert.ok(fresh && "src" in fresh);
+  assert.deepEqual([fresh.vars, fresh.name, fresh.at], [[["n", "42"]], "fresh", fresh.src]);
+  // greet needs fresh's results: fresh runs first, with its own vars resolved.
+  assert.deepEqual(babelJob(nb, at('echo "hi')), { need: fresh });
+  const call = babelJob(nb, at("#+CALL: greet"));
+  assert.ok(call && "src" in call);
+  assert.deepEqual([call.vars, call.name, call.src.code, call.at.end], [[["who", "you"], ["n", "3"]], "", 'echo "hi $who"', at("\n#+CALL: nope")]);
+  assert.deepEqual(babelJob(nb, at("#+CALL: nope")), { error: "No code block named “nope” in this note." });
+  assert.equal(babelJob(nb, at("| a")), null);
+});
+
+test("babelJob reports unknown names, cycles and deep dependencies without running anything", () => {
+  const blk = (name: string, vars: string, res = "") => `#+NAME: ${name}\n#+begin_src sh :var ${vars}\necho\n#+end_src\n${res}\n`;
+  assert.deepEqual(babelJob(blk("a", "x=ghost"), 20), { error: ":var x=ghost: no #+NAME: ghost in this note; nothing ran." });
+  assert.deepEqual(babelJob(blk("a", "x=a", "#+RESULTS: a\n: 1"), 20), { error: ":var x=a is a cycle (a → a); nothing ran." });
+  assert.deepEqual(babelJob(blk("a", "x=b") + blk("b", "y=a"), 20), { error: ":var y=a is a cycle (a → b → a); nothing ran." });
+  assert.deepEqual(babelJob(blk("a", "x=b") + blk("b", "y=c") + blk("c", "z=1"), 20), { error: "“c” has no results yet: run it first (dependencies run one level deep)." });
+  assert.deepEqual(babelJob(blk("a", "1x=2"), 20), { error: ":var 1x: not a shell variable name." });
+});
+
+test("resultsChange writes #+RESULTS: name and replaces it on a rerun", () => {
+  const t = "#+NAME: n\n#+begin_src sh\necho\n#+end_src\nafter";
+  const once = apply(t, resultsChange(t, srcAt(t, 12)!, "1", "n"));
+  assert.equal(once, "#+NAME: n\n#+begin_src sh\necho\n#+end_src\n\n#+RESULTS: n\n: 1\nafter");
+  assert.equal(apply(once, resultsChange(once, srcAt(once, 12)!, "2", "n")), "#+NAME: n\n#+begin_src sh\necho\n#+end_src\n\n#+RESULTS: n\n: 2\nafter");
+  assert.equal(named(once, "n")?.result, "1");
 });
