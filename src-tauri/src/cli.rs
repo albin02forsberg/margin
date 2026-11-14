@@ -4,7 +4,7 @@
 // and content checks as the MCP server, and a running app picks them up through its file watcher.
 
 use crate::config::Config;
-use crate::{kw_of, mcp, org, saved_profile, tc_of, timeclock, write_checked};
+use crate::{kw_of, mcp, org, read_or_empty, saved_profile, tc_of, timeclock, write_checked};
 use std::path::Path;
 
 #[derive(Debug, PartialEq)]
@@ -80,7 +80,7 @@ pub fn exec(c: &Config, cmd: Cmd) -> Result<String, String> {
         Cmd::Add(task) => {
             let p = root.join(&c.inbox);
             let kw = kw_of(c);
-            let read = std::fs::read_to_string(&p).unwrap_or_default().replace("\r\n", "\n").replace('\r', "\n");
+            let read = read_or_empty(&p)?.replace("\r\n", "\n").replace('\r', "\n");
             let line = format!("* {} {task}", kw.todo.first().map_or("TODO", |s| s));
             write_checked(&p, org::capture_insert(&read, None, &line, &kw), Some(&read)).map_err(busy)?;
             Ok(format!("Added \"{line}\" to {}", p.display()))
@@ -176,6 +176,12 @@ mod tests {
         assert!(exec(&c, Cmd::Add("x".into())).unwrap_err().contains("cli_write"));
         assert!(exec(&c, Cmd::ClockOut("".into())).is_err());
         assert_eq!(exec(&c, Cmd::Status), Ok(String::new()));
+        // An unreadable (non-UTF-8) inbox is an error, never wiped.
+        c.cli_write = true;
+        std::fs::write(c.notes().join("bad.org"), [0xE5, 0x0A]).unwrap();
+        c.inbox = "bad.org".into();
+        assert!(exec(&c, Cmd::Add("x".into())).is_err());
+        assert_eq!(std::fs::read(c.notes().join("bad.org")).unwrap(), [0xE5, 0x0A]);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
