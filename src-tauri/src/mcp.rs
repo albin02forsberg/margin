@@ -207,22 +207,10 @@ fn call(ctx: &Ctx, name: &str, args: &Value) -> Result<String, String> {
         return Err("editing is off: turn on “Let Claude (MCP) edit notes” in Margin's settings (mcp_write = true)".into());
     }
     let arg = |k: &str| args.get(k).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
-    // The app's tc_in / tc_out under the same locks, minus its backup (the app's next one takes it).
     let tc = || tc_of(&c, &saved_profile(&c));
     match name {
-        "clock_in" => {
-            let project = arg("project").ok_or("project is required")?;
-            tc().locked(|tc| tc.clock_in(project, arg("task").unwrap_or(""), None))?;
-            return Ok(format!("⏱ Clocked in on: {project}"));
-        }
-        "clock_out" => {
-            let note = arg("note").unwrap_or("");
-            return Ok(match tc().locked(|tc| tc.clock_out(note))? {
-                false => "Not clocked in.".into(),
-                true if note.is_empty() => "⏱ Clocked out.".into(),
-                true => format!("⏱ Clocked out. Task: {note}"),
-            });
-        }
+        "clock_in" => return clock_in(&c, arg("project").ok_or("project is required")?, arg("task").unwrap_or("")),
+        "clock_out" => return clock_out(&c, arg("note").unwrap_or("")),
         _ => {}
     }
     let root = c.notes();
@@ -358,13 +346,7 @@ fn edit(c: &Config, root: &Path, all: &[Arc<org::OrgFile>], name: &str, args: &V
         if excluded(&p) {
             return Err(format!("{} is excluded from the AI (ai_exclude)", rel(&p)));
         }
-        // A new day file isn't in the scan cache yet, so this works on the path itself, not find().
-        let created = !p.exists();
-        if created {
-            new_day_file(&p, &journal_template_for(c, day), day)?;
-        }
-        let read = std::fs::read_to_string(&p).map_err(|e| e.to_string())?.replace("\r\n", "\n").replace('\r', "\n");
-        write_checked(&p, org::capture_insert(&read, arg("heading"), text, &kw), Some(&read))?;
+        let created = append_day(c, &p, day, arg("heading"), text)?;
         return Ok(format!("{} {}", if created { "Created and appended to" } else { "Appended to" }, rel(&p)));
     }
     let f = find(all, root, arg("path"), arg("title"))?;
@@ -519,8 +501,37 @@ fn agenda(c: &Config, files: &[Arc<org::OrgFile>], rel: &dyn Fn(&Path) -> String
     Ok(if out.is_empty() { format!("Nothing on the agenda from {from} to {to}.") } else { out })
 }
 
+/// Clock in on PROJECT with TASK: the app's tc_in under the same locks, minus its backup (the app's
+/// next one takes it). Shared with `margin --clock`.
+pub(crate) fn clock_in(c: &Config, project: &str, task: &str) -> Result<String, String> {
+    tc_of(c, &saved_profile(c)).locked(|tc| tc.clock_in(project, task, None))?;
+    Ok(format!("⏱ Clocked in on: {project}"))
+}
+
+/// Clock out with NOTE (may be empty), like tc_out. Shared with `margin --clock-out`.
+pub(crate) fn clock_out(c: &Config, note: &str) -> Result<String, String> {
+    Ok(match tc_of(c, &saved_profile(c)).locked(|tc| tc.clock_out(note))? {
+        false => "Not clocked in.".into(),
+        true if note.is_empty() => "⏱ Clocked out.".into(),
+        true => format!("⏱ Clocked out. Task: {note}"),
+    })
+}
+
+/// Append TEXT (org) to the day file P for DAY, under HEADING (created if missing) or at its end; the
+/// file is created with the journal template if missing. Whether it was created.
+pub(crate) fn append_day(c: &Config, p: &Path, day: chrono::NaiveDate, heading: Option<&str>, text: &str) -> Result<bool, String> {
+    // A new day file isn't in the scan cache yet, so this works on the path itself, not find().
+    let created = !p.exists();
+    if created {
+        new_day_file(p, &journal_template_for(c, day), day)?;
+    }
+    let read = std::fs::read_to_string(p).map_err(|e| e.to_string())?.replace("\r\n", "\n").replace('\r', "\n");
+    write_checked(p, org::capture_insert(&read, heading, text, &kw_of(c)), Some(&read))?;
+    Ok(created)
+}
+
 /// The journal's day file under ROOT for DATE (default today), checked to lie inside ROOT, and its day.
-fn journal_path(c: &Config, root: &Path, date: Option<&str>) -> Result<(PathBuf, chrono::NaiveDate), String> {
+pub(crate) fn journal_path(c: &Config, root: &Path, date: Option<&str>) -> Result<(PathBuf, chrono::NaiveDate), String> {
     let now = timeclock::now();
     let day = date.map(|d| crate::date_at(d, now.date())).transpose()?.unwrap_or(now.date());
     let p = capture_file(root, &journal_file(&c.daily_dir), None, day.and_time(now.time()))?;
