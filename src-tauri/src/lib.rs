@@ -3470,9 +3470,18 @@ fn range_report(tc: &Tc, profile: &str, from: NaiveDate, to: NaiveDate) -> Strin
     timeclock::weekly_report(&tc.sessions(), &tc.projects(), (&leave, &tc.leave_codes().unwrap_or_default()), &tc.cal, from, to, profile)
 }
 
+/// REPORT plus, when BY_TAG, an `* Hours by tag` section over the same FROM..=TO (#1353).
+fn with_tag_table(report: String, by_tag: Option<bool>, s: &App, from: NaiveDate, to: NaiveDate) -> String {
+    if by_tag != Some(true) {
+        return report;
+    }
+    let tc = s.tc();
+    format!("{report}\n\n* Hours by tag\n{}", timeclock::clocktable_by_tag(&tc.sessions(), &session_tags(&s.files(), &tc.projects()), None, from, to))
+}
+
 /// Org-formatted report text. KIND: daily | weekly | monthly | holidays | flex | carry | doctor | backup.
 #[tauri::command]
-fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<String> {
+fn tc_report(s: State<App>, kind: String, date_input: Option<String>, by_tag: Option<bool>) -> R<String> {
     let tc = s.tc();
     let profile = s.profile();
     let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
@@ -3481,11 +3490,11 @@ fn tc_report(s: State<App>, kind: String, date_input: Option<String>) -> R<Strin
         "daily" => timeclock::daily_report(&tc.sessions(), &tc.projects(), (&leave, &codes), &tc.cal, date(date_input.as_deref().unwrap_or(""))?, &profile),
         "weekly" => {
             let (from, to) = week_range(date_input.as_deref().filter(|d| !d.trim().is_empty()).map(date).transpose()?, today(), s.cfg().week_start());
-            range_report(&tc, &profile, from, to)
+            with_tag_table(range_report(&tc, &profile, from, to), by_tag, &s, from, to)
         }
         "monthly" => {
             let (from, to) = month_range(date_input.as_deref().filter(|d| !d.trim().is_empty()).map(date).transpose()?, today());
-            range_report(&tc, &profile, from, to)
+            with_tag_table(range_report(&tc, &profile, from, to), by_tag, &s, from, to)
         }
         "holidays" => timeclock::holidays_report(date(date_input.as_deref().unwrap_or(""))?.format("%Y").to_string().parse().unwrap(), &tc.cal),
         "flex" => {
