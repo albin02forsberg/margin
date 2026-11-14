@@ -66,7 +66,8 @@ pub fn exec(c: &Config, cmd: Cmd) -> Result<String, String> {
         Cmd::Clock(project, task) => {
             let projects = tc_of(c, &saved_profile(c)).load_projects()?;
             let Some(name) = projects.keys().find(|k| k.eq_ignore_ascii_case(&project)) else {
-                return Err(format!("unknown project {project} (known: {})", projects.keys().cloned().collect::<Vec<_>>().join(", ")));
+                let known = if projects.is_empty() { "none yet: add one in Margin".into() } else { format!("known: {}", projects.keys().cloned().collect::<Vec<_>>().join(", ")) };
+                return Err(format!("unknown project {project} ({known})"));
             };
             mcp::clock_in(c, name, &task)
         }
