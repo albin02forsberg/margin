@@ -46,11 +46,11 @@ const KEYWORDS: [string, string, string][] = [
 const DYN = KEYWORDS.filter(([k]) => k.startsWith("begin: ")).map(([k, d, r]) => [k.slice(7), d, r.slice(7)]);
 /** Options of each dynamic block (`clocktable_opts`, `tasks_opts`, `columnview_opts` in lib.rs) and their fixed values. */
 const OPTS: Record<string, Record<string, string>> = {
-  clocktable: { block: "today, thisweek, thismonth or YYYY-MM (required)", project: "only this project (\"quoted\" for spaces)", by: "project or tag" },
+  clocktable: { block: "today, yesterday, thisweek, lastweek, thismonth, lastmonth, thisyear, lastyear, YYYY, YYYY-MM or YYYY-MM-DD (required)", project: "only this project (\"quoted\" for spaces)", by: "project or tag" },
   tasks: { query: "task query, \"quoted\" (required)", limit: "at most N tasks (default 20)", sort: "priority, date or title" },
   columnview: { query: "heading query, \"quoted\" (required)", cols: "columns, \"ITEM TODO EFFORT\"", sort: "column, -COLUMN descending", limit: "at most N rows (default 50, max 500)" },
 };
-const VALUES: Record<string, string[]> = { "clocktable:block": ["today", "thisweek", "thismonth"], "clocktable:by": ["project", "tag"], "tasks:sort": ["priority", "date", "title"] };
+const VALUES: Record<string, string[]> = { "clocktable:block": ["today", "yesterday", "thisweek", "lastweek", "thismonth", "lastmonth", "thisyear", "lastyear"], "clocktable:by": ["project", "tag"], "tasks:sort": ["priority", "date", "title"] };
 /** `#+begin_src` languages: the ones `babel.rs` runs, and mermaid diagrams. */
 const LANGS: [string, string][] = [["sh", "runs with Ctrl+Enter (when listed in Run code blocks)"], ["shell", "runs as sh"], ["mermaid", "diagram shown under the block"]];
 /** Src header arguments `babel.ts` reads. */
