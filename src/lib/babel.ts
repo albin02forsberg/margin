@@ -49,29 +49,51 @@ function resultEnd(ls: Line[], j: number): number {
   return /^\s*\[\[file:[^\]]*\]\]\s*$/i.test(t) ? j + 1 : j;
 }
 
-/** The edit that puts OUTPUT under block SRC as `#+RESULTS:` + `: ` lines (org's verbatim form, which no
- *  output can close early), replacing the `#+RESULTS:` (and its `:` lines) that follows the block, if any. */
-export function resultsChange(text: string, src: Src, output: string): { from: number; to: number; insert: string } {
-  const body = output.replace(/\n+$/, "");
-  const res = `${src.indent}#+RESULTS:` + (body ? "\n" + body.split("\n").map((l) => (l ? `${src.indent}: ${l}` : `${src.indent}:`)).join("\n") : "");
-  const ls = lines(text.slice(src.end + 1));
+const RESULTS = /^\s*#\+RESULTS(\[[^\]]*\])?:/i;
+
+/** LS with their common leading whitespace removed (blank lines don't count). */
+const dedent = (ls: string[]) => {
+  const ind = (l: string) => /^\s*/.exec(l)![0].length, cut = Math.min(...ls.filter((l) => l.trim()).map(ind));
+  return ls.map((l) => l.slice(Math.min(cut, ind(l))));
+};
+
+/** The text of the result in lines I..J-1: `: ` prefixes, a block's or drawer's begin/end lines and indentation removed. */
+function resultBody(ls: Line[], i: number, j: number): string {
+  let b = ls.slice(i, j).map((l) => l.text);
+  if (/^\s*:( |$)/.test(b[0] ?? "")) return b.map((t) => t.replace(/^\s*:( |$)/, "")).join("\n");
+  if (/^\s*(#\+begin_|:RESULTS:\s*$)/i.test(b[0] ?? "")) b = b.slice(1, -1);
+  return dedent(b).join("\n");
+}
+
+/** The `#+RESULTS:` line (and its result) right after the line ending at END, blank lines skipped, else null. */
+function resultsAt(text: string, end: number): { from: number; to: number; body: string } | null {
+  if (end >= text.length) return null;
+  const base = end + 1, ls = lines(text.slice(base));
   let i = 0;
   while (i < ls.length && !ls[i].text.trim()) i++;
-  if (src.end < text.length && i < ls.length && /^\s*#\+RESULTS(\[[^\]]*\])?:/i.test(ls[i].text)) {
-    const j = resultEnd(ls, i + 1);
-    const base = src.end + 1;
-    return { from: base + ls[i].from, to: base + ls[j - 1].to, insert: res };
-  }
-  return { from: src.end, to: src.end, insert: "\n\n" + res };
+  if (i === ls.length || !RESULTS.test(ls[i].text)) return null;
+  const j = resultEnd(ls, i + 1);
+  return { from: base + ls[i].from, to: base + ls[j - 1].to, body: resultBody(ls, i + 1, j) };
+}
+
+/** The edit that puts OUTPUT under block SRC (or a `#+CALL:` line) as `#+RESULTS:` + `: ` lines (org's verbatim
+ *  form, which no output can close early), replacing the `#+RESULTS:` (and its result) that follows, if any.
+ *  NAME gives org's named form `#+RESULTS: name`, which `:var` reads. */
+export function resultsChange(text: string, src: Pick<Src, "indent" | "end">, output: string, name = ""): { from: number; to: number; insert: string } {
+  const body = output.replace(/\n+$/, "");
+  const res = `${src.indent}#+RESULTS:${name ? " " + name : ""}` + (body ? "\n" + body.split("\n").map((l) => (l ? `${src.indent}: ${l}` : `${src.indent}:`)).join("\n") : "");
+  const r = resultsAt(text, src.end);
+  return r ? { from: r.from, to: r.to, insert: res } : { from: src.end, to: src.end, insert: "\n\n" + res };
 }
 
 /** Header arguments of a `#+begin_src LANG :key value …` line: lowercased keys (without `:`), values joined by
- *  single spaces, double quotes removed (`:shebang "#!/bin/sh -e"`); a key with no value maps to "". */
+ *  single spaces, double quotes around a value removed (`:shebang "#!/bin/sh -e"`; `x="a b"` stays one value);
+ *  a key with no value maps to ""; repeated `:var`s are joined. */
 export function headerArgs(line: string): Record<string, string> {
   const out: Record<string, string> = {};
   let key = "";
-  for (const t of line.replace(BEGIN, "").match(/"[^"]*"|\S+/g) ?? []) {
-    if (t.startsWith(":")) out[(key = t.slice(1).toLowerCase())] = "";
+  for (const t of line.replace(BEGIN, "").match(/(?:[^\s"]*"[^"]*")+[^\s"]*|\S+/g) ?? []) {
+    if (t.startsWith(":")) out[(key = t.slice(1).toLowerCase())] = key === "var" ? (out.var ?? "") : "";
     else if (key) out[key] += (out[key] ? " " : "") + t.replace(/^"(.*)"$/, "$1");
   }
   return out;
@@ -96,8 +118,7 @@ export function tangleFiles(text: string, note: string): Tangled[] {
     if (p === "yes") p = note.replace(/\.org$/i, "") + "." + (EXT[s.lang.toLowerCase()] ?? s.lang.toLowerCase());
     p = p.replace(/\\/g, "/").replace(/^(\.\/)+/, "");
     const f = out.get(p) ?? { path: p, content: "", exec: false, mkdirp: false, blocks: 0, parts: [], shebang: "" };
-    const ls = s.code.split("\n"), cut = Math.min(...ls.filter((l) => l.trim()).map((l) => /^\s*/.exec(l)![0].length));
-    f.parts.push(ls.map((l) => l.slice(Math.min(cut, /^\s*/.exec(l)![0].length))).join("\n").replace(/\n+$/, ""));
+    f.parts.push(dedent(s.code.split("\n")).join("\n").replace(/\n+$/, ""));
     f.shebang ||= a.shebang ?? "";
     f.exec ||= !!a.shebang;
     f.mkdirp ||= a.mkdirp === "yes" || a.mkdirp === "t";
@@ -106,3 +127,85 @@ export function tangleFiles(text: string, note: string): Tangled[] {
   }
   return [...out.values()].map(({ parts, shebang, ...f }) => ({ ...f, content: (shebang ? shebang + "\n" : "") + parts.join("\n\n") + "\n" }));
 }
+
+/** `name=value` pairs of a `:var` header argument or `#+CALL:` argument list (`x=totals, y="a b"`), values as written. */
+export const parseVars = (spec: string): [string, string][] =>
+  [...spec.matchAll(/([^\s=,()]+)\s*=\s*("[^"]*"|[^\s,()]+)/g)].map((m) => [m[1], m[2]]);
+
+const AFFIL = /^\s*#\+(name|header|caption|attr_[\w-]+|plot)\s*:/i, NAME = /^\s*#\+name:\s*(\S+)/i;
+
+/** The `#+NAME:` among the keyword lines right above the line starting at FROM, else "". */
+function nameAbove(text: string, from: number): string {
+  const ls = text.slice(0, from).split("\n");
+  ls.pop();
+  for (let k = ls.length - 1; k >= 0 && AFFIL.test(ls[k]); k--) { const m = NAME.exec(ls[k]); if (m) return m[1]; }
+  return "";
+}
+
+/** What `:var x=NAME` refers to: the src block under `#+NAME: NAME` with its results' text (null when it has none
+ *  yet), else a named result (`#+RESULTS: NAME`, or `#+NAME: NAME` above results or a table) with no block; else null. */
+export function named(text: string, name: string): { src: Src | null; result: string | null } | null {
+  const src = srcBlocks(text).find((s) => nameAbove(text, s.from) === name);
+  if (src) return { src, result: resultsAt(text, src.end)?.body ?? null };
+  const ls = lines(text);
+  for (let i = 0; i < ls.length; i++) {
+    const t = ls[i].text;
+    if (/^\s*#\+RESULTS(?:\[[^\]]*\])?:\s*(\S+)/i.exec(t)?.[1] === name) return { src: null, result: resultBody(ls, i + 1, resultEnd(ls, i + 1)) };
+    if (NAME.exec(t)?.[1] !== name) continue;
+    const r = i + 1 + +RESULTS.test(ls[i + 1]?.text ?? ""), j = resultEnd(ls, r);
+    if (j > r || r > i + 1) return { src: null, result: resultBody(ls, r, j) };
+  }
+  return null;
+}
+
+/** A `#+CALL: name(x=1, y=totals)` line around POS: the block's name, its arguments and the line's indent and end. */
+export type Call = { name: string; args: [string, string][]; indent: string; end: number };
+export function callAt(text: string, pos: number): Call | null {
+  const from = text.lastIndexOf("\n", pos - 1) + 1, nl = text.indexOf("\n", pos), end = nl < 0 ? text.length : nl;
+  const m = /^(\s*)#\+call:\s*([^\s(]+)\s*(?:\((.*)\))?/i.exec(text.slice(from, end));
+  return m ? { name: m[2], args: parseVars(m[3] ?? ""), indent: m[1], end } : null;
+}
+
+/** A run Ctrl+Enter does: block SRC with shell variables VARS, its results written under AT (the block, or the
+ *  `#+CALL:` line) as `#+RESULTS: NAME` (unnamed when NAME is ""). */
+export type Job = { src: Src; vars: [string, string][]; at: Pick<Src, "indent" | "end">; name: string };
+
+/** The `:var` pairs on SRC's `#+begin_src` line. */
+const blockVars = (text: string, src: Src) => parseVars(headerArgs(text.slice(src.from).split("\n", 1)[0]).var ?? "");
+
+/** Values for `:var` PAIRS: `"quoted"` and numbers as written, any other value names a block's results (or a named
+ *  result). A named block without results yet comes back as `need` (run it first), only one level deep; STACK
+ *  holds the names being resolved, so a reference back to one is a cycle. */
+export function resolveVars(text: string, pairs: [string, string][], stack: string[] = [], deep = false): { vars: [string, string][] } | { need: Job } | { error: string } {
+  const vars: [string, string][] = [];
+  for (const [k, v] of pairs) {
+    if (!/^[A-Za-z_]\w*$/.test(k)) return { error: `:var ${k}: not a shell variable name.` };
+    const lit = /^"([^"]*)"$/.exec(v)?.[1] ?? (/^-?\d+(\.\d+)?$/.test(v) ? v : null);
+    if (lit != null) { vars.push([k, lit]); continue; }
+    if (stack.includes(v)) return { error: `:var ${k}=${v} is a cycle (${[...stack, v].join(" → ")}); nothing ran.` };
+    const n = named(text, v);
+    if (!n) return { error: `:var ${k}=${v}: no #+NAME: ${v} in this note; nothing ran.` };
+    if (n.result != null) { vars.push([k, n.result]); continue; }
+    if (deep) return { error: `“${v}” has no results yet: run it first (dependencies run one level deep).` };
+    const d = resolveVars(text, blockVars(text, n.src!), [...stack, v], true);
+    return "vars" in d ? { need: { src: n.src!, vars: d.vars, at: n.src!, name: v } } : d;
+  }
+  return { vars };
+}
+
+/** What Ctrl+Enter at POS runs: the src block there, or the block a `#+CALL:` line names (its arguments override the
+ *  block's `:var`s); a dependency without results comes first (`need`). Null when POS is in neither. */
+export function babelJob(text: string, pos: number): Job | { need: Job } | { error: string } | null {
+  const here = srcAt(text, pos), call = here ? null : callAt(text, pos);
+  if (!here && !call) return null;
+  const name = here ? nameAbove(text, here.from) : call!.name, src = here ?? named(text, name)?.src;
+  if (!src) return { error: `No code block named “${name}” in this note.` };
+  const pairs = new Map(blockVars(text, src));
+  for (const [k, v] of call?.args ?? []) pairs.set(k, v);
+  const r = resolveVars(text, [...pairs], name ? [name] : []);
+  return "vars" in r ? { src, vars: r.vars, at: call ?? src, name: here ? name : "" } : r;
+}
+
+/** VARS as `sh` assignments to put before a block's code, each value single-quoted (`'` as `'\''`), so `$()`,
+ *  backquotes and quotes in a value stay text. */
+export const shellVars = (vars: [string, string][]) => vars.map(([k, v]) => `${k}='${v.replace(/'/g, "'\\''")}'\n`).join("");

@@ -14,7 +14,7 @@
   import type { ChangeSet, ChangeSpec, EditorState } from "@codemirror/state";
   import * as ed from "$lib/editor";
   import { linkFor, asUrl, asWebUrl } from "$lib/weblink";
-  import { srcAt, resultsChange, tangleFiles } from "$lib/babel";
+  import { babelJob, resultsChange, shellVars, tangleFiles } from "$lib/babel";
   import { svgs } from "$lib/diagram";
   import { accepted, changeLabel, hitKey, type Hit as ReplaceHit } from "$lib/replace";
   import { citeText, type BibEntry } from "$lib/cite";
@@ -1584,30 +1584,41 @@
 
   /** Code (note path, language, exact text) the user agreed to run this session; changed code asks again. */
   const babelOk = new Set<string>();
-  /** Ctrl+Enter / Space i r in a #+begin_src block: run it (only languages in babel_languages) and put its
-   *  output in the #+RESULTS: under it, one undo step. Outside a block: false, so Ctrl+Enter keeps its default. */
+  /** Ctrl+Enter / Space i r in a #+begin_src block or on a #+CALL: line: run it (only languages in babel_languages)
+   *  with its `:var`s and put its output in the #+RESULTS: under it, one undo step. A `:var` naming a block without
+   *  results runs that block first. Elsewhere: false, so Ctrl+Enter keeps its default. */
   function runBlock() {
-    const src = inFile() && srcAt(view.state.doc.toString(), view.state.selection.main.head);
-    if (!src) return false;
+    const at = () => babelJob(view.state.doc.toString(), view.state.selection.main.head);
+    if (!inFile() || !at()) return false;
     return (async () => {
-      const lang = src.lang.toLowerCase();
-      if (lang === "mermaid") return flash("Mermaid blocks don't run: the diagram shows under the block.");
-      if (!((cfg.config.babel_languages ?? []) as string[]).some((l) => l.trim().toLowerCase() === lang))
-        return flash(`${src.lang ? `${src.lang} blocks` : "Blocks without a language"} don't run: list ${lang || "sh"} under “Run code blocks” in Settings (Space f c).`);
-      const path = tab.path!, key = `${path}\n${lang}\n${src.code}`;
-      if (!babelOk.has(key)) {
-        const go = await pick({ prompt: `Run this ${src.lang} block in ${cfg.notes}? It runs as you, with a 10 s limit:`, body: src.code || "(empty)", items: [{ label: "Run", value: true }, { label: "Cancel", value: false }] });
-        if (go !== true) return view.focus();
-        babelOk.add(key);
-        view.focus();
+      const path = tab.path!;
+      for (let dep = true; dep; ) {
+        const job = at();
+        if (!job) return;
+        if ("error" in job) return flash(job.error);
+        const run = "need" in job ? job.need : job, { src } = run;
+        dep = "need" in job;
+        const lang = src.lang.toLowerCase(), what = `${dep ? `“${run.name}” (a :var needs its results first)` : `this ${src.lang} block`}`;
+        if (lang === "mermaid") return flash("Mermaid blocks don't run: the diagram shows under the block.");
+        if (!((cfg.config.babel_languages ?? []) as string[]).some((l) => l.trim().toLowerCase() === lang))
+          return flash(`${src.lang ? `${src.lang} blocks` : "Blocks without a language"} don't run: list ${lang || "sh"} under “Run code blocks” in Settings (Space f c).`);
+        const key = `${path}\n${lang}\n${src.code}`, code = shellVars(run.vars) + src.code;
+        if (!babelOk.has(key)) {
+          const go = await pick({ prompt: `Run ${what} in ${cfg.notes}? It runs as you, with a 10 s limit:`, body: code || "(empty)", items: [{ label: "Run", value: true }, { label: "Cancel", value: false }] });
+          if (go !== true) return view.focus();
+          babelOk.add(key);
+          view.focus();
+        }
+        flash(`Running ${dep ? `“${run.name}”` : `the ${src.lang} block`}…`);
+        const r = await call<{ output: string; exit: number | null }>("babel_run", { lang: src.lang, code });
+        // Edited or switched away while it ran: only write when the cursor still asks for the same run.
+        const again = tab?.path === path ? at() : null, now = again && ("need" in again ? again.need : "src" in again ? again : null);
+        if (!now || now.src.code !== src.code || now.src.lang !== src.lang || now.name !== run.name || shellVars(now.vars) !== shellVars(run.vars))
+          return flash("The block changed while it ran; result not written.");
+        view.dispatch({ changes: resultsChange(view.state.doc.toString(), now.at, r.output, now.name) });
+        if (r.exit !== 0) return flash(`⚠ ${dep ? `“${run.name}”` : "The block"} ${r.exit == null ? "was stopped" : `exited with ${r.exit}`}.`);
+        flash("Ran the block.");
       }
-      flash(`Running the ${src.lang} block…`);
-      const r = await call<{ output: string; exit: number | null }>("babel_run", { lang: src.lang, code: src.code });
-      // Edited or switched away while it ran: only write under the same block, still at the cursor.
-      const text = view.state.doc.toString(), now = tab?.path === path ? srcAt(text, view.state.selection.main.head) : null;
-      if (!now || now.code !== src.code || now.lang !== src.lang) return flash("The block changed while it ran; result not written.");
-      view.dispatch({ changes: resultsChange(text, now, r.output) });
-      flash(r.exit === 0 ? "Ran the block." : `⚠ The block ${r.exit == null ? "was stopped" : `exited with ${r.exit}`}.`);
     })();
   }
 
@@ -4042,7 +4053,7 @@
     { label: "Insert link to a note…", leader: "i l", run: insertLink },
     { label: "Insert transclusion (show a heading from another note here)…", leader: "i T", run: insertTransclusion },
     { label: "Insert link to the clipboard URL with its page title", leader: "i U", run: insertTitledLink },
-    { label: "Run the code block at the cursor into #+RESULTS: (opt-in: Run code blocks setting)", keys: ["Ctrl+Enter"], leader: "i r", ctx: "editor", run: runBlock },
+    { label: "Run the code block or #+CALL: line at the cursor into #+RESULTS: (opt-in: Run code blocks setting)", keys: ["Ctrl+Enter"], leader: "i r", ctx: "editor", run: runBlock },
     { label: "Notes: tangle code blocks to files (#+begin_src … :tangle path)", run: () => act(tangleNote) },
     { label: "Insert date…", leader: "i d", run: insertDate },
     { label: "Insert footnote (Enter on [fn:N] jumps there and back)", leader: "i f", run: () => inFile() && ed.insertFootnote(view) },
