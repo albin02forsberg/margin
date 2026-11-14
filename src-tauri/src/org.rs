@@ -2154,7 +2154,9 @@ const CURSOR: char = '\u{1}';
 /// cursor, %a the link HERE.0 to where the capture started and %f that note's file name HERE.1
 /// (both empty without one), %% a literal %. %^t / %^T ask ASK("^t") / ("^T") for a date
 /// (read_date input relative to NOW, so empty is today; %^t drops its time; unreadable inserts
-/// nothing) and %^g ASK("^g") for tags (`:a:b:`, nothing when empty).
+/// nothing) and %^g ASK("^g") for tags (`:a:b:`, nothing when empty). %{Name} / %{Name+3d} /
+/// %{Name-1w} read ASK("Name") as a date (like %^t) and insert it shifted by N d/w/m/y; an
+/// unreadable answer leaves the reference literal.
 pub fn expand_template(body: &str, now: chrono::NaiveDateTime, sel: &str, here: (&str, &str), mut ask: impl FnMut(&str) -> String) -> String {
     let (d, t) = (now.date(), now.format("%H:%M").to_string());
     let inactive = |s: String| format!("[{}]", &s[1..s.len() - 1]);
@@ -2163,6 +2165,12 @@ pub fn expand_template(body: &str, now: chrono::NaiveDateTime, sel: &str, here: 
         out.push_str(&rest[..i]);
         rest = &rest[i + 1..];
         let prompt = rest.strip_prefix("^{").and_then(|r| r.find('}').map(|e| &r[..e]));
+        let date = rest.strip_prefix('{').and_then(|r| r.find('}').map(|e| &r[..e])).filter(|r| !r.is_empty()).and_then(|r| {
+            let (name, off) = date_ref(r);
+            let (base, ..) = read_date(&ask(name), d)?;
+            let at = match off { Some((true, n, u)) => sub_interval(base, n, u), Some((_, n, u)) => add_interval(base, n, u), None => base };
+            Some((ts_string(at, None, None, None), r.len() + 2))
+        });
         let (s, n) = match (rest.chars().next(), prompt) {
             (Some('t'), _) => (ts_string(d, None, None, None), 1),
             (Some('T'), _) => (ts_string(d, Some(&t), None, None), 1),
@@ -2187,6 +2195,7 @@ pub fn expand_template(body: &str, now: chrono::NaiveDateTime, sel: &str, here: 
                 let tags: Vec<&str> = a.split([':', ' ', ',']).filter(|t| !t.is_empty()).collect();
                 (if tags.is_empty() { String::new() } else { format!(":{}:", tags.join(":")) }, 2)
             }
+            (Some('{'), _) if date.is_some() => date.unwrap(),
             _ => ("%".into(), 0),
         };
         out.push_str(&s);
@@ -2195,8 +2204,15 @@ pub fn expand_template(body: &str, now: chrono::NaiveDateTime, sel: &str, here: 
     out + rest
 }
 
+/// Split a template date reference `Launch`, `Launch+3d` or `Go-live-1w` into its name and
+/// (minus, N, unit) offset.
+fn date_ref(s: &str) -> (&str, Option<(bool, u32, char)>) {
+    static OFF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(.+?)([+-])(\d{1,4})([dwmy])$").unwrap());
+    OFF.captures(s).and_then(|c| Some((c.get(1)?.as_str(), Some((&c[2] == "-", c[3].parse().ok()?, c[4].chars().next()?))))).unwrap_or((s, None))
+}
+
 /// A template prompt: NAME is its `answers` key, KIND how the UI asks it: "text" (%^{Name}),
-/// "date" (%^t), "datetime" (%^T) or "tags" (%^g).
+/// "date" (%^t, or a name used in %{Name±N…}), "datetime" (%^T) or "tags" (%^g).
 #[derive(Serialize, Debug, PartialEq)]
 pub struct Prompt {
     pub name: String,
@@ -2205,10 +2221,12 @@ pub struct Prompt {
 
 /// The distinct prompts in BODY, in order, for the UI to ask before expanding.
 pub fn template_prompts(body: &str) -> Vec<Prompt> {
+    static REF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"%(?:%|\{([^}]+)\})").unwrap());
+    let dates: Vec<&str> = REF.captures_iter(body).filter_map(|c| c.get(1)).map(|m| date_ref(m.as_str()).0).collect();
     let mut v: Vec<Prompt> = vec![];
     expand_template(body, chrono::NaiveDateTime::default(), "", ("", ""), |p| {
         if !v.iter().any(|x| x.name == p) {
-            let kind = match p { "^t" => "date", "^T" => "datetime", "^g" => "tags", _ => "text" };
+            let kind = match p { "^t" => "date", "^T" => "datetime", "^g" => "tags", _ if dates.contains(&p) => "date", _ => "text" };
             v.push(Prompt { name: p.into(), kind });
         }
         String::new()
@@ -3620,6 +3638,26 @@ mod tests {
         assert_eq!(capture_template("", None, None, "* N\n\u{1}\nx\n", &kw()), ("* N\n\nx\n".into(), 1, 0));
         // Multi-line %i lines up with the line it's inserted on.
         assert_eq!(expand_template("* N\n  - %i\n%i", now, "a\n\nb", ("", ""), ans), "* N\n  - a\n\n  b\na\n\nb");
+    }
+
+    #[test]
+    fn template_date_offsets() {
+        let now = chrono::NaiveDateTime::parse_from_str("2026-10-02 14:30", "%Y-%m-%d %H:%M").unwrap();
+        let names = |b: &str| template_prompts(b).into_iter().map(|p| format!("{}={}", p.name, p.kind)).collect::<Vec<_>>();
+        // An anchor used in %{…} is a date prompt, asked once, whether it first appears as %^{…} or %{…}.
+        let body = "* %^{Launch} %^{Who}\n** TODO Prep\nDEADLINE: %{Launch-2w}\n** TODO Ship\nSCHEDULED: %{Launch}\n** Retro %{Go-live+3d}\n";
+        assert_eq!(names(body), ["Launch=date", "Who=text", "Go-live=date"]);
+        assert_eq!(names("%{X+1d} %^{X} %%{Y}"), ["X=date"]);
+        let ans = |a: &'static str| move |p: &str| if p == "Who" { "Ann".to_string() } else { a.into() };
+        // A plain %^{Launch} inserts the raw answer; %{…} the (shifted) date.
+        assert_eq!(expand_template(body, now, "", ("", ""), ans("2026-11-20")),
+            "* 2026-11-20 Ann\n** TODO Prep\nDEADLINE: <2026-11-06 Fri>\n** TODO Ship\nSCHEDULED: <2026-11-20 Fri>\n** Retro <2026-11-23 Mon>\n");
+        let x = |t: &str, a: &'static str| expand_template(t, now, "", ("", ""), ans(a));
+        assert_eq!(x("%{L+1d}|%{L+1w}|%{L+1m}|%{L+1y}", "2026-01-31"), "<2026-02-01 Sun>|<2026-02-07 Sat>|<2026-02-28 Sat>|<2027-01-31 Sun>");
+        assert_eq!(x("%{L+1m}|%{L-1y}|%{L-1m}", "2028-01-31"), "<2028-02-29 Tue>|<2027-01-31 Sun>|<2027-12-31 Fri>");
+        assert_eq!(x("%{L-3d}", "+1w"), "<2026-10-06 Tue>");
+        // Unreadable answer, missing brace, empty name and %% stay literal.
+        assert_eq!(x("%{L+1d} %{L %{} %%{L}", "junk"), "%{L+1d} %{L %{} %{L}");
     }
 
     #[test]

@@ -624,6 +624,11 @@ were (the heading at the cursor in the open note, by its `:ID:` if it has one, e
 `[[file:note.org::*Heading][Heading]]`; the note itself above its first heading; capturing
 never adds an ID to that note), `%f` that note's file name (`%a`/`%f` are empty with no
 note open, e.g. quick capture from the tray), `%?` cursor, `%%` a literal `%`.
+`%{Launch}` / `%{Launch-2w}` / `%{Launch+3d}` insert the date answered for `Launch`,
+shifted by N `d`/`w`/`m`/`y` (month ends clamp: Jan 31 + 1m is Feb 28), so one capture can
+build a dated tree like `DEADLINE: %{Launch-2w}`. `Launch` is asked once with the date picker,
+also when it appears as `%^{Launch}` (which still inserts the raw answer, e.g. `+1w`; write
+`%{Launch}` where you want the date). An unreadable answer leaves `%{…}` as typed.
 The reserved prompt `%^{clip-link}` isn't asked: it becomes the clipboard URL as
 `[[url][page title]]` (a bare `[[url]]` if the title can't be fetched; if the clipboard
 isn't an http(s) URL it asks for one). New configs include a "Reading list" template
