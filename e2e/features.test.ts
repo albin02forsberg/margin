@@ -2045,6 +2045,23 @@ describe("Note navigation", () => {
     await fileMatches(join(d.notes, "sub", "writer.org"), (s) => s.includes("See [[file:../other/target.org][Target Note]] ask @ann [[Targx\n* Plan :work:"), "completions not inserted");
   });
 
+  it("#+ completes org keywords into block skeletons (#1345)", async () => {
+    const popup = ".cm-tooltip-autocomplete li";
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Writer");
+    await find(".status .file", "writer.org");
+    await browser.keys(Key.Escape);
+    await type("Go");
+    await type("#+begin_q");
+    await find(popup, "begin_quote");
+    await browser.pause(150); // CodeMirror ignores Enter for 75 ms after the popup opens
+    await browser.keys(Key.Enter);
+    await type("Quoted.");
+    await browser.keys(Key.Escape);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "sub", "writer.org"), (s) => s.includes("#+begin_quote\nQuoted.\n#+end_quote"), "quote skeleton not inserted");
+  });
+
   it("Ctrl+Shift+O jumps to the picked heading", async () => {
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "Headed");

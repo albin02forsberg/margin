@@ -387,6 +387,16 @@ async function pngs() {
     await open("Orchard platform", "orchard.org");
   }
 
+  if (want("syntax-completion")) { // #1345: `#+` offers the org keywords and block skeletons
+    await browser.keys(Key.Escape);
+    await type("Go#+be");
+    await find(".cm-tooltip-autocomplete li", "begin: clocktable");
+    await shot("syntax-completion");
+    await browser.keys(Key.Escape); // closes the popup
+    await browser.keys(Key.Escape);
+    await type("u");
+  }
+
   if (want("print-bibliography")) { // #1336: the cited entries listed under #+PRINT_BIBLIOGRAPHY:, unknown key as [key?]
     await open("Sync literature", "literature.org");
     await find(".cm-org-bibliography li", "Local-first software");

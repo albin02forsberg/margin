@@ -7,7 +7,7 @@ import {
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
-import { acceptCompletion, autocompletion, closeCompletion, completionStatus, moveCompletionSelection, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
+import { acceptCompletion, autocompletion, closeCompletion, completionStatus, moveCompletionSelection, startCompletion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
 import { codeFolding, foldService, foldAll, unfoldAll, toggleFold, foldedRanges, foldEffect, LanguageDescription, type Language } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { highlightTree, classHighlighter } from "@lezer/highlight";
@@ -28,6 +28,7 @@ import { checklistToTasks, levelAt, listRange, tasksToChecklist } from "./checkl
 import { toc } from "./toc";
 import { transclusion, transcludeTarget } from "./transclude";
 import { completionAt } from "./links";
+import { lineContext, syntaxAt } from "./syntax";
 import { bibEditMatters, bibLine, bibliography, chip, citeAt, citeQuery, cites, citeText, printBibDirective, type BibEntry } from "./cite";
 import { mentions, radio, type Radio } from "./radio";
 import { diagrams } from "./diagram";
@@ -1331,11 +1332,28 @@ export function vimMode(v: EditorView): string {
 
 // ---------------------------------------------------------------- completion
 
+/** Texts of the lines above line N of DOC, nearest first. */
+function* linesAbove(doc: EditorState["doc"], n: number) {
+  for (let i = n - 1; i >= 1; i--) yield doc.line(i).text;
+}
+
 /** `[[` notes and headings, `@` people, `:` tags on a heading line, as you type (#899). A link replaces the `[[` and a `]]` right after it. */
 async function complete(cx: CompletionContext): Promise<CompletionResult | null> {
   const ln = cx.state.doc.lineAt(cx.pos), q = bib.size ? citeQuery(cx.state.sliceDoc(ln.from, cx.pos)) : null;
   // `@` inside `[cite:…]`: bibliography keys (#1335), before the people below.
   if (q != null) return { from: cx.pos - q.length, validFor: /^[\w\-.:/]*$/, options: [...bib.values()].map((e) => ({ label: e.key, detail: [e.label, e.title].filter(Boolean).join(" · ") })) };
+  // Org syntax (#1345): `#+` keywords and block skeletons, block options, src languages, drawer properties.
+  const sx = syntaxAt(cx.state.sliceDoc(ln.from, cx.pos), /^\s*[:#]/.test(ln.text) ? lineContext(linesAbove(cx.state.doc, ln.number)) : null);
+  if (sx) return {
+    from: cx.pos - sx.query.length, validFor: /^[\w-]*$/,
+    options: sx.options.map(({ label, detail, insert, cursor = insert.length }) => ({
+      label, detail,
+      apply: (v: EditorView, _: unknown, f: number, to: number) => {
+        v.dispatch({ changes: { from: f, to, insert }, selection: { anchor: f + cursor }, userEvent: "input.complete" });
+        if (insert[cursor - 1] === " ") startCompletion(v); // chain: `#+begin_src ` → languages, `:block ` → its values
+      },
+    })),
+  };
   const at = completionAt(cx.state.sliceDoc(ln.from, cx.pos), !!level(ln.text));
   if (!at) return null;
   const from = cx.pos - at.query.length, c = await hooks.completions();
