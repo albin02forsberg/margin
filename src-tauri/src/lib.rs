@@ -3952,6 +3952,49 @@ pub(crate) fn capture(app: &AppHandle) {
     let _ = app.emit("capture", hidden);
 }
 
+/// Existing files named in ARGS (after the program name), as absolute paths with `..`/`.` folded
+/// away as text (check_in compares as written, so no canonicalize) and an optional `:LINE` suffix;
+/// relative ones resolve against CWD. Flags are skipped.
+fn open_args(args: &[String], cwd: &Path) -> Vec<(PathBuf, Option<u32>)> {
+    let norm = |a: &str| {
+        let mut o = PathBuf::new();
+        for c in cwd.join(a).components() {
+            match c {
+                Component::ParentDir => drop(o.pop()),
+                Component::CurDir => {}
+                c => o.push(c),
+            }
+        }
+        o
+    };
+    args.iter().skip(1).filter(|a| !a.starts_with('-')).filter_map(|a| {
+        let p = norm(a);
+        if p.is_file() {
+            return Some((p, None));
+        }
+        let (f, l) = a.rsplit_once(':')?;
+        let p = norm(f);
+        p.is_file().then(|| (p, l.parse().ok()))
+    }).collect()
+}
+
+/// The files in ARGS for the frontend; ones outside the allowed dirs are flagged `ok: false`.
+fn open_paths(app: &AppHandle, args: &[String], cwd: &Path) -> Vec<Value> {
+    let s = app.state::<App>();
+    open_args(args, cwd).into_iter().map(|(p, line)| json!({ "path": p, "line": line, "ok": s.check(&p).is_ok() })).collect()
+}
+
+/// Files named on the command line of the first launch, once (the frontend pulls them on mount).
+#[tauri::command]
+fn take_open_paths(app: AppHandle) -> Vec<Value> {
+    static TAKEN: AtomicBool = AtomicBool::new(false);
+    if TAKEN.swap(true, Ordering::SeqCst) {
+        return vec![];
+    }
+    let args: Vec<String> = std::env::args().collect();
+    std::env::current_dir().map(|d| open_paths(&app, &args, &d)).unwrap_or_default()
+}
+
 /// `margin --mcp`: the read-only MCP server on stdin/stdout (#929), without starting the app.
 pub fn mcp() {
     let (Some(cfg), Some(local)) = (mcp::config_path(), mcp::local_data_dir()) else { return eprintln!("margin --mcp: can't find the config folder") };
@@ -3971,11 +4014,15 @@ pub fn run() {
     tauri::Builder::default()
         // A second launch hands over to the running app; `margin --capture` is the
         // quick-capture hook for desktops where global shortcuts don't work (Wayland).
-        .plugin(tauri_plugin_single_instance::init(|app, args, _| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            let files = open_paths(app, &args, Path::new(&cwd));
             if args.iter().any(|a| a == "--capture") {
                 capture(app)
             } else {
                 tray::show(app)
+            }
+            if !files.is_empty() {
+                let _ = app.emit("open-path", files);
             }
         }))
         .plugin(tauri_plugin_opener::init())
@@ -4047,7 +4094,7 @@ pub fn run() {
             watcher::gnome_extension, watcher::screen_recording, remind::remind_snooze,
             config, config_recreate, tutorial, list_looks, read_look, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, md_import, highlights_import, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
-            org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, crypt_lock, crypt_unlock, crypt_rekey, crypt_relock, crypt_remove, crypt_forget, idle::idle_has_source, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_week, ledger_month_review, ledger_year, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, ledger_recurring, ledger_recurring_file, ledger_recurring_mark, capture_path, meeting_events, meeting_note, capture_templates, note_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, tc_project_hours, expected_hours_for,
+            take_open_paths, org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, crypt_lock, crypt_unlock, crypt_rekey, crypt_relock, crypt_remove, crypt_forget, idle::idle_has_source, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_week, ledger_month_review, ledger_year, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, ledger_recurring, ledger_recurring_file, ledger_recurring_mark, capture_path, meeting_events, meeting_note, capture_templates, note_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, tc_project_hours, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, notes_web_links, notes_crypt_unlocked, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, people_last, waiting_for, inbox_count, inbox_entries, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
             tc_status, tc_leave_time, tc_projects, tc_invoice, tc_save_project, tc_suggestions, tc_in, tc_out, tc_idle, tc_out_at, tc_break, tc_resume, tc_in_last, tc_adjust,
             tc_sessions_on, tc_rhythm, tc_activity, activity_counts, tc_edit_session, tc_add_session, tc_rename_task, tc_leave_add, tc_leave_remove, tc_leave_codes, tc_save_leave_code,activity_suggestions, activity_dismiss, activity_learn, activity_rules_list, activity_rules_delete, ai_note_prompt, ai_day_prompt, ai_draft, ai_retrieve, ai_excluded, mcp_command, ai_chat, ai_draft_cancel, ai_models, ai_embed_local, ai_set, ai_download, ai_download_cancel, ai_model_delete, ai_index_status, ai_index_rebuild, semantic_search, ai_related, tc_report, tc_clocktable, tasks_block, columnview_block, tc_csv, tc_switch_profile, tc_import, backup_now,
@@ -5208,6 +5255,18 @@ mod tests {
         let r = planning_at("* TODO A\nSCHEDULED: <2026-10-05 Mon +1w>\n", 0, "SCHEDULED", "norepeat", t).unwrap();
         let r = org::set_keyword(&r, 0, &kw, Some("CANCELLED"), t.and_hms_opt(9, 0, 0).unwrap(), true);
         assert!(r.starts_with("* CANCELLED A") && !r.contains("+1w") && !r.contains("LAST_REPEAT"), "{r}");
+    }
+
+    #[test]
+    fn open_args_resolves_lexically_and_skips_junk() {
+        let d = std::env::temp_dir().join(format!("margin-open-{}", std::process::id()));
+        std::fs::create_dir_all(d.join("sub")).unwrap();
+        std::fs::write(d.join("a.org"), "").unwrap();
+        let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let r = open_args(&a(&["margin", "--capture", "a.org:42", "sub/../a.org", "./a.org", "nope.org", "a.org:x"]), &d);
+        assert_eq!(r, vec![(d.join("a.org"), Some(42)), (d.join("a.org"), None), (d.join("a.org"), None), (d.join("a.org"), None)]);
+        assert!(r.iter().all(|(p, _)| !p.components().any(|c| c == Component::ParentDir)));
+        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
