@@ -808,13 +808,15 @@ Use `:root[data-look]` (not plain `:root`) so your values win over the built-in 
 
 **Themes:** a look file can bring its layout along. Start it with a `/* layout: rail */` comment (any layout name;
 `/* layout: */` means the default), then pick it with **View: pick a theme** in the palette (`Ctrl+K`): that saves both
-`look` and `layout` to config.toml. After that `layout` is a normal setting, so changing it in Settings sticks. Picking a
-built-in look or a file without the comment leaves the layout as it is (choosing a look under Settings never touches it).
+`look` and `layout` to config.toml. Choosing it under **Settings → Editor → Look** fills in **Layout** the same way, saved
+with the card. After that `layout` is a normal setting, so changing it in Settings sticks. Picking a built-in look or a
+file without the comment leaves the layout as it is.
 
 A look can also move the shell's regions. Each one carries a `data-region` attribute (`nav` for the top bar, `body`
 around tabs, editor and status bar, `tabs`, `main`, `side` for the outline, graph, chat, peek and backlinks panels, and
 `status`), and these variables place them: `--layout-shell: row` turns the top bar into a left rail,
-`--layout-main: row-reverse` puts the side panels left of the editor, and `--layout-nav-order`, `--layout-tabs-order` and
+`--layout-main: row-reverse` puts the side panels left of the editor (in windows under 1000 px wide their drawer then
+opens from the left too), and `--layout-nav-order`, `--layout-tabs-order` and
 `--layout-status-order` (`order`, default `0`) reorder them, e.g. `--layout-tabs-order: 1` puts the tabs below the editor:
 
 ```css

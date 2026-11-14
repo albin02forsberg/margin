@@ -1,6 +1,6 @@
 <script lang="ts">
   import "$lib/theme.css";
-  import { applyLayout, applyLook, applyTheme, lookLayout, nextTheme, setUserLook } from "$lib/theme";
+  import { applyLayout, applyLook, applyTheme, layoutForLook, nextTheme, setUserLook } from "$lib/theme";
   import { onMount, tick, untrack } from "svelte";
   import { Channel, invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -200,7 +200,7 @@
     applyLook(l);
     // A user look (<config>/looks/<name>.css) layers its CSS on top; built-ins and missing files leave none.
     if (!l) return setUserLook(null);
-    invoke<string | null>("read_look", { name: l }).then((css) => cfg?.config.look === l && setUserLook(css), () => setUserLook(null));
+    invoke<string | null>("read_look", { name: l }).then((css) => cfg?.config.look === l && setUserLook(css), () => setUserLook(null)).then(checkDrawer);
   });
   $effect(() => applyLayout(cfg?.config.layout));
   const isText = (t?: Tab) => t?.kind === "file" || t?.kind === "report";
@@ -487,6 +487,11 @@
     return () => m.removeEventListener("change", f);
   });
   $effect(() => { if (narrow && side) act(() => focusPane(0, false)); });
+  /** Side panels sit left of the editor (`--layout-main: row-reverse`), so the narrow drawer opens from the left too. */
+  let mainEl = $state<HTMLElement>();
+  let drawerLeft = $state(false);
+  const checkDrawer = () => void (drawerLeft = !!mainEl && getComputedStyle(mainEl).flexDirection === "row-reverse");
+  $effect(() => { void [narrow, mainEl, cfg?.config.layout, cfg?.config.look]; tick().then(checkDrawer); });
 
   /** Space w w: focus the other pane. */
   const swapPane = () => (isNarrow() ? undefined : focusPane(side ^ 1));
@@ -656,6 +661,8 @@
   /** Fit saved views into the room the bar has (the views row plus the spacer after it), keeping room for More. */
   function fitViews() {
     if (!viewsEl) return;
+    // A column (the rail layout) grows and scrolls instead: its width says nothing about room.
+    if (getComputedStyle(viewsEl).flexDirection === "column") return void ((fit = Infinity), tick().then(placeInd));
     const btns = [...viewsEl.querySelectorAll<HTMLElement>(":scope > button")];
     const saved = btns.filter((b) => b.classList.contains("saved"));
     const more = btns.find((b) => b.classList.contains("more"))!;
@@ -683,7 +690,7 @@
     return () => ro.disconnect();
   });
   $effect(() => {
-    void [JSON.stringify(cfg?.config.views), tab?.key]; // labels and the open view's weight change widths
+    void [JSON.stringify(cfg?.config.views), tab?.key, cfg?.config.layout]; // labels, the open view's weight and the layout change widths
     tick().then(fitViews);
   });
   async function moreViews() {
@@ -4102,7 +4109,7 @@
       const name = (await pick({ prompt: "Theme", items: names.map((n) => ({ label: n, detail: n === cur ? "current" : undefined, value: n as unknown })) })) as string | null;
       if (name == null) return;
       // A user look's `/* layout: NAME */` header sets the layout too; built-ins and header-less files leave it alone.
-      const layout = lookLayout(name === "classic" || name === "retro" ? null : await call<string | null>("read_look", { name }));
+      const layout = await layoutForLook(name, (name) => call<string | null>("read_look", { name }));
       await ownCfg(() => call("save_config", { values: { look: name === "classic" ? "" : name, ...(layout != null && { layout }) }, reset: [] }));
       cfg = await call("config");
       flash(`Theme: ${name}${layout ? ` · layout ${layout}` : ""}`);
@@ -4620,7 +4627,7 @@
       {/each}
     </nav>
 
-    <main data-region="main">
+    <main data-region="main" class:drawer-left={drawerLeft} bind:this={mainEl}>
       {#if dropCue}<div class="drop-cue" style={dropCue.style}>Drop to attach to {dropCue.title}</div>{/if}
       <div class="pane" onpointerdowncapture={() => { if (drawerOpen()) closeDrawer(); act(() => focusPane(0, false)); }} onfocusin={() => focusIn(0)}>
         <div class="editor" bind:this={editorEl} style:display={isText(leftTab) ? "block" : "none"}></div>
@@ -4808,6 +4815,7 @@
     main { position: relative; }
     .editor.split { display: none !important; }
     .links { position: absolute; right: 0; top: 0; bottom: 0; width: min(320px, 85vw); z-index: 10; box-shadow: var(--shadow); box-sizing: border-box; margin: 0; border-radius: var(--r) 0 0 var(--r); }
+    main.drawer-left .links { left: 0; right: auto; border-radius: 0 var(--r) var(--r) 0; }
   }
   @media (max-width: 1199px) {
     .views kbd, .cmdk .lbl, .clockchip .warn span { display: none; }

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { applyLayout, applyLook, effectiveTheme, lookLayout, nextTheme, setUserLook } from "./theme.ts";
+import { applyLayout, applyLook, effectiveTheme, layoutForLook, lookLayout, nextTheme, setUserLook } from "./theme.ts";
 
 test("effectiveTheme", () => {
   assert.equal(effectiveTheme("", true), "light");
@@ -66,6 +66,15 @@ test("lookLayout reads a leading layout comment only", () => {
   assert.equal(lookLayout("/* paper */\n/* layout: rail */"), null);
   assert.equal(lookLayout(""), null);
   assert.equal(lookLayout(null), null);
+});
+
+test("layoutForLook: a user look's header, never for built-ins or unreadable files", async () => {
+  const files: Record<string, string> = { railed: "/* layout: rail */\n:root {}", plain: ":root {}", retro: "/* layout: rail */" };
+  const read = async (n: string) => { if (!(n in files)) throw new Error("missing"); return files[n]; };
+  assert.equal(await layoutForLook("railed", read), "rail");
+  assert.equal(await layoutForLook("plain", read), null);
+  assert.equal(await layoutForLook("gone", read), null);
+  for (const n of ["", "classic", "retro"]) assert.equal(await layoutForLook(n, read), null, n);
 });
 
 test("theme.css has a block for every built-in layout offered in Settings", () => {
