@@ -3535,7 +3535,7 @@ struct ClockOpts {
     by_tag: bool,
 }
 
-/// Options of a `#+BEGIN: clocktable` header after the name: `:block today|yesterday|thisweek|lastweek|thismonth|lastmonth|thisyear|lastyear|YYYY|YYYY-MM|YYYY-MM-DD` (required),
+/// Options of a `#+BEGIN: clocktable` header (keep `OPTS`/`VALUES` in src/lib/syntax.ts in step) after the name:`:block today|yesterday|thisweek|lastweek|thismonth|lastmonth|thisyear|lastyear|YYYY|YYYY-MM|YYYY-MM-DD` (required),
 /// `:project NAME` ("quoted" for spaces) and `:by project|tag`. Any other option is an error, so Emacs-only blocks stay untouched.
 fn clocktable_opts(args: &str, today: NaiveDate, start: chrono::Weekday) -> R<ClockOpts> {
     let (mut project, mut range, mut by_tag) = (None, None, false);

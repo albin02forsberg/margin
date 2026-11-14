@@ -45,7 +45,10 @@ test("dynamic block options and values", () => {
   assert.deepEqual(labels("#+begin: clocktable :"), ["block", "project", "by"]);
   assert.deepEqual(labels("#+begin: clocktable :block today :"), ["project", "by"]);
   assert.deepEqual(labels("#+begin: tasks :"), ["query", "limit", "sort"]);
-  assert.deepEqual(labels("#+begin: clocktable :block th"), ["today", "thisweek", "thismonth"]);
+  const ranges = ["today", "yesterday", "thisweek", "lastweek", "thismonth", "lastmonth", "thisyear", "lastyear"];
+  assert.deepEqual(labels("#+begin: clocktable :block th"), ranges);
+  const detail = syntaxAt("#+begin: clocktable :", null)!.options.find((o) => o.label === "block")!.detail ?? "";
+  for (const k of [...ranges, "YYYY-MM-DD"]) assert.ok(detail.includes(k), k);
   assert.deepEqual(labels("#+begin: clocktable :by "), ["project", "tag"]);
   assert.deepEqual(labels("#+begin: tasks :sort "), ["priority", "date", "title"]);
   assert.equal(syntaxAt("#+begin: clocktable :project ", null), null);
