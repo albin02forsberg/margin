@@ -309,19 +309,33 @@
     const it = selected;
     if (!it?.time || it.kind === "closed") return api.flash("No time to move");
     if (it.kind !== "scheduled" && it.kind !== "deadline") return api.flash("Only scheduled or due times can be moved");
-    const t = shiftTime(it.time, dm, dl, it.effort);
-    if (t) op("time", it, t, false);
+    const k = keyOf(it) + it.kind;
+    if (pend && pend.k !== k) return;
+    pend = { k, dm: (pend?.dm ?? 0) + dm, dl: (pend?.dl ?? 0) + dl };
+    clearTimeout(nudgeTimer);
+    nudgeTimer = setTimeout(flushNudge, 200);
+  }
+  /** A key-repeat burst of nudges is summed into one edit (one write, one undo step), applied once nothing is in flight. */
+  let pend: { k: string; dm: number; dl: number } | null = null, nudgeTimer: ReturnType<typeof setTimeout>, nudging = false;
+  function flushNudge() {
+    if (!pend || nudging || busy) return;
+    const { k, dm, dl } = pend, it = shown.find((x) => keyOf(x) + x.kind === k);
+    pend = null;
+    const t = it?.time && shiftTime(it.time, dm, dl, it.effort);
+    if (!it || !t) return;
+    nudging = true;
+    op("time", it, t, false, () => { nudging = false; if (pend) flushNudge(); });
   }
 
   /** Run an op on the selected item (ARG for `keyword`), then reload; on the board the selection follows the card.
    *  With marks, a BULK op runs on every marked item instead (one undo step) and clears the marks (kept on cancel). */
-  function op(name: string, it = selected, arg?: string, bulk = true) {
-    if (!it || busy) return;
+  function op(name: string, it = selected, arg?: string, bulk = true, after?: () => void) {
+    if (!it || busy) return after?.();
     if (it.kind === "birthday" && name !== "open") return api.flash("A birthday is read-only: Enter opens the person");
     const many = bulk && marks.size && BULK.has(name) ? marked(marks, all) : null;
     if (many && !many.length) return api.flash("No marked task");
     const xs = many ?? [it], ts = bulkTargets(name, xs.map((x) => x.keyword), arg, todo, done);
-    api.act(async () => {
+    api.act(async () => { try {
       busy = true;
       try {
         const nb = blockedDone(xs, ts, done);
@@ -338,7 +352,7 @@
         if (j >= 0) sel = j;
       }
       root?.focus();
-    });
+    } finally { after?.(); } });
   }
 
   const waitsOn = (it: AgendaItem) => it.blocked_by ? `Waits on: ${it.blocked_by.title} (W opens it)` : "Waits on another task (:ORDERED: / :BLOCKER:)";
