@@ -3464,6 +3464,11 @@ fn month_range(picked: Option<NaiveDate>, today: NaiveDate) -> (NaiveDate, Naive
     (first, first.checked_add_months(chrono::Months::new(1)).unwrap() - Duration::days(1))
 }
 
+/// Inclusive range of calendar year Y.
+fn year_range(y: i32) -> (NaiveDate, NaiveDate) {
+    (NaiveDate::from_ymd_opt(y, 1, 1).unwrap(), NaiveDate::from_ymd_opt(y, 12, 31).unwrap())
+}
+
 /// The weekly report's layout over FROM..=TO (the weekly and monthly reports, `margin --mcp`'s time_report).
 fn range_report(tc: &Tc, profile: &str, from: NaiveDate, to: NaiveDate) -> String {
     let leave: Vec<_> = tc.leave().into_iter().map(|x| x.1).collect();
@@ -3528,7 +3533,7 @@ struct ClockOpts {
     by_tag: bool,
 }
 
-/// Options of a `#+BEGIN: clocktable` header after the name: `:block today|thisweek|thismonth|YYYY-MM` (required),
+/// Options of a `#+BEGIN: clocktable` header after the name: `:block today|yesterday|thisweek|lastweek|thismonth|lastmonth|thisyear|lastyear|YYYY|YYYY-MM|YYYY-MM-DD` (required),
 /// `:project NAME` ("quoted" for spaces) and `:by project|tag`. Any other option is an error, so Emacs-only blocks stay untouched.
 fn clocktable_opts(args: &str, today: NaiveDate, start: chrono::Weekday) -> R<ClockOpts> {
     let (mut project, mut range, mut by_tag) = (None, None, false);
@@ -3548,13 +3553,27 @@ fn clocktable_opts(args: &str, today: NaiveDate, start: chrono::Weekday) -> R<Cl
                     "today" => (today, today),
                     "thisweek" => week_range(Some(today), today, start),
                     "thismonth" => month_range(Some(today), today),
-                    m => month_range(Some(NaiveDate::parse_from_str(&format!("{m}-01"), "%Y-%m-%d").map_err(|_| format!("clocktable: unknown :block {m}"))?), today),
+                    "yesterday" => (today - Duration::days(1), today - Duration::days(1)),
+                    "lastweek" => week_range(Some(today - Duration::days(7)), today, start),
+                    "lastmonth" => month_range(today.with_day(1).unwrap().checked_sub_months(chrono::Months::new(1)), today),
+                    "thisyear" => year_range(today.year()),
+                    "lastyear" => year_range(today.year() - 1),
+                    m => {
+                        let bad = || format!("clocktable: unknown :block {m}");
+                        if m.len() == 4 && m.bytes().all(|b| b.is_ascii_digit()) {
+                            year_range(m.parse().ok().filter(|&y| y > 0).ok_or_else(bad)?)
+                        } else if let Ok(d) = NaiveDate::parse_from_str(m, "%Y-%m-%d") {
+                            (d, d)
+                        } else {
+                            month_range(Some(NaiveDate::parse_from_str(&format!("{m}-01"), "%Y-%m-%d").map_err(|_| bad())?), today)
+                        }
+                    }
                 })
             }
             o => return Err(format!("clocktable: unsupported option {o}")),
         }
     }
-    let (from, to) = range.ok_or("clocktable: needs :block today|thisweek|thismonth|YYYY-MM")?;
+    let (from, to) = range.ok_or("clocktable: needs :block today|yesterday|thisweek|lastweek|thismonth|lastmonth|thisyear|lastyear|YYYY|YYYY-MM|YYYY-MM-DD")?;
     Ok(ClockOpts { project, from, to, by_tag })
 }
 
@@ -4400,9 +4419,20 @@ mod tests {
         assert_eq!(clocktable_opts_mon(":block thisweek", t), o(None, d(10, 19), d(10, 25), false));
         assert_eq!(clocktable_opts_mon(" :project \"Big Co\"  :block thismonth ", t), o(Some("Big Co"), d(10, 1), d(10, 31), false));
         assert_eq!(clocktable_opts_mon(":block 2026-02 :project Acme", t), o(Some("Acme"), d(2, 1), d(2, 28), false));
+        assert_eq!(clocktable_opts_mon(":block yesterday", t), o(None, d(10, 21), d(10, 21), false));
+        assert_eq!(clocktable_opts_mon(":block lastweek", t), o(None, d(10, 12), d(10, 18), false));
+        assert_eq!(clocktable_opts(":block lastweek", t, chrono::Weekday::Sun), o(None, d(10, 11), d(10, 17), false));
+        assert_eq!(clocktable_opts_mon(":block lastmonth", t), o(None, d(9, 1), d(9, 30), false));
+        assert_eq!(clocktable_opts_mon(":block lastmonth", d(1, 5)), o(None, NaiveDate::from_ymd_opt(2025, 12, 1).unwrap(), NaiveDate::from_ymd_opt(2025, 12, 31).unwrap(), false));
+        assert_eq!(clocktable_opts_mon(":block lastmonth", d(3, 31)), o(None, d(2, 1), d(2, 28), false));
+        assert_eq!(clocktable_opts_mon(":block thisyear", t), o(None, d(1, 1), d(12, 31), false));
+        assert_eq!(clocktable_opts_mon(":block lastyear", t), o(None, NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(), NaiveDate::from_ymd_opt(2025, 12, 31).unwrap(), false));
+        assert_eq!(clocktable_opts_mon(":block 2024", t), o(None, NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(), NaiveDate::from_ymd_opt(2024, 12, 31).unwrap(), false));
+        assert_eq!(clocktable_opts_mon(":block 2024-02", t), o(None, NaiveDate::from_ymd_opt(2024, 2, 1).unwrap(), NaiveDate::from_ymd_opt(2024, 2, 29).unwrap(), false));
+        assert_eq!(clocktable_opts_mon(":block 2026-03-09", t), o(None, d(3, 9), d(3, 9), false));
         assert_eq!(clocktable_opts_mon(":block today :by tag", t), o(None, t, t, true));
         assert_eq!(clocktable_opts_mon(":by project :block today", t), o(None, t, t, false));
-        for bad in [":scope file :block thismonth", ":block lastweek", ":block 2026-13", ":project Acme", ":block", ":project \"Acme :block today", "", ":block today :by nonsense", ":block today :by"] {
+        for bad in [":scope file :block thismonth", ":block 0000", ":block 2026-02-30", ":block 2026-13", ":project Acme", ":block", ":project \"Acme :block today", "", ":block today :by nonsense", ":block today :by"] {
             assert!(clocktable_opts_mon(bad, t).is_err(), "{bad}");
         }
     }
