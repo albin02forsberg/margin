@@ -3822,10 +3822,15 @@ fn bib(s: &App) -> Vec<bib::BibEntry> {
     bib::entries_from(&s.cfg().bibliography_file).unwrap_or_default()
 }
 
+/// Note PATH's bibliography: its `#+BIBLIOGRAPHY:` files in TEXT, else the setting's (#1358); never an error.
+fn note_bib(s: &App, path: &Path, text: &str) -> Vec<bib::BibEntry> {
+    bib::entries_for_note(text, Some(path), &s.cfg().bibliography_file).unwrap_or_default()
+}
+
 /// Export note TEXT (the buffer of PATH) to export_dir. FORMAT: html | md | pdf (HTML that opens the print dialog).
 #[tauri::command]
 fn export_note(s: State<App>, path: PathBuf, text: String, format: String, overwrite: Option<bool>, diagrams: Option<std::collections::HashMap<String, String>>) -> R<PathBuf> {
-    let d = export::parse(&expand(&s, &path, &text), &s.kw()).with_diagrams(diagrams.unwrap_or_default()).with_bib(&bib(&s));
+    let d = export::parse(&expand(&s, &path, &text), &s.kw()).with_diagrams(diagrams.unwrap_or_default()).with_bib(&note_bib(&s, &path, &text));
     let stem = stem(&path);
     let base = path.parent().unwrap_or(Path::new(""));
     match format.as_str() {
@@ -3837,13 +3842,13 @@ fn export_note(s: State<App>, path: PathBuf, text: String, format: String, overw
 /// TEXT (the buffer or selection of PATH) as Markdown, for the clipboard; nothing is written.
 #[tauri::command]
 fn export_markdown(s: State<App>, path: PathBuf, text: String) -> String {
-    export::markdown(&export::parse(&expand(&s, &path, &text), &s.kw()).with_bib(&bib(&s)), &stem(&path), path.parent().unwrap_or(Path::new("")), &export::Ids::new())
+    export::markdown(&export::parse(&expand(&s, &path, &text), &s.kw()).with_bib(&note_bib(&s, &path, &text)), &stem(&path), path.parent().unwrap_or(Path::new("")), &export::Ids::new())
 }
 
 /// TEXT (the buffer or selection of PATH) as an HTML fragment, for the rich-text clipboard; nothing is written.
 #[tauri::command]
 fn export_html_fragment(s: State<App>, path: PathBuf, text: String, diagrams: Option<std::collections::HashMap<String, String>>) -> String {
-    export::html_body(&export::parse(&expand(&s, &path, &text), &s.kw()).with_diagrams(diagrams.unwrap_or_default()).with_bib(&bib(&s)), &stem(&path), path.parent().unwrap_or(Path::new("")), &export::Ids::new())
+    export::html_body(&export::parse(&expand(&s, &path, &text), &s.kw()).with_diagrams(diagrams.unwrap_or_default()).with_bib(&note_bib(&s, &path, &text)), &stem(&path), path.parent().unwrap_or(Path::new("")), &export::Ids::new())
 }
 
 /// Export note TEXT (the buffer of PATH) and the notes it reaches by id: links within DEPTH hops
@@ -3852,7 +3857,7 @@ fn export_html_fragment(s: State<App>, path: PathBuf, text: String, diagrams: Op
 #[tauri::command(async)]
 fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, format: String, overwrite: Option<bool>, diagrams: Option<std::collections::HashMap<String, String>>) -> R<PathBuf> {
     let diagrams = diagrams.unwrap_or_default();
-    let (kw, bib) = (s.kw(), bib(&s));
+    let (kw, bib) = (s.kw(), note_bib(&s, &path, &text));
     let root = org::parse(&path, &text, &kw);
     let files = s.files();
     let files: Vec<&org::OrgFile> = files.iter().map(|f| &**f).collect();
@@ -3873,7 +3878,7 @@ fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, forma
         std::fs::rename(dir.join(&n), old.join(&n)).map_err(|e| e.to_string())?;
     }
     for ((f, name), text) in pages.iter().zip(&texts) {
-        let (d, title, base) = (export::parse(text, &kw).with_diagrams(diagrams.clone()).with_bib(&bib), stem(&f.path), f.path.parent().unwrap_or(Path::new("")));
+        let (d, title, base) = (export::parse(text, &kw).with_diagrams(diagrams.clone()).with_bib(&note_bib(&s, &f.path, &f.text)), stem(&f.path), f.path.parent().unwrap_or(Path::new("")));
         let body = if ext == "md" { export::markdown(&d, &title, base, &ids) } else { export::html(&d, &title, base, &ids, false) };
         config::write_atomic(&dir.join(name), body).map_err(|e| e.to_string())?;
     }

@@ -1,6 +1,7 @@
-//! Read-only BibTeX reader: the `bibliography_file` setting's entries for citation pickers and export.
+//! Read-only BibTeX reader: a note's `#+BIBLIOGRAPHY:` files, else the `bibliography_file` setting, for citations and export.
 use crate::{config, App};
 use serde::Serialize;
+use std::path::{Path, PathBuf};
 use tauri::State;
 
 #[derive(Serialize, Debug, PartialEq, Clone)]
@@ -124,10 +125,41 @@ pub fn entries_from(file: &str) -> Result<Vec<BibEntry>, String> {
     std::fs::read_to_string(&path).map(|t| parse(&t)).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// Entries of the `bibliography_file` (re-read each call); empty setting = none.
+/// The files named by TEXT's `#+BIBLIOGRAPHY:` lines (org-cite: repeatable, one file each, quotes stripped),
+/// `~` expanded, relative ones against DIR (the note's folder; none = skipped).
+pub fn note_bib_paths(text: &str, dir: Option<&Path>) -> Vec<PathBuf> {
+    text.lines()
+        .filter_map(|l| {
+            let l = l.trim_start();
+            let v = l.get(..15).filter(|k| k.eq_ignore_ascii_case("#+bibliography:")).map(|_| l[15..].trim().trim_matches('"'))?;
+            let p = config::expand(v);
+            match (v.is_empty(), p.is_absolute(), dir) {
+                (true, ..) => None,
+                (_, true, _) => Some(p),
+                (_, _, Some(d)) => Some(d.join(p)),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+/// Entries for note PATH with buffer TEXT (#1358): its `#+BIBLIOGRAPHY:` files merged in order (first file wins per key,
+/// unreadable ones skipped), else FALLBACK (the `bibliography_file` setting). Note-declared files may lie outside the
+/// notes/data/config roots and deliberately don't go through `App::check`: like the global setting they are only read
+/// and parsed as BibTeX, never written.
+pub fn entries_for_note(text: &str, path: Option<&Path>, fallback: &str) -> Result<Vec<BibEntry>, String> {
+    let files = note_bib_paths(text, path.and_then(Path::parent));
+    if files.is_empty() {
+        return entries_from(fallback);
+    }
+    let mut seen = std::collections::HashSet::new();
+    Ok(files.iter().filter_map(|f| std::fs::read_to_string(f).ok()).flat_map(|t| parse(&t)).filter(|e| seen.insert(e.key.clone())).collect())
+}
+
+/// Entries for note PATH (TEXT: its buffer, or just its `#+BIBLIOGRAPHY:` lines), re-read each call; see entries_for_note.
 #[tauri::command]
-pub fn bib_entries(s: State<App>) -> Result<Vec<BibEntry>, String> {
-    entries_from(&s.cfg().bibliography_file)
+pub fn bib_entries(s: State<App>, path: Option<PathBuf>, text: Option<String>) -> Result<Vec<BibEntry>, String> {
+    entries_for_note(&text.unwrap_or_default(), path.as_deref(), &s.cfg().bibliography_file)
 }
 
 #[cfg(test)]
@@ -152,6 +184,26 @@ mod tests {
         assert_eq!(e[0].title, "A {Nested} \\\"{o} title");
         assert_eq!(e[0].label, "Smith & Lee 2020");
         assert_eq!((e[1].label.as_str(), e[1].container.as_str()), ("Doe et al. 1999", "MIT"));
+    }
+
+    #[test]
+    fn note_bibliography() {
+        let d = std::env::temp_dir().join(format!("margin-bib-{}", std::process::id()));
+        std::fs::create_dir_all(d.join("refs")).unwrap();
+        std::fs::write(d.join("refs/a.bib"), "@book{x, author={A One}, year={2001}}\n@book{y, author={Y Why}, year={2002}}").unwrap();
+        std::fs::write(d.join("b.bib"), "@book{x, author={B Two}, year={1999}}\n@book{z, author={Z Zed}, year={2003}}").unwrap();
+        let global = d.join("b.bib").to_string_lossy().to_string();
+        let note = d.join("note.org");
+        let text = format!("#+title: N\n#+BIBLIOGRAPHY: refs/a.bib\n  #+bibliography: \"{global}\"\n#+bibliography: missing.bib\n");
+        assert_eq!(note_bib_paths(&text, Some(&d)), vec![d.join("refs/a.bib"), d.join("b.bib"), d.join("missing.bib")]);
+        let labels = |e: Vec<BibEntry>| e.into_iter().map(|e| e.label).collect::<Vec<_>>();
+        // First file wins on x; the missing file is skipped.
+        assert_eq!(labels(entries_for_note(&text, Some(&note), "").unwrap()), ["One 2001", "Why 2002", "Zed 2003"]);
+        // No keyword: the global file. A relative keyword without a folder is skipped.
+        assert_eq!(labels(entries_for_note("* x", Some(&note), &global).unwrap()), ["Two 1999", "Zed 2003"]);
+        assert!(note_bib_paths("#+bibliography: refs/a.bib", None).is_empty());
+        assert!(entries_for_note("", None, "").unwrap().is_empty());
+        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]

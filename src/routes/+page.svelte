@@ -17,7 +17,7 @@
   import { babelJob, resultsChange, shellVars, tangleFiles } from "$lib/babel";
   import { svgs } from "$lib/diagram";
   import { accepted, changeLabel, hitKey, type Hit as ReplaceHit } from "$lib/replace";
-  import { citeText, type BibEntry } from "$lib/cite";
+  import { bibKeywords, citeText, isBibKeyword, type BibEntry } from "$lib/cite";
   import { bareTitle, bracketRetitle, expandLink, findTarget, fuzzyTarget, hereLink, linkAbbrevs, linkHeadings, linkTarget, peekBuffer, peekTarget, retitlePlan, splitTarget } from "$lib/links";
   import { carryEntry, extractOpen } from "$lib/carryover";
   import { doneLog } from "$lib/donelog";
@@ -101,12 +101,15 @@
   let cfg = $state<any>(null);
   $effect(() => ed.setSpellcheck(!!cfg?.config.spellcheck));
   $effect(() => ed.setVimInit(cfg?.config.vim_init ?? ""));
-  // Citation chips, completion and peek (#1335): re-read the bibliography when its setting changes or a note opens, not per keystroke.
+  // Citation chips, completion and peek (#1335): re-read the bibliography when its setting changes, a note opens or an edit
+  // touches its `#+BIBLIOGRAPHY:` lines (#1358, bumps bibRev), not per keystroke. Stale replies are dropped.
+  let bibRev = $state(0), bibSeq = 0;
   $effect(() => {
-    const f: string = cfg?.config.bibliography_file ?? "";
-    void tab?.path;
-    if (!f.trim()) ed.setBibliography([]);
-    else call<BibEntry[]>("bib_entries").then(ed.setBibliography, () => ed.setBibliography([]));
+    void cfg?.config.bibliography_file, bibRev;
+    const path = tab?.kind === "file" ? tab.path : undefined, n = ++bibSeq;
+    const text = path ? untrack(() => (view ? bibKeywords(view.state.doc.iterLines()) : "")) : "";
+    const set = (e: BibEntry[]) => n === bibSeq && ed.setBibliography(e);
+    call<BibEntry[]>("bib_entries", { path, text }).then(set, () => set([]));
   });
   let tabs = $state<Tab[]>([]);
   let cur = $state(-1);
@@ -326,6 +329,7 @@
       onChange: (u) => {
         const t = tabs.find((x) => x.key === key);
         if (t?.kind === "file") remapCrypt(t.path, u); // synced edits move its headings too
+        if (t && t === tab) u.changes.iterChangedRanges((fa, ta, fb, tb) => { if (touchesBibKeyword(u.startState.doc, fa, ta) || touchesBibKeyword(u.state.doc, fb, tb)) bibRev++; });
         if (syncing) return;
         if (t?.crypt) t.dirty = true; // a decrypted tab only saves on :w (cryptSave)
         if (t?.kind !== "file") return;
@@ -338,6 +342,12 @@
         }
       },
     });
+  }
+
+  /** Whether a line of DOC in FROM..TO is a `#+BIBLIOGRAPHY:` line (#1358). */
+  function touchesBibKeyword(doc: EditorState["doc"], from: number, to: number) {
+    for (let n = doc.lineAt(from).number, last = doc.lineAt(to).number; n <= last; n++) if (isBibKeyword(doc.line(n).text)) return true;
+    return false;
   }
 
   /** Keep the decrypted tabs of note PATH on their heading's line as the note changes by U (#1172). */

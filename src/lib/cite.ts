@@ -43,6 +43,10 @@ export function chip(keys: string[], bib: Map<string, BibEntry>): { text: string
   return { text, missing: keys.some((k) => !bib.has(k)) };
 }
 
+/** A note's `#+BIBLIOGRAPHY:` lines from LINES (#1358), joined: what `bib_entries` needs, cheaper to send than the buffer. */
+export const bibKeywords = (lines: Iterable<string>) => [...lines].filter(isBibKeyword).join("\n");
+export const isBibKeyword = (line: string) => /^\s*#\+bibliography:/i.test(line);
+
 /** A `#+PRINT_BIBLIOGRAPHY:` line (#1336): shown as the note's cited entries, expanded only at export, never written. */
 export const printBibDirective = (line: string) => /^\s*#\+print_bibliography:/i.test(line);
 
