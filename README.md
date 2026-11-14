@@ -373,6 +373,10 @@ profile clocks out first, and warns where old files stay (nothing is moved).
 If the shortcut doesn't fire (common on Wayland), bind `margin --capture` to a
 key in your desktop's settings instead: it opens the same form in the running app.
 
+`margin path/to/note.org` (or `note.org:42` for a line) opens that note in the running app,
+or starts Margin with it. Only files under the notes, data or config folders open; others
+show a toast.
+
 ## Tasks (Today / Tasks views)
 
 `j`/`k` move, `x` done, `s` schedule, `d` due date, `p` priority, `t` status,

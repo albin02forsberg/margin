@@ -586,6 +586,14 @@
     }
   }
 
+  /** Files handed over on the command line (`margin note.org:12`); ones outside the notes dirs can't be loaded. */
+  async function openPaths(fs: { path: string; line: number | null; ok: boolean }[]) {
+    for (const f of fs) {
+      if (f.ok) await openFile(f.path, f.line ?? undefined).catch((e) => flash(`⚠ ${e}`));
+      else flash(`${niceName(f.path)} is outside your notes folder`);
+    }
+  }
+
   async function openFile(path: string, line?: number) {
     navMark(path, line);
     let i = tabs.findIndex((t) => t.kind === "file" && t.path === path);
@@ -4433,6 +4441,7 @@
       }
       await refreshTc();
       act(autoRecurring);
+      act(async () => openPaths(await call("take_open_paths")));
       if (cfg.config_error) flash(`⚠ config.toml couldn't be loaded (${cfg.config_error}); Margin keeps running on the last good settings (defaults if it never loaded). The file is untouched.`);
       if (!import.meta.env.DEV) checkUpdate(true).catch(() => {}); // offline or no release yet: stay quiet
     });
@@ -4489,6 +4498,7 @@
       else if (t) await fileTemplate(t, e.payload);
       if (e.payload) await getCurrentWindow().hide();
     }));
+    const unlistenOpenPath = listen<Parameters<typeof openPaths>[0]>("open-path", (e) => act(() => openPaths(e.payload)));
     // Dropped files (real paths from Tauri) are copied next to the note and linked where they land.
     const unlistenDrop = getCurrentWebview().onDragDropEvent((e) => {
       const pl = e.payload, over = pl.type !== "leave";
@@ -4529,6 +4539,7 @@
       clearTimeout(forgetTimer);
       for (const ev of ["keydown", "pointerdown"]) window.removeEventListener(ev, armForget, true);
       unlistenCapture.then((f) => f());
+      unlistenOpenPath.then((f) => f());
       unlistenDrop.then((f) => f());
       window.removeEventListener("keydown", onZoomKey, true);
       window.removeEventListener("wheel", onZoomWheel);
