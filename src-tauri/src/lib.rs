@@ -557,8 +557,15 @@ fn note_writes() -> std::sync::MutexGuard<'static, ()> {
 /// write_file's save, under NOTE_WRITES so the disk check and the write are one step.
 fn write_checked(path: &Path, text: String, expect: Option<&str>) -> R<()> {
     let _lock = note_writes();
-    if expect.is_some() && !may_overwrite(std::fs::read_to_string(path).ok().as_deref(), expect, &text) {
-        return Err("changed-on-disk".into());
+    if expect.is_some() {
+        let disk = std::fs::read_to_string(path);
+        // An existing file we can't read is never overwritten (only a missing one counts as "no file").
+        if let (Err(e), true) = (&disk, path.exists()) {
+            return Err(format!("unreadable: {e}"));
+        }
+        if !may_overwrite(disk.ok().as_deref(), expect, &text) {
+            return Err("changed-on-disk".into());
+        }
     }
     if let Some(d) = path.parent() {
         std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
@@ -5431,6 +5438,19 @@ mod tests {
         let roots = [notes.clone()];
         assert!(check_in(&roots, &dir.join("link/a.org")).is_err()); // the notes folder by another name
         assert!(check_in(&roots, &notes.join("out/a.org")).is_ok()); // a link inside pointing out
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_checked_refuses_unreadable_file() {
+        let dir = std::env::temp_dir().join(format!("margin-unreadable-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("bad.org");
+        std::fs::write(&f, [0xE5, 0x0A]).unwrap();
+        let e = write_checked(&f, "new\n".into(), Some("")).unwrap_err();
+        assert!(e.starts_with("unreadable") && e != "changed-on-disk", "{e}");
+        assert_eq!(std::fs::read(&f).unwrap(), [0xE5, 0x0A]);
+        write_checked(&dir.join("new.org"), "x\n".into(), Some("")).unwrap(); // missing: still created
         let _ = std::fs::remove_dir_all(&dir);
     }
 
