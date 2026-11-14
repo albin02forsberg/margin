@@ -28,6 +28,8 @@ mod tray;
 mod watcher;
 mod weblink;
 mod bib;
+mod cli;
+pub use cli::cli;
 
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime};
 use config::Config;

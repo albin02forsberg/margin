@@ -126,6 +126,8 @@ pub struct Config {
     pub ai_exclude: Vec<String>,
     /// Let `margin --mcp` create and edit notes and tasks (off: read-only).
     pub mcp_write: bool,
+    /// Let `margin --add`, `--journal`, `--clock` and `--clock-out` write (off: only `--status` works).
+    pub cli_write: bool,
     /// Reopen the last session's tabs on startup.
     pub restore_tabs: bool,
     /// Underline misspelled words in org notes (the webview's own spell checker).
@@ -360,6 +362,7 @@ impl Default for Config {
             ai_embed_model: "nomic-embed-text".into(),
             ai_exclude: vec![],
             mcp_write: false,
+            cli_write: true,
             restore_tabs: true,
             spellcheck: false,
             spellcheck_languages: vec![],

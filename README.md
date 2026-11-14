@@ -1334,6 +1334,28 @@ Both take the same lock as the app (a `.timelog.lock` file in the profile's data
 the backup), so a clock-in from Claude can't be lost while the app rewrites the log, and the app
 shows it right away. No backup runs for them; the app's next one includes the change.
 
+### Command line (scripts, launchers, status bars)
+
+One-shot commands for a terminal, Raycast/Alfred/rofi, a git hook or a tmux/polybar/sketchybar
+status bar. Like `--mcp` they don't start the app or need it running; a running app picks the
+change up from disk. Each prints one line and exits; on an error the message goes to stderr and
+the exit code is 1. Text after the flag needn't be quoted.
+
+```sh
+margin --add Buy milk            # "* TODO Buy milk" at the end of the inbox (created if missing)
+margin --journal Shipped the CLI # appended to today's journal file (created with journal_template)
+margin --clock Acme Fix login    # clock in on project Acme (any case) with task "Fix login"
+margin --clock-out Wrote tests   # clock out, the note as the session's task
+margin --status                  # "Acme: Fix login 1h12m (today 3h40m)", nothing when clocked out
+```
+
+`--clock` only takes a project the active profile already has (an unknown one is an error listing
+them) and clocks out of a running clock first. The writes use the same locks and changed-on-disk
+checks as the MCP tools. `cli_write` in `config.toml` (on by default; **Let the command line write** in
+Settings → AI chat) turns the writing commands off, leaving `--status`. On Windows, a release build
+prints nothing in an interactive `cmd` window (it's a GUI program); piped output, which is what
+status bars read, works.
+
 ## Ledger
 
 **Ledger: add an entry…** (`Space f l`) asks for one line, `[date] amount [currency] text`,

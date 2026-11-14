@@ -100,6 +100,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "ai_embed_model", label: "Embedding model", when: (c) => !!c.ai_semantic && c.ai_backend !== "embedded", suggest: [[BUILTIN_EMBED, "Built-in: Multilingual E5 Small"], ["nomic-embed-text", "Ollama: nomic-embed-text"]], hint: "the built-in one (no Ollama model to pull; Margin downloads it, below) or an Ollama embedding model, e.g. nomic-embed-text (ollama pull nomic-embed-text); changing it rebuilds the index" },
     { key: "ai_exclude", label: "Notes the AI never sees", kind: "list", hint: "one per line; a note whose path in the notes folder contains one (any case, e.g. private/ or diary) is never sent: not as a match, a linked note, the open note or for tasks" },
     { key: "mcp_write", label: "Let Claude (MCP) edit notes", kind: "bool", hint: "margin --mcp may then create notes, append to them, add to-dos and change their state, through the same checks as the editor; excluded notes stay untouched. Off: read-only" },
+    { key: "cli_write", label: "Let the command line write", kind: "bool", hint: "margin --add, --journal, --clock and --clock-out may add to the inbox and journal and clock in and out. Off: only margin --status works" },
   ] },
 ];
 

@@ -6,5 +6,9 @@ fn main() {
     if std::env::args().any(|a| a == "--mcp") {
         return margin_lib::mcp();
     }
+    // One-shot commands (--add, --status, …) print a line and exit, likewise without the app.
+    if let Some(code) = margin_lib::cli(&std::env::args().collect::<Vec<_>>()) {
+        std::process::exit(code);
+    }
     margin_lib::run()
 }
