@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bibEditMatters, bibLine, bibliography, chip, citeAt, citeQuery, cites, citeText, printBibDirective, type BibEntry } from "./cite.ts";
+import { bibEditMatters, bibKeywords, bibLine, bibliography, chip, citeAt, citeQuery, cites, citeText, printBibDirective, type BibEntry } from "./cite.ts";
 
 test("cites: keys with ranges, prefixes and suffixes ignored", () => {
   const l = "As [cite:@a;@b] and [cite/t:see @smith20 p. 3; @lee.] ok [[x]] [cite:no keys]";
@@ -9,6 +9,12 @@ test("cites: keys with ranges, prefixes and suffixes ignored", () => {
   assert.equal(l.slice(c[0].from, c[0].to), "[cite:@a;@b]");
   for (const k of c.flatMap((c) => c.keys)) assert.equal(l.slice(k.from, k.to), `@${k.key}`);
   assert.deepEqual(cites("[[cite:x]] [cite:@a"), []);
+});
+
+test("bibKeywords: the note's #+BIBLIOGRAPHY: lines only", () => {
+  const lines = ["#+title: x", "#+BIBLIOGRAPHY: a.bib", "  #+bibliography: ~/b.bib", "#+print_bibliography:", "text"];
+  assert.equal(bibKeywords(lines), "#+BIBLIOGRAPHY: a.bib\n  #+bibliography: ~/b.bib");
+  assert.equal(bibKeywords([]), "");
 });
 
 test("citeAt: the key under the column, else the cite's first key", () => {
