@@ -973,7 +973,7 @@ block gets an org table of worked hours per project and task (the session descri
 limits it to one project. `:by tag` lists hours per tag instead (`#+BEGIN: clocktable :block thisweek :by tag`): a session
 gets the tags (own, parent and `#+filetags:`) of the task heading titled like its description (in that project when the
 heading's category is a project), untagged time is `(untagged)`, and a session with several tags counts toward each,
-so the Share column can add up to more than 100% while the total counts it once. Only the text between the two lines changes, as one edit (`u` undoes it). Blocks with other
+so the Share column can add up to more than 100% while the total counts it once. `Space t G` toggles the same table (as `* Hours by tag`) on an open weekly or monthly report. Only the text between the two lines changes, as one edit (`u` undoes it). Blocks with other
 options (Emacs's `:scope`, `:maxlevel`, …) are left alone. Emacs fills a plain `:block thismonth` block from the
 file's `CLOCK:` lines instead of Margin's time log, so the two can show different numbers.
 The same command fills task lists: `#+BEGIN: tasks :query "tag:work due:<7d"` … `#+END:` gets one line per matching

@@ -85,7 +85,7 @@
    *  note, the heading's line and the plaintext it last held, so :w re-locks only that block. */
   type Tab = {
     key: string; title: string; kind: "file" | "report" | View; path?: string; state?: EditorState; dirty: boolean;
-    saved?: string; report?: { kind: string; dateInput?: string | null }; conflict?: boolean; missing?: boolean; query?: string;
+    saved?: string; report?: { kind: string; dateInput?: string | null; byTag?: boolean }; conflict?: boolean; missing?: boolean; query?: string;
     crypt?: { path: string; line: number; plain: string };
   };
   type NoteNode = { id: string; title: string; path: string; line: number };
@@ -3496,6 +3496,14 @@
     if (note != null) await tcDo("tc_out_at", { at: naive(when), note });
   }
 
+  /** Flip the hours-per-tag table on the active weekly/monthly report tab (#1353); the refresh loop keeps the choice. */
+  async function toggleReportByTag() {
+    const r = tab?.kind === "report" ? tab.report : undefined;
+    if (!r || (r.kind !== "weekly" && r.kind !== "monthly")) return flash("Open a weekly or monthly report first.");
+    r.byTag = !r.byTag;
+    replaceText(tab, await call("tc_report", r));
+  }
+
   async function report(kind: string, title: string, dateInput?: string | null) {
     await openReport(`report:${kind}`, title, await call("tc_report", { kind, dateInput }), { kind, dateInput });
   }
@@ -4106,6 +4114,7 @@
     { label: "Today: evening shutdown (walk today's open tasks: done, tomorrow, next week…)", leader: "t q", run: () => act(shutdown) },
     ...([["for 10 min", 10], ["for 1 h", 60], ["until tomorrow 9:00", null]] as const).map(([when, minutes]) => ({ label: `Reminders: snooze the last one ${when}`, run: () => act(async () => flash((await call<string | null>("remind_snooze", { minutes })) ?? "No reminder to snooze.")) })),
     { label: "Today: plan the day (walk overdue, due-soon and undated A/B tasks: today, tomorrow, a date…)", leader: "t g", run: () => act(planDay) },
+    { label: "Time: weekly/monthly report by tag (toggle the hours-per-tag table)", leader: "t G", run: () => act(toggleReportByTag) },
     { label: "Time: estimates vs actuals (how far off are my :EFFORT: guesses?)…", leader: "t A", run: () => act(estimateReport) },
     { label: "Time: day timeline (sessions, tasks closed, notes edited)…", leader: "t T", run: () => act(dayTimeline) },
     { label: "Time: when do I work? (weekday x hour heatmap)", leader: "t H", run: t("rhythm") },
