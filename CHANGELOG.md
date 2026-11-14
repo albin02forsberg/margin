@@ -2,6 +2,64 @@
 
 Grouped by `.github/scripts/changelog.sh`, the same generator that writes the GitHub release notes. The releaser agent adds a section here in each release PR.
 
+## v0.8.0 - 2026-11-14
+
+### Features
+- complete org syntax as you type: #+ keywords, block skeletons, options, properties (#1345) (#1364)
+- margin --add, --journal, --clock, --clock-out and --status (#1354) (#1363)
+- citations honour the note's #+BIBLIOGRAPHY: files (#1358) (#1362)
+- margin FILE[:LINE] opens the note in the running app (#1355) (#1361)
+- clocktable :block yesterday, lastweek, lastmonth, thisyear, lastyear, YYYY, YYYY-MM-DD (#1357) (#1360)
+- #+NAME:, :var and #+CALL: let code blocks feed each other (#1324) (#1359)
+- toggle an hours-by-tag table on weekly/monthly reports (#1353) (#1356)
+- clocktable :by tag lists hours per tag (#1350) (#1352)
+- exports render [cite:@key] and #+PRINT_BIBLIOGRAPHY: (#1337) (#1344)
+- #+PRINT_BIBLIOGRAPHY: lists the note's cited entries in the editor (#1336) (#1343)
+- [cite:@key] author-year chips, unknown-key flag, @ completion and peek (#1335) (#1342)
+- bibliography_file setting and bib_entries command read BibTeX entries (#1334) (#1341)
+- notify once when the clocked task passes its :EFFORT: estimate (#1332) (#1340)
+- Space n W checks the web links in notes and lists dead or moved URLs (#1325) (#1329)
+- tangle a note's :tangle code blocks to files, like org-babel-tangle (#1323) (#1328)
+- compact and rail layouts, and a look file can set its layout with a header comment (#1310) (#1322)
+- data-region hooks and layout variables let a look move the shell's regions (#1309) (#1321)
+- #+TOC: headlines local lists only the enclosing heading's subtree (#1315) (#1319)
+- tray menu has Resume <project> / <task> for the last session (#1314) (#1317)
+- tag_colors also color tag chips on editor headings (#1313) (#1316)
+- layout setting sets data-layout on the root (#1308) (#1311)
+- named workspaces, Space w W switches between saved sets of tabs (#1300) (#1306)
+- tray menu has Quick capture and Open Today (#1299) (#1305)
+- [tag_colors] color tag chips in the agenda and outline (#1301) (#1304)
+- Space t ! interrupts the clock and offers the previous one back when it stops (#1293) (#1303)
+- #+TOC: headlines shows an outline in the editor (#1295) (#1297)
+- Space t j clocks in on the last stopped session's project and task (#1293) (#1298)
+- #+TOC: headlines exports as a nested table of contents (#1275) (#1294)
+- export turns radio targets into anchors and their mentions into links (#1270) (#1292)
+- %^t / %^T date and %^g tag prompts in capture templates (#1274) (#1291)
+- export resolves [[*Heading]], [[#id]] and bare [[Target]] links to page anchors (#1285) (#1290)
+- datetree capture templates file under Year > Month > Day headings (#1276) (#1284)
+- user looks - a CSS file in <config>/looks/ is pickable as look and reloads live (#1282) (#1289)
+- built-in retro look - flat, square, bordered, monospace (#1281) (#1287)
+- look setting sets data-look on the root (#1280) (#1283)
+- %a / %f capture-template placeholders link back to where you were (#1274) (#1277)
+- bare [[Target]] links jump to <<target>>, #+NAME or heading in the note (#1272) (#1273)
+- radio targets - <<<Term>>> links every mention of Term in the note (#1265) (#1267)
+- #+LINK: abbreviations for [[name:tag]] links (#1264) (#1266)
+
+### Fixes
+- merging a note updates its tabs in saved workspaces (#1331) (#1338)
+- tangle refuses .org targets so a block can't overwrite a note (#1330) (#1339)
+- e2e look-reset check expects null, which WebDriver returns for an unset dataset value (#1327)
+- renaming or moving a note updates its tabs in saved workspaces (#1312) (#1320)
+- cover the GNOME watcher's no-extension paths so coverage doesn't flap (#1318)
+- export heading ids no longer rescan from -2 for every duplicate (#1296) (#1302)
+- #+LINK: definitions inside src/example blocks are ignored in the editor too (#1286) (#1288)
+- peek radio targets from the buffer; skip src blocks in #+LINK: expansion (#1269) (#1271)
+- linear-time sameKeys and :VISIBILITY: fold filtering (#1262) (#1263)
+
+### Other
+- rebuild bibliography widgets only when an edit touches a cite or #+ line (#1346) (#1349)
+- link_status reuses one shared HTTP client (#1347) (#1348)
+
 ## v0.7.0 - 2026-11-11
 
 ### Features
