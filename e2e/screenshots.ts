@@ -33,7 +33,7 @@ function write(path: string, text: string) {
 }
 
 /** config.toml lines on top of setup.ts's. */
-const config = [`templates = []`, `bibliography_file = "~/refs.bib"`,`ledger_budgets = ["food=200", "transport=60"]`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`, ``, `[[feeds]]`, `name = "Orchard blog"`, `url = "https://blog.example/feed.xml"`, ``, `[[feeds]]`, `name = "Release notes"`, `url = "https://releases.example/atom.xml"`, `heading = "Upgrades"`, ``, `[tag_colors]`, `work = "#3b82f6"`, `docs = "#16a34a"`];
+const config = [`templates = []`, `bibliography_file = "~/refs.bib"`, `activity_calendar = "~/work.ics"`,`ledger_budgets = ["food=200", "transport=60"]`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`, ``, `[[feeds]]`, `name = "Orchard blog"`, `url = "https://blog.example/feed.xml"`, ``, `[[feeds]]`, `name = "Release notes"`, `url = "https://releases.example/atom.xml"`, `heading = "Upgrades"`, ``, `[tag_colors]`, `work = "#3b82f6"`, `docs = "#16a34a"`];
 
 /** A small Markdown vault outside the notes folder, for the import preview (#900). */
 let vault = "";
@@ -196,6 +196,10 @@ A table wider than the text column stays on one line and scrolls sideways.
 Every berth gets one manifest per visit; a missing Manifest blocks the berth.
 Late manifests go to the harbor master, not to [[file:harbor.org][the Harbor app]].
 `);
+
+  // #1378: the `activity_calendar`: a meeting today, a fixed block in the day plan.
+  const ymd = iso(new Date()).replaceAll("-", "");
+  write(join(root, "work.ics"), `BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:demo1\nDTSTART:${ymd}T150000\nDTEND:${ymd}T160000\nSUMMARY:Harbor sprint review\nEND:VEVENT\nEND:VCALENDAR\n`);
 
   // #1335: the `bibliography_file` (config below, `~` = the temp root) and a note citing it, one key unknown.
   write(join(root, "refs.bib"), `@article{kleppmann19, author = {Kleppmann, Martin and Wiggins, Adam and van Hardenberg, Peter}, title = {Local-first software}, journal = {Onward!}, year = {2019}}
@@ -436,6 +440,12 @@ async function pngs() {
     await find(".agenda .row .title", "Maja");
     await shot("birthday");
   }
+  if (want("dayplan-calendar")) { // #1378: a calendar event as a fixed, hatched block
+    await browser.keys("w");
+    await find(".dayplan .blk.busy", "Harbor sprint review");
+    await shot("dayplan-calendar");
+    await browser.keys("w");
+  }
   if (want("dayplan-gap")) { // #1365: P picks an untimed task for a free gap (none after 18:00: no shot)
     await browser.keys("w");
     await browser.$(".dayplan").waitForDisplayed();
@@ -630,7 +640,7 @@ async function pngs() {
   await browser.keys(Key.Escape);
   await shot("split");
 
-  if (want("meeting-note")) { // #1227: an ad-hoc meeting note (the demo has no calendar)
+  if (want("meeting-note")) { // #1227: an ad-hoc meeting note (not the demo calendar event)
     await command("Meeting note from calendar event");
     await find(".picker label span", "Meeting note for");
     await type("ad-hoc");
