@@ -1648,7 +1648,7 @@ describe("Day plan", () => {
   before(async () => {
     // every day a working day (tomorrow may be a weekend or a red day), but one extra day off
     const config = ["weekday_hours = [8, 8, 8, 8, 8, 8, 8]", 'public_holidays = "none"', `extra_days_off = ["${offDay}"]`];
-    plan = join((await launch({ config, files:({ notes }) => writeFileSync(join(notes, "plan.org"), `* TODO Plan e2e call\nSCHEDULED: ${at("14:00")}\n* TODO Plan e2e review\nSCHEDULED: ${at("14:00")}\n:PROPERTIES:\n:EFFORT: 1:00\n:END:\n* TODO Plan e2e untimed\nSCHEDULED: <${orgDay(new Date())}>\n* TODO Plan e2e daily\nSCHEDULED: ${at("09:00 +1d")}\n* TODO Plan e2e fill\nSCHEDULED: <${tomorrow}>\n:PROPERTIES:\n:EFFORT: 0:30\n:END:\n* NEXT Plan e2e next\n`) })).notes, "plan.org");
+    plan = join((await launch({ config, files: ({ notes }) => writeFileSync(join(notes, "plan.org"), `* TODO Plan e2e call\nSCHEDULED: ${at("14:00")}\n* TODO Plan e2e review\nSCHEDULED: ${at("14:00")}\n:PROPERTIES:\n:EFFORT: 1:00\n:END:\n* TODO Plan e2e untimed\nSCHEDULED: <${orgDay(new Date())}>\n* TODO Plan e2e daily\nSCHEDULED: ${at("09:00 +1d")}\n* TODO Plan e2e fill\nSCHEDULED: <${tomorrow}>\n:PROPERTIES:\n:EFFORT: 0:30\n:END:\n* NEXT Plan e2e next\n`) })).notes, "plan.org");
   });
   after(close, { timeout: 30_000 });
 
