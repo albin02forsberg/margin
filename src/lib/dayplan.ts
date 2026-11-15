@@ -1,7 +1,9 @@
 // Day plan (#705): a day's timed tasks as blocks on an hour grid, with overlaps and free gaps.
 import { fmtEffort } from "./effort.ts";
 
-export type Block = { i: number; start: number; end: number; title: string; done: boolean; overlap: boolean; lane: number; lanes: number };
+/** A task block (`i` indexes the items), or a FIXED calendar event (`i` -1: never selected, moved or planned into). */
+export type Block = { i: number; start: number; end: number; title: string; done: boolean; overlap: boolean; lane: number; lanes: number; fixed?: boolean };
+export type Fixed = { start: number; end: number; title: string };
 export type Gap = { start: number; end: number };
 
 /** "9:05" / "09:05" as minutes after midnight. */
@@ -16,11 +18,18 @@ export function workHours(start?: string, end?: string): [number, number] {
   return a < b ? [a, b] : [8 * 60, 18 * 60];
 }
 
+/** Calendar events (#1378, `meeting_events`: local "YYYY-MM-DDTHH:MM:SS" start / end) as fixed spans on DAY, clamped to it. */
+export const fixedOn = (evs: { start: string; end: string; summary: string }[], day: string): Fixed[] =>
+  evs.filter((e) => e.start.slice(0, 10) <= day && e.end.slice(0, 10) >= day)
+    .map((e) => ({ start: e.start.slice(0, 10) < day ? 0 : toMin(e.start.slice(11, 16)), end: e.end.slice(0, 10) > day ? 24 * 60 : toMin(e.end.slice(11, 16)), title: e.summary }))
+    .filter((f) => f.end > f.start);
+
 /** Blocks of ITEMS (indexed) timed on DAY: a range stamp ("14:00-15:30") ends at its own end, else start + `:EFFORT:`
  *  (30 min without one); clamped at midnight; one block per heading and start (a task can show as scheduled and due).
- *  Overlaps and lanes are set among the open blocks; done ones stay in lane 0, dimmed by the view. */
+ *  FIXED calendar events join in as `fixed` blocks (so they count for overlaps and gaps). Overlaps and lanes are set
+ *  among the open blocks; done ones stay in lane 0, dimmed by the view. */
 export function blocks<T extends { date: string; time: string | null; title: string; path: string; line: number; effort?: number | null }>(
-  items: T[], day: string, isDone: (it: T) => boolean,
+  items: T[], day: string, isDone: (it: T) => boolean, fixed: Fixed[] = [],
 ): Block[] {
   const seen = new Set<string>(), out: Block[] = [];
   items.forEach((it, i) => {
@@ -32,6 +41,7 @@ export function blocks<T extends { date: string; time: string | null; title: str
     const end = Math.min(24 * 60, b && toMin(b) > start ? toMin(b) : start + (it.effort || 30));
     out.push({ i, start, end, title: it.title, done: isDone(it), overlap: false, lane: 0, lanes: 1 });
   });
+  for (const f of fixed) out.push({ ...f, i: -1, done: false, overlap: false, lane: 0, lanes: 1, fixed: true });
   out.sort((x, y) => x.start - y.start || x.end - y.end);
   // clusters of transitively overlapping open blocks; each block takes the first free lane in its cluster
   let cluster: Block[] = [], laneEnd: number[] = [], until = -1;
@@ -49,7 +59,7 @@ export function blocks<T extends { date: string; time: string | null; title: str
   return out;
 }
 
-/** Free spans of at least 15 min between FROM and TO (minutes; working hours, 08:00-18:00 by default) not covered by an open block;
+/** Free spans of at least 15 min between FROM and TO (minutes; working hours, 08:00-18:00 by default) not covered by an open or fixed block;
  *  NOW (minutes, on today) moves the start up so past time isn't offered. */
 export function gaps(bs: Block[], from = 8 * 60, to = 18 * 60, now?: number): Gap[] {
   let t = Math.max(from, now ?? 0);

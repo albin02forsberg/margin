@@ -409,6 +409,10 @@ overbooks the day's expected hours. `h`/`j`/`k`/`l` or the arrows move, `[`/`]` 
 Working hours are 08:00–18:00 unless Settings → Time sets `day_plan_start` / `day_plan_end` (e.g. `07:00` and `15:30`).
 A day with 0 expected hours (a weekend, a public holiday, an extra day off or full leave) is marked "day off" and offers
 no free time.
+With a calendar set (`activity_calendar`, a local `.ics` file or an https URL), the day's timed events show as fixed hatched blocks with
+their summary: free time goes around them and a task on top of one is highlighted as an overlap, but they can't be
+selected, moved or planned into. An event crossing midnight shows up to or from midnight; all-day events are left out.
+If the calendar can't be read, the plan says "calendar not read" (hover for why) and shows only tasks.
 With a scheduled or due block selected, `J`/`K` move it 15 minutes later / earlier and `L`/`H` lengthen / shorten it by
 15 minutes (written as a range, `14:00-15:15`), each one undoable edit of its stamp that keeps the day and repeater; a
 repeating task moves only on its own date.

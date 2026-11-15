@@ -88,7 +88,7 @@
   import { doneLog, withLog } from "./donelog";
   import { fmtEffort, fmtSpent, overbooked, planned, plannedLabel } from "./effort";
   import { agendaText, copyRows } from "./agendatext";
-  import { blocks, gapLabel, gaps, hhmm, shiftTime, workHours } from "./dayplan";
+  import { blocks, fixedOn, gapLabel, gaps, hhmm, shiftTime, workHours, type Fixed } from "./dayplan";
   import { marked, markKey, reresolve, type Mark } from "./bulk";
   import { visible } from "./blocked";
   import { weekStartOf } from "./week";
@@ -133,6 +133,8 @@
   let logItems = $state.raw<AgendaItem[]>([]);
   /** Day plan (key w, #705): the Day view's timed tasks on an hour grid, working hours (#1379) widened to fit. */
   let gridOn = $state(stored("agenda-grid", "") === "1");
+  /** The day plan's calendar events (#1378, config `activity_calendar`) and the warning when it couldn't be read. */
+  let events = $state.raw<Fixed[]>([]), calWarn = $state("");
   /** Show every blocked task (key B, #718); else only those dated today or earlier. Searches always show them. */
   let blockedOn = $state(stored("agenda-blocked", "") === "1");
 
@@ -206,7 +208,7 @@
   const plan = $derived.by(() => {
     if (mode !== "agenda" || span !== 1 || !gridOn) return null;
     const day = iso(start), n = now.getHours() * 60 + now.getMinutes();
-    const bs = blocks(shown.map((x) => (x.kind === "closed" ? { ...x, time: null } : x)), day, isDone);
+    const bs = blocks(shown.map((x) => (x.kind === "closed" ? { ...x, time: null } : x)), day, isDone, events);
     const [ws, we] = workHours(dayStart, dayEnd), off = expected[day] === 0; // only a loaded 0 is a day off
     const from = Math.min(Math.floor(ws / 60) * 60, ...bs.map((b) => Math.floor(b.start / 60) * 60)), to = Math.max(Math.ceil(we / 60) * 60, ...bs.map((b) => Math.ceil(b.end / 60) * 60));
     return { from, to, blocks: bs, off, gaps: off ? [] : gaps(bs, ws, we, day === today ? n : day < today ? 1440 : undefined),
@@ -251,6 +253,17 @@
   });
   $effect(() => {
     if (active) tick().then(() => root?.focus());
+  });
+  // Calendar events for the day plan: once per day, reload or toggle (ics::calendar caches a URL); a stale reply is dropped.
+  $effect(() => {
+    void reload;
+    const day = iso(start);
+    if (!active || mode !== "agenda" || span !== 1 || !gridOn) return;
+    let stale = false;
+    invoke<{ events: { start: string; end: string; summary: string }[]; warning: string | null }>("meeting_events", { date: day })
+      .then((r) => { if (!stale) { events = fixedOn(r.events, day); calWarn = r.warning ?? ""; } })
+      .catch((e) => { if (!stale) { events = []; calWarn = String(e); } });
+    return () => { stale = true; };
   });
   $effect(() => {
     if (!active) return;
@@ -596,14 +609,18 @@
     {#if plan}
       {@const y = (m: number) => `${m - plan.from}px`}
       <section class="card dayplan" aria-label="Day plan">
-        <h2>Day plan <small>{[plan.off ? "day off: no expected hours" : "", plan.blocks.some((b) => b.overlap) ? "overlaps highlighted" : ""].filter(Boolean).join(" · ")}</small></h2>
+        <h2>Day plan <small>{[plan.off ? "day off: no expected hours" : "", plan.blocks.some((b) => b.overlap) ? "overlaps highlighted" : ""].filter(Boolean).join(" · ")}</small>{#if calWarn}<small class="calwarn" title={calWarn}>calendar not read</small>{/if}</h2>
         <div class="grid" style:height={y(plan.to)}>
           {#each plan.hours as h}<div class="hr" style:top={y(h)}><span>{hhmm(h)}</span></div>{/each}
           {#each plan.gaps as g, gi}<div class="gap" data-gap={gi} title="Plan a task here (P)" style:top={y(g.start)} style:height="{g.end - g.start}px">{#if g.end - g.start >= 20}<span>{gapLabel(g)}</span>{/if}</div>{/each}
-          {#each plan.blocks as b (b.i)}
-            <div class="blk" class:sel={b.i === sel} class:done={b.done} class:overlap={b.overlap} data-i={b.i} role="option" aria-selected={b.i === sel}
-              style:top={y(b.start)} style:height="{Math.max(b.end - b.start, 18)}px" style:left="calc(52px + (100% - 52px) * {b.lane / b.lanes})" style:width="calc((100% - 52px) / {b.lanes} - 4px)"
-              title="{hhmm(b.start)}–{hhmm(b.end)} {b.title}{b.overlap ? ' (overlaps)' : ''}"><b>{hhmm(b.start)}</b> {b.title}</div>
+          {#each plan.blocks as b, k (b.fixed ? `f${k}` : b.i)}
+            {@const pos = `top: ${y(b.start)}; height: ${Math.max(b.end - b.start, 18)}px; left: calc(52px + (100% - 52px) * ${b.lane / b.lanes}); width: calc((100% - 52px) / ${b.lanes} - 4px)`}
+            {#if b.fixed}
+              <div class="blk busy" class:overlap={b.overlap} style={pos} title="{hhmm(b.start)}–{hhmm(b.end)} {b.title} (calendar){b.overlap ? ' (overlaps)' : ''}"><b>{hhmm(b.start)}</b> {b.title}</div>
+            {:else}
+              <div class="blk" class:sel={b.i === sel} class:done={b.done} class:overlap={b.overlap} data-i={b.i} role="option" aria-selected={b.i === sel} style={pos}
+                title="{hhmm(b.start)}–{hhmm(b.end)} {b.title}{b.overlap ? ' (overlaps)' : ''}"><b>{hhmm(b.start)}</b> {b.title}</div>
+            {/if}
           {/each}
           {#if plan.now != null}<div class="nowline" style:top={y(plan.now)}></div>{/if}
         </div>
@@ -789,6 +806,10 @@
   .blk.overlap { background: color-mix(in srgb, var(--warn, #d97706) 18%, var(--card)); border-left-color: var(--warn, #d97706); }
   .blk.done { opacity: .55; text-decoration: line-through; }
   .blk.sel { box-shadow: inset 0 0 0 1.5px var(--accent); }
+  /* calendar events: fixed, hatched, not selectable */
+  .blk.busy { color: var(--dim); background: repeating-linear-gradient(135deg, var(--card) 0 6px, var(--active) 6px 12px); border-left-color: var(--dim); }
+  .blk.busy.overlap { border-left-color: var(--warn, #d97706); }
+  h2 .calwarn { margin-left: auto; cursor: help; }
   .nowline { position: absolute; left: 44px; right: 0; border-top: 2px solid var(--accent); pointer-events: none; }
   .logh { font-size: var(--fs-sm); font-weight: 600; color: var(--done); margin: var(--s2) 0 2px; padding: 0 var(--s2); }
   .hint { color: var(--dim); font-size: var(--fs-sm); margin: 0 0 0 var(--s2); }

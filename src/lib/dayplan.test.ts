@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blocks, candidates, gapLabel, gaps, shiftTime, stampFor, workHours } from "./dayplan.ts";
+import { blocks, candidates, fixedOn, gapLabel, gaps, shiftTime, stampFor, workHours } from "./dayplan.ts";
 
 const D = "2026-10-23";
 const it = (line: number, time: string | null, effort: number | null = null, done = false, date = D) => ({ date, time, title: `t${line}`, path: "/n/a.org", line, effort, done });
@@ -36,6 +36,21 @@ test("workHours: HH:MM pair in minutes, else 08:00-18:00; custom hours bound the
     assert.deepEqual(workHours(a, b), [480, 1080], `${a}-${b}`);
   const bs = blocks([it(1, "10:00", 60)], D, isDone);
   assert.deepEqual(gaps(bs, 420, 930).map(gapLabel), ["3h free 07:00–10:00", "4h 30m free 11:00–15:30"]);
+});
+
+test("calendar events: a 10:00-11:00 meeting splits a 09:00-12:00 gap, overlaps a task at 10:30, never selectable (#1378)", () => {
+  const fx = fixedOn([{ start: `${D}T10:00:00`, end: `${D}T11:00:00`, summary: "Standup" }], D);
+  assert.deepEqual(fx, [{ start: 600, end: 660, title: "Standup" }]);
+  const bs = blocks([it(1, "10:30", 30)], D, isDone, fx);
+  assert.deepEqual(bs.map((b) => [b.i, b.fixed ?? false, b.start, b.end, b.overlap, b.lane, b.lanes]), [[-1, true, 600, 660, true, 0, 2], [0, false, 630, 660, true, 1, 2]]);
+  assert.deepEqual(gaps(blocks([], D, isDone, fx), 540, 720).map(gapLabel), ["1h free 09:00–10:00", "1h free 11:00–12:00"]);
+  assert.deepEqual(gaps(bs, 540, 720).map(gapLabel), ["1h free 09:00–10:00", "1h free 11:00–12:00"]);
+});
+
+test("fixedOn: events crossing midnight are clamped to the day, other days and empty spans dropped", () => {
+  const ev = (start: string, end: string) => ({ start, end, summary: "e" });
+  assert.deepEqual(fixedOn([ev("2026-10-22T23:00:00", `${D}T01:30:00`), ev(`${D}T22:00:00`, "2026-10-24T02:00:00"), ev("2026-10-24T09:00:00", "2026-10-24T10:00:00"), ev(`${D}T09:00:00`, `${D}T09:00:00`)], D).map((f) => [f.start, f.end]),
+    [[0, 90], [1320, 1440]]);
 });
 
 test("shiftTime: move keeps length (bare stays bare), H/L write a range, 15 min floor, pinned at 00:00 / 23:59", () => {
