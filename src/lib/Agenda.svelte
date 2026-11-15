@@ -306,22 +306,39 @@
 
   /** Day plan (#1366): move the selected timed block DM minutes or change its length by DL; one undoable edit of its stamp. */
   function nudge(dm: number, dl: number) {
-    const it = selected;
-    if (!it?.time || it.kind === "closed") return api.flash("No time to move");
-    if (it.kind !== "scheduled" && it.kind !== "deadline") return api.flash("Only scheduled or due times can be moved");
-    const t = shiftTime(it.time, dm, dl, it.effort);
-    if (t) op("time", it, t, false);
+    if (!burst) {
+      const it = selected;
+      if (!it?.time || it.kind === "closed") return api.flash("No time to move");
+      if (it.kind !== "scheduled" && it.kind !== "deadline") return api.flash("Only scheduled or due times can be moved");
+      burst = keyOf(it) + it.kind; // fixed for the whole burst: `sel` can lag the list while a write reloads it
+    }
+    pend = { dm: (pend?.dm ?? 0) + dm, dl: (pend?.dl ?? 0) + dl };
+    clearTimeout(nudgeTimer);
+    nudgeTimer = setTimeout(flushNudge, 200);
+  }
+  /** A key-repeat burst of nudges is summed into one edit (one write, one undo step), applied once nothing is in flight. */
+  let burst: string | null = null, pend: { dm: number; dl: number } | null = null, nudgeTimer: ReturnType<typeof setTimeout>, nudging = false;
+  function flushNudge() {
+    if (nudging) return;
+    if (!pend) { burst = null; return; }
+    if (busy) { nudgeTimer = setTimeout(flushNudge, 50); return; }
+    const { dm, dl } = pend, it = shown.find((x) => keyOf(x) + x.kind === burst);
+    pend = null;
+    const t = it?.time && shiftTime(it.time, dm, dl, it.effort);
+    if (!it || !t) { burst = null; return; }
+    nudging = true;
+    op("time", it, t, false, () => { nudging = false; flushNudge(); });
   }
 
   /** Run an op on the selected item (ARG for `keyword`), then reload; on the board the selection follows the card.
    *  With marks, a BULK op runs on every marked item instead (one undo step) and clears the marks (kept on cancel). */
-  function op(name: string, it = selected, arg?: string, bulk = true) {
-    if (!it || busy) return;
+  function op(name: string, it = selected, arg?: string, bulk = true, after?: () => void) {
+    if (!it || busy) return after?.();
     if (it.kind === "birthday" && name !== "open") return api.flash("A birthday is read-only: Enter opens the person");
     const many = bulk && marks.size && BULK.has(name) ? marked(marks, all) : null;
     if (many && !many.length) return api.flash("No marked task");
     const xs = many ?? [it], ts = bulkTargets(name, xs.map((x) => x.keyword), arg, todo, done);
-    api.act(async () => {
+    api.act(async () => { try {
       busy = true;
       try {
         const nb = blockedDone(xs, ts, done);
@@ -338,7 +355,7 @@
         if (j >= 0) sel = j;
       }
       root?.focus();
-    });
+    } finally { after?.(); } });
   }
 
   const waitsOn = (it: AgendaItem) => it.blocked_by ? `Waits on: ${it.blocked_by.title} (W opens it)` : "Waits on another task (:ORDERED: / :BLOCKER:)";

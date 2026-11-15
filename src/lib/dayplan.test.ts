@@ -65,3 +65,9 @@ test("stampFor: start to start + effort (past the gap, cut at 23:59), bare witho
   assert.equal(stampFor({ start: 600, end: 630 }, null), "10:00");
   assert.equal(stampFor({ start: 23 * 60, end: 23 * 60 + 30 }, 120), "23:00-23:59");
 });
+
+test("shiftTime: a summed burst clamps on the total, a zero sum is a no-op (#1376)", () => {
+  assert.equal(shiftTime("14:00", 45, 0), "14:45");
+  assert.equal(shiftTime("14:00", 0, 0), null);
+  assert.equal(shiftTime("23:00", 120, 0, 30), "23:29");
+});

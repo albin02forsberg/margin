@@ -1680,6 +1680,16 @@ describe("Day plan", () => {
     await browser.keys(".");
   });
 
+  it("three quick J presses are one edit: 14:15 to 15:00, one u restores it (#1376)", async () => {
+    const call = (t: string) => (s: string) => s.startsWith(`* TODO Plan e2e call\nSCHEDULED: ${at(t)}\n`);
+    await (await find(".dayplan .blk", "Plan e2e call")).click();
+    // keys(["J","J","J"]) would hold J down (one keydown), so fire three keydowns back to back like a key repeat
+    await browser.execute(() => { for (let i = 0; i < 3; i++) document.querySelector(".agenda")!.dispatchEvent(new KeyboardEvent("keydown", { key: "J", shiftKey: true, bubbles: true })); });
+    await fileMatches(plan, call("15:00"), "three J presses didn't move the block to 15:00");
+    await browser.keys("u");
+    await fileMatches(plan, call("14:15"), "one u didn't restore 14:15");
+  });
+
   it("P schedules an untimed task in a free gap, from its start to start + effort; undated NEXT tasks are offered; u undoes (#1365)", async () => {
     const fill = (t: string) => (s: string) => s.includes(`* TODO Plan e2e fill\nSCHEDULED: <${tomorrow}${t}>\n`);
     await find(".agenda h1", "Today");
