@@ -4671,7 +4671,7 @@
               {:else if v.kind === "settings"}
                 <Settings {version} active={v === leftTab} {reload} config={cfg.config} defaults={cfg.defaults} error={cfg.config_error} missing={cfg.config_missing} save={saveSettings} recreate={recreateConfig} edit={() => act(editConfig)} />
               {:else}
-                <Agenda mode={v.kind as "agenda" | "todo"} goto={v.kind === "agenda" ? agendaGoto : null} api={agendaApi} active={v === leftTab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} time={timeApi} logDone={!!cfg.config.log_done} weekStart={cfg.config.week_start} tagColors={cfg.config.tag_colors} />
+                <Agenda mode={v.kind as "agenda" | "todo"} goto={v.kind === "agenda" ? agendaGoto : null} api={agendaApi} active={v === leftTab} {reload} {...kw()} query={v.query} title={v.query != null ? v.title : undefined} time={timeApi} logDone={!!cfg.config.log_done} weekStart={cfg.config.week_start} tagColors={cfg.config.tag_colors} dayStart={cfg.config.day_plan_start} dayEnd={cfg.config.day_plan_end} />
               {/if}
             </div>
           {/each}

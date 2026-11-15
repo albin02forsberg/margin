@@ -1643,9 +1643,12 @@ describe("Note pickers, pins and archive", () => {
 // Own launch: in the Tables suite the first keys typed into this note, and into the next one opened, got garbled.
 describe("Day plan", () => {
   const at = (t: string) => `<${orgDay(new Date())} ${t}>`, tomorrow = orgDay(new Date(Date.now() + 86_400_000));
+  const offDay = new Date(Date.now() + 2 * 86_400_000).toLocaleDateString("sv-SE");
   let plan = "";
   before(async () => {
-    plan = join((await launch({ files: ({ notes }) => writeFileSync(join(notes, "plan.org"), `* TODO Plan e2e call\nSCHEDULED: ${at("14:00")}\n* TODO Plan e2e review\nSCHEDULED: ${at("14:00")}\n:PROPERTIES:\n:EFFORT: 1:00\n:END:\n* TODO Plan e2e untimed\nSCHEDULED: <${orgDay(new Date())}>\n* TODO Plan e2e daily\nSCHEDULED: ${at("09:00 +1d")}\n* TODO Plan e2e fill\nSCHEDULED: <${tomorrow}>\n:PROPERTIES:\n:EFFORT: 0:30\n:END:\n* NEXT Plan e2e next\n`) })).notes, "plan.org");
+    // every day a working day (tomorrow may be a weekend or a red day), but one extra day off
+    const config = ["weekday_hours = [8, 8, 8, 8, 8, 8, 8]", 'public_holidays = "none"', `extra_days_off = ["${offDay}"]`];
+    plan = join((await launch({ config, files: ({ notes }) => writeFileSync(join(notes, "plan.org"), `* TODO Plan e2e call\nSCHEDULED: ${at("14:00")}\n* TODO Plan e2e review\nSCHEDULED: ${at("14:00")}\n:PROPERTIES:\n:EFFORT: 1:00\n:END:\n* TODO Plan e2e untimed\nSCHEDULED: <${orgDay(new Date())}>\n* TODO Plan e2e daily\nSCHEDULED: ${at("09:00 +1d")}\n* TODO Plan e2e fill\nSCHEDULED: <${tomorrow}>\n:PROPERTIES:\n:EFFORT: 0:30\n:END:\n* NEXT Plan e2e next\n`) })).notes, "plan.org");
   });
   after(close, { timeout: 30_000 });
 
@@ -1703,6 +1706,17 @@ describe("Day plan", () => {
     await find(".dayplan .blk", "08:00 Plan e2e fill");
     await browser.keys("u");
     await fileMatches(plan, fill(""), "u didn't remove the time");
+    await browser.keys(".");
+  });
+
+  it("a day with 0 expected hours is a day off: no free gaps, P says so (#1379)", async () => {
+    await find(".agenda h1", "Today");
+    await browser.keys("l");
+    await browser.keys("l");
+    await find(".dayplan h2 small", "day off");
+    assert.equal((await browser.$$(".dayplan .gap")).length, 0, "gaps on a day off");
+    await browser.keys("P");
+    await find(".status .msg", "No free gap");
     await browser.keys(".");
   });
 });

@@ -88,7 +88,7 @@
   import { doneLog, withLog } from "./donelog";
   import { fmtEffort, fmtSpent, overbooked, planned, plannedLabel } from "./effort";
   import { agendaText, copyRows } from "./agendatext";
-  import { blocks, gapLabel, gaps, hhmm, shiftTime } from "./dayplan";
+  import { blocks, gapLabel, gaps, hhmm, shiftTime, workHours } from "./dayplan";
   import { marked, markKey, reresolve, type Mark } from "./bulk";
   import { visible } from "./blocked";
   import { weekStartOf } from "./week";
@@ -96,9 +96,10 @@
 
   /** QUERY (todo mode): show only open tasks matching it, under TITLE. TIME (agenda mode): the Clock column's actions.
    *  LOGDONE: config `log_done` (the Done log needs its CLOSED: stamps). GOTO (agenda mode): show that day (month calendar, #1039).
-   *  WEEKSTART: config `week_start`, where the week view and the board's "this week" begin. */
-  let { mode, api, active, reload, todo, done, query, title, time, logDone = false, goto = null, weekStart, tagColors }: {
-    mode: "agenda" | "todo"; api: AgendaApi; active: boolean; reload: number; todo: string[]; done: string[]; query?: string; title?: string; time?: TimeApi; logDone?: boolean; goto?: { day: string } | null; weekStart?: string; tagColors?: Record<string, string>;
+   *  WEEKSTART: config `week_start`, where the week view and the board's "this week" begin.
+   *  DAYSTART / DAYEND: config `day_plan_start` / `day_plan_end`, the day plan's working hours. */
+  let { mode, api, active, reload, todo, done, query, title, time, logDone = false, goto = null, weekStart, tagColors, dayStart, dayEnd }: {
+    mode: "agenda" | "todo"; api: AgendaApi; active: boolean; reload: number; todo: string[]; done: string[]; query?: string; title?: string; time?: TimeApi; logDone?: boolean; goto?: { day: string } | null; weekStart?: string; tagColors?: Record<string, string>; dayStart?: string; dayEnd?: string;
   } = $props();
   const firstOfWeek = (d: Date) => weekStartOf(d, weekStart);
 
@@ -130,7 +131,7 @@
   let logOn = $state(stored("agenda-log", "") === "1");
   const logShown = $derived(mode === "agenda" && logOn);
   let logItems = $state.raw<AgendaItem[]>([]);
-  /** Day plan (key w, #705): the Day view's timed tasks on an hour grid, working hours 08:00-18:00 widened to fit. */
+  /** Day plan (key w, #705): the Day view's timed tasks on an hour grid, working hours (#1379) widened to fit. */
   let gridOn = $state(stored("agenda-grid", "") === "1");
   /** Show every blocked task (key B, #718); else only those dated today or earlier. Searches always show them. */
   let blockedOn = $state(stored("agenda-blocked", "") === "1");
@@ -206,8 +207,9 @@
     if (mode !== "agenda" || span !== 1 || !gridOn) return null;
     const day = iso(start), n = now.getHours() * 60 + now.getMinutes();
     const bs = blocks(shown.map((x) => (x.kind === "closed" ? { ...x, time: null } : x)), day, isDone);
-    const from = Math.min(480, ...bs.map((b) => Math.floor(b.start / 60) * 60)), to = Math.max(1080, ...bs.map((b) => Math.ceil(b.end / 60) * 60));
-    return { from, to, blocks: bs, gaps: gaps(bs, 480, 1080, day === today ? n : day < today ? 1440 : undefined),
+    const [ws, we] = workHours(dayStart, dayEnd), off = expected[day] === 0; // only a loaded 0 is a day off
+    const from = Math.min(Math.floor(ws / 60) * 60, ...bs.map((b) => Math.floor(b.start / 60) * 60)), to = Math.max(Math.ceil(we / 60) * 60, ...bs.map((b) => Math.ceil(b.end / 60) * 60));
+    return { from, to, blocks: bs, off, gaps: off ? [] : gaps(bs, ws, we, day === today ? n : day < today ? 1440 : undefined),
       now: day === today && n >= from && n <= to ? n : null, hours: Array.from({ length: (to - from) / 60 + 1 }, (_, h) => from + h * 60) };
   });
   const elapsed = (since: string) => hm(Math.max(0, now.getTime() - Date.parse(since)) / 3_600_000);
@@ -594,7 +596,7 @@
     {#if plan}
       {@const y = (m: number) => `${m - plan.from}px`}
       <section class="card dayplan" aria-label="Day plan">
-        <h2>Day plan <small>{plan.blocks.some((b) => b.overlap) ? "overlaps highlighted" : ""}</small></h2>
+        <h2>Day plan <small>{[plan.off ? "day off: no expected hours" : "", plan.blocks.some((b) => b.overlap) ? "overlaps highlighted" : ""].filter(Boolean).join(" · ")}</small></h2>
         <div class="grid" style:height={y(plan.to)}>
           {#each plan.hours as h}<div class="hr" style:top={y(h)}><span>{hhmm(h)}</span></div>{/each}
           {#each plan.gaps as g, gi}<div class="gap" data-gap={gi} title="Plan a task here (P)" style:top={y(g.start)} style:height="{g.end - g.start}px">{#if g.end - g.start >= 20}<span>{gapLabel(g)}</span>{/if}</div>{/each}

@@ -8,6 +8,14 @@ export type Gap = { start: number; end: number };
 export const toMin = (t: string) => { const [h, m] = t.split(":"); return +h * 60 + +m; };
 export const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
+/** The day plan's working hours (config `day_plan_start`/`day_plan_end`, #1379) in minutes; 08:00-18:00 unless both are
+ *  HH:MM and START is before END (a hand-edited config.toml isn't checked on load). */
+export function workHours(start?: string, end?: string): [number, number] {
+  const m = (t?: string) => { const x = /^(\d\d?):(\d\d)$/.exec(t?.trim() ?? ""); return x && +x[1] < 24 && +x[2] < 60 ? +x[1] * 60 + +x[2] : NaN; };
+  const a = m(start), b = m(end);
+  return a < b ? [a, b] : [8 * 60, 18 * 60];
+}
+
 /** Blocks of ITEMS (indexed) timed on DAY: a range stamp ("14:00-15:30") ends at its own end, else start + `:EFFORT:`
  *  (30 min without one); clamped at midnight; one block per heading and start (a task can show as scheduled and due).
  *  Overlaps and lanes are set among the open blocks; done ones stay in lane 0, dimmed by the view. */
@@ -41,7 +49,7 @@ export function blocks<T extends { date: string; time: string | null; title: str
   return out;
 }
 
-/** Free spans of at least 15 min between FROM and TO (minutes; working hours 08:00-18:00) not covered by an open block;
+/** Free spans of at least 15 min between FROM and TO (minutes; working hours, 08:00-18:00 by default) not covered by an open block;
  *  NOW (minutes, on today) moves the start up so past time isn't offered. */
 export function gaps(bs: Block[], from = 8 * 60, to = 18 * 60, now?: number): Gap[] {
   let t = Math.max(from, now ?? 0);
