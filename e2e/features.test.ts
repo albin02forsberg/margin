@@ -1644,10 +1644,12 @@ describe("Note pickers, pins and archive", () => {
 describe("Day plan", () => {
   const at = (t: string) => `<${orgDay(new Date())} ${t}>`, tomorrow = orgDay(new Date(Date.now() + 86_400_000));
   const offDay = new Date(Date.now() + 2 * 86_400_000).toLocaleDateString("sv-SE");
+  const ymd = isoDay(new Date(Date.now() + 86_400_000)).replaceAll("-", ""), cal = join(tmpdir(), `margin-e2e-plancal-${process.pid}.ics`);
   let plan = "";
   before(async () => {
+    writeFileSync(cal, `BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:p1\nDTSTART:${ymd}T120000\nDTEND:${ymd}T130000\nSUMMARY:Plan e2e standup\nEND:VEVENT\nEND:VCALENDAR\n`);
     // every day a working day (tomorrow may be a weekend or a red day), but one extra day off
-    const config = ["weekday_hours = [8, 8, 8, 8, 8, 8, 8]", 'public_holidays = "none"', `extra_days_off = ["${offDay}"]`];
+    const config = ["weekday_hours = [8, 8, 8, 8, 8, 8, 8]", 'public_holidays = "none"', `extra_days_off = ["${offDay}"]`, `activity_calendar = ${JSON.stringify(cal)}`];
     plan = join((await launch({ config, files: ({ notes }) => writeFileSync(join(notes, "plan.org"), `* TODO Plan e2e call\nSCHEDULED: ${at("14:00")}\n* TODO Plan e2e review\nSCHEDULED: ${at("14:00")}\n:PROPERTIES:\n:EFFORT: 1:00\n:END:\n* TODO Plan e2e untimed\nSCHEDULED: <${orgDay(new Date())}>\n* TODO Plan e2e daily\nSCHEDULED: ${at("09:00 +1d")}\n* TODO Plan e2e fill\nSCHEDULED: <${tomorrow}>\n:PROPERTIES:\n:EFFORT: 0:30\n:END:\n* NEXT Plan e2e next\n`) })).notes, "plan.org");
   });
   after(close, { timeout: 30_000 });
@@ -1706,6 +1708,16 @@ describe("Day plan", () => {
     await find(".dayplan .blk", "08:00 Plan e2e fill");
     await browser.keys("u");
     await fileMatches(plan, fill(""), "u didn't remove the time");
+    await browser.keys(".");
+  });
+
+  it("a calendar event is a fixed block that splits the free time and can't be selected (#1378)", async () => {
+    await find(".agenda h1", "Today");
+    await browser.keys("l"); // tomorrow: the daily task at 09:00, the standup 12:00-13:00
+    await find(".dayplan .blk.busy", "12:00 Plan e2e standup");
+    await find(".dayplan .gap", "free 09:30–12:00");
+    await find(".dayplan .gap", "free 13:00–18:00");
+    assert.equal(await (await find(".dayplan .blk.busy", "Plan e2e standup")).getAttribute("data-i"), null, "calendar block is selectable");
     await browser.keys(".");
   });
 
