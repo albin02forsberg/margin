@@ -411,7 +411,7 @@ A day with 0 expected hours (a weekend, a public holiday, an extra day off or fu
 no free time.
 With a calendar set (`activity_calendar`, a local `.ics` file or an https URL), the day's timed events show as fixed hatched blocks with
 their summary: free time goes around them and a task on top of one is highlighted as an overlap, but they can't be
-selected, moved or planned into. An event crossing midnight shows up to or from midnight; all-day events are left out.
+selected, moved or planned into. An event crossing midnight shows up to or from midnight; all-day events and ones with neither `DTEND` nor `DURATION` are left out.
 If the calendar can't be read, the plan says "calendar not read" (hover for why) and shows only tasks.
 With a scheduled or due block selected, `J`/`K` move it 15 minutes later / earlier and `L`/`H` lengthen / shorten it by
 15 minutes (written as a range, `14:00-15:15`), each one undoable edit of its stamp that keeps the day and repeater; a

@@ -126,6 +126,30 @@ fn when(v: &str) -> Option<NaiveDateTime> {
     Some(if utc { Utc.from_utc_datetime(&t).with_timezone(&Local).naive_local() } else { t })
 }
 
+/// An RFC 5545 DURATION (`[+]P[nW][nD][T[nH][nM][nS]]`); negative or malformed gives None.
+fn duration(v: &str) -> Option<Duration> {
+    let v = v.trim().strip_prefix('+').unwrap_or(v.trim()).strip_prefix('P')?;
+    let (mut total, mut n, mut time, mut any) = (0i64, None::<i64>, false, false);
+    for c in v.chars() {
+        if let Some(d) = c.to_digit(10) {
+            n = Some(n.unwrap_or(0).checked_mul(10)?.checked_add(d as i64)?);
+            continue;
+        }
+        let secs = match (c, time) {
+            ('T', false) if n.is_none() => { time = true; continue }
+            ('W', false) => 604800,
+            ('D', false) => 86400,
+            ('H', true) => 3600,
+            ('M', true) => 60,
+            ('S', true) => 1,
+            _ => return None,
+        };
+        total = total.checked_add(n.take()?.checked_mul(secs)?)?;
+        any = true;
+    }
+    (any && n.is_none()).then(|| Duration::try_seconds(total)).flatten()
+}
+
 fn date(v: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(v.get(..8)?, "%Y%m%d").ok()
 }
@@ -173,8 +197,8 @@ fn occurs(rule: &str, first: NaiveDate, day: NaiveDate) -> bool {
 }
 
 /// Timed events of an .ics TEXT that overlap DAY, recurring ones (see `occurs`) included,
-/// minus cancelled ones, EXDATEs and occurrences moved by a RECURRENCE-ID. All-day events and
-/// events without DTEND are left out.
+/// minus cancelled ones, EXDATEs and occurrences moved by a RECURRENCE-ID. The end is DTEND, else
+/// DTSTART + DURATION. All-day events and events with neither are left out.
 pub fn events_on(text: &str, day: NaiveDate) -> Vec<Event> {
     let text = text.replace("\r\n", "\n").replace("\n ", "").replace("\n\t", "");
     // Each VEVENT's (NAME, params, value)s, without nested components (alarms).
@@ -199,7 +223,8 @@ pub fn events_on(text: &str, day: NaiveDate) -> Vec<Event> {
     let (d0, d1) = (day.and_time(NaiveTime::MIN), (day + Duration::days(1)).and_time(NaiveTime::MIN));
     let mut out = vec![];
     for e in &evs {
-        let (Some(start), Some(end)) = (get(e, "DTSTART").and_then(|v| when(&v)), get(e, "DTEND").and_then(|v| when(&v))) else { continue };
+        let Some(start) = get(e, "DTSTART").and_then(|v| when(&v)) else { continue };
+        let Some(end) = get(e, "DTEND").and_then(|v| when(&v)).or_else(|| get(e, "DURATION").and_then(|v| duration(&v)).map(|d| start + d)) else { continue };
         if get(e, "STATUS").is_some_and(|s| s.eq_ignore_ascii_case("CANCELLED")) {
             continue;
         }
@@ -292,6 +317,24 @@ mod tests {
         assert!(!calendar("http://c.example/s3cret", &cache, t0, fetch).unwrap_err().contains("s3cret"));
         assert!(calendar("/no/such/file.ics", &cache, t0, fetch).unwrap_err().starts_with("activity_calendar /no/such/file.ics: "), "a path is read as a file");
         assert_eq!(calls.borrow().len(), 4);
+    }
+
+    #[test]
+    fn duration_instead_of_dtend() {
+        let d = |v: &str| duration(v).map(|d| d.num_seconds());
+        assert_eq!((d("PT1H30M"), d("P1W"), d("P1DT2H"), d("+PT45S"), d("P0D")), (Some(5400), Some(604800), Some(93600), Some(45), Some(0)));
+        for bad in ["", "P", "PT", "-PT1H", "PT1H30", "P1H", "PT1D", "1H", "PTH"] {
+            assert_eq!(d(bad), None, "{bad}");
+        }
+        let ev = |extra: &str| format!("BEGIN:VEVENT\nDTSTART:20260105T100000\n{extra}\nSUMMARY:X\nEND:VEVENT");
+        let on = |ics: &str, day: &str| events_on(ics, day.parse().unwrap());
+        let e = &on(&ev("DURATION:PT1H30M"), "2026-01-05")[0];
+        assert_eq!(e.end, "2026-01-05T11:30:00".parse().unwrap());
+        assert_eq!(on(&ev("RRULE:FREQ=WEEKLY\nDURATION:PT1H"), "2026-01-12")[0].end, "2026-01-12T11:00:00".parse().unwrap(), "recurring");
+        assert_eq!(on(&ev("DURATION:P1W"), "2026-01-11").len(), 1, "spans days");
+        assert!(on(&ev(""), "2026-01-05").is_empty(), "no end, no duration");
+        assert_eq!(on(&ev("DTEND:20260105T103000\nDURATION:PT5H"), "2026-01-05")[0].end, "2026-01-05T10:30:00".parse().unwrap(), "DTEND wins");
+        assert!(on("BEGIN:VEVENT\nDTSTART;VALUE=DATE:20260105\nDURATION:P1D\nEND:VEVENT", "2026-01-05").is_empty(), "all-day stays out");
     }
 
     #[test]
