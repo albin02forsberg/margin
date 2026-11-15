@@ -23,6 +23,10 @@ pub struct Config {
     /// First day of the week (week report, dashboard week, calendars): "monday", "sunday" or "saturday".
     #[serde(deserialize_with = "week_start")]
     pub week_start: String,
+    /// The day plan's working hours ("HH:MM"): its free gaps and the grid it widens from; checked on save,
+    /// a bad hand-edited pair falls back to 08:00-18:00 in the app.
+    pub day_plan_start: String,
+    pub day_plan_end: String,
     pub profiles: Vec<String>,
     pub todo_keywords: Vec<String>,
     pub done_keywords: Vec<String>,
@@ -307,6 +311,8 @@ impl Default for Config {
             public_holidays: "se".into(),
             extra_days_off: vec![],
             week_start: "monday".into(),
+            day_plan_start: "08:00".into(),
+            day_plan_end: "18:00".into(),
             profiles: v(&["Work", "Personal"]),
             todo_keywords: v(&["TODO", "NEXT", "WAIT"]),
             done_keywords: v(&["DONE", "CANCELLED"]),
@@ -623,6 +629,12 @@ pub fn save(text: &str, values: toml::Table, reset: &[String]) -> Result<(String
     if c.profiles.is_empty() {
         return Err("keep at least one profile".into());
     }
+    let t = |s: &str| chrono::NaiveTime::parse_from_str(s.trim(), "%H:%M").ok();
+    match (t(&c.day_plan_start), t(&c.day_plan_end)) {
+        (Some(a), Some(b)) if a < b => {}
+        (Some(_), Some(_)) => return Err("day_plan_start must be before day_plan_end".into()),
+        _ => return Err("day_plan_start and day_plan_end are times like 08:00".into()),
+    }
     Ok((out, c))
 }
 
@@ -833,6 +845,11 @@ mod tests {
         assert_eq!(save(mine, t("week_start = \"Sunday\""), &[]).unwrap().1.week_start(), chrono::Weekday::Sun);
         assert!(save(mine, t("week_start = \"friday\""), &[]).unwrap_err().contains("week_start must be"));
         assert!(save(mine, t("extra_days_off = [\"24/12\"]"), &[]).unwrap_err().contains("not a date"));
+        let c = save(mine, t("day_plan_start = \"07:00\"\nday_plan_end = \"15:30\""), &[]).unwrap().1;
+        assert_eq!((c.day_plan_start.as_str(), c.day_plan_end.as_str()), ("07:00", "15:30"));
+        assert!(save(mine, t("day_plan_start = \"18:00\""), &[]).unwrap_err().contains("before"));
+        assert!(save(mine, t("day_plan_end = \"6pm\""), &[]).unwrap_err().contains("times like"));
+        assert_eq!(toml::from_str::<Config>("day_plan_start = \"nope\"").unwrap().day_plan_start, "nope"); // loads; the app falls back
         assert!(save("profiles = [\n  \"A\",\n]\n", t("profiles = [\"B\"]"), &[]).is_err()); // multi-line: by hand
         assert!(toml::from_str::<Config>(mine).unwrap().hidden_areas.is_empty()); // old configs show every area
         assert!(!toml::from_str::<Config>(mine).unwrap().zen_fullscreen);

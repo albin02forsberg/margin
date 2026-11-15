@@ -34,6 +34,8 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "public_holidays", label: "Public holidays", hint: "se = Swedish red days count as 0 expected hours; none = no holidays" },
     { key: "week_start", label: "First day of the week", kind: "choice", choices: ["monday", "sunday", "saturday"], hint: "where the week report, the dashboard week and clocktable :block thisweek start; expected hours per weekday stay Monday to Sunday" },
     { key: "extra_days_off", label: "Extra days off", kind: "list", hint: "one date per line, e.g. 2026-12-24; 0 expected hours like a holiday" },
+    { key: "day_plan_start", label: "Day plan: working day starts", hint: "HH:MM, e.g. 07:00; the day plan (w in Today) offers free time from here; a day with 0 expected hours offers none" },
+    { key: "day_plan_end", label: "Day plan: working day ends", hint: "HH:MM, after the start, e.g. 15:30" },
     { key: "idle_threshold_minutes", label: "Ask about idle time after (minutes)", kind: "number", step: 1, hint: "0 = never" },
     { key: "focus_minutes", label: "Nudge a break after (minutes)", kind: "number", step: 1, hint: "of one running session, since clocking in or resuming; the top-bar clock counts down; 0 = off" },
     { key: "focus_break_minutes", label: "Suggested break (minutes)", kind: "number", step: 1 },

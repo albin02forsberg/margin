@@ -402,10 +402,13 @@ only when nothing else was in it.
 appointments (repeaters included), deadlines (`2 due`), the first titles and the planned effort (`~3h`), tinted when it
 overbooks the day's expected hours. `h`/`j`/`k`/`l` or the arrows move, `[`/`]` change month, `t` jumps to today, and
 `Enter` (or a click) opens that day in Today.
-`w` in Today (or the **Plan** button) shows the day as an hour grid (08:00–18:00, widened to fit): each task with a time
+`w` in Today (or the **Plan** button) shows the day as an hour grid (your working hours, widened to fit): each task with a time
 (`SCHEDULED: <… 14:00>`) is a block from its start to the stamp's own end (`14:00-15:30`), else start plus its effort
 (30 minutes without one). Overlapping tasks sit side by side, highlighted, free working time is labelled
 (`1h 30m free 10:00–11:30`, from now on today) and a line marks the current time; untimed tasks stay in the list below.
+Working hours are 08:00–18:00 unless Settings → Time sets `day_plan_start` / `day_plan_end` (e.g. `07:00` and `15:30`).
+A day with 0 expected hours (a weekend, a public holiday, an extra day off or full leave) is marked "day off" and offers
+no free time.
 With a scheduled or due block selected, `J`/`K` move it 15 minutes later / earlier and `L`/`H` lengthen / shorten it by
 15 minutes (written as a range, `14:00-15:15`), each one undoable edit of its stamp that keeps the day and repeater; a
 repeating task moves only on its own date.

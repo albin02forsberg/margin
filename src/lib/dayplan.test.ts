@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blocks, candidates, gapLabel, gaps, shiftTime, stampFor } from "./dayplan.ts";
+import { blocks, candidates, gapLabel, gaps, shiftTime, stampFor, workHours } from "./dayplan.ts";
 
 const D = "2026-10-23";
 const it = (line: number, time: string | null, effort: number | null = null, done = false, date = D) => ({ date, time, title: `t${line}`, path: "/n/a.org", line, effort, done });
@@ -27,6 +27,15 @@ test("gaps: within working hours, past now, around open blocks only", () => {
   assert.deepEqual(gaps(bs, 480, 1080, 12 * 60 + 5).map(gapLabel), ["5h 45m free 12:05–17:50"]);
   assert.deepEqual(gaps([]).map(gapLabel), ["10h free 08:00–18:00"]);
   assert.deepEqual(gaps(blocks([it(1, "9:00", 1)], D, isDone), 480, 1080).map(gapLabel), ["1h free 08:00–09:00", "8h 59m free 09:01–18:00"]);
+});
+
+test("workHours: HH:MM pair in minutes, else 08:00-18:00; custom hours bound the gaps (#1379)", () => {
+  assert.deepEqual(workHours("07:00", "15:30"), [420, 930]);
+  assert.deepEqual(workHours(" 7:00", "15:30 "), [420, 930]);
+  for (const [a, b] of [["18:00", "08:00"], ["09:00", "09:00"], ["nope", "15:00"], ["07:00", "24:00"], ["07:60", "15:00"], [undefined, "15:00"]])
+    assert.deepEqual(workHours(a, b), [480, 1080], `${a}-${b}`);
+  const bs = blocks([it(1, "10:00", 60)], D, isDone);
+  assert.deepEqual(gaps(bs, 420, 930).map(gapLabel), ["3h free 07:00–10:00", "4h 30m free 11:00–15:30"]);
 });
 
 test("shiftTime: move keeps length (bare stays bare), H/L write a range, 15 min floor, pinned at 00:00 / 23:59", () => {
