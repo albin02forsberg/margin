@@ -24,6 +24,16 @@ export const fixedOn = (evs: { start: string; end: string; summary: string }[], 
     .map((e) => ({ start: e.start.slice(0, 10) < day ? 0 : toMin(e.start.slice(11, 16)), end: e.end.slice(0, 10) > day ? 24 * 60 : toMin(e.end.slice(11, 16)), title: e.summary }))
     .filter((f) => f.end > f.start);
 
+/** Minutes of FIXED events inside FROM..TO (working hours), overlaps counted once. */
+export function busyMinutes(fixed: Fixed[], from: number, to: number): number {
+  let sum = 0, t = from;
+  for (const f of [...fixed].sort((a, b) => a.start - b.start)) {
+    const s = Math.max(f.start, t), e = Math.min(f.end, to);
+    if (e > s) { sum += e - s; t = e; }
+  }
+  return sum;
+}
+
 /** Blocks of ITEMS (indexed) timed on DAY: a range stamp ("14:00-15:30") ends at its own end, else start + `:EFFORT:`
  *  (30 min without one); clamped at midnight; one block per heading and start (a task can show as scheduled and due).
  *  FIXED calendar events join in as `fixed` blocks (so they count for overlaps and gaps). Overlaps and lanes are set
