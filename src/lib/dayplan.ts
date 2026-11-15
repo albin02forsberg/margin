@@ -2,8 +2,10 @@
 import { fmtEffort } from "./effort.ts";
 
 /** A task block (`i` indexes the items), or a FIXED calendar event (`i` -1: never selected, moved or planned into). */
-export type Block = { i: number; start: number; end: number; title: string; done: boolean; overlap: boolean; lane: number; lanes: number; fixed?: boolean };
-export type Fixed = { start: number; end: number; title: string };
+export type Block = { i: number; start: number; end: number; title: string; done: boolean; overlap: boolean; lane: number; lanes: number; fixed?: boolean; ev?: CalEvent };
+/** A calendar event as `meeting_events` returns it (local "YYYY-MM-DDTHH:MM:SS"). */
+export type CalEvent = { start: string; end: string; summary: string; attendees: string[] };
+export type Fixed = { start: number; end: number; title: string; ev?: CalEvent };
 export type Gap = { start: number; end: number };
 
 /** "9:05" / "09:05" as minutes after midnight. */
@@ -19,9 +21,9 @@ export function workHours(start?: string, end?: string): [number, number] {
 }
 
 /** Calendar events (#1378, `meeting_events`: local "YYYY-MM-DDTHH:MM:SS" start / end) as fixed spans on DAY, clamped to it. */
-export const fixedOn = (evs: { start: string; end: string; summary: string }[], day: string): Fixed[] =>
+export const fixedOn = (evs: (Omit<CalEvent, "attendees"> & { attendees?: string[] })[], day: string): Fixed[] =>
   evs.filter((e) => e.start.slice(0, 10) <= day && e.end.slice(0, 10) >= day)
-    .map((e) => ({ start: e.start.slice(0, 10) < day ? 0 : toMin(e.start.slice(11, 16)), end: e.end.slice(0, 10) > day ? 24 * 60 : toMin(e.end.slice(11, 16)), title: e.summary }))
+    .map((e) => ({ start: e.start.slice(0, 10) < day ? 0 : toMin(e.start.slice(11, 16)), end: e.end.slice(0, 10) > day ? 24 * 60 : toMin(e.end.slice(11, 16)), title: e.summary, ev: { ...e, attendees: e.attendees ?? [] } }))
     .filter((f) => f.end > f.start);
 
 /** Minutes of FIXED events inside FROM..TO (working hours), overlaps counted once. */

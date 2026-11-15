@@ -2722,7 +2722,11 @@
     const ev = e === "adhoc" ? null : (e as Ev);
     const title = ev ? ev.summary : (await ask("Meeting title"))?.trim();
     if (!title) return;
-    const m = await call<{ path: string; created: boolean }>("meeting_note", { title, start: ev?.start ?? (isToday ? null : `${r.date}T${new Date().toTimeString().slice(0, 8)}`), end: ev?.end ?? null, attendees: ev?.attendees ?? [] });
+    return openMeeting(title, ev, r.date, isToday);
+  }
+  /** Open (creating if new) the meeting note for TITLE (calendar event EV, or ad-hoc) on DATE; a new one today offers the clock. */
+  async function openMeeting(title: string, ev: { start: string; end: string; attendees: string[] } | null, date: string, isToday: boolean): Promise<void> {
+    const m = await call<{ path: string; created: boolean }>("meeting_note", { title, start: ev?.start ?? (isToday ? null : `${date}T${new Date().toTimeString().slice(0, 8)}`), end: ev?.end ?? null, attendees: ev?.attendees ?? [] });
     await openFile(m.path);
     if (!m.created || !isToday) return;
     // a new meeting today: offer to track it (Esc on the project picker skips), unless a timer already runs
@@ -3897,6 +3901,7 @@
     act,
     moveOverdue,
     planGap,
+    meetingNote: (ev, day) => openMeeting(ev.summary, ev, day, day === new Date().toLocaleDateString("sv-SE")),
     flash,
     confirm: async (msg) => (await pick({ prompt: msg, items: [{ label: "Mark done anyway", value: "yes" }, { label: "Cancel", value: "no" }] })) === "yes",
     pickDate: async () => {

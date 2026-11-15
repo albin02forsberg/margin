@@ -34,6 +34,8 @@
     planGap: (day: string, gaps: Gap[], agenda: AgendaItem[]) => Promise<void>;
     /** Ask for a date ("Go to date"); ISO day, or null on cancel / unparsable input. */
     pickDate: () => Promise<string | null>;
+    /** Meeting note (#1383) for calendar event EV (a double-clicked fixed block) on DAY; opens it, offers the clock when DAY is today. */
+    meetingNote: (ev: CalEvent, day: string) => Promise<void>;
     flash: (msg: string) => void;
     /** Ask MSG with "Mark done anyway" / Cancel; true on confirm. */
     confirm: (msg: string) => Promise<boolean>;
@@ -88,7 +90,7 @@
   import { doneLog, withLog } from "./donelog";
   import { fmtEffort, fmtSpent, overbooked, planned, plannedLabel } from "./effort";
   import { agendaText, copyRows } from "./agendatext";
-  import { blocks, busyMinutes, fixedOn, gapLabel, gaps, hhmm, shiftTime, workHours, type Fixed } from "./dayplan";
+  import { blocks, busyMinutes, fixedOn, gapLabel, gaps, hhmm, shiftTime, workHours, type CalEvent, type Fixed } from "./dayplan";
   import { marked, markKey, reresolve, type Mark } from "./bulk";
   import { visible } from "./blocked";
   import { weekStartOf } from "./week";
@@ -262,7 +264,7 @@
     const day = iso(start);
     if (!active || mode !== "agenda" || span !== 1 || !gridOn) return;
     let stale = false;
-    invoke<{ events: { start: string; end: string; summary: string }[]; warning: string | null }>("meeting_events", { date: day })
+    invoke<{ events: CalEvent[]; warning: string | null }>("meeting_events", { date: day })
       .then((r) => { if (!stale) { events = fixedOn(r.events, day); calWarn = r.warning ?? ""; } })
       .catch((e) => { if (!stale) { events = []; calWarn = String(e); } });
     return () => { stale = true; };
@@ -450,6 +452,12 @@
   function pointer(e: MouseEvent) {
     const g = (e.target as HTMLElement).closest<HTMLElement>("[data-gap]");
     if (g && plan && e.type === "click") return planGap([plan.gaps[+g.dataset.gap!]]);
+    const f = (e.target as HTMLElement).closest<HTMLElement>("[data-ev]");
+    if (f && plan && e.type === "dblclick") {
+      const ev = plan.blocks.filter((b) => b.fixed)[+f.dataset.ev!]?.ev;
+      if (ev && !busy) { busy = true; api.act(async () => { try { await api.meetingNote(ev, iso(start)); } finally { busy = false; } }); }
+      return;
+    }
     const el = (e.target as HTMLElement).closest<HTMLElement>("[data-i]");
     if (!el) return;
     sel = +el.dataset.i!;
@@ -618,7 +626,7 @@
           {#each plan.blocks as b, k (b.fixed ? `f${k}` : b.i)}
             {@const pos = `top: ${y(b.start)}; height: ${Math.max(b.end - b.start, 18)}px; left: calc(52px + (100% - 52px) * ${b.lane / b.lanes}); width: calc((100% - 52px) / ${b.lanes} - 4px)`}
             {#if b.fixed}
-              <div class="blk busy" class:overlap={b.overlap} style={pos} title="{hhmm(b.start)}–{hhmm(b.end)} {b.title} (calendar){b.overlap ? ' (overlaps)' : ''}"><b>{hhmm(b.start)}</b> {b.title}</div>
+              <div class="blk busy" class:overlap={b.overlap} data-ev={plan.blocks.slice(0, k).filter((x) => x.fixed).length} style={pos} title="{hhmm(b.start)}–{hhmm(b.end)} {b.title} (calendar){b.overlap ? ' (overlaps)' : ''} — double-click: meeting note"><b>{hhmm(b.start)}</b> {b.title}</div>
             {:else}
               <div class="blk" class:sel={b.i === sel} class:done={b.done} class:overlap={b.overlap} data-i={b.i} role="option" aria-selected={b.i === sel} style={pos}
                 title="{hhmm(b.start)}–{hhmm(b.end)} {b.title}{b.overlap ? ' (overlaps)' : ''}"><b>{hhmm(b.start)}</b> {b.title}</div>
