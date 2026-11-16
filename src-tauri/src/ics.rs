@@ -204,10 +204,43 @@ fn occurs(rule: &str, first: NaiveDate, day: NaiveDate) -> bool {
 /// Timed events of an .ics TEXT that overlap DAY, recurring ones (see `occurs`) included,
 /// minus cancelled ones, EXDATEs and occurrences moved by a RECURRENCE-ID. The end is DTEND, else
 /// DTSTART + DURATION. All-day events and events with neither are left out.
+#[cfg(test)]
 pub fn events_on(text: &str, day: NaiveDate) -> Vec<Event> {
+    events_in(&parse(text), day)
+}
+
+/// One VEVENT's (NAME, params, value)s, without nested components (alarms).
+type Props = Vec<(String, String, String)>;
+type Moved = std::collections::HashMap<String, std::collections::HashSet<NaiveDate>>;
+/// A parsed .ics: its VEVENTs and, per UID, the days moved away by a RECURRENCE-ID.
+pub struct Parsed {
+    evs: Vec<Props>,
+    moved: Moved,
+}
+
+fn prop(e: &Props, n: &str) -> Option<String> {
+    e.iter().find(|p| p.0 == n).map(|p| p.2.clone())
+}
+
+/// The last parsed calendar, keyed by its text's length and hash (the day view re-reads it often).
+static PARSED: std::sync::Mutex<Option<(usize, u64, std::sync::Arc<Parsed>)>> = std::sync::Mutex::new(None);
+
+/// `parse(text)`, reused while TEXT is unchanged.
+pub fn parse_cached(text: &str) -> std::sync::Arc<Parsed> {
+    let key = (text.len(), fnv(text));
+    if let Some((l, h, p)) = &*PARSED.lock().unwrap_or_else(|e| e.into_inner()) {
+        if (*l, *h) == key {
+            return p.clone();
+        }
+    }
+    let p = std::sync::Arc::new(parse(text));
+    *PARSED.lock().unwrap_or_else(|e| e.into_inner()) = Some((key.0, key.1, p.clone()));
+    p
+}
+
+/// Parses an .ics TEXT once; `events_in` then filters it per day.
+pub fn parse(text: &str) -> Parsed {
     let text = text.replace("\r\n", "\n").replace("\n ", "").replace("\n\t", "");
-    // Each VEVENT's (NAME, params, value)s, without nested components (alarms).
-    type Props = Vec<(String, String, String)>;
     let (mut evs, mut cur, mut depth): (Vec<Props>, Option<Props>, i32) = (vec![], None, 0);
     for l in text.lines() {
         match l.trim_end() {
@@ -223,24 +256,34 @@ pub fn events_on(text: &str, day: NaiveDate) -> Vec<Event> {
             }
         }
     }
-    let get = |e: &Props, n: &str| e.iter().find(|p| p.0 == n).map(|p| p.2.clone());
-    let moved: Vec<(String, NaiveDate)> = evs.iter().filter_map(|e| Some((get(e, "UID")?, local_date(&get(e, "RECURRENCE-ID")?)?))).collect();
+    let mut moved = Moved::new();
+    for e in &evs {
+        if let (Some(u), Some(d)) = (prop(e, "UID"), prop(e, "RECURRENCE-ID").and_then(|v| local_date(&v))) {
+            moved.entry(u).or_default().insert(d);
+        }
+    }
+    Parsed { evs, moved }
+}
+
+/// `events_on` for an already parsed calendar.
+pub fn events_in(p: &Parsed, day: NaiveDate) -> Vec<Event> {
+    let (evs, moved) = (&p.evs, &p.moved);
     let (d0, d1) = (day.and_time(NaiveTime::MIN), (day + Duration::days(1)).and_time(NaiveTime::MIN));
     let mut out = vec![];
-    for e in &evs {
-        let Some(start) = get(e, "DTSTART").and_then(|v| when(&v)) else { continue };
-        let Some(end) = get(e, "DTEND").and_then(|v| when(&v)).or_else(|| get(e, "DURATION").and_then(|v| duration(&v)).map(|d| start + d)) else { continue };
-        if get(e, "STATUS").is_some_and(|s| s.eq_ignore_ascii_case("CANCELLED")) {
+    for e in evs {
+        let Some(start) = prop(e, "DTSTART").and_then(|v| when(&v)) else { continue };
+        let Some(end) = prop(e, "DTEND").and_then(|v| when(&v)).or_else(|| prop(e, "DURATION").and_then(|v| duration(&v)).map(|d| start + d)) else { continue };
+        if prop(e, "STATUS").is_some_and(|s| s.eq_ignore_ascii_case("CANCELLED")) {
             continue;
         }
         // A recurring event's occurrences starting on DAY or up to its span of midnights earlier.
-        let spans = match get(e, "RRULE") {
-            Some(rule) if get(e, "RECURRENCE-ID").is_none() => {
-                let uid = get(e, "UID").unwrap_or_default();
+        let spans = match prop(e, "RRULE") {
+            Some(rule) if prop(e, "RECURRENCE-ID").is_none() => {
+                let uid = prop(e, "UID").unwrap_or_default();
                 let ex: Vec<NaiveDate> = e.iter().filter(|p| p.0 == "EXDATE").flat_map(|p| p.2.split(',').filter_map(local_date).collect::<Vec<_>>()).collect();
                 (0..=(end.date() - start.date()).num_days().clamp(0, 366))
                     .map(|k| day - Duration::days(k))
-                    .filter(|s| !ex.contains(s) && !moved.contains(&(uid.clone(), *s)) && occurs(&rule, start.date(), *s))
+                    .filter(|s| !ex.contains(s) && !moved.get(&uid).is_some_and(|m| m.contains(s)) && occurs(&rule, start.date(), *s))
                     .map(|s| (s.and_time(start.time()), s.and_time(start.time()) + (end - start)))
                     .collect()
             }
@@ -249,7 +292,7 @@ pub fn events_on(text: &str, day: NaiveDate) -> Vec<Event> {
         for (start, end) in spans {
             if start < d1 && d0 < end {
                 let attendees = e.iter().filter(|p| p.0 == "ATTENDEE").map(|p| std::iter::successors(Some(("", p.1.as_str())), |r| split_unquoted(r.1, ';')).find_map(|r| r.1.strip_prefix("CN=").map(|c| split_unquoted(c, ';').map_or(c, |x| x.0))).map_or(p.2.trim_start_matches("mailto:").to_string(), |c| c.trim_matches('"').to_string())).collect();
-                out.push(Event { start, end, summary: get(e, "SUMMARY").map(|s| unescape(&s)).filter(|s| !s.trim().is_empty()).unwrap_or("Busy".into()), attendees });
+                out.push(Event { start, end, summary: prop(e, "SUMMARY").map(|s| unescape(&s)).filter(|s| !s.trim().is_empty()).unwrap_or("Busy".into()), attendees });
             }
         }
     }
@@ -437,6 +480,28 @@ mod tests {
         let mut long = String::new();
         fold(&mut long, &format!("SUMMARY:{}", "é".repeat(60)));
         assert!(long.split("\r\n").all(|l| l.len() <= 75));
+    }
+
+    #[test]
+    fn cached_parse_matches_fresh_and_follows_the_text() {
+        let ics = |n: u32| {
+            let mut v = vec!["BEGIN:VEVENT".to_string(), "UID:s".into(), "DTSTART:20260101T090000".into(), "DTEND:20260101T100000".into(), "RRULE:FREQ=DAILY".into(), "SUMMARY:Daily".into(), "END:VEVENT".into()];
+            for d in 2..2 + n {
+                v.extend(["BEGIN:VEVENT".into(), "UID:s".into(), format!("RECURRENCE-ID:202601{d:02}T090000"), format!("DTSTART:202601{d:02}T110000"), format!("DTEND:202601{d:02}T120000"), "SUMMARY:Moved".into(), "END:VEVENT".into()]);
+            }
+            v.join("\r\n")
+        };
+        let day = |d| NaiveDate::from_ymd_opt(2026, 1, d).unwrap();
+        for n in [0, 20] {
+            let t = ics(n);
+            for _ in 0..2 {
+                for d in [1, 3, 25] {
+                    assert_eq!(events_in(&parse_cached(&t), day(d)), events_on(&t, day(d)));
+                }
+            }
+        }
+        assert_eq!(events_in(&parse_cached(&ics(20)), day(3))[0].summary, "Moved");
+        assert_eq!(events_in(&parse_cached(&ics(0)), day(3))[0].summary, "Daily", "a changed text isn't served from the cache");
     }
 
     #[test]
