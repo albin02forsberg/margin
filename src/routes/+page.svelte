@@ -31,6 +31,7 @@
   import { resumeOffer, type Clock } from "$lib/interrupt";
   import { pickStale } from "$lib/stale";
   import { visibleCmds } from "$lib/areas";
+  import marginTypes from "$lib/margin.d.ts?raw";
   import { applyBinds, mergeCmds, session, toJs, type Host } from "$lib/commands";
   import { loadPackages } from "$lib/packages/index";
   import { lineDiff } from "$lib/linediff";
@@ -3998,6 +3999,7 @@
     { label: "Toggle top bar", keys: ["Ctrl+\\"], leader: "v s", run: () => { topbar = !topbar; store("sidebar", topbar ? "1" : "0"); } },
     { label: "Settings", keys: ["Ctrl+,"], leader: "f c", run: () => openView("settings") },
     { label: "Settings: edit config.toml", leader: "f C", run: editConfig },
+    { label: "Write init script types", run: async () => flash((await call<boolean>("write_init_types", { text: marginTypes })) ? "Wrote init/margin.d.ts" : "init/margin.d.ts already exists (left as is)") },
     { label: "Reload init scripts", run: () => { flash("Init scripts reloaded"); return loadInit(); } }, // a script's error replaces the flash
     { label: "AI drafts: choose model…", leader: "f a", run: aiChoose },
     { label: "Ledger: add an entry…", leader: "f l", run: ledgerAdd },
