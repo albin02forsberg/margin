@@ -674,6 +674,12 @@ async function pngs() {
     await shot("calendar-sources");
   }
 
+  if (want("bundled-packages")) { // #1419: built-in features shipped as packages, untick to not load one
+    await (await find(".settings .chips button", "Areas")).click();
+    await (await browser.$(`//div[contains(@class, "settings")]//div[span[contains(., "Bundled packages")]]`)).scrollIntoView({ block: "center" });
+    await shot("bundled-packages");
+  }
+
   if (want("semantic-index")) { // #965: the switch and its status; CI has no Ollama, so it shows why
     await (await find(".settings .chips button", "AI chat")).click();
     await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Semantic index of my notes")]]/input`)).click();

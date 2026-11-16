@@ -40,7 +40,7 @@ export function session(host: Host, report: (msg: string) => void) {
   const active: Record<Hook, number> = { save: 0, open: 0, startup: 0 }, edited = new Set<string>();
   /** Buffer edits made by a `save` hook mark the buffer, so the autosave they cause skips the hooks (no edit → save → edit loop). */
   const marking = (f: (...a: any[]) => unknown) => (...a: any[]) => { if (active.save && host.buffer.path) edited.add(host.buffer.path); return f(...a); };
-  const buffer = Object.create(host.buffer, Object.fromEntries(["insert", "replace"].filter((k) => typeof host.buffer[k] === "function").map((k) => [k, { value: marking(host.buffer[k]) }])));
+  const buffer: Host["buffer"] = Object.create(host.buffer, Object.fromEntries(["insert", "replace"].filter((k) => typeof host.buffer[k] === "function").map((k) => [k, { value: marking(host.buffer[k]) }])));
   const api = {
     command: reg.register,
     register: reg.register,
@@ -81,6 +81,11 @@ export function session(host: Host, report: (msg: string) => void) {
   };
   return { api, cmds: reg.list, binds, over, emit, run };
 }
+
+/** The `margin` object init scripts and bundled packages get. */
+export type Margin = ReturnType<typeof session>["api"];
+/** A bundled package (`src/lib/packages/`): loaded through the same API before the user's scripts; `disabled_packages` skips it by ID. */
+export type Package = { id: string; load: (margin: Margin) => void };
 
 /** CMDS with the user BINDS applied: a bound key is added to its command and taken from every other command. */
 export function applyBinds<T extends { label: string; keys?: string[] }>(cmds: T[], binds: Map<string, string[]>): T[] {

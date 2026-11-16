@@ -32,6 +32,7 @@
   import { pickStale } from "$lib/stale";
   import { visibleCmds } from "$lib/areas";
   import { applyBinds, mergeCmds, session, type Host } from "$lib/commands";
+  import { loadPackages } from "$lib/packages/index";
   import { lineDiff } from "$lib/linediff";
   import { ago, changed, findNote, altTab, findTab, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, resolvePath, weekJournals } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
@@ -60,7 +61,7 @@
   import { bugReportUrl, isError, osName } from "$lib/bugreport";
   import { notesText, notesTitle, notesToShow, type Notes } from "$lib/whatsnew";
   import { feedsBlocked, feedsDue } from "$lib/feeds";
-  import { dayTime, focusLeft, inactiveStamp, naive, overLong, parseWhen, worked, type WeekDay } from "$lib/clock";
+  import { dayTime, focusLeft, naive, overLong, parseWhen, worked, type WeekDay } from "$lib/clock";
   import { shutdownKeys, shutdownTasks, summarise, type ShutdownAction } from "$lib/shutdown";
   import { stuckMenu, cancelKeyword, type StuckAction } from "$lib/pushed";
   import { entryKeys, inboxKeys, summariseInbox, type InboxAction, type InboxCounts } from "$lib/inbox";
@@ -4116,7 +4117,6 @@
     { label: "Notes: tangle code blocks to files (#+begin_src … :tangle path)", run: () => act(tangleNote) },
     { label: "Insert date…", leader: "i d", run: insertDate },
     { label: "Insert footnote (Enter on [fn:N] jumps there and back)", leader: "i f", run: () => inFile() && ed.insertFootnote(view) },
-    { label: "Insert timestamp now (inactive)", leader: "i D", run: () => inFile() && ed.insertText(view, inactiveStamp(new Date())) },
     { label: "Clean up unused attachments…", run: cleanAttachments },
     { label: "Bold the selection / word (Ctrl+B in insert mode)", leader: "i b", run: () => inFile() && ed.emphasis(view, "*") },
     { label: "Italic the selection / word (Ctrl+I in insert mode)", leader: "i i", run: () => inFile() && ed.emphasis(view, "/") },
@@ -4224,12 +4224,14 @@
     Object.assign(c.config, init.over);
     return c;
   }
-  /** Run the init scripts, dropping all the previous run added: at startup and from "Reload init scripts" / `margin.reload()`. */
+  /** Load the bundled packages (`src/lib/packages/`, minus `disabled_packages`), then run the init scripts, dropping all the
+   *  previous run added: at startup and from "Reload init scripts" / `margin.reload()`. */
   async function loadInit() {
     const scripts = await call<{ name: string; text: string }[]>("list_init_scripts");
     const had = Object.keys(init.over).length;
     init = session(initHost, flash);
     if (had) cfg = await loadCfg();
+    loadPackages(init.api, cfg.config.disabled_packages ?? [], flash);
     init.run(scripts, cmds.map((c) => c.label));
     userCmds = [...init.cmds];
     userBinds = new Map(init.binds);

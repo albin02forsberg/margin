@@ -1,4 +1,5 @@
 import { AREAS } from "./areas.ts";
+import { PACKAGES } from "./packages/index.ts";
 
 /** A config.toml setting on the settings page. KIND defaults to text; lists are edited one item per line,
  *  numbers (a list of them) on one line. SUGGEST: picks offered for a text field, which stays free.
@@ -81,6 +82,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
   ] },
   { name: "Areas", fields: [
     { key: "hidden_areas", label: "Show these areas", kind: "list", options: Object.keys(AREAS), hint: "an unticked area's commands leave the command palette and the Space menu; its files and data stay as they are" },
+    { key: "disabled_packages", label: "Bundled packages", kind: "list", options: PACKAGES.map((p) => p.id), hint: "built-in features loaded like an init script (insert-timestamp: Space i D); an unticked one isn't loaded, so an init script can replace it; applied on restart or Reload init scripts" },
   ] },
   { name: "Integrations", fields: [
     { key: "activity_watcher", label: "Built-in activity watcher", kind: "bool", hint: "records the active app and window title every 5 s into the time-tracking folder's activity/ for suggestions in the Time view; stays on this computer, never uploaded. Used when ActivityWatch is off or not running. Wayland: KDE, Hyprland, Sway and other wlroots compositors, and GNOME with a small Shell extension (installed from here)" },
