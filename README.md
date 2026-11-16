@@ -1143,7 +1143,8 @@ or to the calendar's private `https://` (or `webcal://`) ICS address, fetched at
 most every 5 minutes and never shown in error messages,
 and an event covering at least half a block names it, and gives the project
 when its title or attendees name one. Daily, weekly, monthly (by date,
-or like "second Monday" / "last Friday") and yearly repeats (with exceptions)
+or like "second Monday" / "last Friday" / "last weekday", including Outlook's
+`BYSETPOS` form) and yearly repeats (with exceptions)
 are understood;
 an event in another time zone (described in the calendar file, as
 Google, Outlook and Apple export it) is moved to this computer's time, and a

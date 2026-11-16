@@ -289,8 +289,8 @@ fn until_passed(until: Option<&&str>, day: NaiveDate, at: NaiveTime, frame: ToLo
 
 /// Whether a series starting on FIRST under RRULE has an occurrence on DAY (in the series' wall time,
 /// which FRAME converts UTC to). DAILY, WEEKLY, MONTHLY and YEARLY (INTERVAL, BYDAY with `2MO`/`-1FR`
-/// ordinals, BYMONTHDAY, BYMONTH, UNTIL, COUNT) are understood; other rules only occur on FIRST.
-// ponytail: no BYSETPOS/BYWEEKNO/BYYEARDAY, and a YEARLY BYDAY ordinal counts within the month, not the year.
+/// ordinals, BYMONTHDAY, BYMONTH, UNTIL, COUNT, and BYSETPOS for MONTHLY/YEARLY) are understood; other rules only occur on FIRST.
+// ponytail: no BYWEEKNO/BYYEARDAY, no DAILY/WEEKLY BYSETPOS, and a YEARLY BYDAY ordinal counts within the month, not the year.
 fn occurs(rule: &str, first: NaiveDate, at: NaiveTime, day: NaiveDate, frame: ToLocal) -> bool {
     let r: HashMap<&str, &str> = rule.split(';').filter_map(|p| p.split_once('=')).collect();
     let n = r.get("INTERVAL").and_then(|v| v.parse::<i64>().ok()).unwrap_or(1).max(1);
@@ -310,12 +310,25 @@ fn occurs(rule: &str, first: NaiveDate, at: NaiveTime, day: NaiveDate, frame: To
     };
     let monday = |d: NaiveDate| d - Duration::days(d.weekday().num_days_from_monday() as i64);
     let month = |d: NaiveDate| d.year() as i64 * 12 + d.month0() as i64;
-    let hit = |d: NaiveDate| match r.get("FREQ").copied() {
+    let freq = r.get("FREQ").copied();
+    let base = |d: NaiveDate| match freq {
         Some("DAILY") => (d - first).num_days() % n == 0 && (by.is_empty() || weekday(d)),
         Some("WEEKLY") => (monday(d) - monday(first)).num_days() / 7 % n == 0 && if by.is_empty() { d.weekday() == first.weekday() } else { weekday(d) },
         Some("MONTHLY") => (month(d) - month(first)) % n == 0 && (months.is_empty() || months.contains(&(d.month() as i64))) && in_month(d),
         Some("YEARLY") => (d.year() - first.year()) as i64 % n == 0 && if months.is_empty() { d.month() == first.month() } else { months.contains(&(d.month() as i64)) } && in_month(d),
         _ => d == first,
+    };
+    // BYSETPOS (MONTHLY/YEARLY): only the Nth (negative: from the end) of the period's days that pass `base`;
+    // the period is the month, or the year for a YEARLY with several BYMONTHs.
+    let sp = nums("BYSETPOS");
+    let hit = |d: NaiveDate| {
+        base(d) && (sp.is_empty() || !matches!(freq, Some("MONTHLY" | "YEARLY")) || {
+            let year = freq == Some("YEARLY") && months.len() > 1;
+            let p0 = if year { d.with_ordinal(1) } else { d.with_day(1) }.unwrap_or(d);
+            let set: Vec<NaiveDate> = p0.iter_days().take_while(|x| x.year() == d.year() && (year || x.month() == d.month())).filter(|x| base(*x)).collect();
+            let i = set.iter().position(|x| *x == d).unwrap_or(0) as i64;
+            sp.contains(&(i + 1)) || sp.contains(&(i - set.len() as i64))
+        })
     };
     if day < first || until_passed(r.get("UNTIL"), day, at, frame) || !hit(day) {
         return false;
@@ -667,6 +680,17 @@ mod tests {
         assert_eq!(on("FREQ=YEARLY", "2024-02-29", &["2025-02-28", "2028-02-29"]), [false, true], "29 February only in leap years");
         assert_eq!(on("FREQ=YEARLY;INTERVAL=2;COUNT=2", "2024-03-10", &["2025-03-10", "2026-03-10", "2028-03-10"]), [false, true, false]);
         assert_eq!(on("FREQ=YEARLY;BYMONTH=11;BYDAY=4TH", "2025-11-27", &["2026-11-26", "2026-11-19"]), [true, false], "fourth Thursday of November");
+        // BYSETPOS, as Outlook writes "2nd Tuesday" and "last weekday".
+        assert_eq!(on("FREQ=MONTHLY;BYDAY=TU;BYSETPOS=2", "2026-01-13", &["2026-10-13", "2026-10-06", "2026-10-20", "2026-11-10"]), [true, false, false, true], "second Tuesday");
+        let wk = "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR";
+        assert_eq!(on(&format!("{wk};BYSETPOS=-1"), "2026-01-30", &["2026-10-30", "2026-10-29", "2026-10-31", "2026-11-30", "2026-02-27"]), [true, false, false, true, true], "last weekday");
+        assert_eq!(on(&format!("{wk};BYSETPOS=1,-1"), "2026-01-01", &["2026-10-01", "2026-10-30", "2026-10-02"]), [true, true, false], "first and last weekday");
+        assert_eq!(on("FREQ=MONTHLY;BYDAY=TU;BYSETPOS=5", "2026-03-31", &["2026-09-29", "2026-10-27"]), [true, false], "no fifth Tuesday in October");
+        assert_eq!(on("FREQ=MONTHLY;INTERVAL=2;BYDAY=TU;BYSETPOS=2", "2026-01-13", &["2026-02-10", "2026-03-10"]), [false, true]);
+        assert_eq!(on("FREQ=MONTHLY;COUNT=3;BYDAY=TU;BYSETPOS=2", "2026-01-13", &["2026-03-10", "2026-04-14"]), [true, false], "COUNT counts set positions only");
+        assert_eq!(on("FREQ=YEARLY;BYMONTH=3;BYDAY=SU;BYSETPOS=-1", "2025-03-30", &["2026-03-29", "2026-03-22"]), [true, false], "last Sunday of March");
+        assert_eq!(on("FREQ=YEARLY;BYMONTH=3,10;BYDAY=SU;BYSETPOS=-1", "2025-10-26", &["2026-10-25", "2026-03-29"]), [true, false], "several BYMONTHs count over the year");
+        assert_eq!(on("FREQ=WEEKLY;BYDAY=MO,TU;BYSETPOS=1", "2026-10-05", &["2026-10-06"]), [true], "WEEKLY BYSETPOS is ignored");
 
         // EXDATE and a moved occurrence work as for weekly series.
         let ics = ["BEGIN:VEVENT", "UID:m", "DTSTART:20260112T100000", "DTEND:20260112T110000", "RRULE:FREQ=MONTHLY;BYDAY=2MO", "EXDATE:20260209T100000", "SUMMARY:Review", "END:VEVENT",
