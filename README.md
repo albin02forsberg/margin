@@ -411,7 +411,8 @@ A day with 0 expected hours (a weekend, a public holiday, an extra day off or fu
 no free time.
 With a calendar set (`activity_calendar`, a local `.ics` file or an https URL), the day's timed events show as fixed hatched blocks with
 their summary: free time goes around them and a task on top of one is highlighted as an overlap, but they can't be
-selected, moved or planned into. An event crossing midnight shows up to or from midnight; all-day events and ones with neither `DTEND` nor `DURATION` are left out.
+selected, moved or planned into; double-click one to open its meeting note (as `Space n N`, created if new, with the
+clock-in offer when the shown day is today). An event crossing midnight shows up to or from midnight; all-day events and ones with neither `DTEND` nor `DURATION` are left out.
 The day's subtitle adds the meeting hours within working hours to the effort total (`~6h + 3h meetings / 7h 30m planned`), and the plan header shows the total free time (`3h 15m free`).
 If the calendar can't be read, the plan says "calendar not read" (hover for why) and shows only tasks.
 With a scheduled or due block selected, `J`/`K` move it 15 minutes later / earlier and `L`/`H` lengthen / shorten it by

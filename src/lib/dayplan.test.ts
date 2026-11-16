@@ -40,7 +40,8 @@ test("workHours: HH:MM pair in minutes, else 08:00-18:00; custom hours bound the
 
 test("calendar events: a 10:00-11:00 meeting splits a 09:00-12:00 gap, overlaps a task at 10:30, never selectable (#1378)", () => {
   const fx = fixedOn([{ start: `${D}T10:00:00`, end: `${D}T11:00:00`, summary: "Standup" }], D);
-  assert.deepEqual(fx, [{ start: 600, end: 660, title: "Standup" }]);
+  assert.deepEqual(fx, [{ start: 600, end: 660, title: "Standup", ev: { start: `${D}T10:00:00`, end: `${D}T11:00:00`, summary: "Standup", attendees: [] } }]);
+  assert.deepEqual(fixedOn([{ start: `${D}T10:00:00`, end: `${D}T11:00:00`, summary: "S", attendees: ["a@b"] }], D)[0].ev?.attendees, ["a@b"]); // the payload a double-click needs (#1383)
   const bs = blocks([it(1, "10:30", 30)], D, isDone, fx);
   assert.deepEqual(bs.map((b) => [b.i, b.fixed ?? false, b.start, b.end, b.overlap, b.lane, b.lanes]), [[-1, true, 600, 660, true, 0, 2], [0, false, 630, 660, true, 1, 2]]);
   assert.deepEqual(gaps(blocks([], D, isDone, fx), 540, 720).map(gapLabel), ["1h free 09:00–10:00", "1h free 11:00–12:00"]);
