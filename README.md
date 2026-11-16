@@ -823,7 +823,7 @@ headings `--h1` to `--h6`, surfaces `--card`, `--canvas`, fonts `--sans`, `--mon
 
 Use `:root[data-look]` (not plain `:root`) so your values win over the built-in light palette.
 
-**Init scripts:** every `*.ts` or `*.js` file in `init/` beside `config.toml` (e.g. `~/.config/dev.albin.margin/init/hello.ts` on Linux) runs once at startup, in name order (`a.js` and `a.ts` both run), and can add commands to the palette (`Ctrl+K`). TypeScript is the recommended form: its types are stripped before it runs (no type check at runtime; one file per script, no `import`), and a script that doesn't parse is reported like one that throws. `*.d.ts` files are never run.
+**Init scripts:** every `*.ts` or `*.js` file in `init/` beside `config.toml` (e.g. `~/.config/dev.albin.margin/init/hello.ts` on Linux) runs once at startup, in name order (`a.js` and `a.ts` both run), and can add commands to the palette (`Ctrl+K`). TypeScript is the recommended form: its types are stripped before it runs (no type check at runtime; one file per script, no `import`), and a script that doesn't parse is reported like one that throws. `*.d.ts` files are never run. **Write init script types** (palette) creates `init/margin.d.ts` with the types of `margin` for your editor (it never overwrites an existing file).
 
 ```ts
 // init/hello.ts
