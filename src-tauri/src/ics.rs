@@ -232,11 +232,14 @@ fn wall(z: &[Onset], utc: NaiveDateTime) -> NaiveDateTime {
     utc + s(utc + s(utc))
 }
 
-/// The VTIMEZONE of E's DTSTART TZID; None for a floating, `…Z` or unknown-zone start.
+/// UTC as a zone: no offset, ever.
+static UTC: [Onset; 1] = [Onset { start: NaiveDateTime::MIN, from: 0, to: 0, rule: None }];
+
+/// The VTIMEZONE of E's DTSTART TZID, UTC for a `…Z` start; None for a floating or unknown-zone start.
 fn start_zone<'a>(e: &Props, zones: &'a Zones) -> Option<&'a [Onset]> {
     let (_, params, v) = e.iter().find(|x| x.0 == "DTSTART")?;
     if v.ends_with('Z') {
-        return None;
+        return Some(&UTC);
     }
     zones.get(param(params, "TZID")?).map(|z| z.as_slice())
 }
@@ -409,7 +412,7 @@ pub fn events_in(p: &Parsed, day: NaiveDate) -> Vec<Event> {
 
 /// `events_in`, shown in the zone TO_LOCAL converts UTC to. A TZID with a VTIMEZONE is honoured: a
 /// series is expanded on its zone's days (with its EXDATEs and RECURRENCE-IDs read there) and each
-/// occurrence converted; a series with a floating, UTC or unknown-zone start is expanded on local days.
+/// occurrence converted; a UTC series is expanded on UTC days likewise; one with a floating or unknown-zone start on local days.
 fn events_in_at(p: &Parsed, day: NaiveDate, to_local: ToLocal) -> Vec<Event> {
     let (evs, moved) = (&p.evs, &p.moved);
     let (d0, d1) = (day.and_time(NaiveTime::MIN), (day + Duration::days(1)).and_time(NaiveTime::MIN));
@@ -543,7 +546,7 @@ mod tests {
     }
 
     #[test]
-    fn utc_exdate_and_recurrence_id_use_the_local_day() {
+    fn utc_exdate_and_recurrence_id_use_the_utc_day() {
         let on = |ics: &str, day: NaiveDate| events_on(ics, day);
         let local = |v: &str| when(v, &local).unwrap().date();
         let base = "BEGIN:VEVENT\nUID:a\nDTSTART:20260105T233000Z\nDTEND:20260106T000000Z\nRRULE:FREQ=WEEKLY\n";
@@ -552,6 +555,18 @@ mod tests {
         assert!(on(&ics, d1).is_empty(), "EXDATE");
         assert!(on(&ics, d2).is_empty(), "moved");
         assert_eq!(on(&ics, d3).len(), 1, "other weeks stay");
+    }
+
+    #[test]
+    fn utc_series_keeps_its_utc_time_across_dst() {
+        let win = "BEGIN:VTIMEZONE\nTZID:W\nBEGIN:STANDARD\nDTSTART:16010101T020000\nTZOFFSETFROM:+0200\nTZOFFSETTO:+0100\nRRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU\nEND:STANDARD\n\
+            BEGIN:DAYLIGHT\nDTSTART:16010101T020000\nTZOFFSETFROM:+0100\nTZOFFSETTO:+0200\nRRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU\nEND:DAYLIGHT\nEND:VTIMEZONE\n";
+        let p = parse(&format!("BEGIN:VCALENDAR\n{win}BEGIN:VEVENT\nUID:a\nDTSTART:20260302T150000Z\nDTEND:20260302T160000Z\nRRULE:FREQ=WEEKLY\nEXDATE:20260413T150000Z\nSUMMARY:X\nEND:VEVENT\nEND:VCALENDAR"));
+        let at = |d: &str| events_in_at(&p, d.parse().unwrap(), &|t| wall(&p.zones["W"], t)).into_iter().map(|e| e.start.to_string()).collect::<Vec<_>>();
+        assert_eq!(at("2026-03-23"), ["2026-03-23 16:00:00"]);
+        assert_eq!(at("2026-03-30"), ["2026-03-30 17:00:00"]);
+        assert!(at("2026-04-13").is_empty(), "EXDATE");
+        assert_eq!(at("2026-04-20"), ["2026-04-20 17:00:00"]);
     }
 
     #[test]
