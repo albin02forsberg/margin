@@ -2795,3 +2795,19 @@ describe("vim_init", () => {
     await fileMatches(join(d.notes, "vi.org"), (s) => s.trimEnd() === "#+title: Vi\n\nx", "jk was typed instead of leaving insert mode");
   });
 });
+
+describe("Init scripts", () => {
+  before(async () => {
+    await launch({ tutorial: false, files: ({ cfgDir }) => {
+      mkdirSync(join(cfgDir, "init"));
+      writeFileSync(join(cfgDir, "init", "hello.js"), `margin.register({ label: "Hello: from init script", run: () => {} });`);
+      writeFileSync(join(cfgDir, "init", "zbad.js"), `throw new Error("boom");`);
+    } });
+  });
+  after(close, { timeout: 30_000 });
+
+  it("a command registered by init/*.js is in the palette; a throwing script is reported (#1417)", async () => {
+    await find(".status .msg", "init/zbad.js: boom");
+    await palette("Hello: from init script");
+  });
+});

@@ -823,6 +823,15 @@ headings `--h1` to `--h6`, surfaces `--card`, `--canvas`, fonts `--sans`, `--mon
 
 Use `:root[data-look]` (not plain `:root`) so your values win over the built-in light palette.
 
+**Init scripts:** every `*.js` file in `init/` beside `config.toml` (e.g. `~/.config/dev.albin.margin/init/hello.js` on Linux) runs once at startup, in name order, and can add commands to the palette (`Ctrl+K`):
+
+```js
+// init/hello.js
+margin.register({ label: "Hello: say hi", run: () => alert("hi") }); // optional: keys, leader, ctx
+```
+
+A command with the label of a built-in replaces it. A script that throws is reported in the message line by file name; the others still run. Scripts are plain JavaScript with full access to the app (as trusted as `config.toml`), so only put code there you wrote or read. Restart to pick up changes.
+
 **Themes:** a look file can bring its layout along. Start it with a `/* layout: rail */` comment (any layout name;
 `/* layout: */` means the default), then pick it with **View: pick a theme** in the palette (`Ctrl+K`): that saves both
 `look` and `layout` to config.toml. Choosing it under **Settings → Editor → Look** fills in **Layout** the same way, saved

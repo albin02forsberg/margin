@@ -213,6 +213,21 @@ fn looks_in(dir: &Path) -> Vec<String> {
     v
 }
 
+/// The user init scripts: `{name, text}` of each `*.js` in `init/` beside config.toml, sorted by name. Never creates the dir.
+#[tauri::command]
+fn list_init_scripts(s: State<App>) -> Vec<serde_json::Value> {
+    init_scripts_in(&s.cfg_path.with_file_name("init"))
+}
+
+fn init_scripts_in(dir: &Path) -> Vec<serde_json::Value> {
+    let mut v: Vec<(String, String)> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path())
+        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "js"))
+        .filter_map(|p| Some((p.file_name()?.to_str()?.to_string(), std::fs::read_to_string(&p).ok()?)))
+        .collect();
+    v.sort();
+    v.into_iter().map(|(name, text)| serde_json::json!({ "name": name, "text": text })).collect()
+}
+
 #[tauri::command]
 fn list_looks(s: State<App>) -> Vec<String> {
     looks_in(&looks_dir(&s))
@@ -4157,7 +4172,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             watcher::gnome_extension, watcher::screen_recording, remind::remind_snooze,
-            config, config_recreate, tutorial, list_looks, read_look, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, md_import, highlights_import, unused_attachments, trash_attachments,
+            config, config_recreate, tutorial, list_init_scripts, list_looks, read_look, update_check, reload_config, save_view, setup, save_config, list_files, read_file, file_exists, write_file, attach_file, attach_bytes, md_import, highlights_import, unused_attachments, trash_attachments,
             agenda, overdue_scheduled, todos, habit_overview, search_todos, org_heading, org_edit, org_sort, org_planning, read_date, date_stamp, read_past_date, org_context,
             take_open_paths, org_targets, org_tags, drill_cards, metric_trend, org_refile, org_refile_many, org_archive_many, org_refile_same, org_refile_same_many, org_refile_copy, org_refile_copy_same, org_clone, note_extract, note_duplicate, crypt_lock, crypt_unlock, crypt_rekey, crypt_relock, crypt_remove, crypt_forget, idle::idle_has_source, org_archive, org_archive_done, capture_insert, ledger_add, ledger_month, ledger_week, ledger_month_review, ledger_year, ledger_projects, ledger_csv, ledger_import_preview, ledger_import, ledger_accept, ledger_accept_all, ledger_recurring, ledger_recurring_file, ledger_recurring_mark, capture_path, meeting_events, meeting_note, capture_templates, note_templates, template_prompts, capture_template, task_entry, date_preview, tc_dashboard, tc_project_hours, expected_hours_for,
             notes_new, note_titles, notes_nodes, notes_backlinks, retitle_candidates, retitle_links, rename_note, move_note, merge_note, trash_note, trashed_notes, restore_note, notes_search, notes_occur, notes_graph, notes_orphans, notes_broken_links, notes_web_links, notes_crypt_unlocked, org_stuck, org_goals, notes_recent, notes_stale, note_history, note_version, transclude_text, notes_tags, notes_tagged, tag_rename, tag_renames, notes_replace, tag_rename_undo, retag_queries, person_view, people_last, waiting_for, inbox_count, inbox_entries, notes_unlinked, notes_ensure_id, notes_heading_id, org_blockers, org_blocked_at,
@@ -4203,6 +4218,11 @@ mod tests {
         }
         assert_eq!(super::looks_in(&d), ["mine", "zed"]);
         assert!(super::looks_in(&d.join("missing")).is_empty());
+        std::fs::write(d.join("b.js"), "2").unwrap();
+        std::fs::write(d.join("a.js"), "1").unwrap();
+        let v = super::init_scripts_in(&d);
+        assert_eq!((v.len(), v[0]["name"].as_str(), v[1]["text"].as_str()), (2, Some("a.js"), Some("2")));
+        assert!(super::init_scripts_in(&d.join("missing")).is_empty());
         std::fs::remove_dir_all(&d).unwrap();
     }
 

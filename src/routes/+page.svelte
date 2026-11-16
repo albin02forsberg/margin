@@ -31,6 +31,7 @@
   import { resumeOffer, type Clock } from "$lib/interrupt";
   import { pickStale } from "$lib/stale";
   import { visibleCmds } from "$lib/areas";
+  import { mergeCmds, registry, runScripts } from "$lib/commands";
   import { lineDiff } from "$lib/linediff";
   import { ago, changed, findNote, altTab, findTab, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, resolvePath, weekJournals } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
@@ -4196,7 +4197,14 @@
     { label: "Export: time report (HTML/PDF)…", leader: "e t", run: exportReport },
   ];
   /** `cmds` without the areas hidden in Settings (`hidden_areas`): palette, keys and Space menu all use this. */
-  const shownCmds = $derived(visibleCmds(cmds, cfg?.config.hidden_areas ?? []));
+  let userCmds = $state<Cmd[]>([]);
+  /** Run the init scripts (config dir `init/*.js`) once at startup; they add palette commands via `margin.register`. */
+  async function loadInit() {
+    const reg = registry();
+    runScripts(await call<{ name: string; text: string }[]>("list_init_scripts"), reg, flash);
+    userCmds = reg.list;
+  }
+  const shownCmds = $derived(visibleCmds(mergeCmds(cmds, userCmds), cfg?.config.hidden_areas ?? []));
 
   const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", i: "Insert", T: "Table", m: "Bookmarks", s: "Search", t: "Time tracking", e: "Export", v: "Go to & view", b: "Tabs", w: "Split view", l: "Links" };
   const leader: MenuNode[] = $derived.by(() => {
@@ -4440,6 +4448,7 @@
     const gotVersion = getVersion().then((v) => (version = v), () => ""); // show nothing if it fails
     act(async () => {
       cfg = await call("config");
+      loadInit().catch((e) => flash(`⚠ init scripts: ${e}`));
       view = new EditorView({ parent: editorEl! });
       ed.hooks.save = () => act(() => saveTab(tab, true));
       ed.hooks.saveAll = () => act(saveAll);
