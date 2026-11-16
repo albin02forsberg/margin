@@ -157,6 +157,8 @@ pub struct Config {
     pub ledger_review_recurring: bool,
     /// Areas ("ledger", "habits", "flashcards", "goals") whose commands leave the palette and Space menu; files are untouched.
     pub hidden_areas: Vec<String>,
+    /// Bundled packages (`src/lib/packages/`, e.g. "insert-timestamp") not loaded at startup.
+    pub disabled_packages: Vec<String>,
     /// Zen mode (`Space v z`) also makes the window fullscreen.
     pub zen_fullscreen: bool,
     /// Colour theme: `light` or `dark`; anything else (empty) follows the system.
@@ -382,6 +384,7 @@ impl Default for Config {
             ledger_recurring: vec![],
             ledger_review_recurring: true,
             hidden_areas: vec![],
+            disabled_packages: vec![],
             zen_fullscreen: false,
             theme: String::new(),
             look: String::new(),
@@ -856,6 +859,8 @@ mod tests {
         assert!(!toml::from_str::<Config>(mine).unwrap().zen_fullscreen);
         assert!(save(mine, t("zen_fullscreen = true"), &[]).unwrap().1.zen_fullscreen);
         assert_eq!(save(mine, t("hidden_areas = [\"ledger\"]"), &[]).unwrap().1.hidden_areas, ["ledger"]);
+        assert!(toml::from_str::<Config>(mine).unwrap().disabled_packages.is_empty()); // old configs load every package
+        assert_eq!(save(mine, t("disabled_packages = [\"insert-timestamp\"]"), &[]).unwrap().1.disabled_packages, ["insert-timestamp"]);
     }
 
     #[test]

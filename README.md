@@ -852,6 +852,8 @@ margin.on("save", (path) => console.log("saved", path));
 
 **Reload init scripts** (palette) re-reads `init/*.js` without a restart: commands, bindings, hooks and `config.set` values from the previous run are dropped first.
 
+**Bundled packages:** some built-in features ship as packages on this same `margin` API (today `insert-timestamp`, the `Space i D` command). They load before your scripts, so a script command with the same label replaces theirs. Untick one under **Settings → Areas → Bundled packages** (`disabled_packages = ["insert-timestamp"]` in config.toml) to not load it; this applies on restart or **Reload init scripts**, not through `margin.config.set`. In the source, a package is a module in `src/lib/packages/` exporting `{ id, load(margin) }`, listed in `src/lib/packages/index.ts`.
+
 **Themes:** a look file can bring its layout along. Start it with a `/* layout: rail */` comment (any layout name;
 `/* layout: */` means the default), then pick it with **View: pick a theme** in the palette (`Ctrl+K`): that saves both
 `look` and `layout` to config.toml. Choosing it under **Settings → Editor → Look** fills in **Layout** the same way, saved
