@@ -213,7 +213,7 @@ fn looks_in(dir: &Path) -> Vec<String> {
     v
 }
 
-/// The user init scripts: `{name, text}` of each `*.js` in `init/` beside config.toml, sorted by name. Never creates the dir.
+/// The user init scripts: `{name, text}` of each `*.js` / `*.ts` (not `*.d.ts`) in `init/` beside config.toml, sorted by name. Never creates the dir.
 #[tauri::command]
 fn list_init_scripts(s: State<App>) -> Vec<serde_json::Value> {
     init_scripts_in(&s.cfg_path.with_file_name("init"))
@@ -221,8 +221,9 @@ fn list_init_scripts(s: State<App>) -> Vec<serde_json::Value> {
 
 fn init_scripts_in(dir: &Path) -> Vec<serde_json::Value> {
     let mut v: Vec<(String, String)> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path())
-        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "js"))
+        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "js" || e == "ts"))
         .filter_map(|p| Some((p.file_name()?.to_str()?.to_string(), std::fs::read_to_string(&p).ok()?)))
+        .filter(|(n, _)| !n.ends_with(".d.ts"))
         .collect();
     v.sort();
     v.into_iter().map(|(name, text)| serde_json::json!({ "name": name, "text": text })).collect()
@@ -4220,8 +4221,11 @@ mod tests {
         assert!(super::looks_in(&d.join("missing")).is_empty());
         std::fs::write(d.join("b.js"), "2").unwrap();
         std::fs::write(d.join("a.js"), "1").unwrap();
+        std::fs::write(d.join("a.ts"), "3").unwrap();
+        std::fs::write(d.join("margin.d.ts"), "").unwrap();
         let v = super::init_scripts_in(&d);
-        assert_eq!((v.len(), v[0]["name"].as_str(), v[1]["text"].as_str()), (2, Some("a.js"), Some("2")));
+        let names: Vec<_> = v.iter().map(|x| x["name"].as_str().unwrap()).collect();
+        assert_eq!((names, v[2]["text"].as_str()), (vec!["a.js", "a.ts", "b.js"], Some("2")));
         assert!(super::init_scripts_in(&d.join("missing")).is_empty());
         std::fs::remove_dir_all(&d).unwrap();
     }

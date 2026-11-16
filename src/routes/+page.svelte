@@ -31,7 +31,7 @@
   import { resumeOffer, type Clock } from "$lib/interrupt";
   import { pickStale } from "$lib/stale";
   import { visibleCmds } from "$lib/areas";
-  import { applyBinds, mergeCmds, session, type Host } from "$lib/commands";
+  import { applyBinds, mergeCmds, session, toJs, type Host } from "$lib/commands";
   import { loadPackages } from "$lib/packages/index";
   import { lineDiff } from "$lib/linediff";
   import { ago, changed, findNote, altTab, findTab, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, resolvePath, weekJournals } from "$lib/paths";
@@ -4215,7 +4215,7 @@
     },
     reload: () => loadInit(),
   };
-  /** The current run of the init scripts (config dir `init/*.js`): its commands, key bindings, hooks and config overrides. */
+  /** The current run of the init scripts (config dir `init/*.ts`, `*.js`): its commands, key bindings, hooks and config overrides. */
   let init = session(initHost, flash);
   let userCmds = $state<Cmd[]>([]), userBinds = $state.raw(new Map<string, string[]>());
   /** config with this session's `margin.config.set` overrides on top (never written to config.toml). */
@@ -4227,7 +4227,7 @@
   /** Load the bundled packages (`src/lib/packages/`, minus `disabled_packages`), then run the init scripts, dropping all the
    *  previous run added: at startup and from "Reload init scripts" / `margin.reload()`. */
   async function loadInit() {
-    const scripts = await call<{ name: string; text: string }[]>("list_init_scripts");
+    const scripts = await toJs(await call<{ name: string; text: string }[]>("list_init_scripts"), flash);
     const had = Object.keys(init.over).length;
     init = session(initHost, flash);
     if (had) cfg = await loadCfg();

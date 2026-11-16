@@ -823,14 +823,14 @@ headings `--h1` to `--h6`, surfaces `--card`, `--canvas`, fonts `--sans`, `--mon
 
 Use `:root[data-look]` (not plain `:root`) so your values win over the built-in light palette.
 
-**Init scripts:** every `*.js` file in `init/` beside `config.toml` (e.g. `~/.config/dev.albin.margin/init/hello.js` on Linux) runs once at startup, in name order, and can add commands to the palette (`Ctrl+K`):
+**Init scripts:** every `*.ts` or `*.js` file in `init/` beside `config.toml` (e.g. `~/.config/dev.albin.margin/init/hello.ts` on Linux) runs once at startup, in name order (`a.js` and `a.ts` both run), and can add commands to the palette (`Ctrl+K`). TypeScript is the recommended form: its types are stripped before it runs (no type check at runtime; one file per script, no `import`), and a script that doesn't parse is reported like one that throws. `*.d.ts` files are never run.
 
-```js
-// init/hello.js
-margin.register({ label: "Hello: say hi", run: () => alert("hi") }); // optional: keys, leader, ctx
+```ts
+// init/hello.ts
+margin.register({ label: "Hello: say hi", run: (): void => alert("hi") }); // optional: keys, leader, ctx
 ```
 
-A command with the label of a built-in replaces it. A script that throws is reported in the message line by file name; the others still run. Scripts are plain JavaScript with full access to the app (as trusted as `config.toml`), so only put code there you wrote or read.
+A command with the label of a built-in replaces it. A script that throws is reported in the message line by file name; the others still run. Scripts have full access to the app (as trusted as `config.toml`), so only put code there you wrote or read.
 
 The `margin` object scripts get:
 
@@ -843,14 +843,14 @@ The `margin` object scripts get:
 | `margin.on("save" \| "open" \| "startup", fn)` | hooks: `save` after a note is written (`fn(path)`, autosave included), `open` when a note is loaded into a tab (`fn(path)`), `startup` after the scripts ran. A failing hook is reported in the message line. A `save` hook may edit the note: the save that edit causes skips the hooks, so it doesn't loop |
 | `margin.reload()` | re-run the scripts, like **Reload init scripts** in the palette; ignored inside a `startup` hook (it would rerun itself forever) |
 
-```js
-// init/stamp.js
+```ts
+// init/stamp.ts
 margin.command({ label: "Insert: timestamp", run: () => margin.buffer.insert(new Date().toISOString()) });
 margin.bind("Ctrl+Alt+J", "Insert: timestamp");
-margin.on("save", (path) => console.log("saved", path));
+margin.on("save", (path: string) => console.log("saved", path));
 ```
 
-**Reload init scripts** (palette) re-reads `init/*.js` without a restart: commands, bindings, hooks and `config.set` values from the previous run are dropped first.
+**Reload init scripts** (palette) re-reads `init/` without a restart: commands, bindings, hooks and `config.set` values from the previous run are dropped first.
 
 **Bundled packages:** some built-in features ship as packages on this same `margin` API (today `insert-timestamp`, the `Space i D` command). They load before your scripts, so a script command with the same label replaces theirs. Untick one under **Settings → Areas → Bundled packages** (`disabled_packages = ["insert-timestamp"]` in config.toml) to not load it; this applies on restart or **Reload init scripts**, not through `margin.config.set`. In the source, a package is a module in `src/lib/packages/` exporting `{ id, load(margin) }`, listed in `src/lib/packages/index.ts`.
 

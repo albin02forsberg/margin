@@ -2805,6 +2805,9 @@ describe("Init scripts", () => {
 margin.command({ label: "Hello: stamp", run: () => margin.buffer.insert("stamped ") });
 margin.bind("Ctrl+Alt+J", "Hello: stamp");`);
       writeFileSync(join(cfgDir, "init", "zbad.js"), `throw new Error("boom");`);
+      writeFileSync(join(cfgDir, "init", "typed.ts"), `interface Cmd { label: string; run: () => void }
+const c: Cmd = { label: "Hello: typed script", run: (): void => {} };
+margin.register(c);`);
       writeFileSync(join(notes, "stamp.org"), "#+title: Stamp\n");
     } });
   });
@@ -2813,6 +2816,10 @@ margin.bind("Ctrl+Alt+J", "Hello: stamp");`);
   it("a command registered by init/*.js is in the palette; a throwing script is reported (#1417)", async () => {
     await find(".status .msg", "init/zbad.js: boom");
     await palette("Hello: from init script");
+  });
+
+  it("a typed init/*.ts script registers a palette command (#1425)", async () => {
+    await palette("Hello: typed script");
   });
 
   it("a key bound by margin.bind runs a command that edits the focused buffer (#1418)", async () => {

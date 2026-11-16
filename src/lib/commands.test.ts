@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyBinds, mergeCmds, registry, runScripts, session } from "./commands.ts";
+import { applyBinds, mergeCmds, registry, runScripts, session, stripTypes, toJs } from "./commands.ts";
 
 test("scripts register commands; duplicates replace; errors are reported", () => {
   const r = registry(), errs: string[] = [];
@@ -102,4 +102,18 @@ test("reload() inside a startup hook is ignored; outside it works", async () => 
   assert.deepEqual(errs, Array(2).fill("⚠ init: reload() ignored inside a startup hook"));
   s.api.reload();
   assert.equal(h.reloads, 1);
+});
+
+test("init/*.ts scripts have their types stripped; .js is untouched; bad syntax is reported and the rest run (#1425)", async () => {
+  const ts = "enum E { A = 1 }\ninterface P { n: number }\nconst f = (p: P): number => p.n ?? E.A;\nmargin.register({ label: 'T' + f({ n: 2 }), run: (): void => {} });";
+  const js = await stripTypes("a.ts", ts);
+  assert.doesNotMatch(js, /interface|: number|: void/);
+  assert.match(js, /\?\?/, "ES syntax is left alone");
+  assert.equal(await stripTypes("a.js", "let x: number"), "let x: number");
+  await assert.rejects(stripTypes("bad.ts", "let x: = 1"));
+  const r = registry(), errs: string[] = [];
+  runScripts(await toJs([{ name: "a.ts", text: ts }, { name: "bad.ts", text: "let x: = 1" }, { name: "b.js", text: "margin.register({ label: 'J', run: () => 0 })" }], (m) => errs.push(m)), r, (m) => errs.push(m));
+  assert.deepEqual(r.list.map((c) => c.label), ["T2", "J"]);
+  assert.equal(errs.length, 1);
+  assert.match(errs[0], /^⚠ init\/bad\.ts: /);
 });

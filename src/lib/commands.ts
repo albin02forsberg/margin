@@ -1,4 +1,4 @@
-// User commands registered by init scripts (`init/*.js` in the config dir). Built-in palette commands stay in +page.svelte.
+// User commands registered by init scripts (`init/*.ts` or `*.js` in the config dir). Built-in palette commands stay in +page.svelte.
 export type UserCmd = { label: string; keys?: string[]; leader?: string; ctx?: "editor" | "normal"; run: () => unknown };
 
 /** Registry of user commands: a duplicate label replaces the earlier one. */
@@ -19,6 +19,21 @@ export function mergeCmds<T extends { label: string }>(builtin: T[], user: T[]):
 }
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** JS for init script NAME: a `.ts` one has its types stripped (sucrase, loaded only when needed; no type check); throws on bad syntax. */
+export async function stripTypes(name: string, text: string) {
+  if (!name.endsWith(".ts")) return text;
+  const { transform } = await import("sucrase");
+  return transform(text, { transforms: ["typescript"], disableESTransforms: true }).code;
+}
+
+/** SCRIPTS as JS; one that fails to transform is reported like a throwing script and left out. */
+export async function toJs(scripts: { name: string; text: string }[], report: (msg: string) => void) {
+  const out = await Promise.all(scripts.map(async (s) => {
+    try { return { name: s.name, text: await stripTypes(s.name, s.text) }; } catch (e) { report(`⚠ init/${s.name}: ${msg(e)}`); }
+  }));
+  return out.filter((s) => s !== undefined);
+}
 
 /** Run each script (sorted by the caller) with a `margin` API; a throwing script is reported by name and the rest still run. */
 export function runScripts(scripts: { name: string; text: string }[], api: object, report: (msg: string) => void) {
