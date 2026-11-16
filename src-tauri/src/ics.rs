@@ -320,8 +320,8 @@ fn occurs(rule: &str, first: NaiveDate, at: NaiveTime, day: NaiveDate, frame: To
     if day < first || until_passed(r.get("UNTIL"), day, at, frame) || !hit(day) {
         return false;
     }
-    // ponytail: walks the series day by day for COUNT; fine for a few years of a series.
-    r.get("COUNT").and_then(|v| v.parse::<usize>().ok()).is_none_or(|c| first.iter_days().take_while(|d| *d <= day).filter(|d| hit(*d)).count() <= c)
+    // COUNT: walks the series day by day but stops at hit COUNT+1, so the cost is the series' length, not its age.
+    r.get("COUNT").and_then(|v| v.parse::<usize>().ok()).is_none_or(|c| first.iter_days().take_while(|d| *d <= day).filter(|d| hit(*d)).nth(c).is_none())
 }
 
 /// Timed events of an .ics TEXT that overlap DAY, recurring ones (see `occurs`) included,
@@ -654,6 +654,7 @@ mod tests {
         assert_eq!(on("FREQ=MONTHLY;BYMONTHDAY=1,-1", "2026-01-01", &["2026-02-01", "2026-02-28", "2026-02-27"]), [true, true, false], "first and last day");
         assert_eq!(on("FREQ=MONTHLY;INTERVAL=2", "2026-01-15", &["2026-02-15", "2026-03-15", "2027-01-15"]), [false, true, true], "every other month, across a year");
         assert_eq!(on("FREQ=MONTHLY;COUNT=3", "2026-01-15", &["2026-03-15", "2026-04-15"]), [true, false]);
+        assert_eq!(on("FREQ=WEEKLY;COUNT=3", "2020-01-06", &["2020-01-13", "2020-01-20", "2020-01-27", "2026-01-05"]), [true, true, false, false], "3rd hit in, 4th and years later out");
         assert_eq!(on("FREQ=MONTHLY;UNTIL=20260301T000000Z", "2026-01-15", &["2026-02-15", "2026-03-15"]), [true, false]);
         assert_eq!(on("FREQ=MONTHLY;UNTIL=20260301", "2026-01-15", &["2026-02-15", "2026-03-15"]), [true, false], "date-only UNTIL");
         assert_eq!(on("FREQ=DAILY;UNTIL=20260301", "2026-01-15", &["2026-03-01", "2026-03-02"]), [true, false], "date-only UNTIL is inclusive");
