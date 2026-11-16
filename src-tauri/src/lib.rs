@@ -2860,7 +2860,7 @@ fn meetings_and_calendar(c: &Config, d: NaiveDate, load: impl FnOnce(&str) -> R<
 fn calendar_on(c: &Config, d: NaiveDate, load: impl FnOnce(&str) -> R<String>) -> (Vec<ics::Event>, Option<String>) {
     match c.activity_calendar.trim() {
         "" => (vec![], None),
-        p => load(p).map_or_else(|e| (vec![], Some(e)), |t| (ics::events_on(&t, d), None)),
+        p => load(p).map_or_else(|e| (vec![], Some(e)), |t| (ics::events_in(&ics::parse_cached(&t), d), None)),
     }
 }
 
