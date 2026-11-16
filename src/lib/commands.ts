@@ -29,13 +29,18 @@ export function runScripts(scripts: { name: string; text: string }[], api: objec
 
 export type Hook = "save" | "open" | "startup";
 /** What the page lends the scripts: the live config (overrides included), an in-memory config setter, the focused buffer, reload. */
-export type Host = { config: () => Record<string, unknown>; setConfig: (key: string, value: unknown) => void; buffer: object; reload: () => unknown };
+export type Host = { config: () => Record<string, unknown>; setConfig: (key: string, value: unknown) => void; buffer: { path?: string; [k: string]: any }; reload: () => unknown };
 
 /** One run of the init scripts and everything it added (commands, key bindings, hooks, config overrides).
  *  Reload throws the whole session away and starts a new one, so nothing from the previous run survives. */
 export function session(host: Host, report: (msg: string) => void) {
   const reg = registry(), binds = new Map<string, string[]>(), over: Record<string, unknown> = {};
   const hooks: Record<Hook, ((...a: unknown[]) => unknown)[]> = { save: [], open: [], startup: [] };
+  /** Hooks of each kind still running (an async one until it settles), and paths a `save` hook edited. */
+  const active: Record<Hook, number> = { save: 0, open: 0, startup: 0 }, edited = new Set<string>();
+  /** Buffer edits made by a `save` hook mark the buffer, so the autosave they cause skips the hooks (no edit → save → edit loop). */
+  const marking = (f: (...a: any[]) => unknown) => (...a: any[]) => { if (active.save && host.buffer.path) edited.add(host.buffer.path); return f(...a); };
+  const buffer = Object.create(host.buffer, Object.fromEntries(["insert", "replace"].filter((k) => typeof host.buffer[k] === "function").map((k) => [k, { value: marking(host.buffer[k]) }])));
   const api = {
     command: reg.register,
     register: reg.register,
@@ -51,14 +56,22 @@ export function session(host: Host, report: (msg: string) => void) {
     },
     /** Like Emacs `setq`: set changes the setting for this session only and never writes config.toml. */
     config: { get: (k: string) => host.config()[k], set: (k: string, v: unknown) => { over[k] = v; host.setConfig(k, v); } },
-    buffer: host.buffer,
-    reload: host.reload,
+    buffer,
+    /** Ignored inside a `startup` hook, which would otherwise rerun itself forever. */
+    reload: () => (active.startup ? report("⚠ init: reload() ignored inside a startup hook") : host.reload()),
   };
-  /** Call H's hooks with ARGS; a throwing or rejecting hook is reported and the others still run. */
+  /** Call H's hooks with ARGS; a throwing or rejecting hook is reported and the others still run.
+   *  A save of a path a `save` hook edited skips the hooks once. */
   const emit = (h: Hook, ...args: unknown[]) => {
+    if (h === "save" && edited.delete(args[0] as string)) return;
     for (const f of hooks[h]) {
-      const bad = (e: unknown) => report(`⚠ init ${h} hook: ${msg(e)}`);
-      try { const r = f(...args); if (r instanceof Promise) r.catch(bad); } catch (e) { bad(e); }
+      const bad = (e: unknown) => report(`⚠ init ${h} hook: ${msg(e)}`), done = () => void active[h]--;
+      active[h]++;
+      try {
+        const r = f(...args);
+        if (r instanceof Promise) { r.catch(bad).finally(done); continue; }
+      } catch (e) { bad(e); }
+      done();
     }
   };
   /** Run SCRIPTS, then report bindings to commands that are neither in KNOWN (the built-ins) nor registered. */

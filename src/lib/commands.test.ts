@@ -65,3 +65,41 @@ test("mergeCmds puts user commands last and lets them override", () => {
   const m = mergeCmds([{ label: "A" }, { label: "B" }], [{ label: "A" }, { label: "C" }]);
   assert.deepEqual(m.map((c) => c.label), ["B", "A", "C"]);
 });
+
+/** A host whose buffer is one note: insert appends; emit("save") stands in for the autosave after each edit. */
+const noteHost = () => {
+  const h = { ...host(), doc: "", reloads: 0 };
+  return Object.assign(h, { buffer: { path: "n.org", insert: (t: string) => { h.doc += t; } }, reload: () => { h.reloads++; } });
+};
+const tick = () => new Promise((r) => setTimeout(r));
+
+for (const kind of ["sync", "async"]) test(`a ${kind} save hook that always edits causes one extra save, not a loop`, async () => {
+  const h = noteHost(), s = session(h, () => {});
+  let calls = 0;
+  s.api.on("save", kind === "sync" ? () => { calls++; s.api.buffer.insert("."); } : async () => { await null; calls++; s.api.buffer.insert("."); });
+  for (let i = 0; i < 3; i++) { s.emit("save", "n.org"); await tick(); } // user save, the save the hook caused, a later save
+  assert.equal(calls, 2); // the save the hook caused skipped it
+  assert.equal(h.doc, "..");
+});
+
+test("a throwing save hook clears its flag; edits outside hooks don't mark the buffer", () => {
+  const h = noteHost(), errs: string[] = [], s = session(h, (m) => errs.push(m));
+  let calls = 0;
+  s.api.on("save", () => { calls++; throw new Error("x"); });
+  s.api.buffer.insert("typed");
+  s.emit("save", "n.org"); s.emit("save", "n.org");
+  assert.equal(calls, 2);
+  assert.equal(errs.length, 2);
+});
+
+test("reload() inside a startup hook is ignored; outside it works", async () => {
+  const h = noteHost(), errs: string[] = [], s = session(h, (m) => errs.push(m));
+  s.api.on("startup", () => s.api.reload());
+  s.api.on("startup", async () => { await null; s.api.reload(); });
+  s.emit("startup");
+  await tick();
+  assert.equal(h.reloads, 0);
+  assert.deepEqual(errs, Array(2).fill("⚠ init: reload() ignored inside a startup hook"));
+  s.api.reload();
+  assert.equal(h.reloads, 1);
+});
