@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mergeCmds, registry, runScripts } from "./commands.ts";
+import { applyBinds, mergeCmds, registry, runScripts, session } from "./commands.ts";
 
 test("scripts register commands; duplicates replace; errors are reported", () => {
   const r = registry(), errs: string[] = [];
@@ -12,6 +12,53 @@ test("scripts register commands; duplicates replace; errors are reported", () =>
   assert.equal(r.list.length, 1);
   assert.equal(r.list[0].run(), 2);
   assert.deepEqual(errs, ["⚠ init/b.js: boom", "⚠ init/c.js: register needs { label, run }"]);
+});
+
+const host = () => {
+  const cfg: Record<string, unknown> = { font_size: 14 }, log: string[] = [], seen: unknown[] = [];
+  return { config: () => cfg, setConfig: (k: string, v: unknown) => { cfg[k] = v; log.push(`set ${k}`); }, buffer: { seen }, reload: () => {}, cfg, log, seen };
+};
+
+test("hooks run in order; a throwing or rejecting hook is reported and the rest still run", async () => {
+  const h = host(), errs: string[] = [];
+  const s = session(h, (m) => errs.push(m));
+  s.run([{ name: "a.js", text: `
+    margin.on("save", (p) => { throw new Error("bad " + p); });
+    margin.on("save", async () => { throw new Error("later"); });
+    margin.on("save", (p) => margin.buffer.seen.push(p));
+    margin.on("nope", () => {});` }], []);
+  s.emit("save", "x.org");
+  s.emit("open", "y.org"); // no open hooks: nothing happens
+  await new Promise((r) => setTimeout(r));
+  assert.deepEqual(h.seen, ["x.org"]);
+  assert.deepEqual(errs, ["⚠ init/a.js: on needs ('save' | 'open' | 'startup', fn)", "⚠ init save hook: bad x.org", "⚠ init save hook: later"]);
+});
+
+test("config.set only changes the in-memory config through the host; get reads it", () => {
+  const h = host(), s = session(h, () => {});
+  s.run([{ name: "a.js", text: `margin.config.set("font_size", margin.config.get("font_size") + 2);` }], []);
+  assert.equal(h.cfg.font_size, 16);
+  assert.deepEqual(s.over, { font_size: 16 });
+  assert.deepEqual(h.log, ["set font_size"]); // the host setter is the only way out: no save_config
+});
+
+test("a new session (reload) keeps nothing from the previous run", () => {
+  const h = host(), text = `margin.command({ label: "U", run: () => 1 }); margin.bind("Ctrl+U", "U"); margin.on("startup", () => margin.buffer.seen.push(1)); margin.config.set("a", 1);`;
+  const a = session(h, () => {});
+  a.run([{ name: "a.js", text }], []);
+  assert.deepEqual([a.cmds.length, a.binds.size, Object.keys(a.over).length], [1, 1, 1]);
+  const b = session(h, () => {});
+  assert.deepEqual([b.cmds.length, b.binds.size, Object.keys(b.over).length], [0, 0, 0]);
+  b.emit("startup");
+  assert.deepEqual(h.seen, []);
+});
+
+test("bind moves keys to the target command; unknown targets are reported", () => {
+  const errs: string[] = [], s = session(host(), (m) => errs.push(m));
+  s.run([{ name: "a.js", text: `margin.bind("Ctrl+K", "B"); margin.bind(["alt+x"], "Gone"); margin.bind([], "B");` }], ["A", "B"]);
+  assert.deepEqual(errs, ["⚠ init/a.js: bind needs (keys, label)", "⚠ init: bind: no command “Gone”"]);
+  const m = applyBinds([{ label: "A", keys: ["ctrl+k", "Ctrl+P"] }, { label: "B" }, { label: "C", keys: ["Ctrl+J"] }], s.binds);
+  assert.deepEqual(m.map((c) => c.keys), [["Ctrl+P"], ["Ctrl+K"], ["Ctrl+J"]]);
 });
 
 test("mergeCmds puts user commands last and lets them override", () => {

@@ -31,7 +31,7 @@
   import { resumeOffer, type Clock } from "$lib/interrupt";
   import { pickStale } from "$lib/stale";
   import { visibleCmds } from "$lib/areas";
-  import { mergeCmds, registry, runScripts } from "$lib/commands";
+  import { applyBinds, mergeCmds, session, type Host } from "$lib/commands";
   import { lineDiff } from "$lib/linediff";
   import { ago, changed, findNote, altTab, findTab, folderName, journalNeighbour, mergeChanged, noteFolders, onThisDay, onlyEchoes, resolvePath, weekJournals } from "$lib/paths";
   import Picker, { type PickOpts } from "$lib/Picker.svelte";
@@ -564,12 +564,13 @@
       const r: string = await call("tc_report", { kind: "doctor" });
       if (!r.includes("No issues")) flash("Saved — the time log or projects have problems, see Time → Check log");
     } else if (t.path === cfg.config_path) {
-      cfg = await call("config");
+      cfg = await loadCfg();
       flash(warn ? `⚠ Settings reloaded. ${warn}` : "Settings reloaded.");
     }
     reload++;
     refreshBacklinks();
     refreshTc();
+    init.emit("save", t.path);
   }
 
   async function saveAll() {
@@ -614,7 +615,8 @@
   async function openFile(path: string, line?: number) {
     navMark(path, line);
     let i = tabs.findIndex((t) => t.kind === "file" && t.path === path);
-    if (i < 0) {
+    const fresh = i < 0;
+    if (fresh) {
       const text: string = await call("read_file", { path });
       tabs.push({ key: path, title: niceName(path), kind: "file", path, dirty: false, saved: text, state: newState(path, text, path, false, true) });
       i = tabs.length - 1;
@@ -624,6 +626,7 @@
       const pos = view.state.doc.line(Math.min(line + 1, view.state.doc.lines)).from;
       jumpTo(pos);
     }
+    if (fresh) init.emit("open", path); // like Emacs find-file-hook: when the note is loaded into a tab
     if (path.startsWith(cfg.notes) && path.endsWith(".org")) {
       recent = [path, ...recent.filter((p) => p !== path)].slice(0, 12);
       store("recent", JSON.stringify(recent));
@@ -726,7 +729,7 @@
     const name = await ask(rename === "rename" ? `Rename “${old}” to` : "Save this search as a view named", tab.title === query ? "" : tab.title, query);
     if (!name?.trim()) return;
     const warn: string = await ownCfg(() => call("save_view", { name: name.trim(), query, rename: rename === "rename" }));
-    cfg = await call("config");
+    cfg = await loadCfg();
     flash(warn ? `⚠ Saved “${name.trim()}” to the top bar. ${warn}` : `Saved “${name.trim()}” to the top bar.`);
   }
 
@@ -739,7 +742,7 @@
     const profiles = dataDir == null ? null : await ask("Setup: profiles, comma-separated", c.profiles.join(", "), hint);
     if (profiles == null) return;
     const warn: string = await ownCfg(() => call("setup", { notesDir, dataDir, profiles }));
-    cfg = await call("config");
+    cfg = await loadCfg();
     reload++;
     await refreshTc();
     flash(warn ? `⚠ Settings saved. ${warn}` : "Settings saved — Ctrl+, has the rest.");
@@ -748,7 +751,7 @@
   /** The settings page's changed VALUES (and saved views or templates: TABLES); errors go back to the page. */
   async function saveSettings(values: Record<string, unknown>, reset: string[] = [], tables: Record<string, unknown> = {}) {
     const warn: string = await ownCfg(() => call("save_config", { values, reset, ...tables }));
-    cfg = await call("config");
+    cfg = await loadCfg();
     reload++;
     await refreshTc();
     flash(warn ? `⚠ Settings saved. ${warn}` : "Settings saved.");
@@ -763,7 +766,7 @@
   }
   async function recreateConfig() {
     const warn: string = await ownCfg(() => call("config_recreate"));
-    cfg = await call("config");
+    cfg = await loadCfg();
     reload++;
     await refreshTc();
     syncFromDisk(); // an open config.toml tab shows the new file
@@ -772,7 +775,7 @@
 
   /** Open config.toml, recreated from the current settings first if it's gone (saving an empty buffer would reset them). */
   async function editConfig() {
-    cfg = await call("config");
+    cfg = await loadCfg();
     if (cfg.config_missing) await recreateConfig();
     await openFile(cfg.config_path);
   }
@@ -2521,7 +2524,7 @@
     if (!ok) return;
     const r = await ownCfg(() => call<TagRename>("tag_rename", { ...args, apply: true })).catch((e) => (flash(`⚠ ${e}`), null));
     if (!r) return;
-    if (r.views) cfg = await call("config");
+    if (r.views) cfg = await loadCfg();
     await retagTabs(old, name);
     syncFromDisk();
     const bad = [...r.skipped.map((x) => `skipped ${rel(x)}`), ...r.errors].join("; ");
@@ -3360,7 +3363,7 @@
     /** Save the choice, then flash MSG (plus the reload's warning, if any). */
     const set = async (backend: string, model: string, msg: string) => {
       const warn: string = await ownCfg(() => call("ai_set", { backend, model }));
-      cfg = await call("config");
+      cfg = await loadCfg();
       flash(warn ? `⚠ ${msg} ${warn}` : msg);
     };
     const ollama = async () => {
@@ -3677,7 +3680,7 @@
       const dir = (await ask("Publish the site to folder", join(cfg.export, "site"), "asked once; change it in Settings → Folders"))?.trim();
       if (!dir) return;
       await ownCfg(() => call("save_config", { values: { publish_dir: dir }, reset: [] }));
-      cfg = await call("config");
+      cfg = await loadCfg();
     }
     const [path, n] = await call<[string, number]>("publish_site");
     flash(`✓ Published ${n} note${n === 1 ? "" : "s"}`);
@@ -3738,7 +3741,7 @@
     name ??= await pick({ prompt: `Switch profile (now: ${tc.profile})`, items: cfg.config.profiles });
     if (!name) return;
     await tcDo("tc_switch_profile", { name });
-    cfg = await call("config");
+    cfg = await loadCfg();
   }
 
   async function editSession(s?: Session) {
@@ -3994,6 +3997,7 @@
     { label: "Toggle top bar", keys: ["Ctrl+\\"], leader: "v s", run: () => { topbar = !topbar; store("sidebar", topbar ? "1" : "0"); } },
     { label: "Settings", keys: ["Ctrl+,"], leader: "f c", run: () => openView("settings") },
     { label: "Settings: edit config.toml", leader: "f C", run: editConfig },
+    { label: "Reload init scripts", run: () => { flash("Init scripts reloaded"); return loadInit(); } }, // a script's error replaces the flash
     { label: "AI drafts: choose model…", leader: "f a", run: aiChoose },
     { label: "Ledger: add an entry…", leader: "f l", run: ledgerAdd },
     { label: "Go to Ledger (month totals)", leader: "v l", run: openLedger },
@@ -4130,7 +4134,7 @@
     { label: "View: cycle theme (system / light / dark)", leader: "v d", run: async () => {
       const next = nextTheme(cfg?.config.theme);
       await ownCfg(() => call("save_config", { values: { theme: next }, reset: [] }));
-      cfg = await call("config");
+      cfg = await loadCfg();
       flash(`Theme: ${next || "system"}`);
     } },
     { label: "View: pick a theme (look and its layout)", run: async () => {
@@ -4141,7 +4145,7 @@
       // A user look's `/* layout: NAME */` header sets the layout too; built-ins and header-less files leave it alone.
       const layout = await layoutForLook(name, (name) => call<string | null>("read_look", { name }));
       await ownCfg(() => call("save_config", { values: { look: name === "classic" ? "" : name, ...(layout != null && { layout }) }, reset: [] }));
-      cfg = await call("config");
+      cfg = await loadCfg();
       flash(`Theme: ${name}${layout ? ` · layout ${layout}` : ""}`);
     } },
     { label: "View: reset zoom (Ctrl/Cmd+= / - / 0 zoom in / out / reset)", leader: "v 0", run: resetZoom },
@@ -4197,14 +4201,41 @@
     { label: "Export: time report (HTML/PDF)…", leader: "e t", run: exportReport },
   ];
   /** `cmds` without the areas hidden in Settings (`hidden_areas`): palette, keys and Space menu all use this. */
-  let userCmds = $state<Cmd[]>([]);
-  /** Run the init scripts (config dir `init/*.js`) once at startup; they add palette commands via `margin.register`. */
-  async function loadInit() {
-    const reg = registry();
-    runScripts(await call<{ name: string; text: string }[]>("list_init_scripts"), reg, flash);
-    userCmds = reg.list;
+  /** The focused pane's editor, for `margin.buffer`. */
+  const scriptView = () => { if (!isText(tab)) throw new Error("no text buffer is focused"); return view; };
+  const initHost: Host = {
+    config: () => cfg.config,
+    setConfig: (k, v) => (cfg.config[k] = v),
+    buffer: {
+      get path() { return tab?.kind === "file" ? tab.path : undefined; },
+      text: () => scriptView().state.doc.toString(),
+      selection: () => { const s = scriptView().state, r = s.selection.main; return { from: r.from, to: r.to, text: s.sliceDoc(r.from, r.to) }; },
+      insert: (text: string) => { const v = scriptView(); v.dispatch(v.state.replaceSelection(text)); },
+      replace: (from: number, to: number, text: string) => scriptView().dispatch({ changes: { from, to, insert: text } }),
+    },
+    reload: () => loadInit(),
+  };
+  /** The current run of the init scripts (config dir `init/*.js`): its commands, key bindings, hooks and config overrides. */
+  let init = session(initHost, flash);
+  let userCmds = $state<Cmd[]>([]), userBinds = $state.raw(new Map<string, string[]>());
+  /** config with this session's `margin.config.set` overrides on top (never written to config.toml). */
+  async function loadCfg() {
+    const c = await call<any>("config");
+    Object.assign(c.config, init.over);
+    return c;
   }
-  const shownCmds = $derived(visibleCmds(mergeCmds(cmds, userCmds), cfg?.config.hidden_areas ?? []));
+  /** Run the init scripts, dropping all the previous run added: at startup and from "Reload init scripts" / `margin.reload()`. */
+  async function loadInit() {
+    const scripts = await call<{ name: string; text: string }[]>("list_init_scripts");
+    const had = Object.keys(init.over).length;
+    init = session(initHost, flash);
+    if (had) cfg = await loadCfg();
+    init.run(scripts, cmds.map((c) => c.label));
+    userCmds = [...init.cmds];
+    userBinds = new Map(init.binds);
+    init.emit("startup");
+  }
+  const shownCmds = $derived(visibleCmds(applyBinds(mergeCmds(cmds, userCmds), userBinds), cfg?.config.hidden_areas ?? []));
 
   const GROUPS: Record<string, string> = { f: "Files & settings", n: "Notes & journal", x: "Task at cursor", i: "Insert", T: "Table", m: "Bookmarks", s: "Search", t: "Time tracking", e: "Export", v: "Go to & view", b: "Tabs", w: "Split view", l: "Links" };
   const leader: MenuNode[] = $derived.by(() => {
@@ -4447,7 +4478,7 @@
     }
     const gotVersion = getVersion().then((v) => (version = v), () => ""); // show nothing if it fails
     act(async () => {
-      cfg = await call("config");
+      cfg = await loadCfg();
       loadInit().catch((e) => flash(`⚠ init scripts: ${e}`));
       view = new EditorView({ parent: editorEl! });
       ed.hooks.save = () => act(() => saveTab(tab, true));
@@ -4509,7 +4540,7 @@
       const own = Date.now() < ownCfgUntil; // judged on arrival: the awaits below can outlast the window
       let warn = "";
       const err = await call<string>("reload_config").then((w) => ((warn = w), ""), String);
-      cfg = await call("config");
+      cfg = await loadCfg();
       reload++;
       syncFromDisk();
       await refreshTc();

@@ -2797,11 +2797,15 @@ describe("vim_init", () => {
 });
 
 describe("Init scripts", () => {
+  let d: Dirs;
   before(async () => {
-    await launch({ tutorial: false, files: ({ cfgDir }) => {
+    d = await launch({ tutorial: false, files: ({ cfgDir, notes }) => {
       mkdirSync(join(cfgDir, "init"));
-      writeFileSync(join(cfgDir, "init", "hello.js"), `margin.register({ label: "Hello: from init script", run: () => {} });`);
+      writeFileSync(join(cfgDir, "init", "hello.js"), `margin.register({ label: "Hello: from init script", run: () => {} });
+margin.command({ label: "Hello: stamp", run: () => margin.buffer.insert("stamped ") });
+margin.bind("Ctrl+Alt+J", "Hello: stamp");`);
       writeFileSync(join(cfgDir, "init", "zbad.js"), `throw new Error("boom");`);
+      writeFileSync(join(notes, "stamp.org"), "#+title: Stamp\n");
     } });
   });
   after(close, { timeout: 30_000 });
@@ -2809,5 +2813,14 @@ describe("Init scripts", () => {
   it("a command registered by init/*.js is in the palette; a throwing script is reported (#1417)", async () => {
     await find(".status .msg", "init/zbad.js: boom");
     await palette("Hello: from init script");
+  });
+
+  it("a key bound by margin.bind runs a command that edits the focused buffer (#1418)", async () => {
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "Stamp");
+    await find(".status .file", "stamp.org");
+    await browser.keys([Key.Ctrl, Key.Alt, "j"]);
+    await browser.keys([Key.Ctrl, "s"]);
+    await fileMatches(join(d.notes, "stamp.org"), (s) => s.includes("stamped "), "the bound key didn't insert into the buffer");
   });
 });
