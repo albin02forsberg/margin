@@ -33,7 +33,7 @@ function write(path: string, text: string) {
 }
 
 /** config.toml lines on top of setup.ts's. */
-const config = [`templates = []`, `bibliography_file = "~/refs.bib"`, `activity_calendar = "~/work.ics"`,`ledger_budgets = ["food=200", "transport=60"]`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`, ``, `[[feeds]]`, `name = "Orchard blog"`, `url = "https://blog.example/feed.xml"`, ``, `[[feeds]]`, `name = "Release notes"`, `url = "https://releases.example/atom.xml"`, `heading = "Upgrades"`, ``, `[tag_colors]`, `work = "#3b82f6"`, `docs = "#16a34a"`];
+const config = [`templates = []`, `bibliography_file = "~/refs.bib"`, `activity_calendar = "~/work.ics\\n~/personal.ics"`,`ledger_budgets = ["food=200", "transport=60"]`, ``, `[[views]]`, `name = "Work this week"`, `query = "tag:work due:<=+7d"`, ``, `[[feeds]]`, `name = "Orchard blog"`, `url = "https://blog.example/feed.xml"`, ``, `[[feeds]]`, `name = "Release notes"`, `url = "https://releases.example/atom.xml"`, `heading = "Upgrades"`, ``, `[tag_colors]`, `work = "#3b82f6"`, `docs = "#16a34a"`];
 
 /** A small Markdown vault outside the notes folder, for the import preview (#900). */
 let vault = "";
@@ -200,6 +200,7 @@ Late manifests go to the harbor master, not to [[file:harbor.org][the Harbor app
   // #1378: the `activity_calendar`: a meeting today, a fixed block in the day plan.
   const ymd = iso(new Date()).replaceAll("-", "");
   write(join(root, "work.ics"), `BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:demo1\nDTSTART:${ymd}T150000\nDTEND:${ymd}T160000\nSUMMARY:Harbor sprint review\nEND:VEVENT\nEND:VCALENDAR\n`);
+  write(join(root, "personal.ics"), "BEGIN:VCALENDAR\nEND:VCALENDAR\n"); // #1412: a second calendar, merged
 
   // #1335: the `bibliography_file` (config below, `~` = the temp root) and a note citing it, one key unknown.
   write(join(root, "refs.bib"), `@article{kleppmann19, author = {Kleppmann, Martin and Wiggins, Adam and van Hardenberg, Peter}, title = {Local-first software}, journal = {Onward!}, year = {2019}}
@@ -665,6 +666,12 @@ async function pngs() {
   if (want("feeds")) { // #981: the feeds list in Settings
     await (await find(".settings .chips button", "Feeds")).click();
     await shot("feeds");
+  }
+
+  if (want("calendar-sources")) { // #1412: several calendars, one per line
+    await (await find(".settings .chips button", "Integrations")).click();
+    await (await browser.$(`//div[contains(@class, "settings")]//label[span[contains(., "Meeting calendars")]]`)).scrollIntoView({ block: "center" });
+    await shot("calendar-sources");
   }
 
   if (want("semantic-index")) { // #965: the switch and its status; CI has no Ollama, so it shows why
