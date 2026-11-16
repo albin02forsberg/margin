@@ -163,11 +163,17 @@ fn unescape(s: &str) -> String {
     s.replace("\\n", " ").replace("\\N", " ").replace("\\,", ",").replace("\\;", ";").replace("\\\\", "\\")
 }
 
+/// Whether the occurrence on DAY at AT is after UNTIL: a date-time UNTIL (UTC converted to local) compares
+/// with the time, a date-only one by day.
+fn until_passed(until: Option<&&str>, day: NaiveDate, at: NaiveTime) -> bool {
+    until.is_some_and(|v| when(v).map_or_else(|| date(v).is_some_and(|u| day > u), |u| day.and_time(at) > u))
+}
+
 /// Whether a series starting on FIRST under RRULE has an occurrence on DAY. DAILY, WEEKLY,
 /// MONTHLY and YEARLY (INTERVAL, BYDAY with `2MO`/`-1FR` ordinals, BYMONTHDAY, BYMONTH, UNTIL,
 /// COUNT) are understood; other rules only occur on FIRST.
 // ponytail: no BYSETPOS/BYWEEKNO/BYYEARDAY, and a YEARLY BYDAY ordinal counts within the month, not the year.
-fn occurs(rule: &str, first: NaiveDate, day: NaiveDate) -> bool {
+fn occurs(rule: &str, first: NaiveDate, at: NaiveTime, day: NaiveDate) -> bool {
     let r: HashMap<&str, &str> = rule.split(';').filter_map(|p| p.split_once('=')).collect();
     let n = r.get("INTERVAL").and_then(|v| v.parse::<i64>().ok()).unwrap_or(1).max(1);
     let nums = |k: &str| -> Vec<i64> { r.get(k).map_or(vec![], |v| v.split(',').filter_map(|x| x.parse().ok()).collect()) };
@@ -194,7 +200,7 @@ fn occurs(rule: &str, first: NaiveDate, day: NaiveDate) -> bool {
         Some("YEARLY") => (d.year() - first.year()) as i64 % n == 0 && if months.is_empty() { d.month() == first.month() } else { months.contains(&(d.month() as i64)) } && in_month(d),
         _ => d == first,
     };
-    if day < first || r.get("UNTIL").and_then(|v| date(v)).is_some_and(|u| day > u) || !hit(day) {
+    if day < first || until_passed(r.get("UNTIL"), day, at) || !hit(day) {
         return false;
     }
     // ponytail: walks the series day by day for COUNT; fine for a few years of a series.
@@ -283,7 +289,7 @@ pub fn events_in(p: &Parsed, day: NaiveDate) -> Vec<Event> {
                 let ex: Vec<NaiveDate> = e.iter().filter(|p| p.0 == "EXDATE").flat_map(|p| p.2.split(',').filter_map(local_date).collect::<Vec<_>>()).collect();
                 (0..=(end.date() - start.date()).num_days().clamp(0, 366))
                     .map(|k| day - Duration::days(k))
-                    .filter(|s| !ex.contains(s) && !moved.get(&uid).is_some_and(|m| m.contains(s)) && occurs(&rule, start.date(), *s))
+                    .filter(|s| !ex.contains(s) && !moved.get(&uid).is_some_and(|m| m.contains(s)) && occurs(&rule, start.date(), start.time(), *s))
                     .map(|s| (s.and_time(start.time()), s.and_time(start.time()) + (end - start)))
                     .collect()
             }
@@ -415,7 +421,7 @@ mod tests {
 
     #[test]
     fn monthly_and_yearly() {
-        let on = |rule: &str, first: &str, days: &[&str]| days.iter().map(|d| occurs(rule, first.parse().unwrap(), d.parse().unwrap())).collect::<Vec<_>>();
+        let on = |rule: &str, first: &str, days: &[&str]| days.iter().map(|d| occurs(rule, first.parse().unwrap(), NaiveTime::MIN, d.parse().unwrap())).collect::<Vec<_>>();
         assert_eq!(on("FREQ=MONTHLY", "2026-01-15", &["2026-01-15", "2026-03-15", "2026-03-16", "2025-12-15"]), [true, true, false, false], "by date");
         assert_eq!(on("FREQ=MONTHLY", "2026-01-31", &["2026-02-28", "2026-03-31", "2026-04-30"]), [false, true, false], "a month without the 31st is skipped");
         assert_eq!(on("FREQ=MONTHLY;BYDAY=2MO", "2026-01-12", &["2026-10-12", "2026-10-05", "2026-10-19", "2026-10-13"]), [true, false, false, false], "second Monday");
@@ -424,6 +430,13 @@ mod tests {
         assert_eq!(on("FREQ=MONTHLY;INTERVAL=2", "2026-01-15", &["2026-02-15", "2026-03-15", "2027-01-15"]), [false, true, true], "every other month, across a year");
         assert_eq!(on("FREQ=MONTHLY;COUNT=3", "2026-01-15", &["2026-03-15", "2026-04-15"]), [true, false]);
         assert_eq!(on("FREQ=MONTHLY;UNTIL=20260301T000000Z", "2026-01-15", &["2026-02-15", "2026-03-15"]), [true, false]);
+        assert_eq!(on("FREQ=MONTHLY;UNTIL=20260301", "2026-01-15", &["2026-02-15", "2026-03-15"]), [true, false], "date-only UNTIL");
+        assert_eq!(on("FREQ=DAILY;UNTIL=20260301", "2026-01-15", &["2026-03-01", "2026-03-02"]), [true, false], "date-only UNTIL is inclusive");
+        // UNTIL given in UTC from a local time late on the day before: the local day still counts by time.
+        let utc = |h, m| Local.with_ymd_and_hms(2026, 3, 1, h, m, 0).unwrap().with_timezone(&Utc).format("%Y%m%dT%H%M%SZ").to_string();
+        let at = |rule: &str, h, m, day: &str| occurs(rule, "2026-01-15".parse().unwrap(), NaiveTime::from_hms_opt(h, m, 0).unwrap(), day.parse().unwrap());
+        let r = format!("FREQ=DAILY;UNTIL={}", utc(9, 0));
+        assert!([at(&r, 9, 0, "2026-03-01"), !at(&r, 9, 30, "2026-03-01"), !at(&r, 8, 0, "2026-03-02"), at(&r, 10, 0, "2026-02-28")].iter().all(|b| *b), "same-day UNTIL compares by time");
         assert_eq!(on("FREQ=YEARLY", "2024-03-10", &["2026-03-10", "2026-03-11", "2026-04-10"]), [true, false, false], "same month and day");
         assert_eq!(on("FREQ=YEARLY", "2024-02-29", &["2025-02-28", "2028-02-29"]), [false, true], "29 February only in leap years");
         assert_eq!(on("FREQ=YEARLY;INTERVAL=2;COUNT=2", "2024-03-10", &["2025-03-10", "2026-03-10", "2028-03-10"]), [false, true, false]);
