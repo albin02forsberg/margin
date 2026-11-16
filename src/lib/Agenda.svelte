@@ -88,7 +88,7 @@
   import { doneLog, withLog } from "./donelog";
   import { fmtEffort, fmtSpent, overbooked, planned, plannedLabel } from "./effort";
   import { agendaText, copyRows } from "./agendatext";
-  import { blocks, fixedOn, gapLabel, gaps, hhmm, shiftTime, workHours, type Fixed } from "./dayplan";
+  import { blocks, busyMinutes, fixedOn, gapLabel, gaps, hhmm, shiftTime, workHours, type Fixed } from "./dayplan";
   import { marked, markKey, reresolve, type Mark } from "./bulk";
   import { visible } from "./blocked";
   import { weekStartOf } from "./week";
@@ -183,6 +183,8 @@
     return i < 0 ? rows.indexOf(timed[timed.length - 1]) + 1 : i;
   }
 
+  /** Minutes of calendar events in the shown day's working hours (Day view with the plan on; `events` goes stale otherwise). */
+  const meet = $derived(span === 1 && gridOn && mode === "agenda" ? busyMinutes(events, ...workHours(dayStart, dayEnd)) : 0);
   const heading = $derived(
     mode === "todo" ? (title ?? "Tasks")
     : span === 1 ? (iso(start) === today ? "Today" : fmtDay(start))
@@ -190,7 +192,7 @@
   );
   const subheading = $derived(
     [mode === "todo" ? `${items.length} ${query != null ? "found" : "open"}${query ? ` · ${query}` : ""}`
-    : span === 1 ? [iso(start) === today ? fmtDay(start) : "", groups[0]?.planned ? plannedLabel(groups[0].planned, groups[0].expected) : ""].filter(Boolean).join(" · ")
+    : span === 1 ? [iso(start) === today ? fmtDay(start) : "", groups[0]?.planned || meet ? plannedLabel(groups[0]?.planned ?? 0, groups[0]?.expected, meet) : ""].filter(Boolean).join(" · ")
     : `${fmtDay(start, { day: "numeric", month: "short" })} – ${fmtDay(days[6], { day: "numeric", month: "short", year: "numeric" })}`,
     marks.size ? `${marks.size} marked` : ""].filter(Boolean).join(" · "),
   );
@@ -609,7 +611,7 @@
     {#if plan}
       {@const y = (m: number) => `${m - plan.from}px`}
       <section class="card dayplan" aria-label="Day plan">
-        <h2>Day plan <small>{[plan.off ? "day off: no expected hours" : "", plan.blocks.some((b) => b.overlap) ? "overlaps highlighted" : ""].filter(Boolean).join(" · ")}</small>{#if calWarn}<small class="calwarn" title={calWarn}>calendar not read</small>{/if}</h2>
+        <h2>Day plan <small>{[plan.gaps.length ? `${fmtEffort(plan.gaps.reduce((a, g) => a + g.end - g.start, 0))} free` : "", plan.off ? "day off: no expected hours" : "", plan.blocks.some((b) => b.overlap) ? "overlaps highlighted" : ""].filter(Boolean).join(" · ")}</small>{#if calWarn}<small class="calwarn" title={calWarn}>calendar not read</small>{/if}</h2>
         <div class="grid" style:height={y(plan.to)}>
           {#each plan.hours as h}<div class="hr" style:top={y(h)}><span>{hhmm(h)}</span></div>{/each}
           {#each plan.gaps as g, gi}<div class="gap" data-gap={gi} title="Plan a task here (P)" style:top={y(g.start)} style:height="{g.end - g.start}px">{#if g.end - g.start >= 20}<span>{gapLabel(g)}</span>{/if}</div>{/each}

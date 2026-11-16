@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blocks, candidates, fixedOn, gapLabel, gaps, shiftTime, stampFor, workHours } from "./dayplan.ts";
+import { blocks, busyMinutes, candidates, fixedOn, gapLabel, gaps, shiftTime, stampFor, workHours } from "./dayplan.ts";
 
 const D = "2026-10-23";
 const it = (line: number, time: string | null, effort: number | null = null, done = false, date = D) => ({ date, time, title: `t${line}`, path: "/n/a.org", line, effort, done });
@@ -94,4 +94,11 @@ test("shiftTime: a summed burst clamps on the total, a zero sum is a no-op (#137
   assert.equal(shiftTime("14:00", 45, 0), "14:45");
   assert.equal(shiftTime("14:00", 0, 0), null);
   assert.equal(shiftTime("23:00", 120, 0, 30), "23:29");
+});
+
+test("busyMinutes: clips to working hours, merges overlaps", () => {
+  const f = (start: number, end: number) => ({ start, end, title: "" });
+  assert.equal(busyMinutes([], 480, 1080), 0);
+  assert.equal(busyMinutes([f(420, 540), f(1050, 1200)], 480, 1080), 60 + 30);
+  assert.equal(busyMinutes([f(600, 720), f(660, 780), f(600, 650)], 480, 1080), 180);
 });

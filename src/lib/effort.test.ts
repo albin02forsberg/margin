@@ -27,4 +27,6 @@ test("overbooked / plannedLabel: fits, over, day off, unknown", () => {
   assert.equal(plannedLabel(330, 7.5), "~5h 30m / 7h 30m planned");
   assert.equal(plannedLabel(30, 0), "~30m planned");
   assert.equal(plannedLabel(30), "~30m planned");
+  assert.equal(plannedLabel(360, 7.5, 180), "~6h + 3h meetings / 7h 30m planned");
+  assert.equal(plannedLabel(0, undefined, 60), "~0m + 1h meetings planned");
 });
