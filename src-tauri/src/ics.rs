@@ -154,6 +154,11 @@ fn date(v: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(v.get(..8)?, "%Y%m%d").ok()
 }
 
+/// The local day of an EXDATE / RECURRENCE-ID value: a `...Z` time is converted like DTSTART's, a date is taken as is.
+fn local_date(v: &str) -> Option<NaiveDate> {
+    when(v).map(|d| d.date()).or_else(|| date(v))
+}
+
 fn unescape(s: &str) -> String {
     s.replace("\\n", " ").replace("\\N", " ").replace("\\,", ",").replace("\\;", ";").replace("\\\\", "\\")
 }
@@ -219,7 +224,7 @@ pub fn events_on(text: &str, day: NaiveDate) -> Vec<Event> {
         }
     }
     let get = |e: &Props, n: &str| e.iter().find(|p| p.0 == n).map(|p| p.2.clone());
-    let moved: Vec<(String, NaiveDate)> = evs.iter().filter_map(|e| Some((get(e, "UID")?, date(&get(e, "RECURRENCE-ID")?)?))).collect();
+    let moved: Vec<(String, NaiveDate)> = evs.iter().filter_map(|e| Some((get(e, "UID")?, local_date(&get(e, "RECURRENCE-ID")?)?))).collect();
     let (d0, d1) = (day.and_time(NaiveTime::MIN), (day + Duration::days(1)).and_time(NaiveTime::MIN));
     let mut out = vec![];
     for e in &evs {
@@ -232,7 +237,7 @@ pub fn events_on(text: &str, day: NaiveDate) -> Vec<Event> {
         let spans = match get(e, "RRULE") {
             Some(rule) if get(e, "RECURRENCE-ID").is_none() => {
                 let uid = get(e, "UID").unwrap_or_default();
-                let ex: Vec<NaiveDate> = e.iter().filter(|p| p.0 == "EXDATE").flat_map(|p| p.2.split(',').filter_map(date).collect::<Vec<_>>()).collect();
+                let ex: Vec<NaiveDate> = e.iter().filter(|p| p.0 == "EXDATE").flat_map(|p| p.2.split(',').filter_map(local_date).collect::<Vec<_>>()).collect();
                 (0..=(end.date() - start.date()).num_days().clamp(0, 366))
                     .map(|k| day - Duration::days(k))
                     .filter(|s| !ex.contains(s) && !moved.contains(&(uid.clone(), *s)) && occurs(&rule, start.date(), *s))
@@ -339,6 +344,18 @@ mod tests {
         assert!(on(&ev(""), "2026-01-05").is_empty(), "no end, no duration");
         assert_eq!(on(&ev("DTEND:20260105T103000\nDURATION:PT5H"), "2026-01-05")[0].end, "2026-01-05T10:30:00".parse().unwrap(), "DTEND wins");
         assert!(on("BEGIN:VEVENT\nDTSTART;VALUE=DATE:20260105\nDURATION:P1D\nEND:VEVENT", "2026-01-05").is_empty(), "all-day stays out");
+    }
+
+    #[test]
+    fn utc_exdate_and_recurrence_id_use_the_local_day() {
+        let on = |ics: &str, day: NaiveDate| events_on(ics, day);
+        let local = |v: &str| when(v).unwrap().date();
+        let base = "BEGIN:VEVENT\nUID:a\nDTSTART:20260105T233000Z\nDTEND:20260106T000000Z\nRRULE:FREQ=WEEKLY\n";
+        let (d1, d2, d3) = (local("20260112T233000Z"), local("20260119T233000Z"), local("20260126T233000Z"));
+        let ics = format!("{base}EXDATE:20260112T233000Z\nSUMMARY:X\nEND:VEVENT\nBEGIN:VEVENT\nUID:a\nRECURRENCE-ID:20260119T233000Z\nDTSTART:20300101T100000\nDTEND:20300101T110000\nSUMMARY:M\nEND:VEVENT");
+        assert!(on(&ics, d1).is_empty(), "EXDATE");
+        assert!(on(&ics, d2).is_empty(), "moved");
+        assert_eq!(on(&ics, d3).len(), 1, "other weeks stay");
     }
 
     #[test]
