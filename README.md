@@ -1145,9 +1145,10 @@ and an event covering at least half a block names it, and gives the project
 when its title or attendees name one. Daily, weekly, monthly (by date,
 or like "second Monday" / "last Friday") and yearly repeats (with exceptions)
 are understood;
-a one-off event in another time zone (described in the calendar file, as
-Google, Outlook and Apple export it) is moved to this computer's time;
-repeating events and zones the file doesn't describe are read as this
+an event in another time zone (described in the calendar file, as
+Google, Outlook and Apple export it) is moved to this computer's time, and a
+repeating one keeps its own zone's time across daylight-saving changes;
+zones the file doesn't describe are read as this
 computer's time, and all-day events are ignored. A bad `activity_meetings` pattern or an unreadable calendar is shown as a
 warning above the suggestions; the rest still appear.
 **Accept** confirms the project and an optional diary note and adds the session
