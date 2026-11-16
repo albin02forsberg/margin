@@ -91,7 +91,7 @@ export const GROUPS: { name: string; fields: Field[] }[] = [
     { key: "activitywatch_url", label: "ActivityWatch server", hint: "e.g. http://localhost:5600; empty = off" },
     { key: "activity_exclude", label: "Activity to ignore", kind: "list", hint: "regexes over app names and window titles, one per line" },
     { key: "activity_meetings", label: "Meetings", kind: "list", hint: "regexes over app names, window titles and URLs, one per line" },
-    { key: "activity_calendar", label: "Meeting calendars (.ics)", kind: "multiline", hint: "one file or https:// URL per line (work, personal, …), merged; lines starting with # are skipped; feeds the day plan, meeting notes and meeting suggestions; URLs are fetched one after another, so an unreachable one delays the rest up to 10 s; empty = off" },
+    { key: "activity_calendar", label: "Meeting calendars (.ics)", kind: "multiline", hint: "one file or https:// URL per line (work, personal, …), merged; lines starting with # are skipped; feeds the day plan, meeting notes and meeting suggestions; URLs are fetched at once (an unreachable one takes up to 10 s);empty = off" },
     { key: "feeds_auto_hours", label: "Fetch feeds every (hours)", kind: "number", step: "any", hint: "RSS/Atom feeds are fetched in the background while Margin runs, and only new items are filed; 0 = off (only Ctrl+K → Fetch feeds)" },
     { key: "ai_url", label: "Ollama server", hint: "local addresses only; pick the model with Space f a" },
   ] },

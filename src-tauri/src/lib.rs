@@ -2853,7 +2853,7 @@ fn activity_suggestions(s: State<App>, date_input: String) -> R<Value> {
     let projects: Vec<String> = tc.projects().into_iter().filter(|(_, p)| p.active).map(|(n, _)| n).collect();
     let tracked = timeclock::spans(&tc.events(), timeclock::now());
     let tasks: Vec<activity::Task> = org::todos(&s.files(), &s.kw(), false, |_, _| true, today()).into_iter().map(|t| (t.title, t.category)).collect();
-    let (meetings, calendar, w) = meetings_and_calendar(&c, d, |p| ics::calendar(p, &ics::CALENDAR, std::time::Instant::now(), ics::get));
+    let (meetings, calendar, w) = meetings_and_calendar(&c, d, prefetched(&c));
     warnings.extend(w);
     let (rules, bad) = activity::parse_rules(&timeclock::read_or_empty(&tc.dir.join("activity_rules.toml"))?);
     warnings.extend(bad);
@@ -2884,6 +2884,13 @@ fn calendar_sources(c: &Config) -> Vec<&str> {
     v
 }
 
+/// A `calendar_on` loader answering from the configured sources, all fetched at once up front.
+fn prefetched(c: &Config) -> impl FnMut(&str) -> R<String> {
+    let src = calendar_sources(c);
+    let loaded: Vec<_> = src.iter().map(|s| s.to_string()).zip(ics::calendars(&src)).collect();
+    move |p| loaded.iter().find(|(s, _)| s == p).map_or_else(|| Err("activity_calendar: unknown source".into()), |(_, r)| r.clone())
+}
+
 /// The configured calendars' events on D (via LOAD), merged by start (an event in several calendars once), and
 /// one warning per source that couldn't be loaded; with several sources it names the source by its line, never its URL.
 fn calendar_on(c: &Config, d: NaiveDate, mut load: impl FnMut(&str) -> R<String>) -> (Vec<ics::Event>, Vec<String>) {
@@ -2911,7 +2918,7 @@ fn meeting_day(input: Option<&str>, today: NaiveDate) -> R<NaiveDate> {
 fn meeting_events(s: State<App>, date: Option<String>) -> R<Value> {
     let c = s.cfg();
     let day = meeting_day(date.as_deref(), today())?;
-    let (events, warnings) = calendar_on(&c, day, |p| ics::calendar(p, &ics::CALENDAR, std::time::Instant::now(), ics::get));
+    let (events, warnings) = calendar_on(&c, day, prefetched(&c));
     let warning = (!warnings.is_empty()).then(|| warnings.join("; "));
     let events: Vec<Value> = events.into_iter().map(|e| json!({ "start": e.start, "end": e.end, "summary": e.summary, "attendees": e.attendees, "free": e.free })).collect();
     Ok(json!({ "date": day.format("%Y-%m-%d").to_string(), "configured": !calendar_sources(&c).is_empty(), "events": events, "warning": warning }))
