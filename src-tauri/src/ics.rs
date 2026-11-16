@@ -228,20 +228,24 @@ pub fn events_on(text: &str, day: NaiveDate) -> Vec<Event> {
         if get(e, "STATUS").is_some_and(|s| s.eq_ignore_ascii_case("CANCELLED")) {
             continue;
         }
-        let (start, end) = match get(e, "RRULE") {
+        // A recurring event's occurrences starting on DAY or up to its span of midnights earlier.
+        let spans = match get(e, "RRULE") {
             Some(rule) if get(e, "RECURRENCE-ID").is_none() => {
                 let uid = get(e, "UID").unwrap_or_default();
-                let ex = e.iter().filter(|p| p.0 == "EXDATE").flat_map(|p| p.2.split(',').filter_map(date).collect::<Vec<_>>()).any(|x| x == day);
-                if ex || moved.contains(&(uid, day)) || !occurs(&rule, start.date(), day) {
-                    continue;
-                }
-                (day.and_time(start.time()), day.and_time(start.time()) + (end - start))
+                let ex: Vec<NaiveDate> = e.iter().filter(|p| p.0 == "EXDATE").flat_map(|p| p.2.split(',').filter_map(date).collect::<Vec<_>>()).collect();
+                (0..=(end.date() - start.date()).num_days().clamp(0, 366))
+                    .map(|k| day - Duration::days(k))
+                    .filter(|s| !ex.contains(s) && !moved.contains(&(uid.clone(), *s)) && occurs(&rule, start.date(), *s))
+                    .map(|s| (s.and_time(start.time()), s.and_time(start.time()) + (end - start)))
+                    .collect()
             }
-            _ => (start, end),
+            _ => vec![(start, end)],
         };
-        if start < d1 && d0 < end {
-            let attendees = e.iter().filter(|p| p.0 == "ATTENDEE").map(|p| std::iter::successors(Some(("", p.1.as_str())), |r| split_unquoted(r.1, ';')).find_map(|r| r.1.strip_prefix("CN=").map(|c| split_unquoted(c, ';').map_or(c, |x| x.0))).map_or(p.2.trim_start_matches("mailto:").to_string(), |c| c.trim_matches('"').to_string())).collect();
-            out.push(Event { start, end, summary: get(e, "SUMMARY").map(|s| unescape(&s)).filter(|s| !s.trim().is_empty()).unwrap_or("Busy".into()), attendees });
+        for (start, end) in spans {
+            if start < d1 && d0 < end {
+                let attendees = e.iter().filter(|p| p.0 == "ATTENDEE").map(|p| std::iter::successors(Some(("", p.1.as_str())), |r| split_unquoted(r.1, ';')).find_map(|r| r.1.strip_prefix("CN=").map(|c| split_unquoted(c, ';').map_or(c, |x| x.0))).map_or(p.2.trim_start_matches("mailto:").to_string(), |c| c.trim_matches('"').to_string())).collect();
+                out.push(Event { start, end, summary: get(e, "SUMMARY").map(|s| unescape(&s)).filter(|s| !s.trim().is_empty()).unwrap_or("Busy".into()), attendees });
+            }
         }
     }
     out
@@ -335,6 +339,18 @@ mod tests {
         assert!(on(&ev(""), "2026-01-05").is_empty(), "no end, no duration");
         assert_eq!(on(&ev("DTEND:20260105T103000\nDURATION:PT5H"), "2026-01-05")[0].end, "2026-01-05T10:30:00".parse().unwrap(), "DTEND wins");
         assert!(on("BEGIN:VEVENT\nDTSTART;VALUE=DATE:20260105\nDURATION:P1D\nEND:VEVENT", "2026-01-05").is_empty(), "all-day stays out");
+    }
+
+    #[test]
+    fn recurring_event_crossing_midnight() {
+        let on = |ics: &str, day: &str| events_on(ics, day.parse().unwrap());
+        let ev = |extra: &str| format!("BEGIN:VEVENT\nUID:a\nDTSTART:20260104T220000\n{extra}\nSUMMARY:X\nEND:VEVENT");
+        let night = ev("DTEND:20260105T010000\nRRULE:FREQ=WEEKLY");
+        assert_eq!(on(&night, "2026-01-12")[0].start, "2026-01-11T22:00:00".parse().unwrap(), "Monday part");
+        assert_eq!(on(&night, "2026-01-11").len(), 1, "Sunday part");
+        assert!(on(&night, "2026-01-13").is_empty());
+        assert_eq!(on(&ev("DURATION:P2D\nRRULE:FREQ=WEEKLY"), "2026-01-13").len(), 1, "second day");
+        assert!(on(&ev("DTEND:20260105T010000\nRRULE:FREQ=WEEKLY\nEXDATE:20260111T220000"), "2026-01-12").is_empty(), "EXDATE hides the Monday part");
     }
 
     #[test]
