@@ -498,13 +498,23 @@ pub fn calendar(src: &str, cache: &CalendarCache, now: std::time::Instant, fetch
     let Some(url) = src.strip_prefix("webcal://").map(|r| format!("https://{r}")).or_else(|| src.starts_with("https://").then(|| src.to_string())) else {
         return std::fs::read_to_string(crate::config::expand(src)).map_err(|e| format!("activity_calendar {src}: {e}"));
     };
-    let mut c = cache.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some((_, (_, r))) = c.iter().find(|(u, (at, _))| *u == url && now.duration_since(*at) < CALENDAR_TTL) {
-        return r.clone();
+    // The lock is held only for the lookup and the store, never across the fetch.
+    let hit = cache.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(u, (at, _))| *u == url && now.duration_since(*at) < CALENDAR_TTL).map(|(_, (_, r))| r.clone());
+    if let Some(r) = hit {
+        return r;
     }
     let r = fetch(&url).map_err(|e| format!("activity_calendar (URL): {e}"));
-    remember(&mut c, url, (now, r.clone()));
+    remember(&mut cache.lock().unwrap_or_else(|e| e.into_inner()), url, (now, r.clone()));
     r
+}
+
+/// `calendar` for every SRC at once (one thread each), in SRC order, so a slow URL doesn't delay the others.
+pub fn calendars(srcs: &[&str]) -> Vec<Result<String, String>> {
+    let now = std::time::Instant::now();
+    std::thread::scope(|s| {
+        let hs: Vec<_> = srcs.iter().map(|p| s.spawn(move || calendar(p, &CALENDAR, now, get))).collect();
+        hs.into_iter().map(|h| h.join().unwrap_or_else(|_| Err("activity_calendar: load failed".into()))).collect()
+    })
 }
 
 /// GET URL over HTTPS (10 s timeout) on a thread of its own, so it works from any caller. Errors leave the URL out.
@@ -554,6 +564,26 @@ mod tests {
         assert!(!calendar("http://c.example/s3cret", &cache, t0, fetch).unwrap_err().contains("s3cret"));
         assert!(calendar("/no/such/file.ics", &cache, t0, fetch).unwrap_err().starts_with("activity_calendar /no/such/file.ics: "), "a path is read as a file");
         assert_eq!(calls.borrow().len(), 4);
+    }
+
+    #[test]
+    fn slow_fetch_does_not_block_other_urls() {
+        let (cache, t0) = (CalendarCache::default(), std::time::Instant::now());
+        calendar("https://b.example/x.ics", &cache, t0, |_| Ok("B".into())).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        std::thread::scope(|s| {
+            let slow = s.spawn(|| calendar("https://a.example/x.ics", &cache, t0, move |_| rx.recv().map(|_| "A".to_string()).map_err(|e| e.to_string())));
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            assert_eq!(calendar("https://b.example/x.ics", &cache, t0, |_| Err("refetched".into())), Ok("B".into()), "cached hit while A is in flight");
+            tx.send(()).unwrap();
+            assert_eq!(slow.join().unwrap(), Ok("A".into()));
+        });
+    }
+
+    #[test]
+    fn calendars_keep_source_order() {
+        let r = calendars(&["/no/such/a.ics", "/no/such/b.ics", "http://x"]);
+        assert!(r[0].clone().unwrap_err().contains("a.ics") && r[1].clone().unwrap_err().contains("b.ics") && r[2].is_err());
     }
 
     #[test]
