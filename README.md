@@ -840,8 +840,8 @@ The `margin` object scripts get:
 | `margin.bind("Ctrl+Alt+J", label)` | bind keys (a string or a list) to a command by label, built-in or your own; the keys leave any other command |
 | `margin.config.get(key)` / `margin.config.set(key, value)` | read or change a `config.toml` setting for this session only, like Emacs `setq`; `config.toml` is never written. Settings read by the backend (e.g. the notes folder) aren't affected |
 | `margin.buffer` | the focused editor: `.path`, `.text()`, `.selection()` (`{ from, to, text }`), `.insert(text)` (replaces the selection), `.replace(from, to, text)`; throws when no note is focused |
-| `margin.on("save" \| "open" \| "startup", fn)` | hooks: `save` after a note is written (`fn(path)`, autosave included), `open` when a note is loaded into a tab (`fn(path)`), `startup` after the scripts ran. A failing hook is reported in the message line |
-| `margin.reload()` | re-run the scripts, like **Reload init scripts** in the palette |
+| `margin.on("save" \| "open" \| "startup", fn)` | hooks: `save` after a note is written (`fn(path)`, autosave included), `open` when a note is loaded into a tab (`fn(path)`), `startup` after the scripts ran. A failing hook is reported in the message line. A `save` hook may edit the note: the save that edit causes skips the hooks, so it doesn't loop |
+| `margin.reload()` | re-run the scripts, like **Reload init scripts** in the palette; ignored inside a `startup` hook (it would rerun itself forever) |
 
 ```js
 // init/stamp.js
