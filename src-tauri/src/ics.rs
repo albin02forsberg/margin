@@ -105,6 +105,8 @@ pub struct Event {
     pub summary: String,
     /// Names (CN) or addresses.
     pub attendees: Vec<String>,
+    /// "Show as free" (`TRANSP:TRANSPARENT`): doesn't block time.
+    pub free: bool,
 }
 
 /// Splits S at its first SEP outside double quotes (ics params may quote `:` and `;`).
@@ -441,6 +443,7 @@ fn events_in_at(p: &Parsed, day: NaiveDate, to_local: ToLocal) -> Vec<Event> {
         if prop(e, "STATUS").is_some_and(|s| s.eq_ignore_ascii_case("CANCELLED")) {
             continue;
         }
+        let free = prop(e, "TRANSP").is_some_and(|t| t.trim().eq_ignore_ascii_case("TRANSPARENT"));
         // A recurring event's occurrences starting on DAY or up to its span of midnights earlier;
         // in another zone also a day either side, as the offsets differ by at most about a day.
         let spans = match prop(e, "RRULE") {
@@ -461,7 +464,7 @@ fn events_in_at(p: &Parsed, day: NaiveDate, to_local: ToLocal) -> Vec<Event> {
         for (start, end) in spans {
             if start < d1 && d0 < end {
                 let attendees = e.iter().filter(|p| p.0 == "ATTENDEE").map(|p| std::iter::successors(Some(("", p.1.as_str())), |r| split_unquoted(r.1, ';')).find_map(|r| r.1.strip_prefix("CN=").map(|c| split_unquoted(c, ';').map_or(c, |x| x.0))).map_or(p.2.trim_start_matches("mailto:").to_string(), |c| c.trim_matches('"').to_string())).collect();
-                out.push(Event { start, end, summary: prop(e, "SUMMARY").map(|s| unescape(&s)).filter(|s| !s.trim().is_empty()).unwrap_or("Busy".into()), attendees });
+                out.push(Event { start, end, summary: prop(e, "SUMMARY").map(|s| unescape(&s)).filter(|s| !s.trim().is_empty()).unwrap_or("Busy".into()), attendees, free });
             }
         }
     }
@@ -784,6 +787,9 @@ mod tests {
             "BEGIN:VEVENT", "UID:e", "DTSTART:20260928T140000", "DTEND:20260928T150000", "RRULE:FREQ=DAILY;COUNT=3", "END:VEVENT",
             "BEGIN:VEVENT", "UID:q", "DTSTART;TZID=\"(UTC+01:00) Amsterdam\":20261008T100000", "DTEND;TZID=\"(UTC+01:00) Amsterdam\":20261008T110000",
             "ATTENDEE;CN=\"Lee: Sales\":mailto:l@x.org", "ATTENDEE;CN=\"A; B\";ROLE=OPT:mailto:a@x.org", "END:VEVENT",
+            // "Show as free", daily from 12 Oct (lowercase value).
+            "BEGIN:VEVENT", "UID:f", "DTSTART:20261012T080000", "DTEND:20261012T170000", "RRULE:FREQ=DAILY", "TRANSP:transparent", "SUMMARY:Home", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:o", "DTSTART:20261012T100000", "DTEND:20261012T110000", "TRANSP:OPAQUE", "SUMMARY:Review", "END:VEVENT",
             "END:VCALENDAR",
         ]
         .join("\r\n");
@@ -792,11 +798,14 @@ mod tests {
         let short = |d: &str| on(d).into_iter().map(|e| (e.start, e.end, e.summary)).collect::<Vec<_>>();
         let e = on("2026-10-05");
         let utc7 = Utc.with_ymd_and_hms(2026, 10, 5, 7, 0, 0).unwrap().with_timezone(&Local).naive_local();
-        assert_eq!(e[0], Event { start: utc7, end: utc7 + Duration::minutes(30), summary: "Sync with Acme, Inc".into(), attendees: vec!["Ann Lee".into(), "bob@x.org".into()] });
+        assert_eq!(e[0], Event { start: utc7, end: utc7 + Duration::minutes(30), summary: "Sync with Acme, Inc".into(), attendees: vec!["Ann Lee".into(), "bob@x.org".into()], free: false });
         assert_eq!(short("2026-10-05")[1..], [(at("2026-10-05 09:15"), at("2026-10-05 09:30"), "Standup".into())], "all-day and cancelled are left out");
         assert_eq!(short("2026-09-30"), [(at("2026-09-30 14:00"), at("2026-09-30 15:00"), "Busy".into())], "EXDATE; COUNT's third day");
         assert_eq!(short("2026-10-07"), [(at("2026-10-07 11:00"), at("2026-10-07 11:15"), "Standup (moved)".into())]);
         assert_eq!(on("2026-10-08")[0].attendees, ["Lee: Sales", "A; B"], "quoted TZID keeps the event; quoted CN stays whole");
         assert!(short("2026-10-01").is_empty() && short("2026-10-06").is_empty() && short("2026-09-14").is_empty());
+        let free = |d: &str| on(d).into_iter().map(|e| (e.summary, e.free)).collect::<Vec<_>>();
+        assert_eq!(free("2026-10-12"), [("Standup".into(), false), ("Home".into(), true), ("Review".into(), false)], "TRANSP");
+        assert_eq!(free("2026-10-13"), [("Home".into(), true)], "every occurrence is free");
     }
 }

@@ -54,6 +54,12 @@ test("fixedOn: events crossing midnight are clamped to the day, other days and e
     [[0, 90], [1320, 1440]]);
 });
 
+test("fixedOn: \"show as free\" events block nothing (#1411)", () => {
+  const fx = fixedOn([{ start: `${D}T08:00:00`, end: `${D}T17:00:00`, summary: "Home", free: true }, { start: `${D}T10:00:00`, end: `${D}T11:00:00`, summary: "Sync", free: false }], D);
+  assert.deepEqual(fx.map((f) => f.title), ["Sync"]);
+  assert.equal(busyMinutes(fx, 480, 1080), 60);
+});
+
 test("shiftTime: move keeps length (bare stays bare), H/L write a range, 15 min floor, pinned at 00:00 / 23:59", () => {
   assert.equal(shiftTime("9:00", 15, 0), "09:15");
   assert.equal(shiftTime("09:00-10:30", -15, 0), "08:45-10:15");
