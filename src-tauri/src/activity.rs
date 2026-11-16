@@ -638,7 +638,7 @@ mod tests {
         assert_eq!(got(&[sp("09:00", "09:30", "zoom", "")]), [Some("zoom".into())], "no title: the app");
         assert!(super::rules("activity_meetings", &["(".into()]).unwrap_err().starts_with("activity_meetings: "));
         // A calendar event over half the block names it, and an attendee the project.
-        let ev = |a: &str, b: &str, s: &str| Event { start: dt(&format!("2026-10-01 {a}")), end: dt(&format!("2026-10-01 {b}")), summary: s.into(), attendees: vec!["ann@acme.com".into()] };
+        let ev = |a: &str, b: &str, s: &str| Event { start: dt(&format!("2026-10-01 {a}")), end: dt(&format!("2026-10-01 {b}")), summary: s.into(), attendees: vec!["ann@acme.com".into()], free: false };
         let code = [sp("09:00", "09:45", "Code", "lib.rs")];
         let cal = |c: &[Event], ex: &[Regex]| suggest(&code, &[], &[], ex, Known { projects: &["Acme".into()], meetings: &rules, calendar: c, ..Default::default() }, "2026-10-01".parse().unwrap()).into_iter().map(|s| (s.meeting, s.project)).collect::<Vec<_>>();
         let planning = [ev("08:50", "09:30", "Planning"), ev("09:30", "09:45", "Coffee")];

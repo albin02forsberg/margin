@@ -2848,10 +2848,12 @@ fn activity_suggestions(s: State<App>, date_input: String) -> R<Value> {
 }
 
 /// The meeting patterns that compile and the calendar's events on D (via LOAD, the .ics text of the configured source);
-/// a bad pattern or an unreachable calendar is a warning, not a reason to hide the other suggestions.
+/// a bad pattern or an unreachable calendar is a warning, not a reason to hide the other suggestions. "Show as free"
+/// events are left out, so they don't name a block.
 fn meetings_and_calendar(c: &Config, d: NaiveDate, load: impl FnOnce(&str) -> R<String>) -> (Vec<regex::Regex>, Vec<ics::Event>, Vec<String>) {
     let (meetings, mut warnings) = activity::lenient("activity_meetings", &c.activity_meetings);
-    let (calendar, w) = calendar_on(c, d, load);
+    let (mut calendar, w) = calendar_on(c, d, load);
+    calendar.retain(|e| !e.free);
     warnings.extend(w);
     (meetings, calendar, warnings)
 }
@@ -2875,7 +2877,7 @@ fn meeting_events(s: State<App>, date: Option<String>) -> R<Value> {
     let c = s.cfg();
     let day = meeting_day(date.as_deref(), today())?;
     let (events, warning) = calendar_on(&c, day, |p| ics::calendar(p, &ics::CALENDAR, std::time::Instant::now(), ics::get));
-    let events: Vec<Value> = events.into_iter().map(|e| json!({ "start": e.start, "end": e.end, "summary": e.summary, "attendees": e.attendees })).collect();
+    let events: Vec<Value> = events.into_iter().map(|e| json!({ "start": e.start, "end": e.end, "summary": e.summary, "attendees": e.attendees, "free": e.free })).collect();
     Ok(json!({ "date": day.format("%Y-%m-%d").to_string(), "configured": !c.activity_calendar.trim().is_empty(), "events": events, "warning": warning }))
 }
 
@@ -4813,6 +4815,23 @@ mod tests {
         let (m, cal, w) = meetings_and_calendar(&c, d, |_| Err("activity_calendar (URL): offline".into()));
         assert_eq!((m.len(), cal.len(), w.len()), (1, 0, 2));
         assert!(w[0].starts_with("activity_meetings:") && w[1].starts_with("activity_calendar"));
+    }
+
+    #[test]
+    fn free_calendar_events_never_name_a_suggestion() {
+        let c: Config = toml::from_str("activity_calendar = \"x.ics\"").unwrap();
+        let d = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+        let ev = |s: &str, transp: &str| format!("BEGIN:VEVENT\nDTSTART:20260105T090000\nDTEND:20260105T100000\n{transp}SUMMARY:{s}\nEND:VEVENT\n");
+        let (_, cal, _) = meetings_and_calendar(&c, d, |_| Ok(ev("Broadcast", "TRANSP:TRANSPARENT\n") + &ev("Sync", "")));
+        assert_eq!(cal.iter().map(|e| e.summary.as_str()).collect::<Vec<_>>(), ["Sync"]);
+        // A tracked 09:00-09:45 block under only the free event isn't named by it.
+        let sp = activity::Span { start: d.and_hms_opt(9, 0, 0).unwrap(), end: d.and_hms_opt(9, 45, 0).unwrap(), app: "Code".into(), title: "lib.rs".into(), url: String::new(), editor: false };
+        let named = |text: String| {
+            let (_, cal, _) = meetings_and_calendar(&c, d, |_| Ok(text));
+            activity::suggest(std::slice::from_ref(&sp), &[], &[], &[], activity::Known { calendar: &cal, ..Default::default() }, d).into_iter().map(|s| s.meeting).collect::<Vec<_>>()
+        };
+        assert_eq!(named(ev("Broadcast", "TRANSP:TRANSPARENT\n")), [None]);
+        assert_eq!(named(ev("Broadcast", "")), [Some("Broadcast".into())]);
     }
 
     #[test]
