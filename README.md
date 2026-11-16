@@ -830,7 +830,27 @@ Use `:root[data-look]` (not plain `:root`) so your values win over the built-in 
 margin.register({ label: "Hello: say hi", run: () => alert("hi") }); // optional: keys, leader, ctx
 ```
 
-A command with the label of a built-in replaces it. A script that throws is reported in the message line by file name; the others still run. Scripts are plain JavaScript with full access to the app (as trusted as `config.toml`), so only put code there you wrote or read. Restart to pick up changes.
+A command with the label of a built-in replaces it. A script that throws is reported in the message line by file name; the others still run. Scripts are plain JavaScript with full access to the app (as trusted as `config.toml`), so only put code there you wrote or read.
+
+The `margin` object scripts get:
+
+| | |
+|---|---|
+| `margin.command({ label, run, keys?, leader?, ctx? })` | add a palette command (`margin.register` is the same) |
+| `margin.bind("Ctrl+Alt+J", label)` | bind keys (a string or a list) to a command by label, built-in or your own; the keys leave any other command |
+| `margin.config.get(key)` / `margin.config.set(key, value)` | read or change a `config.toml` setting for this session only, like Emacs `setq`; `config.toml` is never written. Settings read by the backend (e.g. the notes folder) aren't affected |
+| `margin.buffer` | the focused editor: `.path`, `.text()`, `.selection()` (`{ from, to, text }`), `.insert(text)` (replaces the selection), `.replace(from, to, text)`; throws when no note is focused |
+| `margin.on("save" \| "open" \| "startup", fn)` | hooks: `save` after a note is written (`fn(path)`, autosave included), `open` when a note is loaded into a tab (`fn(path)`), `startup` after the scripts ran. A failing hook is reported in the message line |
+| `margin.reload()` | re-run the scripts, like **Reload init scripts** in the palette |
+
+```js
+// init/stamp.js
+margin.command({ label: "Insert: timestamp", run: () => margin.buffer.insert(new Date().toISOString()) });
+margin.bind("Ctrl+Alt+J", "Insert: timestamp");
+margin.on("save", (path) => console.log("saved", path));
+```
+
+**Reload init scripts** (palette) re-reads `init/*.js` without a restart: commands, bindings, hooks and `config.set` values from the previous run are dropped first.
 
 **Themes:** a look file can bring its layout along. Start it with a `/* layout: rail */` comment (any layout name;
 `/* layout: */` means the default), then pick it with **View: pick a theme** in the palette (`Ctrl+K`): that saves both
