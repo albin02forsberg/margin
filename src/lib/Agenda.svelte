@@ -136,7 +136,10 @@
   /** Day plan (key w, #705): the Day view's timed tasks on an hour grid, working hours (#1379) widened to fit. */
   let gridOn = $state(stored("agenda-grid", "") === "1");
   /** The day plan's calendar events (#1378, config `activity_calendar`) and the warning when it couldn't be read. */
-  let events = $state.raw<Fixed[]>([]), calWarn = $state("");
+  let calRec = $state.raw<{ day: string; list: Fixed[]; warn: string }>({ day: "", list: [], warn: "" });
+  // Only the shown day's reply counts: browsing must not show the previous day's events or warning.
+  const evs = $derived(calRec.day === iso(start) ? calRec.list : []);
+  const calWarn = $derived(calRec.day === iso(start) ? calRec.warn : "");
   /** Show every blocked task (key B, #718); else only those dated today or earlier. Searches always show them. */
   let blockedOn = $state(stored("agenda-blocked", "") === "1");
 
@@ -186,7 +189,7 @@
   }
 
   /** Minutes of calendar events in the shown day's working hours (Day view with the plan on; `events` goes stale otherwise). */
-  const meet = $derived(span === 1 && gridOn && mode === "agenda" ? busyMinutes(events, ...workHours(dayStart, dayEnd)) : 0);
+  const meet = $derived(span === 1 && gridOn && mode === "agenda" ? busyMinutes(evs, ...workHours(dayStart, dayEnd)) : 0);
   const heading = $derived(
     mode === "todo" ? (title ?? "Tasks")
     : span === 1 ? (iso(start) === today ? "Today" : fmtDay(start))
@@ -212,7 +215,7 @@
   const plan = $derived.by(() => {
     if (mode !== "agenda" || span !== 1 || !gridOn) return null;
     const day = iso(start), n = now.getHours() * 60 + now.getMinutes();
-    const bs = blocks(shown.map((x) => (x.kind === "closed" ? { ...x, time: null } : x)), day, isDone, events);
+    const bs = blocks(shown.map((x) => (x.kind === "closed" ? { ...x, time: null } : x)), day, isDone, evs);
     const [ws, we] = workHours(dayStart, dayEnd), off = expected[day] === 0; // only a loaded 0 is a day off
     const from = Math.min(Math.floor(ws / 60) * 60, ...bs.map((b) => Math.floor(b.start / 60) * 60)), to = Math.max(Math.ceil(we / 60) * 60, ...bs.map((b) => Math.ceil(b.end / 60) * 60));
     return { from, to, blocks: bs, off, gaps: off ? [] : gaps(bs, ws, we, day === today ? n : day < today ? 1440 : undefined),
@@ -265,8 +268,8 @@
     if (!active || mode !== "agenda" || span !== 1 || !gridOn) return;
     let stale = false;
     invoke<{ events: CalEvent[]; warning: string | null }>("meeting_events", { date: day })
-      .then((r) => { if (!stale) { events = fixedOn(r.events, day); calWarn = r.warning ?? ""; } })
-      .catch((e) => { if (!stale) { events = []; calWarn = String(e); } });
+      .then((r) => { if (!stale) calRec = { day, list: fixedOn(r.events, day), warn: r.warning ?? "" }; })
+      .catch((e) => { if (!stale) calRec = { day, list: [], warn: String(e) }; });
     return () => { stale = true; };
   });
   $effect(() => {
