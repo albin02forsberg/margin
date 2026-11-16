@@ -409,7 +409,7 @@ overbooks the day's expected hours. `h`/`j`/`k`/`l` or the arrows move, `[`/`]` 
 Working hours are 08:00–18:00 unless Settings → Time sets `day_plan_start` / `day_plan_end` (e.g. `07:00` and `15:30`).
 A day with 0 expected hours (a weekend, a public holiday, an extra day off or full leave) is marked "day off" and offers
 no free time.
-With a calendar set (`activity_calendar`, a local `.ics` file or an https URL), the day's timed events show as fixed hatched blocks with
+With a calendar set (`activity_calendar`, local `.ics` files or https URLs, one per line), the day's timed events show as fixed hatched blocks with
 their summary: free time goes around them and a task on top of one is highlighted as an overlap, but they can't be
 selected, moved or planned into; double-click one to open its meeting note (as `Space n N`, created if new, with the
 clock-in offer when the shown day is today). An event crossing midnight shows up to or from midnight; all-day events, ones with neither `DTEND` nor `DURATION`, and ones marked "show as free" (`TRANSP:TRANSPARENT`) are left out (the free ones still appear in the meeting-note picker and never name an activity suggestion).
@@ -1140,7 +1140,9 @@ from the keyboard still isn't suggested), and a mic or camera in use for 8 hours
 or more (a virtual camera) is ignored. On Linux, the camera counts when an app has a `/dev/video*` device open, the microphone when an ALSA capture device is running or `pactl` lists a recording stream (Bluetooth headsets). Set
 `activity_calendar` to a local `.ics` file (an export of your work calendar),
 or to the calendar's private `https://` (or `webcal://`) ICS address, fetched at
-most every 5 minutes and never shown in error messages,
+most every 5 minutes and never shown in error messages (several calendars, such as work and personal, go one per
+line and are merged, an event in two of them once; lines starting with `#` are skipped, and one that can't be read
+is a warning naming its line number while the others still show; the day plan and meeting notes use them all),
 and an event covering at least half a block names it, and gives the project
 when its title or attendees name one. Daily, weekly, monthly (by date,
 or like "second Monday" / "last Friday" / "last weekday", including Outlook's

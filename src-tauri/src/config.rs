@@ -99,7 +99,8 @@ pub struct Config {
     pub activity_exclude: Vec<String>,
     /// Regexes (case-insensitive) over app names, window titles and URLs of meetings.
     pub activity_meetings: Vec<String>,
-    /// A local .ics file whose events name meeting suggestions; empty = off.
+    /// .ics files or https:// URLs, one per line (`#` lines skipped), whose events feed the day plan, meeting notes
+    /// and meeting suggestions; empty = off.
     pub activity_calendar: String,
     /// Record the active app and window title to <data>/activity/ (opt-in; see watcher.rs).
     pub activity_watcher: bool,

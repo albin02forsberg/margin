@@ -361,19 +361,30 @@ fn prop(e: &Props, n: &str) -> Option<String> {
     e.iter().find(|p| p.0 == n).map(|p| p.2.clone())
 }
 
-/// The last parsed calendar, keyed by its text's length and hash (the day view re-reads it often).
-static PARSED: std::sync::Mutex<Option<(usize, u64, std::sync::Arc<Parsed>)>> = std::sync::Mutex::new(None);
+/// How many calendars (sources, parsed texts) the caches keep.
+const CACHED: usize = 8;
+
+/// Puts K → V in CACHE, replacing K's entry and dropping the oldest beyond `CACHED`.
+fn remember<K: PartialEq, V>(cache: &mut Vec<(K, V)>, k: K, v: V) {
+    cache.retain(|e| e.0 != k);
+    cache.push((k, v));
+    if cache.len() > CACHED {
+        cache.remove(0);
+    }
+}
+
+/// The last parsed calendars, keyed by their text's length and hash (the day view re-reads them often).
+#[allow(clippy::type_complexity)]
+static PARSED: std::sync::Mutex<Vec<((usize, u64), std::sync::Arc<Parsed>)>> = std::sync::Mutex::new(vec![]);
 
 /// `parse(text)`, reused while TEXT is unchanged.
 pub fn parse_cached(text: &str) -> std::sync::Arc<Parsed> {
     let key = (text.len(), fnv(text));
-    if let Some((l, h, p)) = &*PARSED.lock().unwrap_or_else(|e| e.into_inner()) {
-        if (*l, *h) == key {
-            return p.clone();
-        }
+    if let Some((_, p)) = PARSED.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|e| e.0 == key) {
+        return p.clone();
     }
     let p = std::sync::Arc::new(parse(text));
-    *PARSED.lock().unwrap_or_else(|e| e.into_inner()) = Some((key.0, key.1, p.clone()));
+    remember(&mut PARSED.lock().unwrap_or_else(|e| e.into_inner()), key, p.clone());
     p
 }
 
@@ -473,9 +484,9 @@ fn events_in_at(p: &Parsed, day: NaiveDate, to_local: ToLocal) -> Vec<Event> {
 
 /// How long a fetched calendar is reused before it's fetched again.
 const CALENDAR_TTL: std::time::Duration = std::time::Duration::from_secs(300);
-/// The last fetched calendar: its URL, when, and the text or error.
-pub type CalendarCache = std::sync::Mutex<Option<(String, std::time::Instant, Result<String, String>)>>;
-pub static CALENDAR: CalendarCache = std::sync::Mutex::new(None);
+/// The last fetched calendars: URL → when, and the text or error.
+pub type CalendarCache = std::sync::Mutex<Vec<(String, (std::time::Instant, Result<String, String>))>>;
+pub static CALENDAR: CalendarCache = std::sync::Mutex::new(vec![]);
 
 /// The .ics text of `activity_calendar` SRC: an `https://` (or `webcal://`) URL goes through
 /// FETCH, its answer (or error) reused for 5 minutes from CACHE; anything else is a file path.
@@ -488,11 +499,11 @@ pub fn calendar(src: &str, cache: &CalendarCache, now: std::time::Instant, fetch
         return std::fs::read_to_string(crate::config::expand(src)).map_err(|e| format!("activity_calendar {src}: {e}"));
     };
     let mut c = cache.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some((_, _, r)) = c.as_ref().filter(|(u, at, _)| *u == url && now.duration_since(*at) < CALENDAR_TTL) {
+    if let Some((_, (_, r))) = c.iter().find(|(u, (at, _))| *u == url && now.duration_since(*at) < CALENDAR_TTL) {
         return r.clone();
     }
     let r = fetch(&url).map_err(|e| format!("activity_calendar (URL): {e}"));
-    *c = Some((url, now, r.clone()));
+    remember(&mut c, url, (now, r.clone()));
     r
 }
 
@@ -534,6 +545,8 @@ mod tests {
         assert_eq!(calls.borrow().len(), 2, "fetched again after");
         calendar("webcal://c.example/other.ics", &cache, at(301), fetch).unwrap();
         assert_eq!(calls.borrow()[2], "https://c.example/other.ics", "another URL isn't the cached one; webcal is https");
+        calendar("https://c.example/s3cret.ics", &cache, at(301), fetch).unwrap();
+        assert_eq!(calls.borrow().len(), 3, "each URL keeps its own entry");
         let err = calendar("https://c.example/bad/s3cret", &cache, at(302), fetch).unwrap_err();
         assert_eq!(err, "activity_calendar (URL): HTTP 404");
         assert_eq!(calendar("https://c.example/bad/s3cret", &cache, at(303), fetch), Err(err), "errors are cached too");
