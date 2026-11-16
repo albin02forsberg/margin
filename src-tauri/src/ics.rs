@@ -117,13 +117,113 @@ fn split_unquoted(s: &str, sep: char) -> Option<(&str, &str)> {
     Some((&s[..i], &s[i + 1..]))
 }
 
-/// A DTSTART/DTEND value → local time: UTC (`…Z`) is converted, TZID and floating times
-/// are taken as local; dates (all-day) give None.
-// ponytail: TZID is assumed to be this machine's zone (no tz database); add chrono-tz if other zones matter.
-fn when(v: &str) -> Option<NaiveDateTime> {
+/// Converts a UTC time to the zone events are shown in (`local`, or a fixed one in tests).
+type ToLocal<'a> = &'a dyn Fn(NaiveDateTime) -> NaiveDateTime;
+
+fn local(utc: NaiveDateTime) -> NaiveDateTime {
+    Utc.from_utc_datetime(&utc).with_timezone(&Local).naive_local()
+}
+
+/// A DTSTART/DTEND value → local time: UTC (`…Z`) goes through TO_LOCAL, TZID and floating
+/// times are taken as local (see `when_tz`); dates (all-day) give None.
+fn when(v: &str, to_local: ToLocal) -> Option<NaiveDateTime> {
     let (v, utc) = v.strip_suffix('Z').map_or((v, false), |v| (v, true));
     let t = NaiveDateTime::parse_from_str(v, "%Y%m%dT%H%M%S").ok()?;
-    Some(if utc { Utc.from_utc_datetime(&t).with_timezone(&Local).naive_local() } else { t })
+    Some(if utc { to_local(t) } else { t })
+}
+
+/// `when`, but a time whose TZID (in PARAMS) has a VTIMEZONE in ZONES is converted from that zone;
+/// an unknown TZID is taken as local.
+fn when_tz(params: &str, v: &str, zones: &Zones, to_local: ToLocal) -> Option<NaiveDateTime> {
+    let t = when(v, to_local)?;
+    match param(params, "TZID").and_then(|z| zones.get(z)) {
+        Some(z) if !v.ends_with('Z') => Some(to_local(t - Duration::seconds(offset(z, t) as i64))),
+        _ => Some(t),
+    }
+}
+
+/// The value of parameter K in a property's PARAMS (`TZID="A; B";VALUE=…`), unquoted.
+fn param<'a>(params: &'a str, k: &str) -> Option<&'a str> {
+    let mut r = params;
+    loop {
+        let (p, next) = split_unquoted(r, ';').map_or((r, None), |(a, b)| (a, Some(b)));
+        if let Some((_, v)) = p.split_once('=').filter(|(n, _)| n.eq_ignore_ascii_case(k)) {
+            return Some(v.trim_matches('"'));
+        }
+        r = next?;
+    }
+}
+
+/// One STANDARD/DAYLIGHT part of a VTIMEZONE: from START (wall time), repeating yearly by RULE,
+/// the offset changes FROM → TO (seconds east of UTC).
+#[derive(Debug)]
+struct Onset {
+    start: NaiveDateTime,
+    from: i32,
+    to: i32,
+    rule: Option<String>,
+}
+/// VTIMEZONEs by TZID.
+type Zones = HashMap<String, Vec<Onset>>;
+
+/// A UTC offset (`+0100`, `-0500`, `+053000`) in seconds.
+fn utc_offset(v: &str) -> Option<i32> {
+    let (sign, v) = (if v.starts_with('-') { -1 } else { 1 }, v.trim_start_matches(['+', '-']));
+    let n = |i: usize| v.get(i..i + 2).map_or(Some(0), |s| s.parse::<i32>().ok());
+    (v.len() >= 4).then(|| Some(sign * (n(0)? * 3600 + n(2)? * 60 + n(4)?))).flatten()
+}
+
+fn onset(p: &Props) -> Option<Onset> {
+    let start = NaiveDateTime::parse_from_str(&prop(p, "DTSTART")?, "%Y%m%dT%H%M%S").ok()?;
+    let to = utc_offset(&prop(p, "TZOFFSETTO")?)?;
+    Some(Onset { start, from: prop(p, "TZOFFSETFROM").and_then(|v| utc_offset(&v)).unwrap_or(to), to, rule: prop(p, "RRULE") })
+}
+
+const DAYS: [&str; 7] = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
+
+/// The Nth (negative: from the end of the month) WD of month M in Y.
+fn nth_weekday(y: i32, m: u32, n: i64, wd: Weekday) -> Option<NaiveDate> {
+    let first = NaiveDate::from_ymd_opt(y, m, 1)?;
+    let d = if n > 0 {
+        first + Duration::days((wd.num_days_from_monday() as i64 - first.weekday().num_days_from_monday() as i64).rem_euclid(7) + 7 * (n - 1))
+    } else {
+        let last = first + Duration::days(first.num_days_in_month() as i64 - 1);
+        last - Duration::days((last.weekday().num_days_from_monday() as i64 - wd.num_days_from_monday() as i64).rem_euclid(7) + 7 * (-n - 1))
+    };
+    (d.month() == m).then_some(d)
+}
+
+/// When O switches the offset in year Y: its yearly RRULE's `BYMONTH` and `BYDAY` (`2SU`, `-1SU`;
+/// a plain `SU` is the first on or after the smallest `BYMONTHDAY`), else START.
+fn onset_in(o: &Onset, y: i32) -> Option<NaiveDateTime> {
+    let Some(rule) = &o.rule else { return Some(o.start) };
+    let r: HashMap<&str, &str> = rule.split(';').filter_map(|p| p.split_once('=')).collect();
+    let m = r.get("BYMONTH").and_then(|v| v.parse().ok()).unwrap_or(o.start.month());
+    let d = match r.get("BYDAY") {
+        Some(b) => {
+            let wd = Weekday::try_from(DAYS.iter().position(|x| b.ends_with(x))? as u8).ok()?;
+            match b[..b.len() - 2].parse::<i64>().unwrap_or(0) {
+                0 => {
+                    let from = r.get("BYMONTHDAY").and_then(|v| v.split(',').filter_map(|x| x.parse::<u32>().ok()).min()).unwrap_or(1);
+                    nth_weekday(y, m, 1, wd).map(|d| d + Duration::weeks(((from as i64 - d.day() as i64) + 6).div_euclid(7)))
+                }
+                n => nth_weekday(y, m, n, wd),
+            }
+        }
+        None => NaiveDate::from_ymd_opt(y, m, o.start.day()),
+    }?
+    .and_time(o.start.time());
+    (d >= o.start && !r.get("UNTIL").and_then(|u| date(u)).is_some_and(|u| d.date() > u)).then_some(d)
+}
+
+/// The offset of zone Z at wall time T: that of the part that switched last at or before T,
+/// else the earliest part's TZOFFSETFROM.
+fn offset(z: &[Onset], t: NaiveDateTime) -> i32 {
+    z.iter()
+        .flat_map(|o| [t.year(), t.year() - 1].map(|y| (onset_in(o, y), o.to)))
+        .filter_map(|(at, to)| Some((at.filter(|a| *a <= t)?, to)))
+        .max_by_key(|x| x.0)
+        .map_or_else(|| z.iter().min_by_key(|o| o.start).map_or(0, |o| o.from), |x| x.1)
 }
 
 /// An RFC 5545 DURATION (`[+]P[nW][nD][T[nH][nM][nS]]`); negative or malformed gives None.
@@ -155,8 +255,8 @@ fn date(v: &str) -> Option<NaiveDate> {
 }
 
 /// The local day of an EXDATE / RECURRENCE-ID value: a `...Z` time is converted like DTSTART's, a date is taken as is.
-fn local_date(v: &str) -> Option<NaiveDate> {
-    when(v).map(|d| d.date()).or_else(|| date(v))
+fn local_date(v: &str, to_local: ToLocal) -> Option<NaiveDate> {
+    when(v, to_local).map(|d| d.date()).or_else(|| date(v))
 }
 
 fn unescape(s: &str) -> String {
@@ -166,7 +266,7 @@ fn unescape(s: &str) -> String {
 /// Whether the occurrence on DAY at AT is after UNTIL: a date-time UNTIL (UTC converted to local) compares
 /// with the time, a date-only one by day.
 fn until_passed(until: Option<&&str>, day: NaiveDate, at: NaiveTime) -> bool {
-    until.is_some_and(|v| when(v).map_or_else(|| date(v).is_some_and(|u| day > u), |u| day.and_time(at) > u))
+    until.is_some_and(|v| when(v, &local).map_or_else(|| date(v).is_some_and(|u| day > u), |u| day.and_time(at) > u))
 }
 
 /// Whether a series starting on FIRST under RRULE has an occurrence on DAY. DAILY, WEEKLY,
@@ -177,7 +277,6 @@ fn occurs(rule: &str, first: NaiveDate, at: NaiveTime, day: NaiveDate) -> bool {
     let r: HashMap<&str, &str> = rule.split(';').filter_map(|p| p.split_once('=')).collect();
     let n = r.get("INTERVAL").and_then(|v| v.parse::<i64>().ok()).unwrap_or(1).max(1);
     let nums = |k: &str| -> Vec<i64> { r.get(k).map_or(vec![], |v| v.split(',').filter_map(|x| x.parse().ok()).collect()) };
-    const DAYS: [&str; 7] = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
     // (ordinal, weekday): 0 is every such weekday.
     let by: Vec<(i64, Weekday)> = r.get("BYDAY").map_or(vec![], |v| {
         v.split(',').filter_map(|d| Some((d.get(..d.len().saturating_sub(2)).and_then(|o| o.parse().ok()).unwrap_or(0),Weekday::try_from(DAYS.iter().position(|x| d.ends_with(x))? as u8).ok()?))).collect()
@@ -218,10 +317,11 @@ pub fn events_on(text: &str, day: NaiveDate) -> Vec<Event> {
 /// One VEVENT's (NAME, params, value)s, without nested components (alarms).
 type Props = Vec<(String, String, String)>;
 type Moved = std::collections::HashMap<String, std::collections::HashSet<NaiveDate>>;
-/// A parsed .ics: its VEVENTs and, per UID, the days moved away by a RECURRENCE-ID.
+/// A parsed .ics: its VEVENTs, its VTIMEZONEs and, per UID, the days moved away by a RECURRENCE-ID.
 pub struct Parsed {
     evs: Vec<Props>,
     moved: Moved,
+    zones: Zones,
 }
 
 fn prop(e: &Props, n: &str) -> Option<String> {
@@ -248,37 +348,57 @@ pub fn parse_cached(text: &str) -> std::sync::Arc<Parsed> {
 pub fn parse(text: &str) -> Parsed {
     let text = text.replace("\r\n", "\n").replace("\n ", "").replace("\n\t", "");
     let (mut evs, mut cur, mut depth): (Vec<Props>, Option<Props>, i32) = (vec![], None, 0);
+    // The VTIMEZONE being read (TZID, parts) and its STANDARD/DAYLIGHT part.
+    let (mut zones, mut tz, mut part) = (Zones::new(), None::<(String, Vec<Onset>)>, None::<Props>);
     for l in text.lines() {
         match l.trim_end() {
             "BEGIN:VEVENT" => (cur, depth) = (Some(vec![]), 0),
             "END:VEVENT" => evs.extend(cur.take()),
+            "BEGIN:VTIMEZONE" => tz = Some((String::new(), vec![])),
+            "END:VTIMEZONE" => zones.extend(tz.take().filter(|t| !t.1.is_empty())),
+            "BEGIN:STANDARD" | "BEGIN:DAYLIGHT" if tz.is_some() => part = Some(vec![]),
+            "END:STANDARD" | "END:DAYLIGHT" if tz.is_some() => tz.iter_mut().for_each(|t| t.1.extend(part.take().as_ref().and_then(onset))),
             l if l.starts_with("BEGIN:") => depth += 1,
             l if l.starts_with("END:") => depth -= 1,
             l => {
-                if let (Some(c), 0, Some((k, v))) = (cur.as_mut(), depth, split_unquoted(l, ':')) {
-                    let (name, params) = k.split_once(';').unwrap_or((k, ""));
-                    c.push((name.to_uppercase(), params.to_string(), v.to_string()));
+                let Some((k, v)) = split_unquoted(l, ':') else { continue };
+                let (name, params) = k.split_once(';').unwrap_or((k, ""));
+                let p = (name.to_uppercase(), params.to_string(), v.to_string());
+                match (part.as_mut(), tz.as_mut(), cur.as_mut()) {
+                    (Some(c), ..) => c.push(p),
+                    (_, Some(t), _) if p.0 == "TZID" => t.0 = p.2,
+                    (None, None, Some(c)) if depth == 0 => c.push(p),
+                    _ => {}
                 }
             }
         }
     }
     let mut moved = Moved::new();
     for e in &evs {
-        if let (Some(u), Some(d)) = (prop(e, "UID"), prop(e, "RECURRENCE-ID").and_then(|v| local_date(&v))) {
+        if let (Some(u), Some(d)) = (prop(e, "UID"), prop(e, "RECURRENCE-ID").and_then(|v| local_date(&v, &local))) {
             moved.entry(u).or_default().insert(d);
         }
     }
-    Parsed { evs, moved }
+    Parsed { evs, moved, zones }
 }
 
 /// `events_on` for an already parsed calendar.
 pub fn events_in(p: &Parsed, day: NaiveDate) -> Vec<Event> {
+    events_in_at(p, day, &local)
+}
+
+/// `events_in`, shown in the zone TO_LOCAL converts UTC to. A TZID with a VTIMEZONE is honoured for
+/// events without an RRULE; a series' times, EXDATEs and RECURRENCE-IDs are taken as local.
+// ponytail: series stay in their own wall time until #1402.
+fn events_in_at(p: &Parsed, day: NaiveDate, to_local: ToLocal) -> Vec<Event> {
     let (evs, moved) = (&p.evs, &p.moved);
     let (d0, d1) = (day.and_time(NaiveTime::MIN), (day + Duration::days(1)).and_time(NaiveTime::MIN));
     let mut out = vec![];
     for e in evs {
-        let Some(start) = prop(e, "DTSTART").and_then(|v| when(&v)) else { continue };
-        let Some(end) = prop(e, "DTEND").and_then(|v| when(&v)).or_else(|| prop(e, "DURATION").and_then(|v| duration(&v)).map(|d| start + d)) else { continue };
+        let series = prop(e, "RRULE").is_some();
+        let time = |n: &str| e.iter().find(|x| x.0 == n).and_then(|x| if series { when(&x.2, to_local) } else { when_tz(&x.1, &x.2, &p.zones, to_local) });
+        let Some(start) = time("DTSTART") else { continue };
+        let Some(end) = time("DTEND").or_else(|| prop(e, "DURATION").and_then(|v| duration(&v)).map(|d| start + d)) else { continue };
         if prop(e, "STATUS").is_some_and(|s| s.eq_ignore_ascii_case("CANCELLED")) {
             continue;
         }
@@ -286,7 +406,7 @@ pub fn events_in(p: &Parsed, day: NaiveDate) -> Vec<Event> {
         let spans = match prop(e, "RRULE") {
             Some(rule) if prop(e, "RECURRENCE-ID").is_none() => {
                 let uid = prop(e, "UID").unwrap_or_default();
-                let ex: Vec<NaiveDate> = e.iter().filter(|p| p.0 == "EXDATE").flat_map(|p| p.2.split(',').filter_map(local_date).collect::<Vec<_>>()).collect();
+                let ex: Vec<NaiveDate> = e.iter().filter(|p| p.0 == "EXDATE").flat_map(|p| p.2.split(',').filter_map(|v| local_date(v, to_local)).collect::<Vec<_>>()).collect();
                 (0..=(end.date() - start.date()).num_days().clamp(0, 366))
                     .map(|k| day - Duration::days(k))
                     .filter(|s| !ex.contains(s) && !moved.get(&uid).is_some_and(|m| m.contains(s)) && occurs(&rule, start.date(), start.time(), *s))
@@ -398,13 +518,51 @@ mod tests {
     #[test]
     fn utc_exdate_and_recurrence_id_use_the_local_day() {
         let on = |ics: &str, day: NaiveDate| events_on(ics, day);
-        let local = |v: &str| when(v).unwrap().date();
+        let local = |v: &str| when(v, &local).unwrap().date();
         let base = "BEGIN:VEVENT\nUID:a\nDTSTART:20260105T233000Z\nDTEND:20260106T000000Z\nRRULE:FREQ=WEEKLY\n";
         let (d1, d2, d3) = (local("20260112T233000Z"), local("20260119T233000Z"), local("20260126T233000Z"));
         let ics = format!("{base}EXDATE:20260112T233000Z\nSUMMARY:X\nEND:VEVENT\nBEGIN:VEVENT\nUID:a\nRECURRENCE-ID:20260119T233000Z\nDTSTART:20300101T100000\nDTEND:20300101T110000\nSUMMARY:M\nEND:VEVENT");
         assert!(on(&ics, d1).is_empty(), "EXDATE");
         assert!(on(&ics, d2).is_empty(), "moved");
         assert_eq!(on(&ics, d3).len(), 1, "other weeks stay");
+    }
+
+    #[test]
+    fn tzid_through_vtimezone() {
+        let zone = |id: &str, std: (&str, &str), dst: (&str, &str)| format!("BEGIN:VTIMEZONE\nTZID:{id}\n\
+            BEGIN:STANDARD\nDTSTART:16010101T020000\nTZOFFSETFROM:{1}\nTZOFFSETTO:{0}\nRRULE:FREQ=YEARLY;{2}\nEND:STANDARD\n\
+            BEGIN:DAYLIGHT\nDTSTART:16010101T020000\nTZOFFSETFROM:{0}\nTZOFFSETTO:{1}\nRRULE:FREQ=YEARLY;{3}\nEND:DAYLIGHT\nEND:VTIMEZONE\n", std.0, dst.0, std.1, dst.1);
+        let ny = zone("America/New_York", ("-0500", "BYMONTH=11;BYDAY=1SU"), ("-0400", "BYMONTH=3;BYDAY=2SU"));
+        let win = zone("W. Europe Standard Time", ("+0100", "BYMONTH=10;BYDAY=-1SU"), ("+0200", "BYMONTH=3;BYDAY=-1SU"));
+        let ev = |tz: &str, start: &str, extra: &str| format!("BEGIN:VEVENT\nUID:{start}\nDTSTART;TZID={tz}:{start}\nDTEND;TZID={tz}:{start}\n{extra}SUMMARY:X\nEND:VEVENT\n");
+        let cal = |evs: &str| parse(&format!("BEGIN:VCALENDAR\n{ny}{win}{evs}END:VCALENDAR"));
+        let at = |s: &str| NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M").unwrap();
+        // Shown in a fixed UTC+1, so the expected times don't depend on this machine's zone.
+        let plus1 = |t: NaiveDateTime| t + Duration::hours(1);
+        let starts = |p: &Parsed, d: &str| events_in_at(p, d.parse().unwrap(), &plus1).into_iter().map(|e| e.start).collect::<Vec<_>>();
+        let one = |tz: &str, start: &str, day: &str| starts(&cal(&ev(tz, start, "")), day);
+
+        assert_eq!(one("America/New_York", "20260115T100000", "2026-01-15"), [at("2026-01-15 16:00")], "EST");
+        assert_eq!(one("America/New_York", "20260715T100000", "2026-07-15"), [at("2026-07-15 15:00")], "EDT");
+        assert_eq!(one("America/New_York", "20260308T013000", "2026-03-08"), [at("2026-03-08 07:30")], "before the switch on 8 March");
+        assert_eq!(one("America/New_York", "20260308T033000", "2026-03-08"), [at("2026-03-08 08:30")], "after it");
+        assert_eq!(one("America/New_York", "20261101T033000", "2026-11-01"), [at("2026-11-01 09:30")], "back to EST on 1 November");
+        assert_eq!(one("America/New_York", "20260115T200000", "2026-01-16"), [at("2026-01-16 02:00")], "lands on the next day");
+        assert!(one("America/New_York", "20260115T200000", "2026-01-15").is_empty());
+        assert_eq!(one("\"W. Europe Standard Time\"", "20260328T120000", "2026-03-28"), [at("2026-03-28 12:00")], "Windows TZID, winter");
+        assert_eq!(one("\"W. Europe Standard Time\"", "20260329T120000", "2026-03-29"), [at("2026-03-29 11:00")], "last Sunday of March");
+        assert_eq!(one("Mars/Olympus", "20260115T100000", "2026-01-15"), [at("2026-01-15 10:00")], "unknown TZID is taken as local");
+        assert_eq!(starts(&cal("BEGIN:VEVENT\nDTSTART:20260115T100000Z\nDTEND:20260115T110000Z\nEND:VEVENT\n"), "2026-01-15"), [at("2026-01-15 11:00")], "UTC");
+
+        // A moved occurrence is converted; its series isn't yet (#1402).
+        let p = cal(&format!("{}{}", ev("America/New_York", "20260105T100000", "RRULE:FREQ=WEEKLY\n"),
+            "BEGIN:VEVENT\nUID:20260105T100000\nRECURRENCE-ID;TZID=America/New_York:20260112T100000\nDTSTART;TZID=America/New_York:20260113T100000\nDTEND;TZID=America/New_York:20260113T110000\nEND:VEVENT\n"));
+        assert_eq!((starts(&p, "2026-01-12"), starts(&p, "2026-01-13"), starts(&p, "2026-01-19")), (vec![], vec![at("2026-01-13 16:00")], vec![at("2026-01-19 10:00")]));
+
+        assert_eq!([utc_offset("+0100"), utc_offset("-0500"), utc_offset("+053000"), utc_offset("1")], [Some(3600), Some(-18000), Some(19800), None]);
+        let wd = |n, w| nth_weekday(2026, 3, n, w).map(|d| d.day());
+        assert_eq!([wd(2, Weekday::Sun), wd(-1, Weekday::Sun), wd(1, Weekday::Mon), wd(5, Weekday::Sun), wd(-1, Weekday::Tue)], [Some(8), Some(29), Some(2), Some(29), Some(31)]);
+        assert_eq!(nth_weekday(2026, 2, 5, Weekday::Sun), None);
     }
 
     #[test]
