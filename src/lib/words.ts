@@ -30,3 +30,9 @@ export function wordsLabel(doc: number, sel?: number, scope = "", goal = 0) {
   const n = (k: number) => `${k}${goal > 0 && k === doc ? ` / ${goal}` : ""} word${k === 1 && !goal ? "" : "s"}${scope && ` in ${scope}`}`;
   return sel == null ? n(doc) : `${sel} of ${n(doc)}`;
 }
+
+/** Mode-line position of HEAD in DOC: "L12:C4", both 1-based (#1448). */
+export function lineCol(doc: { lineAt(pos: number): { number: number; from: number } }, head: number) {
+  const l = doc.lineAt(head);
+  return `L${l.number}:C${head - l.from + 1}`;
+}

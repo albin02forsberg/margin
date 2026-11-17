@@ -1,6 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseWordGoal, wordCount, wordsLabel } from "./words.ts";
+import { Text } from "@codemirror/state";
+import { lineCol, parseWordGoal, wordCount, wordsLabel } from "./words.ts";
+
+test("lineCol: 1-based line and column of the cursor", () => {
+  const doc = Text.of(["* Heading", "", "body text"]);
+  assert.equal(lineCol(doc, 0), "L1:C1");
+  assert.equal(lineCol(doc, 9), "L1:C10"); // end of line 1
+  assert.equal(lineCol(doc, 10), "L2:C1"); // empty line
+  assert.equal(lineCol(doc, 15), "L3:C5");
+  assert.equal(lineCol(doc, doc.length), "L3:C10");
+});
 
 test("wordCount splits on any whitespace", () => {
   assert.equal(wordCount(""), 0);
