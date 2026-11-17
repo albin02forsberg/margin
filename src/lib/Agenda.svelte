@@ -27,6 +27,7 @@
     runMany: (op: string, items: AgendaItem[], arg?: string) => Promise<boolean>;
     newTask: (scheduled?: string) => void;
     undo: () => Promise<void>;
+    redo: () => Promise<void>;
     act: (f: () => unknown) => void;
     /** Ask for a day and move every overdue SCHEDULED task there (one undo step). */
     moveOverdue: () => Promise<void>;
@@ -72,7 +73,7 @@
   ];
   const MORE: [string, string][] = [
     ["j / k", "Move selection"], ["*", "Mark / unmark (x s d # m < > + - A apply to all marked; Esc clears)"], ["< / >", "Reschedule a day earlier / later"], ["+ / -", "Raise / lower priority"],
-    ["Y", "Copy the list as text"], ["n", "New task"], ["u", "Undo last change"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["W", "Open the task a blocked task waits on"], ["B", "Show blocked tasks (else only ones due by today, dimmed)"], ["w", "Today: day plan on an hour grid (overlaps, free time)"], ["T", "Today: move all overdue tasks to a day"], ["H / L", "Board: move to the column left / right; day plan: shorten / lengthen the block 15 min"], ["J / K", "Day plan: move the block 15 min later / earlier"], ["P", "Day plan: schedule an untimed task in a free gap (or click the gap)"], ["h / l", "Previous / next period"],
+    ["Y", "Copy the list as text"], ["n", "New task"], ["u", "Undo last change"], ["U", "Redo"], ["v", "Day / week (Today), list / board (Tasks)"], ["c", "Today: show tasks done each day"], ["W", "Open the task a blocked task waits on"], ["B", "Show blocked tasks (else only ones due by today, dimmed)"], ["w", "Today: day plan on an hour grid (overlaps, free time)"], ["T", "Today: move all overdue tasks to a day"], ["H / L", "Board: move to the column left / right; day plan: shorten / lengthen the block 15 min"], ["J / K", "Day plan: move the block 15 min later / earlier"], ["P", "Day plan: schedule an untimed task in a free gap (or click the gap)"], ["h / l", "Previous / next period"],
     [".", "Jump to today"], ["D", "Go to a date"], ["/", "Filter"], ["r", "Refresh"], ["?", "Toggle this help"],
   ];
 </script>
@@ -340,18 +341,18 @@
   }
   /** A key-repeat burst of nudges is summed into one edit (one write, one undo step), applied once nothing is in flight. */
   let burst: string | null = null, pend: { dm: number; dl: number } | null = null, nudgeTimer: ReturnType<typeof setTimeout>, nudging = false;
-  onDestroy(() => { clearTimeout(nudgeTimer); wantUndo = false; });
+  onDestroy(() => { clearTimeout(nudgeTimer); wantUndo = wantRedo = false; });
   /** `u` while a write or nudge burst is in flight is queued (once) and runs after it, so it undoes the whole edit. */
-  let wantUndo = false;
-  function undo() {
-    if (!busy && !nudging && !pend) return api.act(async () => { await api.undo(); await refresh(); });
-    wantUndo = true;
+  let wantUndo = false, wantRedo = false;
+  function undo(redo = false) {
+    if (!busy && !nudging && !pend) return api.act(async () => { await (redo ? api.redo() : api.undo()); await refresh(); });
+    if (redo) wantRedo = true; else wantUndo = true;
     clearTimeout(nudgeTimer);
     nudgeTimer = setTimeout(flushNudge, 0);
   }
   function flushNudge() {
     if (nudging) return;
-    if (busy && (pend || wantUndo)) { nudgeTimer = setTimeout(flushNudge, 50); return; }
+    if (busy && (pend || wantUndo || wantRedo)) { nudgeTimer = setTimeout(flushNudge, 50); return; }
     if (pend) {
       const { dm, dl } = pend, it = shown.find((x) => keyOf(x) + x.kind === burst);
       pend = null;
@@ -359,7 +360,7 @@
       if (it && t) { nudging = true; op("time", it, t, false, () => { nudging = false; flushNudge(); }); return; }
     }
     burst = null;
-    if (wantUndo) { wantUndo = false; api.act(async () => { await api.undo(); await refresh(); }); }
+    if (wantUndo || wantRedo) { const redo = !wantUndo; wantUndo = wantRedo = false; api.act(async () => { await (redo ? api.redo() : api.undo()); await refresh(); }); }
   }
 
   /** Run an op on the selected item (ARG for `keyword`), then reload; on the board the selection follows the card.
@@ -427,6 +428,7 @@
       case "Y": void copyList(); break;
       case "n": api.newTask(dayInput()); break;
       case "u": undo(); break;
+      case "U": undo(true); break;
       case "c": if (mode === "agenda") setLog(!logOn); break;
       case "W": if (selected?.blocked_by) { const { path, line } = selected.blocked_by; op("open", { ...selected, path, line }, undefined, false); } break;
       case "B": setBlocked(!blockedOn); break;
