@@ -96,18 +96,22 @@ describe("Responsive layout", () => {
       document.head.insertAdjacentHTML("beforeend", `<style id="mirror-test">:root { --layout-main: row-reverse; }</style>`);
       document.documentElement.dataset.layout = "emacs";
     });
-    await width(900); // drawer-left is re-checked when the window crosses the drawer width
-    await width(1200);
-    await palette("Show note graph");
-    await find(".links", "Graph");
-    const edge = () => browser.execute(() => { const s = getComputedStyle([...document.querySelectorAll<HTMLElement>(".links")].find((e) => e.offsetParent)!); return [s.borderLeftWidth, s.borderRightWidth]; });
-    assert.deepEqual(await edge(), ["0px", "1px"]);
-    await browser.execute(() => document.getElementById("mirror-test")?.remove());
-    await width(900);
-    await width(1200);
-    assert.deepEqual(await edge(), ["1px", "0px"]);
-    await palette("Show note graph"); // toggles it off
-    await browser.execute(() => void delete document.documentElement.dataset.layout);
+    try {
+      await width(900); // drawer-left is re-checked when the window crosses the drawer width
+      await width(1200);
+      await palette("Show note graph");
+      await find(".links", "Graph");
+      const edge = () => browser.execute(() => { const s = getComputedStyle([...document.querySelectorAll<HTMLElement>(".links")].find((e) => e.offsetParent)!); return [s.borderLeftWidth, s.borderRightWidth]; });
+      const edgeIs = (want: string[]) => browser.waitUntil(async () => (await edge()).join() === want.join(), { timeoutMsg: `panel rule is not ${want}` });
+      await edgeIs(["0px", "1px"]);
+      await browser.execute(() => document.getElementById("mirror-test")?.remove());
+      await width(900);
+      await width(1200);
+      await edgeIs(["1px", "0px"]);
+    } finally { // leave no state behind for the tests after this one
+      await browser.execute(() => { document.getElementById("mirror-test")?.remove(); delete document.documentElement.dataset.layout; });
+      if (await displayed(".links")) await palette("Show note graph"); // toggles it off
+    }
   });
 
   it("toggles the top bar with Ctrl+\\", async () => {
