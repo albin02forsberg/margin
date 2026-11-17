@@ -381,7 +381,7 @@ show a toast.
 
 `j`/`k` move, `x` done, `s` schedule, `d` due date, `p` priority, `t` status,
 `#` tags, `E` effort, `e` rename, `y` copy a link to the task, `m` move to another file/heading, `M` copy there (the copy drops `:ID:`s), `A` archive, `I` track time,
-`Enter` open, `<`/`>` reschedule a day, `+`/`-` priority, `n` new task, `u` undo, `U` redo (`Space n U` anywhere; a new edit clears it),
+`Enter` open, `<`/`>` reschedule a day, `+`/`-` priority, `n` new task, `u` undo, `U` redo (`Space n U` anywhere; a new edit clears it; both refuse with a warning when a touched note was edited since),
 `v` day/week, `h`/`l` previous/next, `.` today, `D` (or click the heading) go to a date, `/` filter, `?` all keys.
 Click the checkbox to complete a task.
 `Space x k` in a note turns the checklist at the cursor (or the selected lines) into task headings one level below the heading above: `- [ ]` becomes `TODO`, `- [X]` `DONE`; nested items stay as body text. One undo step. `Space x K` does the reverse for sibling task headings (selection, or the run around the cursor): keywords become `[ ]`/`[X]`, body is indented under the item; SCHEDULED/DEADLINE/CLOSED and `:ID:` are dropped, and it refuses when child headings or other drawers would be lost.

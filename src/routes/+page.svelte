@@ -72,6 +72,7 @@
   import { parseFolds, putFolds } from "$lib/folds";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
   import { parseWordGoal, wordCount, wordsLabel } from "$lib/words";
+  import { stale } from "$lib/undo";
   import { windowTitle } from "$lib/wintitle";
   import { orderNotes, parsePins, togglePin } from "$lib/pins";
   import * as nav from "$lib/navhistory";
@@ -1088,7 +1089,7 @@
   }
 
   // Undo for edits made from the task views: each action records the files' previous text.
-  type Group = { texts: { path: string; text: string }[]; bookmarks: { name: string; heading?: string }[] };
+  type Group = { texts: { path: string; text: string; after: string }[]; bookmarks: { name: string; heading?: string }[] };
   let recording: Group | null = null;
   const undoStack: Group[] = [], redoStack: Group[] = [];
   /** The in-flight outer `recorded` call; `undo` waits for it so it never pops an older group mid-op. */
@@ -1113,11 +1114,16 @@
   /** Pop a group off FROM, write its texts back and push the texts it replaced onto TO (undo and redo are mirrors). */
   async function travel(from: Group[], to: Group[], none: string, done: string) {
     await pending;
-    const group = from.pop();
+    const group = from.at(-1);
     if (!group) return flash(none);
+    const cur = new Map<string, string | null>();
+    for (const r of group.texts) cur.set(r.path, await textOf(r.path).catch(() => null));
+    const bad = stale(group.texts, cur);
+    if (bad.length) return flash(`⚠ ${rel(bad[0])} changed since; not ${done.toLowerCase().replace(".", "")}`);
+    from.pop();
     const other: Group = { texts: [], bookmarks: group.bookmarks.map((b) => ({ name: b.name, heading: bookmarks.find((x) => x.name === b.name)?.heading })) };
     for (const r of [...group.texts].reverse()) {
-      other.texts.push({ path: r.path, text: await textOf(r.path) });
+      other.texts.push({ path: r.path, text: cur.get(r.path)!, after: r.text });
       await toFile(r.path, async () => r.text, false);
     }
     if (group.bookmarks.length) saveBookmarks(bookmarks.map((b) => { const o = group.bookmarks.find((x) => x.name === b.name); return o ? { ...b, heading: o.heading } : b; }));
@@ -1134,7 +1140,10 @@
     const old = await textOf(path);
     const next = await f(old);
     if (next === old) return;
-    if (record && recording && !recording.texts.some((r) => r.path === path)) recording.texts.push({ path, text: old });
+    if (record && recording) {
+      const e = recording.texts.find((r) => r.path === path);
+      if (e) e.after = next; else recording.texts.push({ path, text: old, after: next });
+    }
     if (!t) {
       const warn: string = await call("write_file", { path, text: next });
       if (warn) flash(`⚠ ${warn}`);
