@@ -1,4 +1,4 @@
-//! Read-only BibTeX reader: a note's `#+BIBLIOGRAPHY:` files, else the `bibliography_file` setting, for citations and export.
+//! Read-only BibTeX / CSL-JSON (`.json`) reader: a note's `#+BIBLIOGRAPHY:` files, else the `bibliography_file` setting, for citations and export.
 use crate::{config, App};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -118,6 +118,58 @@ pub fn parse(text: &str) -> Vec<BibEntry> {
     out
 }
 
+/// CSL-JSON (Zotero/Pandoc export): an array of items. Authors become BibTeX-style "Family, Given" (a bare family or a
+/// `literal` name is braced) so `label` works as for `.bib`. Items without an `id` are skipped.
+pub fn parse_csl(text: &str) -> Result<Vec<BibEntry>, String> {
+    let v: serde_json::Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+    let items = v.as_array().ok_or("CSL-JSON must be an array of items")?;
+    let str_of = |v: &serde_json::Value| match v {
+        serde_json::Value::String(s) => s.trim().to_string(),
+        serde_json::Value::Number(n) => n.to_string(),
+        _ => String::new(),
+    };
+    Ok(items
+        .iter()
+        .filter_map(|it| {
+            let get = |k: &str| it.get(k).map(str_of).unwrap_or_default();
+            let key = get("id");
+            if key.is_empty() {
+                return None;
+            }
+            let author = it.get("author").and_then(|a| a.as_array()).map_or(String::new(), |a| {
+                let names: Vec<String> = a
+                    .iter()
+                    .filter_map(|p| {
+                        let f = |k: &str| p.get(k).map(str_of).unwrap_or_default();
+                        match (f("family"), f("given"), f("literal")) {
+                            (fam, giv, _) if !fam.is_empty() && !giv.is_empty() => Some(format!("{fam}, {giv}")),
+                            (fam, _, _) if !fam.is_empty() => Some(format!("{{{fam}}}")),
+                            (_, _, l) if !l.is_empty() => Some(format!("{{{l}}}")),
+                            _ => None,
+                        }
+                    })
+                    .collect();
+                names.join(" and ")
+            });
+            let issued = it.get("issued");
+            let year = issued
+                .and_then(|i| i.get("date-parts"))
+                .and_then(|d| d.get(0))
+                .and_then(|d| d.get(0))
+                .map(str_of)
+                .filter(|y| !y.is_empty())
+                .or_else(|| {
+                    // "literal"/"raw" dates: the first 4-digit run.
+                    let raw = issued.and_then(|i| i.get("literal").or(i.get("raw"))).map(str_of).unwrap_or_default();
+                    raw.as_bytes().windows(4).position(|w| w.iter().all(u8::is_ascii_digit)).map(|i| raw[i..i + 4].to_string())
+                })
+                .unwrap_or_default();
+            let container = ["container-title", "publisher"].iter().map(|k| get(k)).find(|v| !v.is_empty()).unwrap_or_default();
+            Some(BibEntry { label: label(&author, &year), key, author, year, title: get("title"), container })
+        })
+        .collect())
+}
+
 type Cached = HashMap<PathBuf, ((std::time::SystemTime, u64), Arc<Vec<BibEntry>>)>;
 /// Parsed entries per file, keyed on its (mtime, len); cleared past 16 files (paths come from notes).
 static CACHE: Mutex<Option<Cached>> = Mutex::new(None);
@@ -130,7 +182,12 @@ fn load(path: &Path) -> std::io::Result<Arc<Vec<BibEntry>>> {
     if let Some(e) = hit(&CACHE.lock().unwrap_or_else(|e| e.into_inner())) {
         return Ok(e);
     }
-    let entries = Arc::new(parse(&std::fs::read_to_string(path)?)); // read and parse without the lock
+    let text = std::fs::read_to_string(path)?;
+    let entries = Arc::new(if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("json")) {
+        parse_csl(&text).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?
+    } else {
+        parse(&text)
+    }); // parsed without the lock
     let mut g = CACHE.lock().unwrap_or_else(|e| e.into_inner());
     let c = g.get_or_insert_with(HashMap::new);
     if c.len() >= 16 {
@@ -140,7 +197,7 @@ fn load(path: &Path) -> std::io::Result<Arc<Vec<BibEntry>>> {
     Ok(entries)
 }
 
-/// Entries of the BibTeX FILE (a `bibliography_file` setting, `~` expanded); empty setting = none.
+/// Entries of the BibTeX (or CSL-JSON, `.json`) FILE (a `bibliography_file` setting, `~` expanded); empty setting = none.
 pub fn entries_from(file: &str) -> Result<Vec<BibEntry>, String> {
     if file.trim().is_empty() {
         return Ok(vec![]);
@@ -170,7 +227,7 @@ pub fn note_bib_paths(text: &str, dir: Option<&Path>) -> Vec<PathBuf> {
 /// Entries for note PATH with buffer TEXT (#1358): its `#+BIBLIOGRAPHY:` files merged in order (first file wins per key,
 /// unreadable ones skipped), else FALLBACK (the `bibliography_file` setting). Note-declared files may lie outside the
 /// notes/data/config roots and deliberately don't go through `App::check`: like the global setting they are only read
-/// and parsed as BibTeX, never written.
+/// and parsed as BibTeX or CSL-JSON, never written.
 pub fn entries_for_note(text: &str, path: Option<&Path>, fallback: &str) -> Result<Vec<BibEntry>, String> {
     let files = note_bib_paths(text, path.and_then(Path::parent));
     if files.is_empty() {
@@ -220,6 +277,26 @@ mod tests {
         assert_eq!(load(&f).unwrap().len(), 2);
         std::fs::remove_file(&f).unwrap();
         assert!(load(&f).is_err(), "deleted file is an error, not a stale hit");
+    }
+
+    #[test]
+    fn csl_json() {
+        let t = r#"[{"id":"smith20","type":"article-journal","title":"A title","author":[{"family":"Smith","given":"Jane"},{"family":"Lee","given":"Bo"}],
+            "issued":{"date-parts":[[2020,5]]},"container-title":"Nature"},
+          {"id":"who","author":[{"literal":"World Bank"}],"issued":{"raw":"circa 1999-01"},"publisher":"WB"},
+          {"id":"nodate","author":[{"family":"Doe"}],"issued":{"date-parts":[[null]]}},{"title":"no id"}]"#;
+        let e = parse_csl(t).unwrap();
+        assert_eq!(e.len(), 3);
+        assert_eq!((e[0].label.as_str(), e[0].container.as_str(), e[0].title.as_str()), ("Smith & Lee 2020", "Nature", "A title"));
+        assert_eq!((e[1].label.as_str(), e[1].container.as_str()), ("World Bank 1999", "WB"));
+        assert_eq!(e[2].label, "Doe");
+        assert!(parse_csl("{}").is_err() && parse_csl("nope").is_err());
+        let f = std::env::temp_dir().join(format!("margin-csl-{}.JSON", std::process::id()));
+        std::fs::write(&f, t).unwrap();
+        assert_eq!(load(&f).unwrap().len(), 3);
+        std::fs::write(&f, "oops").unwrap();
+        assert_eq!(load(&f).unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+        std::fs::remove_file(&f).unwrap();
     }
 
     #[test]
