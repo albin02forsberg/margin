@@ -72,7 +72,7 @@
   import { parseFolds, putFolds } from "$lib/folds";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
   import { parseWordGoal, wordCount, wordsLabel } from "$lib/words";
-  import { stale } from "$lib/undo";
+  import { serial, stale } from "$lib/undo";
   import { windowTitle } from "$lib/wintitle";
   import { orderNotes, parsePins, togglePin } from "$lib/pins";
   import * as nav from "$lib/navhistory";
@@ -1112,7 +1112,7 @@
   }
 
   /** Pop a group off FROM, write its texts back and push the texts it replaced onto TO (undo and redo are mirrors). */
-  async function travel(from: Group[], to: Group[], none: string, done: string) {
+  const travel = serial(async (from: Group[], to: Group[], none: string, done: string) => {
     await pending;
     const group = from.at(-1);
     if (!group) return flash(none);
@@ -1122,14 +1122,19 @@
     if (bad.length) return flash(`⚠ ${rel(bad[0])} changed since; not ${done.toLowerCase().replace(".", "")}`);
     from.pop();
     const other: Group = { texts: [], bookmarks: group.bookmarks.map((b) => ({ name: b.name, heading: bookmarks.find((x) => x.name === b.name)?.heading })) };
-    for (const r of [...group.texts].reverse()) {
-      other.texts.push({ path: r.path, text: cur.get(r.path)!, after: r.text });
-      await toFile(r.path, async () => r.text, false);
+    try {
+      for (const r of [...group.texts].reverse()) {
+        other.texts.push({ path: r.path, text: cur.get(r.path)!, after: r.text });
+        await toFile(r.path, async () => r.text, false);
+      }
+      if (group.bookmarks.length) saveBookmarks(bookmarks.map((b) => { const o = group.bookmarks.find((x) => x.name === b.name); return o ? { ...b, heading: o.heading } : b; }));
+    } catch (e) {
+      from.push(group); // a failed write keeps the group; after a partial write a retry is refused as stale rather than doubled
+      throw e;
     }
-    if (group.bookmarks.length) saveBookmarks(bookmarks.map((b) => { const o = group.bookmarks.find((x) => x.name === b.name); return o ? { ...b, heading: o.heading } : b; }));
     to.push(other);
     flash(done);
-  }
+  });
   const undo = () => travel(undoStack, redoStack, "Nothing to undo.", "Undone.");
   /** Put back what the last undo took away (`U` in the Agenda, Space n U); a new edit clears it. */
   const redo = () => travel(redoStack, undoStack, "Nothing to redo.", "Redone.");
