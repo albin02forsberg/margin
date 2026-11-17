@@ -160,10 +160,12 @@
 :root[data-layout="emacs"] [data-region="nav"] { gap: 0; padding: 0 var(--s2); background: var(--panel); border-bottom: 1px solid var(--border); }
 :root[data-layout="emacs"] [data-region="nav"] button { padding: 1px var(--s2); border-radius: 0; color: var(--fg); font-size: var(--fs-sm); font-weight: 400; }
 :root[data-layout="emacs"] [data-region="nav"] .views { gap: 0; }
-:root[data-layout="emacs"] [data-region="nav"] .ind, :root[data-layout="emacs"] [data-region="nav"] .views button.on, :root[data-layout="emacs"] [data-region="nav"] .set.on { background: var(--active); box-shadow: none; border-radius: 0; }
+:root[data-layout="emacs"] [data-region="nav"] .ind, :root[data-layout="emacs"] [data-region="nav"] .views button.on, :root[data-layout="emacs"] [data-region="nav"] .set.on { background: var(--sel); box-shadow: none; border-radius: 0; }
+:root[data-layout="emacs"] [data-region="nav"] .views button.on, :root[data-layout="emacs"] [data-region="nav"] .set.on { font-weight: 700; } /* the open view in the region colour, bold (#1448) */
 :root[data-layout="emacs"] [data-region="nav"] .cmdk, :root[data-layout="emacs"] [data-region="nav"] .clockchip { background: none; box-shadow: none; border-radius: 0; width: auto; flex: none; min-width: 0; padding: 0; }
 :root[data-layout="emacs"] [data-region="nav"] .cmdk { padding: 1px var(--s2); color: var(--dim); }
 @media (min-width: 760px) {
+  :root[data-layout="emacs"] [data-region="nav"] .menus { display: flex; } /* File / Edit / View / Help, F10 (#1448) */
   :root[data-layout="emacs"] [data-region="nav"] .logo, :root[data-layout="emacs"] [data-region="nav"] .views .ico, :root[data-layout="emacs"] [data-region="nav"] kbd { display: none; }
 }
 :root[data-layout="emacs"] [data-region="tabs"] { gap: 0; padding: 0; min-height: 0; background: var(--panel); border-bottom: 1px solid var(--border); }
@@ -174,10 +176,12 @@
 :root[data-layout="emacs"] .editor .cm-editor { border-radius: 0; box-shadow: none; }
 @media (min-width: 1000px) {
   :root[data-layout="emacs"] [data-region="side"] { margin: 0; border-radius: 0; box-shadow: none; border-left: 1px solid var(--border); }
+  :root[data-layout="emacs"] main.drawer-left [data-region="side"] { border-left: 0; border-right: 1px solid var(--border); } /* panels on the left (#1448) */
 }
 :root[data-layout="emacs"] [data-region="status"] { padding: 1px var(--s2); background: var(--active); color: var(--fg); border-top: 1px solid var(--border); }
 :root[data-layout="emacs"] [data-region="status"] .mode { background: none; color: var(--fg); padding: 0; }
 :root[data-layout="emacs"] [data-region="status"] .file { color: var(--fg); font-weight: 700; } /* the buffer name, bold as in Emacs */
+:root[data-layout="emacs"] [data-region="status"] .pos { display: inline; } /* L12:C4, only in the mode-line (#1448) */
 
 /* Card look primitives. Opt-in classes only: nothing changes until a view uses them. */
 .card { background: var(--card); border-radius: var(--r); box-shadow: var(--soft); padding: var(--s3) var(--s4); min-width: 0; }

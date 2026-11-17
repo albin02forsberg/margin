@@ -71,8 +71,9 @@
   import { dropWorkspace, parseWorkspaces, putWorkspace, renameInWorkspaces, workspaceName, type Workspaces } from "$lib/workspaces";
   import { parseFolds, putFolds } from "$lib/folds";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
-  import { parseWordGoal, wordCount, wordsLabel } from "$lib/words";
+  import { lineCol, parseWordGoal, wordCount, wordsLabel } from "$lib/words";
   import { serial, stale } from "$lib/undo";
+  import { MENUS } from "$lib/menubar";
   import { windowTitle } from "$lib/wintitle";
   import { orderNotes, parsePins, togglePin } from "$lib/pins";
   import * as nav from "$lib/navhistory";
@@ -140,6 +141,8 @@
   let activity = $state<Activity>();
   let mode = $state("normal");
   let words = $state("");
+  /** Cursor as "L12:C4", shown in the emacs layout's mode-line (#1448). */
+  let pos = $state("");
   /** Title of the heading the editor is narrowed to (Space v n), or "". */
   let narrowed = $state("");
   let wordsDone = $state(false);
@@ -280,6 +283,7 @@
   let wordsTimer: ReturnType<typeof setTimeout> | undefined, wordsKey: string | undefined;
   function countWords(s: EditorState, docChanged = true, now = false) {
     if (view && s !== view.state) return; // the unfocused pane
+    pos = lineCol(s.doc, s.selection.main.head);
     const key = tabs[cur]?.key, r = s.selection.main;
     if (now || key !== wordsKey) { wordsKey = key; clearTimeout(wordsTimer); wordsTimer = undefined; recount(s, docChanged); }
     else if (docChanged || !r.empty) { clearTimeout(wordsTimer); wordsTimer = setTimeout(() => { wordsTimer = undefined; if (view && tabs[cur]?.key === wordsKey) recount(view.state, true); }, 200); }
@@ -4291,6 +4295,16 @@
     if (c) { store("palette-recent", JSON.stringify(pushRecent(recents, c.label))); act(c.run); }
   }
 
+  /** Emacs menu bar (#1448): menu NAME's palette commands in the picker (hidden ones left out); no NAME (F10) picks a menu first. */
+  async function menuBar(name?: string) {
+    name ??= ((await pick({ prompt: "Menu bar", items: MENUS.map(([n]) => n), keys: Object.fromEntries(MENUS.map(([n]) => [n[0].toLowerCase(), n])) })) as string | null) ?? undefined;
+    const labels = MENUS.find(([n]) => n === name)?.[1];
+    if (!labels) return;
+    const items = labels.flatMap((l) => shownCmds.filter((c) => c.label === l)).map((c) => ({ label: c.label, detail: [c.keys?.map(pretty).join(" / "), c.leader && `Space ${c.leader}`].filter(Boolean).join(" · "), value: c }));
+    const c = (await pick({ prompt: name!, items })) as Cmd | null;
+    if (c) act(c.run);
+  }
+
   // ---------------------------------------------------------------- keys
 
   /** "ctrl+shift+f" style name for a key event (letters by physical key, so Alt works on macOS). */
@@ -4310,6 +4324,8 @@
     if (e.key === "Escape" && !inEditor && drawerOpen()) { closeDrawer(); e.preventDefault(); return; }
     if (e.key === "Escape" && !inEditor && zen) { zen = false; e.preventDefault(); return; } // in the editor Esc is Vim's
     const idle = inEditor && ed.vimIdle(view);
+    // F10 opens the emacs layout's menu bar (#1448), not while typing in Vim insert mode
+    if (e.key === "F10" && !e.ctrlKey && !e.altKey && !e.metaKey && document.documentElement.dataset.layout === "emacs" && (!inEditor || idle)) { e.preventDefault(); e.stopPropagation(); act(() => menuBar()); return; }
     const c = combo(e);
     for (const cmd of shownCmds) {
       if (!cmd.keys?.some((k) => k.toLowerCase() === c)) continue;
@@ -4678,6 +4694,7 @@
   {#if topbar && !zen && cfg}
     <header class="topnav" data-region="nav">
       <span class="logo" aria-hidden="true">m</span>
+      <span class="menus">{#each MENUS as [name]}<button title="{name} menu (F10)" onclick={() => act(() => menuBar(name))}>{name}</button>{/each}</span>
       <nav class="views" class:has-ind={ind.on} bind:this={viewsEl}>
         <span class="ind" class:slide={motion} class:on={ind.on} style:transform="translate({ind.x}px, {ind.y}px)" style:width="{ind.w}px" style:height="{ind.h}px" aria-hidden="true"></span>
         {#each NAV as n}
@@ -4800,7 +4817,7 @@
     <footer class="status" data-region="status">
       {#if isText(tab)}<span class="mode">{mode.toUpperCase()}</span>{/if}
       <span class="file">{tab?.path ? rel(tab.path) : ""}{tab?.missing ? " • deleted on disk (:w recreates it)" : tab?.conflict ? " • changed on disk (:w keeps yours, Space f r reloads)" : tab?.dirty ? " • unsaved" : ""}</span>
-      {#if isText(tab)}<span class="words" class:done={wordsDone}>{words}</span>{/if}
+      {#if isText(tab)}<span class="pos">{pos}</span><span class="words" class:done={wordsDone}>{words}</span>{/if}
       {#if isText(tab) && narrowed}<span class="narrowed" title="Only this heading is shown; saving keeps the whole note">Narrowed to {narrowed} · Space v n widens</span>{/if}
       <span class="msg">{message}</span>
       {#if download}<progress class="dl" max={download.size} value={download.have} title="Downloading the AI model ({Math.floor((download.have / download.size) * 100)}%); cancel it in AI drafts: choose model…"></progress>{/if}
@@ -4903,6 +4920,7 @@
   .status { display: flex; gap: var(--s3); align-items: center; padding: 0 var(--s4) var(--s2); color: var(--dim); font: var(--fs-xs) var(--mono); flex: none; min-height: 20px; order: var(--layout-status-order); }
   .mode { color: var(--bg); background: var(--accent); padding: 0 6px; border-radius: var(--radius-sm); font-weight: 700; }
   .file, .words { color: var(--dim); }
+  .pos, .menus { display: none; } /* the emacs layout shows them (theme.css) */
   .words.done { color: var(--accent, var(--dim)); }
   .narrowed { color: var(--accent); }
   .msg { color: var(--fg); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -1,7 +1,7 @@
 // End-to-end tests of the responsive layout (breakpoints in +page.svelte); setup and helpers are in setup.ts.
 import { after, before, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { answer, browser, close, find, Key, launch, palette } from "./setup.ts";
+import { answer, browser, close, find, Key, launch, noPicker, palette } from "./setup.ts";
 
 const width = (w: number) => browser.waitUntil(async () => {
   await browser.setWindowSize(w, 800);
@@ -66,6 +66,48 @@ describe("Responsive layout", () => {
     await (await find(".topnav .views button", "Today")).click();
     await find(".agenda h1", "Today");
     await browser.execute(() => { delete document.documentElement.dataset.look; delete document.documentElement.dataset.layout; });
+  });
+
+  it("gives the emacs layout a File/Edit/View/Help menu bar (F10) and line:col in the mode-line (#1448)", async () => {
+    assert.equal(await displayed(".topnav .menus"), false, "menu bar outside the emacs layout");
+    await browser.execute(() => void (document.documentElement.dataset.layout = "emacs"));
+    await (await find(".topnav .menus button", "File")).click();
+    await find(".picker label span", "File");
+    await find(".picker", "New note");
+    await browser.keys(Key.Escape);
+    await noPicker();
+    await browser.keys(Key.F10);
+    await find(".picker label span", "Menu bar");
+    await browser.keys("v"); // one key picks the View menu
+    await find(".picker label span", "View");
+    await answer("View", "Go to Inbox");
+    await find(".topnav .views button.on", "Inbox");
+    await browser.keys([Key.Ctrl, "p"]);
+    await answer("Open a note", "emacspos");
+    await find(".status .file", "emacspos.org");
+    await browser.waitUntil(async () => /^L\d+:C\d+$/.test(await (await browser.$(".status .pos")).getText()), { timeoutMsg: "no L:C in the mode-line" });
+    await browser.execute(() => void delete document.documentElement.dataset.layout);
+    assert.equal(await displayed(".status .pos"), false, "L:C shown outside the emacs layout");
+    await (await browser.$(".tabs .tab.cur .x")).click();
+  });
+
+  it("puts the emacs layout's panel rule on the editor side when the panels are on the left (#1448)", async () => {
+    await browser.execute(() => {
+      document.head.insertAdjacentHTML("beforeend", `<style id="mirror-test">:root { --layout-main: row-reverse; }</style>`);
+      document.documentElement.dataset.layout = "emacs";
+    });
+    await width(900); // drawer-left is re-checked when the window crosses the drawer width
+    await width(1200);
+    await palette("Show note graph");
+    await find(".links", "Graph");
+    const edge = () => browser.execute(() => { const s = getComputedStyle([...document.querySelectorAll<HTMLElement>(".links")].find((e) => e.offsetParent)!); return [s.borderLeftWidth, s.borderRightWidth]; });
+    assert.deepEqual(await edge(), ["0px", "1px"]);
+    await browser.execute(() => document.getElementById("mirror-test")?.remove());
+    await width(900);
+    await width(1200);
+    assert.deepEqual(await edge(), ["1px", "0px"]);
+    await palette("Show note graph"); // toggles it off
+    await browser.execute(() => void delete document.documentElement.dataset.layout);
   });
 
   it("toggles the top bar with Ctrl+\\", async () => {
