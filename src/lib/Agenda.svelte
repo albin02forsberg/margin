@@ -79,7 +79,7 @@
 
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { tick, untrack } from "svelte";
+  import { onDestroy, tick, untrack } from "svelte";
   import type { TimeApi } from "./Time.svelte";
   import WeekBars from "./WeekBars.svelte";
   import { hm, worked } from "./clock";
@@ -340,16 +340,26 @@
   }
   /** A key-repeat burst of nudges is summed into one edit (one write, one undo step), applied once nothing is in flight. */
   let burst: string | null = null, pend: { dm: number; dl: number } | null = null, nudgeTimer: ReturnType<typeof setTimeout>, nudging = false;
+  onDestroy(() => { clearTimeout(nudgeTimer); wantUndo = false; });
+  /** `u` while a write or nudge burst is in flight is queued (once) and runs after it, so it undoes the whole edit. */
+  let wantUndo = false;
+  function undo() {
+    if (!busy && !nudging && !pend) return api.act(async () => { await api.undo(); await refresh(); });
+    wantUndo = true;
+    clearTimeout(nudgeTimer);
+    nudgeTimer = setTimeout(flushNudge, 0);
+  }
   function flushNudge() {
     if (nudging) return;
-    if (!pend) { burst = null; return; }
-    if (busy) { nudgeTimer = setTimeout(flushNudge, 50); return; }
-    const { dm, dl } = pend, it = shown.find((x) => keyOf(x) + x.kind === burst);
-    pend = null;
-    const t = it?.time && shiftTime(it.time, dm, dl, it.effort);
-    if (!it || !t) { burst = null; return; }
-    nudging = true;
-    op("time", it, t, false, () => { nudging = false; flushNudge(); });
+    if (busy && (pend || wantUndo)) { nudgeTimer = setTimeout(flushNudge, 50); return; }
+    if (pend) {
+      const { dm, dl } = pend, it = shown.find((x) => keyOf(x) + x.kind === burst);
+      pend = null;
+      const t = it?.time && shiftTime(it.time, dm, dl, it.effort);
+      if (it && t) { nudging = true; op("time", it, t, false, () => { nudging = false; flushNudge(); }); return; }
+    }
+    burst = null;
+    if (wantUndo) { wantUndo = false; api.act(async () => { await api.undo(); await refresh(); }); }
   }
 
   /** Run an op on the selected item (ARG for `keyword`), then reload; on the board the selection follows the card.
@@ -416,7 +426,7 @@
       case "-": op("priority-down"); break;
       case "Y": void copyList(); break;
       case "n": api.newTask(dayInput()); break;
-      case "u": if (!busy) api.act(async () => { await api.undo(); await refresh(); }); break;
+      case "u": undo(); break;
       case "c": if (mode === "agenda") setLog(!logOn); break;
       case "W": if (selected?.blocked_by) { const { path, line } = selected.blocked_by; op("open", { ...selected, path, line }, undefined, false); } break;
       case "B": setBlocked(!blockedOn); break;
