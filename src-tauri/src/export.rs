@@ -1,6 +1,6 @@
 // Org → HTML / Markdown for exporting notes and reports. A small block parser
 // (headings, paragraphs, lists, tables, blocks) plus inline markup; drawers,
-// planning lines, comments and #+ keywords other than title/subtitle are dropped.
+// planning lines, comments and #+ keywords other than title/subtitle/options (only `toc:`) are dropped.
 
 use crate::bib::BibEntry;
 use crate::org::{self, Kw, OrgFile};
@@ -85,6 +85,8 @@ impl Ids {
 pub struct Doc {
     pub title: Option<String>,
     subtitle: Option<String>,
+    /// `#+OPTIONS: toc:t|N` (#1441): `Some(depth)` adds a TOC after the title unless the note has its own `#+TOC:`.
+    toc_opt: Option<Option<usize>>,
     blocks: Vec<Block>,
     /// Rendered mermaid SVGs by `diagram_key` (#942), embedded by the HTML export; empty from `parse`.
     diagrams: HashMap<String, String>,
@@ -207,11 +209,24 @@ fn expand_links(text: &str) -> String {
 pub fn parse(text: &str, kw: &Kw) -> Doc {
     let text = expand_links(&crate::crypt::strip(text));
     let lines: Vec<&str> = text.lines().collect();
-    let mut d = Doc { title: None, subtitle: None, blocks: vec![], diagrams: HashMap::new(), anchors: HashMap::new(), prefix: String::new(), radio: None, toc: vec![], bib: HashMap::new() };
+    let mut d = Doc { title: None, subtitle: None, toc_opt: None, blocks: vec![], diagrams: HashMap::new(), anchors: HashMap::new(), prefix: String::new(), radio: None, toc: vec![], bib: HashMap::new() };
     let b = blocks(&lines, kw, &mut d);
     d.blocks = b;
+    if let Some(depth) = d.toc_opt.filter(|_| !has_toc(&d.blocks)) {
+        d.blocks.insert(0, Block::Toc(depth, None));
+    }
     link_anchors(&mut d);
     d
+}
+
+/// Whether BS, nested quotes and list items included, holds a `#+TOC: headlines`.
+fn has_toc(bs: &[Block]) -> bool {
+    bs.iter().any(|b| match b {
+        Block::Toc(..) => true,
+        Block::Quote(inner) => has_toc(inner),
+        Block::List(_, items) => items.iter().any(|it| has_toc(&it.children)),
+        _ => false,
+    })
 }
 
 /// Kebab-case slug of S (letters and digits, lowercased) for anchor ids; `section` when it has none.
@@ -401,6 +416,11 @@ fn blocks(lines: &[&str], kw: &Kw, doc: &mut Doc) -> Vec<Block> {
                     let at = out.iter().filter(|b| matches!(b, Block::Heading(_))).count();
                     let lv = out.iter().rev().find_map(|b| if let Block::Heading(h) = b { Some(h.level) } else { None });
                     out.push(Block::Toc(depth, lv.filter(|_| local).map(|l| (at, l))));
+                }
+            } else if let Some(v) = lower.strip_prefix("#+options:") {
+                // Only `toc:t` (all depths) and `toc:N`; `nil`, `0` and junk mean none.
+                if let Some(x) = v.split_whitespace().find_map(|w| w.strip_prefix("toc:")) {
+                    doc.toc_opt = if x == "t" { Some(None) } else { x.parse::<usize>().ok().filter(|&n| n > 0).map(Some) };
                 }
             } else if lower.starts_with("#+print_bibliography:") {
                 out.push(Block::Bibliography);
@@ -1434,6 +1454,22 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         for want in ["<a id=\"p-0-radio-term\"></a>Term a", "<a href=\"#p-0-radio-term\">term</a>", "<a id=\"p-1-radio-term\"></a>Term b", "<a href=\"#p-1-radio-term\">TERM</a>"] {
             assert!(c.contains(want), "missing {want:?} in\n{c}");
         }
+    }
+
+    #[test]
+    fn options_toc_adds_a_table_of_contents() {
+        let md = |t: &str| markdown(&parse(t, &kw()), "x", Path::new("/n"), &Ids::new());
+        let body = "* A\n** A1\n*** A11\n";
+        assert_eq!(md(&format!("#+OPTIONS: num:t toc:t ^:nil\n{body}")), "# x\n\n- [A](#a)\n  - [A1](#a1)\n    - [A11](#a11)\n\n## <a id=\"a\"></a>A\n\n### <a id=\"a1\"></a>A1\n\n#### <a id=\"a11\"></a>A11\n");
+        assert!(md(&format!("#+options: toc:2\n{body}")).starts_with("# x\n\n- [A](#a)\n  - [A1](#a1)\n\n## <a id"));
+        for off in ["#+OPTIONS: toc:nil\n", "#+OPTIONS: toc:0\n", "#+OPTIONS: toc:x\n", "#+OPTIONS: num:t\n", "#+options_foo: toc:t\n", ""] {
+            assert!(!md(&format!("{off}{body}")).contains("](#"), "{off}");
+        }
+        // An explicit TOC (also nested) wins; no headings means no empty list.
+        for t in [format!("#+OPTIONS: toc:t\n{body}#+TOC: headlines 1\n"), format!("#+OPTIONS: toc:t\n#+begin_quote\n#+TOC: headlines 1\n#+end_quote\n{body}")] {
+            assert_eq!(md(&t).matches("- [A](#a)").count(), 1, "{t}");
+        }
+        assert_eq!(md("#+OPTIONS: toc:t\ntext\n"), "# x\n\ntext\n");
     }
 
     #[test]
