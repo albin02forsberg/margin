@@ -10,7 +10,13 @@ export const tocDirective = (line: string) => { const m = DIRECTIVE.exec(line); 
 /** Depth of a `#+TOC: headlines [N]` line (0 = all levels), or null when LINE isn't one. */
 export const tocDepth = (line: string) => tocDirective(line)?.depth ?? null;
 
-export type Entry = { line: number; level: number; title: string };
+/** Whether replacing the whole lines OLD with NOW can change a note's TOC widgets; HAS: the note has a `#+TOC` line.
+ *  Without one only a new directive counts. With one: headings and `#+` lines (blocks, directives), and any line-count
+ *  change, since entries hold line numbers. Otherwise mapping the widgets is exact (#1432). */
+export const tocEditMatters = (old: string, now: string, has: boolean) =>
+  has ? /#\+|^\*/m.test(`${old}\n${now}`) || old.split("\n").length !== now.split("\n").length : /#\+toc/i.test(now);
+
+export type Entry ={ line: number; level: number; title: string };
 const MAX = 500;
 /** Headings of DOC (0-based `line`) down to level DEPTH (0 = all); skips `* ` lines in blocks and noexport/COMMENT subtrees.
  *  With AT (0-based line of a `local` TOC): only the subtree of the heading above it, DEPTH counted from it (none above: all). */
@@ -67,25 +73,33 @@ class Toc extends WidgetType {
 
 /** `#+TOC: headlines` tables of contents; TODO and DONE give the note's keywords. */
 export function toc(todo: () => string[], done: () => string[]): Extension {
-  const build = (s: EditorState): DecorationSet => {
+  type Val = { decos: DecorationSet; has: boolean };
+  const build = (s: EditorState): Val => {
     const ranges: Range<Decoration>[] = [];
-    let block = false, doc: string | null = null;
+    let block = false, has = false, doc: string | null = null;
     for (let i = 1; i <= s.doc.lines; i++) {
       const l = s.doc.line(i);
       if (/^\s*#\+begin_/i.test(l.text)) block = true;
       else if (/^\s*#\+end_/i.test(l.text)) block = false;
-      const dir = !block && l.text.includes("#+") ? tocDirective(l.text) : null;
-      if (!dir) continue;
+      const dir = l.text.includes("#+") ? tocDirective(l.text) : null;
+      has ||= !!dir;
+      if (!dir || block) continue;
       const entries = tocEntries((doc ??= s.doc.toString()), todo(), done(), dir.depth, dir.local ? i - 1 : -1);
       if (entries.length) ranges.push(Decoration.widget({ widget: new Toc(entries), block: true, side: 1 }).range(l.to));
     }
-    return Decoration.set(ranges);
+    return { decos: Decoration.set(ranges), has };
   };
+  const lines = (doc: EditorState["doc"], a: number, b: number) => doc.sliceString(doc.lineAt(a).from, doc.lineAt(b).to);
   return [
-    StateField.define<DecorationSet>({
+    StateField.define<Val>({
       create: build,
-      update: (d, tr) => (tr.docChanged ? build(tr.state) : d),
-      provide: (f) => EditorView.decorations.from(f),
+      update: (v, tr) => {
+        if (!tr.docChanged) return v;
+        let hit = false;
+        tr.changes.iterChangedRanges((fa, ta, fb, tb) => { hit ||= tocEditMatters(lines(tr.startState.doc, fa, ta), lines(tr.state.doc, fb, tb), v.has); });
+        return hit ? build(tr.state) : v.has ? { decos: v.decos.map(tr.changes), has: true } : v;
+      },
+      provide: (f) => EditorView.decorations.from(f, (v) => v.decos),
     }),
     EditorView.baseTheme({
       ".cm-toc": { color: "var(--dim)", background: "var(--panel)", borderLeft: "3px solid var(--border)", padding: "0.2em 0.8em", margin: "0.1em 0 0.3em", fontSize: "0.92em", userSelect: "none", borderRadius: "0 var(--radius-sm) var(--radius-sm) 0" },

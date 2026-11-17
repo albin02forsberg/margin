@@ -30,7 +30,7 @@ import { transclusion, transcludeTarget } from "./transclude";
 import { completionAt } from "./links";
 import { lineContext, syntaxAt } from "./syntax";
 import { bibEditMatters, bibLine, bibliography, chip, citeAt, citeQuery, cites, citeText, printBibDirective, type BibEntry } from "./cite";
-import { mentions, radio, type Radio } from "./radio";
+import { mentions, radio, radioEditMatters, type Radio } from "./radio";
 import { diagrams } from "./diagram";
 export { directive as transcludeLine } from "./transclude";
 import { block, expandSnippet, snippetAt, snippetPrompts, type Snippet } from "./snippet";
@@ -426,9 +426,23 @@ function codeTokens(lang: Language, code: string): [number, number, string][] {
   return toks;
 }
 
-/** The note's radio targets, built once per document (cursor moves reuse it). */
+/** The text of the whole lines from A to B of DOC (what an edit's changed range touches). */
+const lineSpan = (doc: EditorState["doc"], a: number, b: number) => doc.sliceString(doc.lineAt(a).from, doc.lineAt(b).to);
+/** The note's radio targets, kept across edits that can't change them (#1432). */
+const radioField = StateField.define<Radio>({
+  create: (s) => radio(s.doc.toString()),
+  update: (r, tr) => {
+    if (!tr.docChanged) return r;
+    let hit = false;
+    tr.changes.iterChangedRanges((fa, ta, fb, tb) => { hit ||= radioEditMatters(lineSpan(tr.startState.doc, fa, ta), lineSpan(tr.state.doc, fb, tb), !!r); });
+    return hit ? radio(tr.state.doc.toString()) : r;
+  },
+});
+/** States without the field build it once per document (cursor moves reuse it). */
 const radioCache = new WeakMap<EditorState["doc"], Radio>();
 function radioOf(state: EditorState): Radio {
+  const r = state.field(radioField, false);
+  if (r !== undefined) return r;
   if (!radioCache.has(state.doc)) radioCache.set(state.doc, radio(state.doc.toString()));
   return radioCache.get(state.doc)!;
 }
@@ -691,8 +705,7 @@ const printBib = StateField.define<DecorationSet>({
     if (!tr.docChanged) return d;
     // Rebuild only when a touched line (before or after) has a cite or `#+`; else just map the widgets.
     let hit = false;
-    const text = (doc: EditorState["doc"], a: number, b: number) => doc.sliceString(doc.lineAt(a).from, doc.lineAt(b).to);
-    tr.changes.iterChangedRanges((fa, ta, fb, tb) => { hit ||= bibEditMatters(text(tr.startState.doc, fa, ta), text(tr.state.doc, fb, tb)); });
+    tr.changes.iterChangedRanges((fa, ta, fb, tb) => { hit ||= bibEditMatters(lineSpan(tr.startState.doc, fa, ta), lineSpan(tr.state.doc, fb, tb)); });
     return hit ? bibDecos(tr.state) : d.map(tr.changes);
   },
   provide: (f) => EditorView.decorations.from(f),
@@ -1545,7 +1558,7 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
   ];
   if (opts.org) {
     ext.push(
-      spellConf.of(spellExt()), orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path, tagColors: opts.tagColors }), orgStyle, orgFold, clicks, tableTools, narrowField, transclusion(opts.path, (t) => hooks.follow(t)), toc(() => opts.todo, () => opts.done), printBib, diagrams, completion,
+      spellConf.of(spellExt()), orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path, tagColors: opts.tagColors }), orgStyle, orgFold, clicks, tableTools, narrowField, transclusion(opts.path, (t) => hooks.follow(t)), toc(() => opts.todo, () => opts.done), printBib, radioField, diagrams, completion,
       Prec.high(keymap.of([{ key: "Tab", run: orgTab }, { key: "Shift-Tab", run: orgShiftTab }, { key: "Enter", run: smartEnter },
         // Insert mode only: in normal / visual mode Ctrl+B stays vim's page up.
         { key: "Mod-b", run: (v) => vimInsert(v) && emphasis(v, "*") }, { key: "Mod-i", run: (v) => vimInsert(v) && emphasis(v, "/") }])),

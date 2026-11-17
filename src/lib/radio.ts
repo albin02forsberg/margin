@@ -11,6 +11,11 @@ const MAX = 200;
  *  the 0-based lines inside src/example blocks (no mentions there). */
 export type Radio = { re: RegExp; terms: Map<string, string>; code: Set<number> } | null;
 
+/** Whether replacing the whole lines OLD with NOW can change radio(): a touched target or `#+` line (block markers), or,
+ *  when the note HAD targets, a line-count change (`code` holds line numbers). Otherwise the previous Radio is exact (#1432). */
+export const radioEditMatters = (old: string, now: string, had: boolean) =>
+  /<<<|#\+/.test(`${old}\n${now}`) || (had && old.split("\n").length !== now.split("\n").length);
+
 const key = (s: string) => s.replace(/\s+/g, " ").toLowerCase();
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
