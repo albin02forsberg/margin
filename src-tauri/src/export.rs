@@ -25,6 +25,9 @@ static RADIO: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<<<([^<>\s](?:[^<
 /// A bare link target that is a file, not a same-page fuzzy target: scheme, path separator, extension or `::search`.
 static FILE_LIKE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^[a-z][\w+.-]*:|[/\\]|\.\w+$|::").unwrap());
 
+/// An org timestamp (`<2026-11-17 Tue>` / `[..]`): brackets are dropped from `#+DATE:`.
+static STAMP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[<\[](\d[^>\]]*)[>\]]").unwrap());
+
 #[derive(Debug, PartialEq)]
 pub struct Heading {
     level: usize,
@@ -406,6 +409,7 @@ fn blocks(lines: &[&str], kw: &Kw, doc: &mut Doc) -> Vec<Block> {
             } else if let Some(v) = lower.strip_prefix("#+author:").map(|_| t[9..].trim()) {
                 doc.author = Some(v.to_string()).filter(|v| !v.is_empty());
             } else if let Some(v) = lower.strip_prefix("#+date:").map(|_| t[7..].trim()) {
+                let v = STAMP.replace_all(v, "$1").replace("--", "\u{2013}");
                 let v = v.trim_start_matches(['<', '[']).trim_end_matches(['>', ']']).trim();
                 doc.date = Some(v.to_string()).filter(|v| !v.is_empty());
             } else if let Some(v) = lower.strip_prefix("#+name:").map(|_| t[7..].trim()).filter(|v| !v.is_empty()) {
@@ -1286,6 +1290,12 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
         assert!(m.starts_with("# x\n\n*A "), "{m}");
         let (h, m) = go("#+date: 2026-11-19\n#+author:\n");
         assert!(h.contains("byline\">2026-11-19<") && !h.contains("name=\"author\"") && m == "# x\n\n*2026-11-19*\n\n\n", "{h}{m:?}");
+        let (h, _) = go("#+date: <2026-11-17 Tue>--<2026-11-19 Thu>\n");
+        assert!(h.contains("byline\">2026-11-17 Tue\u{2013}2026-11-19 Thu<"), "{h}");
+        let (h, _) = go("#+date: [2026-11-17 Tue 10:00-12:00]--[2026-11-18]\n");
+        assert!(h.contains("byline\">2026-11-17 Tue 10:00-12:00\u{2013}2026-11-18<"), "{h}");
+        let (h, _) = go("#+date: November 2026\n");
+        assert!(h.contains("byline\">November 2026<"), "{h}");
         let (h, m) = go("#+date: <>\ntext\n");
         assert!(!h.contains("class=\"byline") && m == "# x\n\ntext\n");
     }
