@@ -432,6 +432,11 @@ async function pngs() {
     await shot("retro");
     await browser.execute(() => { delete document.documentElement.dataset.look; });
   }
+  if (want("emacs")) { // #1386: the built-in emacs look and the layout it brings
+    await browser.execute(() => Object.assign(document.documentElement.dataset, { look: "emacs", layout: "emacs" }));
+    await shot("emacs");
+    await browser.execute(() => { delete document.documentElement.dataset.look; delete document.documentElement.dataset.layout; });
+  }
   for (const l of ["rail", "compact"]) if (want(l)) { // #1310: the built-in layouts
     await browser.execute((l) => { document.documentElement.dataset.layout = l; }, l);
     await shot(l);

@@ -97,12 +97,53 @@
     color-scheme: light;
   }
 }
-/* Components hard-code radii (pills, dots, buttons) and motion; retro flattens them all here rather than per component. */
-[data-look="retro"] *, [data-look="retro"] *::before, [data-look="retro"] *::after {
+/* Emacs look (`look = "emacs"`, #1386): Emacs's default faces (org-level-N, TODO/DONE, font-lock), monospace, flat,
+   1px rules. Picking it also sets `layout = "emacs"` (layoutForLook). Same light-pair rule as retro (theme.test.ts). */
+:root[data-look="emacs"] {
+  --sans: var(--mono); --editor-font: var(--mono);
+  --bg: #000000; --fg: #ffffff; --panel: #1a1a1a; --border: #4d4d4d; --dim: #a6a6a6;
+  --active: #333333; --sel: #3a5fcd; --accent: #eedd82;
+  --h1: #87cefa; --h2: #eedd82; --h3: #00ffff; --h4: #ff7f24; --h5: #98fb98; --h6: #7fffd4;
+  --todo: #ffc0cb; --done: #98fb98; --date: #00ffff; --link: #00ffff; --code: #ffa07a;
+  --kw: #00ffff;
+  --radius: 0; --radius-sm: 0; --r: 0;
+  --card: var(--bg); --canvas: var(--bg);
+  --soft: 0 0 0 transparent; --lift: 0 0 0 transparent; --pshadow: 0 0 0 transparent; --shadow: 0 0 0 transparent;
+  --scrim: rgb(0 0 0 / .4);
+  --ring: 0 0 0 1px var(--link);
+}
+:root[data-look="emacs"][data-theme="light"] {
+    --bg: #ffffff; --fg: #000000; --panel: #f2f2f2; --border: #bfbfbf; --dim: #7f7f7f;
+    --active: #d9d9d9; --sel: #eedc82; --accent: #a020f0;
+    --h1: #0000ff; --h2: #a0522d; --h3: #a020f0; --h4: #b22222; --h5: #228b22; --h6: #008b8b;
+    --todo: #ff0000; --done: #228b22; --date: #a020f0; --link: #3a5fcd; --code: #8b2252;
+    --kw: #a020f0;
+    --card: var(--bg); --canvas: var(--bg);
+    --soft: 0 0 0 transparent; --lift: 0 0 0 transparent; --pshadow: 0 0 0 transparent;
+    --scrim: rgb(0 0 0 / .14);
+    color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-look="emacs"]:not([data-theme="dark"]) {
+    --bg: #ffffff; --fg: #000000; --panel: #f2f2f2; --border: #bfbfbf; --dim: #7f7f7f;
+    --active: #d9d9d9; --sel: #eedc82; --accent: #a020f0;
+    --h1: #0000ff; --h2: #a0522d; --h3: #a020f0; --h4: #b22222; --h5: #228b22; --h6: #008b8b;
+    --todo: #ff0000; --done: #228b22; --date: #a020f0; --link: #3a5fcd; --code: #8b2252;
+    --kw: #a020f0;
+    --card: var(--bg); --canvas: var(--bg);
+    --soft: 0 0 0 transparent; --lift: 0 0 0 transparent; --pshadow: 0 0 0 transparent;
+    --scrim: rgb(0 0 0 / .14);
+    color-scheme: light;
+  }
+}
+/* Components hard-code radii (pills, dots, buttons) and motion; retro and emacs flatten them all here rather than per component. */
+[data-look="retro"] *, [data-look="retro"] *::before, [data-look="retro"] *::after,
+[data-look="emacs"] *, [data-look="emacs"] *::before, [data-look="emacs"] *::after {
   border-radius: 0 !important; transition-duration: 0s !important; animation-duration: 0s !important; animation-iteration-count: 1 !important;
 }
-[data-look="retro"] .card, [data-look="retro"] .chip, [data-look="retro"] .pill { border: 1px solid var(--border); }
-[data-look="retro"] .card:hover { transform: none; }
+[data-look="retro"] .card, [data-look="retro"] .chip, [data-look="retro"] .pill,
+[data-look="emacs"] .card, [data-look="emacs"] .chip, [data-look="emacs"] .pill { border: 1px solid var(--border); }
+[data-look="retro"] .card:hover, [data-look="emacs"] .card:hover { transform: none; }
 
 /* Built-in layouts (#1310), keyed on `layout` in config.toml; they move regions through the #1309 hooks ([data-region], --layout-*). */
 :root[data-layout="compact"] { --s1: 2px; --s2: 4px; --s3: 8px; --s4: 10px; --s5: 16px; --s6: 22px; }
@@ -114,6 +155,29 @@
 :root[data-layout="rail"] [data-region="nav"] .logo { margin: 0 0 var(--s2) var(--s2); }
 :root[data-layout="rail"] [data-region="nav"] .cmdk { width: auto; flex: none; min-width: 0; }
 :root[data-layout="rail"] [data-region="nav"] .clockchip { flex-wrap: wrap; border-radius: var(--r); }
+/* emacs (#1386): the top bar as a one-line menu bar of plain text, tabs as a buffer line, the status bar as a mode-line,
+   editor and panels edge to edge between 1px rules. Under 760 px the top bar keeps its icon-only row (labels hidden). */
+:root[data-layout="emacs"] [data-region="nav"] { gap: 0; padding: 0 var(--s2); background: var(--panel); border-bottom: 1px solid var(--border); }
+:root[data-layout="emacs"] [data-region="nav"] button { padding: 1px var(--s2); border-radius: 0; color: var(--fg); font-size: var(--fs-sm); font-weight: 400; }
+:root[data-layout="emacs"] [data-region="nav"] .views { gap: 0; }
+:root[data-layout="emacs"] [data-region="nav"] .ind, :root[data-layout="emacs"] [data-region="nav"] .views button.on, :root[data-layout="emacs"] [data-region="nav"] .set.on { background: var(--active); box-shadow: none; border-radius: 0; }
+:root[data-layout="emacs"] [data-region="nav"] .cmdk, :root[data-layout="emacs"] [data-region="nav"] .clockchip { background: none; box-shadow: none; border-radius: 0; width: auto; flex: none; min-width: 0; padding: 0; }
+:root[data-layout="emacs"] [data-region="nav"] .cmdk { padding: 1px var(--s2); color: var(--dim); }
+@media (min-width: 760px) {
+  :root[data-layout="emacs"] [data-region="nav"] .logo, :root[data-layout="emacs"] [data-region="nav"] .views .ico, :root[data-layout="emacs"] [data-region="nav"] kbd { display: none; }
+}
+:root[data-layout="emacs"] [data-region="tabs"] { gap: 0; padding: 0; min-height: 0; background: var(--panel); border-bottom: 1px solid var(--border); }
+:root[data-layout="emacs"] [data-region="tabs"] .tab { border-radius: 0; border-right: 1px solid var(--border); box-shadow: none; }
+:root[data-layout="emacs"] [data-region="tabs"] .tab.cur { background: var(--bg); }
+:root[data-layout="emacs"] [data-region="tabs"] .tab button { padding: 1px 2px 1px var(--s2); border-radius: 0; }
+:root[data-layout="emacs"] .editor { padding: 0; }
+:root[data-layout="emacs"] .editor .cm-editor { border-radius: 0; box-shadow: none; }
+@media (min-width: 1000px) {
+  :root[data-layout="emacs"] [data-region="side"] { margin: 0; border-radius: 0; box-shadow: none; border-left: 1px solid var(--border); }
+}
+:root[data-layout="emacs"] [data-region="status"] { padding: 1px var(--s2); background: var(--active); color: var(--fg); border-top: 1px solid var(--border); }
+:root[data-layout="emacs"] [data-region="status"] .mode { background: none; color: var(--fg); padding: 0; }
+:root[data-layout="emacs"] [data-region="status"] .file { color: var(--fg); font-weight: 700; } /* the buffer name, bold as in Emacs */
 
 /* Card look primitives. Opt-in classes only: nothing changes until a view uses them. */
 .card { background: var(--card); border-radius: var(--r); box-shadow: var(--soft); padding: var(--s3) var(--s4); min-width: 0; }

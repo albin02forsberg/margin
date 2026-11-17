@@ -43,6 +43,31 @@ describe("Responsive layout", () => {
     await browser.execute(() => document.getElementById("rail-test")?.remove());
   });
 
+  it("lays out the emacs look as menu line, buffer line, editor and mode-line without overflowing (#1386)", async () => {
+    await browser.execute(() => Object.assign(document.documentElement.dataset, { look: "emacs", layout: "emacs" }));
+    const r = await browser.execute(() => {
+      const box = (r: string) => document.querySelector(`[data-region="${r}"]`)!.getBoundingClientRect();
+      const [nav, tabs, main, status] = ["nav", "tabs", "main", "status"].map(box);
+      const nb = document.querySelector<HTMLElement>('[data-region="nav"]')!;
+      return {
+        order: nav.bottom <= tabs.top + 0.5 && tabs.bottom <= main.top + 0.5 && main.bottom <= status.top + 0.5,
+        oneLine: nav.height < 40, logo: getComputedStyle(document.querySelector(".topnav .logo")!).display,
+        overflow: document.documentElement.scrollWidth - innerWidth, navOverflow: nb.scrollWidth - nb.clientWidth,
+        font: getComputedStyle(document.querySelector(".status")!).fontFamily === getComputedStyle(nb).fontFamily,
+      };
+    });
+    assert.ok(r.order, "regions out of order");
+    assert.ok(r.oneLine, "top bar is not one line");
+    assert.equal(r.logo, "none", "logo still shown");
+    assert.ok(r.overflow <= 0 && r.navOverflow <= 0, `overflow: ${JSON.stringify(r)}`);
+    assert.ok(r.font, "top bar not monospace like the mode-line");
+    await (await find(".topnav .views button", "Tasks")).click();
+    await find(".topnav .views button.on", "Tasks");
+    await (await find(".topnav .views button", "Today")).click();
+    await find(".agenda h1", "Today");
+    await browser.execute(() => { delete document.documentElement.dataset.look; delete document.documentElement.dataset.layout; });
+  });
+
   it("toggles the top bar with Ctrl+\\", async () => {
     await browser.keys([Key.Ctrl, "\\"]);
     await browser.waitUntil(async () => !(await browser.$(".topnav").isExisting()), { timeoutMsg: "top bar still shown" });

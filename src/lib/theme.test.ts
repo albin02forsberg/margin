@@ -18,18 +18,18 @@ test("theme.css: the forced-light and media-query light blocks match", () => {
   assert.equal(body(':root[data-theme="light"] {'), body(':root:not([data-theme="dark"]) {'));
 });
 
-test("theme.css: retro overrides every palette token, and its two light blocks match", () => {
+for (const look of ["retro", "emacs"]) test(`theme.css: ${look} overrides every palette token, and its two light blocks match`, () => {
   const css = readFileSync(new URL("./theme.css", import.meta.url), "utf8");
   const body = (sel: string) => css.split(sel)[1].split("}")[0].replace(/\s+/g, " ").trim();
   const names = (b: string) => [...b.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]).sort();
   const classicLight = names(body(':root[data-theme="light"] {'));
-  const retroLight = body(':root[data-look="retro"][data-theme="light"] {');
-  assert.equal(retroLight, body(':root[data-look="retro"]:not([data-theme="dark"]) {'));
-  assert.deepEqual(names(retroLight), classicLight);
-  const retroDark = names(body(':root[data-look="retro"] {'));
-  for (const n of [...classicLight, "--r", "--radius", "--radius-sm", "--sans", "--editor-font"]) assert.ok(retroDark.includes(n), n);
+  const light = body(`:root[data-look="${look}"][data-theme="light"] {`);
+  assert.equal(light, body(`:root[data-look="${look}"]:not([data-theme="dark"]) {`));
+  assert.deepEqual(names(light), classicLight);
+  const dark = names(body(`:root[data-look="${look}"] {`));
+  for (const n of [...classicLight, "--r", "--radius", "--radius-sm", "--sans", "--editor-font"]) assert.ok(dark.includes(n), n);
   // after the classic light blocks, so its dark palette isn't overridden by an equally specific classic one
-  assert.ok(css.indexOf(':root[data-look="retro"] {') > css.indexOf(':root:not([data-theme="dark"]) {'));
+  assert.ok(css.indexOf(`:root[data-look="${look}"] {`) > css.indexOf(':root:not([data-theme="dark"]) {'));
 });
 
 test("nextTheme cycles system -> light -> dark -> system", () => {
@@ -75,11 +75,14 @@ test("layoutForLook: a user look's header, never for built-ins or unreadable fil
   assert.equal(await layoutForLook("plain", read), null);
   assert.equal(await layoutForLook("gone", read), null);
   for (const n of ["", "classic", "retro"]) assert.equal(await layoutForLook(n, read), null, n);
+  files.emacs = "/* layout: rail */"; // built-in: brings its own layout, a same-named file is never read
+  assert.equal(await layoutForLook("emacs", read), "emacs");
 });
 
 test("theme.css has a block for every built-in layout offered in Settings", () => {
   const css = readFileSync(new URL("./theme.css", import.meta.url), "utf8");
   for (const l of ["compact", "rail"]) assert.ok(css.includes(`:root[data-layout="${l}"] {`), l);
+  for (const r of ["nav", "tabs", "status"]) assert.ok(css.includes(`:root[data-layout="emacs"] [data-region="${r}"] {`), r);
 });
 
 test("setUserLook adds, replaces and removes one style element", () => {
