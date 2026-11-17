@@ -1090,7 +1090,7 @@
   // Undo for edits made from the task views: each action records the files' previous text.
   type Group = { texts: { path: string; text: string }[]; bookmarks: { name: string; heading?: string }[] };
   let recording: Group | null = null;
-  const undoStack: Group[] = [];
+  const undoStack: Group[] = [], redoStack: Group[] = [];
   /** The in-flight outer `recorded` call; `undo` waits for it so it never pops an older group mid-op. */
   let pending: Promise<void> | null = null;
 
@@ -1102,7 +1102,7 @@
       try {
         await f();
       } finally {
-        if (group.texts.length || group.bookmarks.length) undoStack.push(group);
+        if (group.texts.length || group.bookmarks.length) { undoStack.push(group); redoStack.length = 0; }
         recording = null;
       }
     })();
@@ -1110,14 +1110,23 @@
     return run;
   }
 
-  async function undo() {
+  /** Pop a group off FROM, write its texts back and push the texts it replaced onto TO (undo and redo are mirrors). */
+  async function travel(from: Group[], to: Group[], none: string, done: string) {
     await pending;
-    const group = undoStack.pop();
-    if (!group) return flash("Nothing to undo.");
-    for (const r of group.texts.reverse()) await toFile(r.path, async () => r.text);
+    const group = from.pop();
+    if (!group) return flash(none);
+    const other: Group = { texts: [], bookmarks: group.bookmarks.map((b) => ({ name: b.name, heading: bookmarks.find((x) => x.name === b.name)?.heading })) };
+    for (const r of [...group.texts].reverse()) {
+      other.texts.push({ path: r.path, text: await textOf(r.path) });
+      await toFile(r.path, async () => r.text, false);
+    }
     if (group.bookmarks.length) saveBookmarks(bookmarks.map((b) => { const o = group.bookmarks.find((x) => x.name === b.name); return o ? { ...b, heading: o.heading } : b; }));
-    flash("Undone.");
+    to.push(other);
+    flash(done);
   }
+  const undo = () => travel(undoStack, redoStack, "Nothing to undo.", "Undone.");
+  /** Put back what the last undo took away (`U` in the Agenda, Space n U); a new edit clears it. */
+  const redo = () => travel(redoStack, undoStack, "Nothing to redo.", "Redone.");
 
   /** Apply an async text transform to a file, through its open tab if there is one. */
   async function toFile(path: string, f: (text: string) => Promise<string>, record = true) {
@@ -3904,6 +3913,7 @@
     runMany,
     newTask: (s) => act(() => newTask(s ?? "")),
     undo,
+    redo,
     act,
     moveOverdue,
     planGap,
@@ -3986,6 +3996,7 @@
     { label: "Show note graph", leader: "n g", run: () => { showGraph = !showGraph; return refreshBacklinks(); } },
     { label: "AI chat (local model)", leader: "n a", run: toggleChat },
     { label: "Undo last edit made from a task view or the links panel", leader: "n u", run: () => undo().then(refreshBacklinks) },
+    { label: "Redo what Undo last edit took back", leader: "n U", run: () => redo().then(refreshBacklinks) },
     { label: "Follow link or footnote at cursor (also gf, Ctrl+click)", keys: ["Enter"], ctx: "normal", leader: "n o", run: () => (ed.linkAtCursor(view) ? (act(() => followLink()), true) : followFootnote()) },
 
     { label: "Go to Today", keys: ["Ctrl+1"], leader: "v t", run: () => openView("agenda") },
