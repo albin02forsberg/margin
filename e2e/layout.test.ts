@@ -89,6 +89,7 @@ describe("Responsive layout", () => {
     await browser.execute(() => void delete document.documentElement.dataset.layout);
     assert.equal(await displayed(".status .pos"), false, "L:C shown outside the emacs layout");
     await (await browser.$(".tabs .tab.cur .x")).click();
+    await browser.waitUntil(async () => !(await browser.$(".cm-editor").isExisting()), { timeoutMsg: "note tab still open" });
   });
 
   it("puts the emacs layout's panel rule on the editor side when the panels are on the left (#1448)", async () => {
