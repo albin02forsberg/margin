@@ -98,9 +98,9 @@ describe("Responsive layout", () => {
     });
     try {
       await width(900); // drawer-left is re-checked when the window crosses the drawer width
-      await width(1200);
       await palette("Show note graph");
       await find(".links", "Graph");
+      await width(1200);
       const edge = () => browser.execute(() => { const s = getComputedStyle([...document.querySelectorAll<HTMLElement>(".links")].find((e) => e.offsetParent)!); return [s.borderLeftWidth, s.borderRightWidth]; });
       const edgeIs = (want: string[]) => browser.waitUntil(async () => (await edge()).join() === want.join(), { timeoutMsg: `panel rule is not ${want}` }).catch(async (e) => { throw new Error(`${e.message}; got ${await edge()}; ${await browser.execute(() => `w=${innerWidth} main=${document.querySelector("main")!.className} fd=${getComputedStyle(document.querySelector("main")!).flexDirection} layout=${document.documentElement.dataset.layout}`)}`); });
       await edgeIs(["0px", "1px"]);
