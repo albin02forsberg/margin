@@ -858,7 +858,7 @@ margin.on("save", (path: string) => console.log("saved", path));
 `/* layout: */` means the default), then pick it with **View: pick a theme** in the palette (`Ctrl+K`): that saves both
 `look` and `layout` to config.toml. Choosing it under **Settings → Editor → Look** fills in **Layout** the same way, saved
 with the card. After that `layout` is a normal setting, so changing it in Settings sticks. Picking a built-in look or a
-file without the comment leaves the layout as it is.
+file without the comment leaves the layout as it is, except that leaving the `emacs` layout resets it to the default.
 
 A look can also move the shell's regions. Each one carries a `data-region` attribute (`nav` for the top bar, `body`
 around tabs, editor and status bar, `tabs`, `main`, `side` for the outline, graph, chat, peek and backlinks panels, and

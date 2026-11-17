@@ -79,6 +79,15 @@ test("layoutForLook: a user look's header, never for built-ins or unreadable fil
   assert.equal(await layoutForLook("emacs", read), "emacs");
 });
 
+test("layoutForLook: leaving the emacs layout resets it, other layouts stay", async () => {
+  const read = async (n: string) => (n === "railed" ? "/* layout: rail */" : ":root {}");
+  for (const n of ["classic", "retro", "", "plain"]) assert.equal(await layoutForLook(n, read, "emacs"), "", n);
+  assert.equal(await layoutForLook("classic", read, "rail"), null);
+  assert.equal(await layoutForLook("classic", read, ""), null);
+  assert.equal(await layoutForLook("emacs", read, "emacs"), "emacs");
+  assert.equal(await layoutForLook("railed", read, "emacs"), "rail");
+});
+
 test("theme.css has a block for every built-in layout offered in Settings", () => {
   const css = readFileSync(new URL("./theme.css", import.meta.url), "utf8");
   for (const l of ["compact", "rail"]) assert.ok(css.includes(`:root[data-layout="${l}"] {`), l);

@@ -29,9 +29,12 @@ export function applyLayout(name: unknown) {
 export const lookLayout = (css: string | null | undefined): string | null =>
   css?.match(/^\uFEFF?\s*\/\*\s*layout:\s*([\w-]*)\s*\*\//)?.[1] ?? null;
 
-/** The layout picking look NAME also sets (see lookLayout): "emacs" for the emacs look, null for the other built-ins ("", classic, retro), header-less or unreadable files. */
-export const layoutForLook = async (name: string, read: (name: string) => Promise<string | null>): Promise<string | null> =>
-  name === "emacs" ? "emacs" : name === "" || name === "classic" || name === "retro" ? null : lookLayout(await read(name).catch(() => null));
+/** The layout picking look NAME also sets (see lookLayout): "emacs" for the emacs look, null for the other built-ins ("", classic, retro), header-less or unreadable files.
+ *  When the CURRENT layout is "emacs" (the one a look brings along) and NAME sets none, "" resets it; a hand-picked rail/compact stays. */
+export const layoutForLook = async (name: string, read: (name: string) => Promise<string | null>, current?: string | null): Promise<string | null> => {
+  const l = name === "emacs" ? "emacs" : name === "" || name === "classic" || name === "retro" ? null : lookLayout(await read(name).catch(() => null));
+  return l == null && current === "emacs" ? "" : l;
+};
 
 /** Put a user look's CSS in `<style id="user-look">` (created on first use, after the built-in styles), or remove it when CSS is null. */
 export function setUserLook(css: string | null | undefined) {
