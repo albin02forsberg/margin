@@ -1,7 +1,7 @@
 // Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mentions, radio } from "./radio.ts";
+import { mentions, radio, radioEditMatters } from "./radio.ts";
 
 const doc = "* Glossary\n<<<Margin>>> is the app. <<<Margin App>>> too. <<<C++>>>\n#+begin_src sh\n<<<Hidden>>>\n#+end_src\n<<< >>> <<<>>> <<<margin>>>\n";
 const r = radio(doc);
@@ -29,4 +29,34 @@ test("not inside links or targets", () => {
 test("a target cap keeps the regex bounded", () => {
   const many = Array.from({ length: 300 }, (_, i) => `<<<t${i}>>>`).join(" ");
   assert.equal(radio(many)!.terms.size, 200);
+});
+
+test("radioEditMatters", () => {
+  assert.equal(radioEditMatters("plain", "plainx", false), false);
+  assert.equal(radioEditMatters("plain", "pl\nain", false), false);
+  assert.equal(radioEditMatters("plain", "pl\nain", true), true); // `code` holds line numbers
+  assert.equal(radioEditMatters("a <<T>>> b", "a <<<T>>> b", false), true); // marker across the edit boundary
+  assert.equal(radioEditMatters("#+begin_src", "", false), true);
+});
+
+// The fast path must equal a full rebuild: whenever radioEditMatters says no, radio() of the edited note is unchanged.
+test("radioEditMatters agrees with a full rebuild over random edits", () => {
+  let seed = 11;
+  const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) % 2 ** 31), seed % n);
+  const pick = <V,>(a: V[]) => a[rnd(a.length)];
+  const LINES = ["<<<Term>>> here", "a term", "text", "", "#+begin_src sh", "<<<Code>>>", "#+end_src", "<<<Other Thing>>>"];
+  const BITS = ["x", " ", "\n", "<", ">", "#", "+", "<<<New>>>", "\n#+begin_example\n", "#+end_example", "word"];
+  const start = (s: string, p: number) => (p ? s.lastIndexOf("\n", p - 1) + 1 : 0), end = (s: string, p: number) => (s.indexOf("\n", p) + 1 || s.length + 1) - 1;
+  let doc = "", fast = 0;
+  for (let i = 0; i < 3000; i++) {
+    if (i % 50 === 0) doc = Array.from({ length: 10 }, () => pick(LINES)).join("\n");
+    const from = rnd(doc.length + 1), to = Math.min(doc.length, from + rnd(4)), ins = rnd(3) ? pick(BITS) : "";
+    const now = doc.slice(0, from) + ins + doc.slice(to), prev = radio(doc);
+    if (!radioEditMatters(doc.slice(start(doc, from), end(doc, to)), now.slice(start(now, from), end(now, from + ins.length)), !!prev)) {
+      fast++;
+      assert.deepEqual(radio(now), prev, JSON.stringify({ doc, now }));
+    }
+    doc = now;
+  }
+  assert.ok(fast > 100, `fast path taken ${fast} times`);
 });
