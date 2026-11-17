@@ -1,7 +1,9 @@
 //! Read-only BibTeX reader: a note's `#+BIBLIOGRAPHY:` files, else the `bibliography_file` setting, for citations and export.
 use crate::{config, App};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use tauri::State;
 
 #[derive(Serialize, Debug, PartialEq, Clone)]
@@ -116,13 +118,35 @@ pub fn parse(text: &str) -> Vec<BibEntry> {
     out
 }
 
+type Cached = HashMap<PathBuf, ((std::time::SystemTime, u64), Arc<Vec<BibEntry>>)>;
+/// Parsed entries per file, keyed on its (mtime, len); cleared past 16 files (paths come from notes).
+static CACHE: Mutex<Option<Cached>> = Mutex::new(None);
+
+/// The parsed entries of PATH, re-parsed only when its (mtime, len) changed. Errors are never cached.
+fn load(path: &Path) -> std::io::Result<Arc<Vec<BibEntry>>> {
+    let m = std::fs::metadata(path)?;
+    let stamp = (m.modified()?, m.len());
+    let hit = |c: &Option<Cached>| c.as_ref().and_then(|c| c.get(path)).filter(|(s, _)| *s == stamp).map(|(_, e)| e.clone());
+    if let Some(e) = hit(&CACHE.lock().unwrap_or_else(|e| e.into_inner())) {
+        return Ok(e);
+    }
+    let entries = Arc::new(parse(&std::fs::read_to_string(path)?)); // read and parse without the lock
+    let mut g = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    let c = g.get_or_insert_with(HashMap::new);
+    if c.len() >= 16 {
+        c.clear();
+    }
+    c.insert(path.to_path_buf(), (stamp, entries.clone()));
+    Ok(entries)
+}
+
 /// Entries of the BibTeX FILE (a `bibliography_file` setting, `~` expanded); empty setting = none.
 pub fn entries_from(file: &str) -> Result<Vec<BibEntry>, String> {
     if file.trim().is_empty() {
         return Ok(vec![]);
     }
     let path = config::expand(file.trim());
-    std::fs::read_to_string(&path).map(|t| parse(&t)).map_err(|e| format!("{}: {e}", path.display()))
+    load(&path).map(|e| (*e).clone()).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// The files named by TEXT's `#+BIBLIOGRAPHY:` lines (org-cite: repeatable, one file each, quotes stripped),
@@ -153,7 +177,7 @@ pub fn entries_for_note(text: &str, path: Option<&Path>, fallback: &str) -> Resu
         return entries_from(fallback);
     }
     let mut seen = std::collections::HashSet::new();
-    Ok(files.iter().filter_map(|f| std::fs::read_to_string(f).ok()).flat_map(|t| parse(&t)).filter(|e| seen.insert(e.key.clone())).collect())
+    Ok(files.iter().filter_map(|f| load(f).ok()).flat_map(|e| (*e).clone()).filter(|e| seen.insert(e.key.clone())).collect())
 }
 
 /// Entries for note PATH (TEXT: its buffer, or just its `#+BIBLIOGRAPHY:` lines), re-read each call; see entries_for_note.
@@ -184,6 +208,18 @@ mod tests {
         assert_eq!(e[0].title, "A {Nested} \\\"{o} title");
         assert_eq!(e[0].label, "Smith & Lee 2020");
         assert_eq!((e[1].label.as_str(), e[1].container.as_str()), ("Doe et al. 1999", "MIT"));
+    }
+
+    #[test]
+    fn load_cached_until_file_changes() {
+        let f = std::env::temp_dir().join(format!("margin-bibcache-{}.bib", std::process::id()));
+        std::fs::write(&f, "@book{a, author={A One}, year={2001}}").unwrap();
+        let (x, y) = (load(&f).unwrap(), load(&f).unwrap());
+        assert!(Arc::ptr_eq(&x, &y), "unchanged file is served from the cache");
+        std::fs::write(&f, "@book{a, author={A One}, year={2001}}\n@book{b, author={B Two}, year={2002}}").unwrap();
+        assert_eq!(load(&f).unwrap().len(), 2);
+        std::fs::remove_file(&f).unwrap();
+        assert!(load(&f).is_err(), "deleted file is an error, not a stale hit");
     }
 
     #[test]
