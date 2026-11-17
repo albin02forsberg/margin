@@ -4155,8 +4155,8 @@
       const cur = cfg?.config.look || "classic";
       const name = (await pick({ prompt: "Theme", items: names.map((n) => ({ label: n, detail: n === cur ? "current" : undefined, value: n as unknown })) })) as string | null;
       if (name == null) return;
-      // A user look's `/* layout: NAME */` header sets the layout too; built-ins and header-less files leave it alone.
-      const layout = await layoutForLook(name, (name) => call<string | null>("read_look", { name }));
+      // A user look's `/* layout: NAME */` header sets the layout too; built-ins and header-less files leave it alone, except that leaving the emacs layout resets it.
+      const layout = await layoutForLook(name, (name) => call<string | null>("read_look", { name }), cfg?.config.layout);
       await ownCfg(() => call("save_config", { values: { look: name === "classic" ? "" : name, ...(layout != null && { layout }) }, reset: [] }));
       cfg = await loadCfg();
       flash(`Theme: ${name}${layout ? ` · layout ${layout}` : ""}`);

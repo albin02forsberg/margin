@@ -185,7 +185,7 @@
   /** Pick choice V; a user look's `/* layout: NAME *\/` header fills in Layout too (saved with the card). */
   function choose(f: Field, v: string) {
     form[f.key] = v;
-    if (f.key === "look") layoutForLook(v, (name) => invoke<string | null>("read_look", { name })).then((l) => { if (l != null && form.look === v) form.layout = l; });
+    if (f.key === "look") layoutForLook(v, (name) => invoke<string | null>("read_look", { name }), String(form.layout ?? "")).then((l) => { if (l != null && form.look === v) form.layout = l; });
   }
   let macDialog: HTMLDialogElement;
   const MAC_OK = "activity-watcher-macos-ok";
