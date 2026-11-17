@@ -23,3 +23,10 @@ test("serial runs overlapping calls in order and survives a rejection", async ()
   assert.deepEqual(log, ["start1", "start2", "end2", "start3", "end3"]);
   assert.deepEqual(rs.map((r) => r.status), ["rejected", "fulfilled", "fulfilled"]);
 });
+
+test("stale ignores CRLF vs LF but still flags real edits and missing files", () => {
+  const recs = [{ path: "a", after: "x\r\ny\r\n" }];
+  assert.deepEqual(stale(recs, new Map([["a", "x\ny\n"]])), []);
+  assert.deepEqual(stale(recs, new Map([["a", "x\nz\n"]])), ["a"]);
+  assert.deepEqual(stale(recs, new Map([["a", null]])), ["a"]);
+});
