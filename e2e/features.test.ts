@@ -2754,10 +2754,13 @@ describe("Locked headings (#1086)", () => {
     await find(".cm-editor .cm-content", "secret words, edited");
     // A line added above the heading in the note (#1172): :w in the decrypted tab still re-locks that heading.
     await (await find(".tabs .tab button", "vault")).click();
+    await find(".tabs .tab.cur button", "vault");
     await find(".status .file", "vault.org");
     await type("ggOintro");
     await browser.keys(Key.Escape);
     await (await find(".tabs .tab button", "Vault")).click();
+    await find(".tabs .tab.cur button", "Vault"); // the click must land before keys do (#1437)
+    await find(".cm-editor .cm-content", "secret words, edited");
     await type("ggA again");
     await browser.keys(Key.Escape);
     await fileMatches(f, (s) => s.startsWith("intro\n"), "the line above wasn't saved");
@@ -2765,6 +2768,7 @@ describe("Locked headings (#1086)", () => {
     await ex(":w");
     await fileMatches(f, (s) => s !== pre && s.startsWith("intro\n* Vault :crypt:\n-----BEGIN MARGIN ENCRYPTED-----\n") && !s.includes("again") && s.endsWith("* Open\nplain\n"), "edit not re-locked after a line was added above");
     await ex(":bd");
+    await find(".tabs .tab.cur button", "vault");
     await find(".status .file", "vault.org");
     await browser.keys(Key.Escape);
     await type("ggj");
