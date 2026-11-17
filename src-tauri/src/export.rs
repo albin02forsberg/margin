@@ -1,6 +1,6 @@
 // Org → HTML / Markdown for exporting notes and reports. A small block parser
 // (headings, paragraphs, lists, tables, blocks) plus inline markup; drawers,
-// planning lines, comments and #+ keywords other than title/subtitle/options (only `toc:`) are dropped.
+// planning lines, comments and #+ keywords other than title/subtitle/author/date/options (only `toc:`) are dropped.
 
 use crate::bib::BibEntry;
 use crate::org::{self, Kw, OrgFile};
@@ -87,6 +87,9 @@ pub struct Doc {
     subtitle: Option<String>,
     /// `#+OPTIONS: toc:t|N` (#1441): `Some(depth)` adds a TOC after the title unless the note has its own `#+TOC:`.
     toc_opt: Option<Option<usize>>,
+    /// `#+AUTHOR:` and `#+DATE:` (#1442), plain text, the date without its org timestamp brackets; empty is none.
+    author: Option<String>,
+    date: Option<String>,
     blocks: Vec<Block>,
     /// Rendered mermaid SVGs by `diagram_key` (#942), embedded by the HTML export; empty from `parse`.
     diagrams: HashMap<String, String>,
@@ -209,7 +212,7 @@ fn expand_links(text: &str) -> String {
 pub fn parse(text: &str, kw: &Kw) -> Doc {
     let text = expand_links(&crate::crypt::strip(text));
     let lines: Vec<&str> = text.lines().collect();
-    let mut d = Doc { title: None, subtitle: None, toc_opt: None, blocks: vec![], diagrams: HashMap::new(), anchors: HashMap::new(), prefix: String::new(), radio: None, toc: vec![], bib: HashMap::new() };
+    let mut d = Doc { title: None, subtitle: None, author: None, date: None, toc_opt: None, blocks: vec![], diagrams: HashMap::new(), anchors: HashMap::new(), prefix: String::new(), radio: None, toc: vec![], bib: HashMap::new() };
     let b = blocks(&lines, kw, &mut d);
     d.blocks = b;
     if let Some(depth) = d.toc_opt.filter(|_| !has_toc(&d.blocks)) {
@@ -400,6 +403,11 @@ fn blocks(lines: &[&str], kw: &Kw, doc: &mut Doc) -> Vec<Block> {
                 doc.title = Some(v.to_string());
             } else if let Some(v) = lower.strip_prefix("#+subtitle:").map(|_| t[11..].trim()) {
                 doc.subtitle = Some(v.to_string());
+            } else if let Some(v) = lower.strip_prefix("#+author:").map(|_| t[9..].trim()) {
+                doc.author = Some(v.to_string()).filter(|v| !v.is_empty());
+            } else if let Some(v) = lower.strip_prefix("#+date:").map(|_| t[7..].trim()) {
+                let v = v.trim_start_matches(['<', '[']).trim_end_matches(['>', ']']).trim();
+                doc.date = Some(v.to_string()).filter(|v| !v.is_empty());
             } else if let Some(v) = lower.strip_prefix("#+name:").map(|_| t[7..].trim()).filter(|v| !v.is_empty()) {
                 out.push(Block::Anchor(v.to_string()));
             } else if let Some(v) = lower.strip_prefix("#+toc:") {
@@ -963,6 +971,7 @@ const CSS: &str = "
 body { font: 16px/1.6 system-ui, sans-serif; color: var(--fg); background: var(--bg); max-width: 46rem; margin: 2rem auto; padding: 0 1rem; }
 h1, h2, h3, h4, h5, h6 { line-height: 1.25; margin: 1.6em 0 .5em; }
 .subtitle { color: var(--dim); margin-top: -.5em; }
+.byline { color: var(--dim); font-size: .9em; }
 a { color: var(--link); }
 code, pre { font: 14px ui-monospace, monospace; background: var(--code); border-radius: 4px; }
 code { padding: 0 .25em; }
@@ -989,7 +998,7 @@ section + section { border-top: 1px solid var(--line); break-before: page; }
 
 /// Self-contained HTML page. BASE resolves relative file: links, IDS maps id: links to sibling pages; PRINT opens the print dialog on load.
 pub fn html(d: &Doc, fallback_title: &str, base: &Path, ids: &Ids, print: bool) -> String {
-    page(d.title.as_deref().unwrap_or(fallback_title), &html_body(d, fallback_title, base, ids), print)
+    page(d.title.as_deref().unwrap_or(fallback_title), d.author.as_deref(), &html_body(d, fallback_title, base, ids), print)
 }
 
 /// A note's title, subtitle and blocks as an HTML fragment (no page, no CSS).
@@ -1000,11 +1009,20 @@ pub fn html_body(d: &Doc, fallback_title: &str, base: &Path, ids: &Ids) -> Strin
     if let Some(s) = &d.subtitle {
         o += &format!("<p class=\"subtitle\">{}</p>\n", html_spans(&cx.spans(s), &cx));
     }
+    if let Some(b) = byline(d) {
+        o += &format!("<p class=\"byline\">{}</p>\n", esc(&b));
+    }
     o + &html_blocks(&d.blocks, &cx)
 }
 
-fn page(title: &str, body: &str, print: bool) -> String {
-    let mut o = format!("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>{}</title>\n<style>{CSS}</style>\n</head>\n<body>\n{body}", esc(title));
+/// "author · date" (either alone when the other is missing), if there is any.
+fn byline(d: &Doc) -> Option<String> {
+    let v: Vec<&str> = d.author.iter().chain(&d.date).map(|s| s.as_str()).collect();
+    Some(v.join(" · ")).filter(|s| !s.is_empty())
+}
+
+fn page(title: &str, author: Option<&str>, body: &str, print: bool) -> String {
+    let mut o = format!("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>{}</title>\n{}<style>{CSS}</style>\n</head>\n<body>\n{body}", esc(title), author.map_or(String::new(), |a| format!("<meta name=\"author\" content=\"{}\">\n", esc(a))));
     if print {
         o += "<script>addEventListener(\"load\", () => print())</script>\n";
     }
@@ -1017,7 +1035,7 @@ pub fn combined(pages: &[(&OrgFile, String)], texts: &[String], ids: &Ids, kw: &
     let ids = Ids { ids: ids.ids.iter().filter_map(|(id, name)| Some((id.clone(), format!("#p-{}", pages.iter().position(|(_, n)| n == name)?)))).collect(), site: None };
     let docs: Vec<(Doc, String)> = pages.iter().zip(texts).enumerate().map(|(i, ((f, _), t))| (Doc { prefix: format!("p-{i}-"), ..parse(t, kw).with_diagrams(diagrams.clone()).with_bib(bib) }, f.path.file_stem().map_or("note".into(), |s| s.to_string_lossy().to_string()))).collect();
     let body: String = docs.iter().zip(pages).enumerate().map(|(i, ((d, stem), (f, _)))| format!("<section id=\"p-{i}\">\n{}</section>\n", html_body(d, stem, f.path.parent().unwrap_or(Path::new("")), &ids))).collect();
-    page(docs[0].0.title.as_deref().unwrap_or(&docs[0].1), &body, true)
+    page(docs[0].0.title.as_deref().unwrap_or(&docs[0].1), docs[0].0.author.as_deref(), &body, true)
 }
 
 // ---------------------------------------------------------------- site (#1037)
@@ -1046,7 +1064,7 @@ fn site_index(pages: &[(&OrgFile, String)], title: &str) -> String {
             format!("<li><a href=\"{}\">{}</a>{date}{tags}</li>\n", esc(n), esc(&f.title))
         })
         .collect();
-    page(title, &format!("<h1>{}</h1>\n<ul class=\"index\">\n{li}</ul>\n", esc(title)), false)
+    page(title, None, &format!("<h1>{}</h1>\n<ul class=\"index\">\n{li}</ul>\n", esc(title)), false)
 }
 
 /// The names in an earlier run's MANIFEST (one per line) that KEEP no longer has. Only a bare file name, or one
@@ -1235,6 +1253,9 @@ pub fn markdown(d: &Doc, fallback_title: &str, base: &Path, ids: &Ids) -> String
     if let Some(s) = &d.subtitle {
         o += &format!("*{}*\n\n", md_spans(&cx.spans(s), &cx));
     }
+    if let Some(b) = byline(d) {
+        o += &format!("*{}*\n\n", md_esc(&b));
+    }
     o + &md_blocks(&d.blocks, &cx) + "\n"
 }
 
@@ -1253,6 +1274,21 @@ Some *bold* /italic/ _under_ =a<b= ~code~ +gone+ text, a*b*c and 3 + 4.\nSecond 
 1. first\n2) second\n\n| Name | Qty |\n|------+-----|\n| <a> | 1 |\n|------+-----|\n| Sum | 1 |\n#+TBLFM: $2=vsum(@I..@II)\n\n\
 #+begin_src rust\nfn x() -> &'a str { \"<\" }\n#+end_src\n#+begin_quote\nQuoted /line/.\n#+end_quote\n#+BEGIN_EXAMPLE\n  <raw>\n#+END_EXAMPLE\n\
 ** DONE See [[id:abc][Other note]] and [[file:pic.png]] and [[file:doc.org][doc]]\n-----\n";
+
+    #[test]
+    fn author_and_date_byline() {
+        let go = |t: &str| (html(&parse(t, &kw()), "x", Path::new("/n"), &Ids::new(), false), markdown(&parse(t, &kw()), "x", Path::new("/n"), &Ids::new()));
+        let (h, m) = go("#+title: T\n#+subtitle: S\n#+AUTHOR: A <&> B\n#+DATE: <2026-11-17 Tue>\n#+author: Last\ntext\n");
+        assert!(h.contains("<meta name=\"author\" content=\"Last\">") && h.contains("<p class=\"subtitle\">S</p>\n<p class=\"byline\">Last · 2026-11-17 Tue</p>\n"), "{h}");
+        assert_eq!(m, "# T\n\n*S*\n\n*Last · 2026-11-17 Tue*\n\ntext\n");
+        let (h, m) = go("#+author: A <&>\n#+date: [2026-11-18]\n");
+        assert!(h.contains("content=\"A &lt;&amp;&gt;\"") && h.contains("byline\">A &lt;&amp;&gt; · 2026-11-18<"), "{h}");
+        assert!(m.starts_with("# x\n\n*A "), "{m}");
+        let (h, m) = go("#+date: 2026-11-19\n#+author:\n");
+        assert!(h.contains("byline\">2026-11-19<") && !h.contains("name=\"author\"") && m == "# x\n\n*2026-11-19*\n\n\n", "{h}{m:?}");
+        let (h, m) = go("#+date: <>\ntext\n");
+        assert!(!h.contains("class=\"byline") && m == "# x\n\ntext\n");
+    }
 
     #[test]
     fn duplicate_heading_ids_count_up_and_skip_taken() {
