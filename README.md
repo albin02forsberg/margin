@@ -107,7 +107,7 @@ push it a day, or `s` to schedule it. `Y` copies the shown list as Markdown chec
 
 **Link abbreviations** — `#+LINK: gh https://github.com/me/repo/issues/%s` in a note makes `[[gh:123]]` open that URL (`%s` is the tag, `%h` its URL-encoding; without either the tag is appended). Peek and HTML/Markdown export expand them too; `file`, `id`, `http`, `https` and `mailto` can't be redefined.
 
-**Citations** — with the *Bibliography (.bib)* setting pointing at a BibTeX file (or a note's own `#+BIBLIOGRAPHY: refs.bib` lines, see [Bibliography](#bibliography)), org-cite citations such as `[cite:@smith20;@lee21]` or `[cite/t:see @smith20 p. 3]` show as an author-year chip (`Smith 2020; Lee 2021`) off the cursor line. Hovering the chip shows the full entries, and keys missing from the file get a red wavy underline. Typing `@` inside `[cite:…]` completes keys from the file, and `Shift+Enter` (or `Space l p`) on a citation peeks at its entry. With no bibliography set, citations stay plain text. A `#+PRINT_BIBLIOGRAPHY:` line shows the note's cited entries under it, in order of first citation (unknown keys as `[key?]`); it is only displayed, never written into the file.
+**Citations** — with the *Bibliography (.bib, .json)* setting pointing at a BibTeX file (or a CSL-JSON export, a `.json` file such as Zotero's) (or a note's own `#+BIBLIOGRAPHY: refs.bib` lines, see [Bibliography](#bibliography)), org-cite citations such as `[cite:@smith20;@lee21]` or `[cite/t:see @smith20 p. 3]` show as an author-year chip (`Smith 2020; Lee 2021`) off the cursor line. Hovering the chip shows the full entries, and keys missing from the file get a red wavy underline. Typing `@` inside `[cite:…]` completes keys from the file, and `Shift+Enter` (or `Space l p`) on a citation peeks at its entry. With no bibliography set, citations stay plain text. A `#+PRINT_BIBLIOGRAPHY:` line shows the note's cited entries under it, in order of first citation (unknown keys as `[key?]`); it is only displayed, never written into the file.
 
 **Links and backlinks** — `Space n b` shows the notes linking here, `Space n g` the local
 graph, and `Enter` on a link follows it. `Shift+Enter` (or `Space l p`) on a link peeks at its target instead:
@@ -1594,7 +1594,10 @@ it follows the `reminders` setting.
 Set `bibliography_file` (e.g. `"~/papers/refs.bib"`) to a BibTeX file and Margin
 reads its entries (key, author, year, title, journal/booktitle/publisher and an
 author-year label such as "Smith & Lee 2020") for citation features. The file is
-only read, on each use; `@string` macros are not expanded.
+only read, on each use; `@string` macros are not expanded. A file ending in `.json`
+is read as CSL-JSON instead (Zotero's "Better CSL JSON" / "CSL JSON" export, Pandoc):
+`id` is the key, and authors, `issued` year, title and container-title/publisher map
+the same way; invalid JSON is reported like an unreadable file.
 
 A note can name its own BibTeX files with org-cite's `#+BIBLIOGRAPHY: refs.bib`
 keyword, one file per line and repeatable. Relative paths are resolved against the
