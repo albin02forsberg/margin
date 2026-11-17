@@ -190,7 +190,7 @@ fn tutorial(s: State<App>) -> R<(PathBuf, bool)> {
 }
 
 /// Looks shipped in theme.css: a user file with one of these names is ignored.
-const BUILTIN_LOOKS: [&str; 2] = ["classic", "retro"];
+const BUILTIN_LOOKS: [&str; 3] = ["classic", "retro", "emacs"];
 
 /// Where user looks (`<name>.css`) live: `looks/` beside config.toml.
 fn looks_dir(s: &App) -> PathBuf {
@@ -4238,7 +4238,7 @@ mod tests {
         }
         let d = std::env::temp_dir().join(format!("margin-looks-{}", std::process::id()));
         std::fs::create_dir_all(d.join("sub.css")).unwrap();
-        for f in ["zed.css", "mine.css", "retro.css", "classic.css", "notes.txt", ".hidden.css"] {
+        for f in ["zed.css", "mine.css", "retro.css", "emacs.css", "classic.css", "notes.txt", ".hidden.css"] {
             std::fs::write(d.join(f), "").unwrap();
         }
         assert_eq!(super::looks_in(&d), ["mine", "zed"]);

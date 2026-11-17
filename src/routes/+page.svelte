@@ -4151,7 +4151,7 @@
       flash(`Theme: ${next || "system"}`);
     } },
     { label: "View: pick a theme (look and its layout)", run: async () => {
-      const names = ["classic", "retro", ...(await call<string[]>("list_looks"))];
+      const names = ["classic", "retro", "emacs", ...(await call<string[]>("list_looks"))];
       const cur = cfg?.config.look || "classic";
       const name = (await pick({ prompt: "Theme", items: names.map((n) => ({ label: n, detail: n === cur ? "current" : undefined, value: n as unknown })) })) as string | null;
       if (name == null) return;
