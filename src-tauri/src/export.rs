@@ -1045,10 +1045,9 @@ fn page(title: &str, author: Option<&str>, body: &str, print: bool) -> String {
 
 /// PAGES (from `bundle`) as one print page: a `<section id="p-N">` per note, each on a new sheet (its anchors
 /// prefixed `p-N-`), with IDS pointing at the sections instead of the page files and DIAGRAMS and BIB used in every note.
-pub fn combined(pages: &[(&OrgFile, String)], texts: &[String], ids: &Ids, kw: &Kw, diagrams: &HashMap<String, String>, bib: &[BibEntry]) -> String {
+pub fn combined(pages: &[(&OrgFile, String)], texts: &[String], ids: &Ids, kw: &Kw, diagrams: &HashMap<String, String>, bib_of: impl Fn(&OrgFile) -> Arc<HashMap<String, BibEntry>>) -> String {
     let ids = Ids { ids: ids.ids.iter().filter_map(|(id, name)| Some((id.clone(), format!("#p-{}", pages.iter().position(|(_, n)| n == name)?)))).collect(), site: None };
-    let bib = bib_map(bib);
-    let docs: Vec<(Doc, String)> = pages.iter().zip(texts).enumerate().map(|(i, ((f, _), t))| (Doc { prefix: format!("p-{i}-"), ..parse(t, kw).with_diagrams(diagrams.clone()).with_bib_map(bib.clone()) }, f.path.file_stem().map_or("note".into(), |s| s.to_string_lossy().to_string()))).collect();
+    let docs: Vec<(Doc, String)> = pages.iter().zip(texts).enumerate().map(|(i, ((f, _), t))| (Doc { prefix: format!("p-{i}-"), ..parse(t, kw).with_diagrams(diagrams.clone()).with_bib_map(bib_of(f)) }, f.path.file_stem().map_or("note".into(), |s| s.to_string_lossy().to_string()))).collect();
     let body: String = docs.iter().zip(pages).enumerate().map(|(i, ((d, stem), (f, _)))| format!("<section id=\"p-{i}\">\n{}</section>\n", html_body(d, stem, f.path.parent().unwrap_or(Path::new("")), &ids))).collect();
     page(docs[0].0.title.as_deref().unwrap_or(&docs[0].1), docs[0].0.author.as_deref(), &body, true)
 }
@@ -1096,7 +1095,7 @@ fn manifest_stale(manifest: &str, keep: &[String]) -> Vec<String> {
 /// TEXT_OF), links between them relative, `index.html`, and the other local files they link to under NOTES
 /// copied to `assets/`. Files of an earlier run (DIR's MANIFEST) no longer generated are deleted; a file in
 /// the way that no earlier run wrote is an error. BIB renders citations. Returns the number of pages.
-pub fn publish(dir: &Path, notes: &Path, files: &[&OrgFile], tag: &str, kw: &Kw, bib: &[BibEntry], text_of: impl Fn(&OrgFile) -> String) -> Result<usize, String> {
+pub fn publish(dir: &Path, notes: &Path, files: &[&OrgFile], tag: &str, kw: &Kw, bib_of: impl Fn(&OrgFile) -> Arc<HashMap<String, BibEntry>>, text_of: impl Fn(&OrgFile) -> String) -> Result<usize, String> {
     let io = |e: std::io::Error| e.to_string();
     let picked: Vec<&OrgFile> = files.iter().copied().filter(|f| f.tags.iter().any(|t| t.eq_ignore_ascii_case(tag))).collect();
     if picked.is_empty() {
@@ -1104,8 +1103,7 @@ pub fn publish(dir: &Path, notes: &Path, files: &[&OrgFile], tag: &str, kw: &Kw,
     }
     let (pages, mut ids) = name_pages(picked, "html", "index.html");
     let mut site: HashMap<PathBuf, String> = pages.iter().map(|(f, n)| (norm(&f.path), n.clone())).collect();
-    let bib = bib_map(bib);
-    let docs: Vec<Doc> = pages.iter().map(|(f, _)| parse(&text_of(f), kw).with_bib_map(bib.clone())).collect();
+    let docs: Vec<Doc> = pages.iter().map(|(f, _)| parse(&text_of(f), kw).with_bib_map(bib_of(f))).collect();
     let (notes, mut assets) = (norm(notes), vec![]);
     for ((f, _), d) in pages.iter().zip(&docs) {
         let base = f.path.parent().unwrap_or(Path::new(""));
@@ -1508,7 +1506,7 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         let p = |path: &str, text: &str| org::parse(Path::new(path), text, &kw());
         let (a, b) = (p("/n/a.org", "<<<Term>>> a\n\nterm\n"), p("/n/b.org", "<<<Term>>> b\n\nTERM\n"));
         let (pages, ids) = name_pages(vec![&a, &b], "html", "");
-        let c = combined(&pages, &[a.text.clone(), b.text.clone()], &ids, &kw(), &HashMap::new(), &[]);
+        let c = combined(&pages, &[a.text.clone(), b.text.clone()], &ids, &kw(), &HashMap::new(), |_| Default::default());
         for want in ["<a id=\"p-0-radio-term\"></a>Term a", "<a href=\"#p-0-radio-term\">term</a>", "<a id=\"p-1-radio-term\"></a>Term b", "<a href=\"#p-1-radio-term\">TERM</a>"] {
             assert!(c.contains(want), "missing {want:?} in\n{c}");
         }
@@ -1553,7 +1551,7 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         let p = |path: &str, text: &str| org::parse(Path::new(path), text, &kw());
         let (a, b) = (p("/n/a.org", "#+TOC: headlines\n* A\n"), p("/n/b.org", "#+TOC: headlines\n* B\n"));
         let (pages, ids) = name_pages(vec![&a, &b], "html", "");
-        let c = combined(&pages, &[a.text.clone(), b.text.clone()], &ids, &kw(), &HashMap::new(), &[]);
+        let c = combined(&pages, &[a.text.clone(), b.text.clone()], &ids, &kw(), &HashMap::new(), |_| Default::default());
         assert!(c.contains("<li><a href=\"#p-0-a\">A</a>") && c.contains("<li><a href=\"#p-1-b\">B</a>"), "{c}");
     }
 
@@ -1612,7 +1610,7 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         assert!(markdown(&parse(&c.text, &kw()), "b", Path::new("/n/sub"), &ids).contains("Back to [A](a.md)."));
 
         let texts: Vec<String> = pages.iter().map(|(f, _)| f.text.clone()).collect();
-        let p = combined(&pages, &texts, &ids, &kw(), &HashMap::new(), &[]);
+        let p = combined(&pages, &texts, &ids, &kw(), &HashMap::new(), |_| Default::default());
         assert_eq!(p.matches("<section id=").count(), 3);
         assert_eq!(p.matches("print()").count(), 1);
         for want in ["<title>a</title>", "<section id=\"p-0\">\n<h1>a</h1>", "To <a href=\"#p-1\">B&#39;s heading</a>, lost, <a href=\"#p-0\">me</a>.", "On to <a href=\"#p-2\">", "<h2 id=\"p-1-h\">H</h2>", ", up to <a href=\"#p-1-h\">H</a>.", "<section id=\"p-2\">\n<h1>b</h1>"] {
@@ -1651,7 +1649,7 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         std::fs::write(dir.join(MANIFEST), "A.html\nindex.html\n").unwrap();
         std::fs::write(dir.join("A.html"), "old").unwrap();
         let a = org::parse(&notes.join("a.org"), "#+filetags: :publish:\nHi.\n", &kw());
-        assert_eq!(publish(&dir, &notes, &[&a], "publish", &kw(), &[], |f| f.text.clone()), Ok(1));
+        assert_eq!(publish(&dir, &notes, &[&a], "publish", &kw(), |_| Default::default(), |f| f.text.clone()), Ok(1));
         assert!(dir.join("a.html").exists(), "the renamed page must survive the stale sweep");
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -1671,7 +1669,7 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         let idx = p("sub/index.org", "#+filetags: :publish:\nI.\n");
         let secret = p("secret.org", "Private.\n");
         let files = [&a, &b, &idx, &secret];
-        let run = || publish(&dir, &notes, &files, "publish", &kw(), &[], |f| f.text.clone());
+        let run = || publish(&dir, &notes, &files, "publish", &kw(), |_| Default::default(), |f| f.text.clone());
         assert_eq!(run(), Ok(3));
         let read = |n: &str| std::fs::read_to_string(dir.join(n)).unwrap_or_default();
         let h = read("a.html");
@@ -1700,7 +1698,7 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         // A file a run didn't write is never overwritten; nothing tagged is an error.
         std::fs::remove_file(dir.join(MANIFEST)).unwrap();
         assert!(run().is_err_and(|e| e.contains("a.html is in the way")));
-        assert!(publish(&dir, &notes, &[&secret], "publish", &kw(), &[], |f| f.text.clone()).is_err_and(|e| e.contains("No notes tagged :publish:")));
+        assert!(publish(&dir, &notes, &[&secret], "publish", &kw(), |_| Default::default(), |f| f.text.clone()).is_err_and(|e| e.contains("No notes tagged :publish:")));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1716,7 +1714,7 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         let text = "#+title: T\n#+filetags: :publish:\n* H [[x/f.txt][in head]]\n- term :: [[y/f.txt][in term]] *[[x/f.txt][bold]]*\n  - [[y/f.txt]]\n| [[x/f.txt]] |\n#+begin_quote\n[[y/f.txt]]\n#+end_quote\n#+begin_verse\n[[x/f.txt]]\n#+end_verse\n";
         let mut a = org::parse(&notes.join("a.org"), text, &kw());
         a.mtime = Some(std::time::SystemTime::now());
-        assert_eq!(publish(&dir, &notes, &[&a], "publish", &kw(), &[], |f| f.text.clone()), Ok(1));
+        assert_eq!(publish(&dir, &notes, &[&a], "publish", &kw(), |_| Default::default(), |f| f.text.clone()), Ok(1));
         let h = std::fs::read_to_string(dir.join("a.html")).unwrap();
         assert!(h.contains("assets/f.txt") && h.contains("assets/f (2).txt") || h.contains("assets/f.txt") && h.contains("assets/f.txt (2)"), "{h}");
         assert!(dir.join("assets").is_dir());
@@ -1725,7 +1723,7 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         // Errors surface instead of panicking: DIR is a file; an asset vanishes before it is copied.
         let file = root.join("file");
         std::fs::write(&file, "").unwrap();
-        assert!(publish(&file, &notes, &[&a], "publish", &kw(), &[], |f| f.text.clone()).is_err());
+        assert!(publish(&file, &notes, &[&a], "publish", &kw(), |_| Default::default(), |f| f.text.clone()).is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1762,6 +1760,27 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         assert_eq!(spans("[[cite:x]]"), [Span::Link("cite:x".into(), None)]);
         assert_eq!(spans("[cite:no keys]"), [Span::Text("[cite:no keys]".into())]);
         // Combined pages prefix the anchors.
-        assert!(combined(&[(&org::parse(Path::new("/n/a.org"), text, &kw()), "a.html".into())], &[text.into()], &Ids::new(), &kw(), &HashMap::new(), &bib).contains("<li id=\"p-0-bib-a\">"));
+        assert!(combined(&[(&org::parse(Path::new("/n/a.org"), text, &kw()), "a.html".into())], &[text.into()], &Ids::new(), &kw(), &HashMap::new(), |_| bib_map(&bib)).contains("<li id=\"p-0-bib-a\">"));
+    }
+
+    #[test]
+    fn pages_use_their_own_bibliography() {
+        let g = bib_map(&crate::bib::parse("@book{g, author={Glob, Al}, title={G}, year={2000}}"));
+        let o = bib_map(&crate::bib::parse("@book{o, author={Own, Bo}, title={O}, year={2010}}"));
+        let (a, b) = (org::parse(Path::new("/n/a.org"), "[cite:@o]\n", &kw()), org::parse(Path::new("/n/b.org"), "[cite:@g]\n", &kw()));
+        let of = |f: &OrgFile| if f.path.ends_with("a.org") { o.clone() } else { g.clone() };
+        let ids = Ids::new();
+        let c = combined(&[(&a, "a.html".into()), (&b, "b.html".into())], &[a.text.clone(), b.text.clone()], &ids, &kw(), &HashMap::new(), of);
+        assert!(c.contains("Own 2010") && c.contains("Glob 2000") && !c.contains("[o?]") && !c.contains("[g?]"), "{c}");
+        let root = std::env::temp_dir().join(format!("margin-pubbib-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (notes, dir) = (root.join("notes"), root.join("site"));
+        std::fs::create_dir_all(&notes).unwrap();
+        let p = |n: &str, t: &str| org::parse(&notes.join(n), t, &kw());
+        let (a, b) = (p("a.org", "#+filetags: :publish:\n[cite:@o]\n"), p("b.org", "#+filetags: :publish:\n[cite:@g]\n"));
+        assert_eq!(publish(&dir, &notes, &[&a, &b], "publish", &kw(), of, |f| f.text.clone()), Ok(2));
+        let (pa, pb) = (std::fs::read_to_string(dir.join("a.html")).unwrap(), std::fs::read_to_string(dir.join("b.html")).unwrap());
+        assert!(pa.contains("Own 2010") && pb.contains("Glob 2000") && !pb.contains("Own 2010"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
