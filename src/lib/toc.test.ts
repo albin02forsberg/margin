@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tocDepth, tocDirective, tocEditMatters, tocEntries } from "./toc.ts";
+import { tocDepth, tocDirective, tocEditMatters, tocEntries, localEntries } from "./toc.ts";
 
 const T = ["TODO"], D = ["DONE"];
 test("tocDepth", () => {
@@ -65,4 +65,12 @@ test("tocEditMatters agrees with a full rebuild over random edits", () => {
     doc = now;
   }
   assert.ok(fast > 100, `fast path taken ${fast} times`);
+});
+
+test("localEntries over a shared scan equals tocEntries with AT", () => {
+  const docs = ["#+TOC: headlines local\n* A\n** A1\n#+TOC: headlines local\n*** A11\n**** A111\n** A2\n* B :noexport:\n** B1\n* C\n", "* x\n" + "** y\n".repeat(600)];
+  for (const doc of docs) {
+    const all = tocEntries(doc, T, D), n = doc.split("\n").length;
+    for (let at = 0; at < n; at += n > 50 ? 37 : 1) for (const depth of [0, 1, 2]) assert.deepEqual(localEntries(all, at, depth), tocEntries(doc, T, D, depth, at));
+  }
 });
