@@ -3,5 +3,7 @@ export const MENUS: [string, string[]][] = [
   ["File", ["New note", "Open note…", "Save", "Save all", "Reload from disk (discard unsaved changes)", "Close tab (also :q)", "Export: note as HTML", "Export: note as PDF", "Settings"]],
   ["Edit", ["Undo last edit made from a task view or the links panel", "Redo what Undo last edit took back", "Search in this note (occur)…", "Search in all notes", "Go to heading…"]],
   ["View", ["Go to Today", "Go to All tasks", "Go to Inbox", "Go to Time tracking", "View: toggle outline (headings of this note)", "Show note graph", "View: zen mode (hide top bar and status bar)", "View: pick a theme (look and its layout)", "Toggle top bar"]],
+  ["Buffers", ["Switch tab…", "Next tab (also gt)", "Previous tab (also gT)", "Close other tabs", "Reopen closed tab"]],
+  ["Org", ["Task: set status…", "Task: schedule…", "Task: due date…", "Task: set priority…", "Task: tags…", "Task: move to…", "Task: archive", "Note: archive all done tasks", "Time: start tracking", "Time: stop", "Time: switch project", "Time: day report"]],
   ["Help", ["Help: tutorial", "Command palette", "Show what's new (notes of the last update)", "Report a bug (opens a prefilled GitHub issue)", "About Margin"]],
 ];
