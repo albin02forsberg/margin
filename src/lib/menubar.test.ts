@@ -12,3 +12,7 @@ test("menus have distinct first letters (the F10 picker's one-key shortcuts)", (
   const first = MENUS.map(([n]) => n[0].toLowerCase());
   assert.equal(new Set(first).size, first.length);
 });
+
+test("menus follow Emacs order", () => {
+  assert.deepEqual(MENUS.map(([n]) => n), ["File", "Edit", "View", "Buffers", "Org", "Help"]);
+});

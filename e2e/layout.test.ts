@@ -69,12 +69,16 @@ describe("Responsive layout", () => {
     await browser.execute(() => { delete document.documentElement.dataset.look; delete document.documentElement.dataset.layout; });
   });
 
-  it("gives the emacs layout a File/Edit/View/Help menu bar (F10) and line:col in the mode-line (#1448)", async () => {
+  it("gives the emacs layout a File/Edit/View/Buffers/Org/Help menu bar (F10) and line:col in the mode-line (#1448)", async () => {
     assert.equal(await displayed(".topnav .menus"), false, "menu bar outside the emacs layout");
     await browser.execute(() => void (document.documentElement.dataset.layout = "emacs"));
     await (await find(".topnav .menus button", "File")).click();
     await find(".picker label span", "File");
     await find(".picker", "New note");
+    await browser.keys(Key.Escape);
+    await noPicker();
+    await (await find(".topnav .menus button", "Org")).click();
+    await find(".picker", "Task: archive");
     await browser.keys(Key.Escape);
     await noPicker();
     await browser.keys(Key.F10);
