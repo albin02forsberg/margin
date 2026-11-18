@@ -7,7 +7,7 @@ use crate::org::{self, Kw, OrgFile};
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\[\[([^\]]+)\](?:\[([^\]]*)\])?\]").unwrap());
 static ITEM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\s*)([-+*]|\d+[.)])\s+(?:\[([ Xx-])\]\s+)?(.*)$").unwrap());
@@ -105,7 +105,7 @@ pub struct Doc {
     /// Every exported heading as (level, bare title, anchor id), for `#+TOC:` (see `link_anchors`).
     toc: Vec<(usize, String, String)>,
     /// `bibliography_file` entries by key for `[cite:@key]` (#1337); empty from `parse` (citations stay as written).
-    bib: HashMap<String, BibEntry>,
+    bib: Arc<HashMap<String, BibEntry>>,
 }
 
 /// A note's radio targets (#1270): ANY finds a candidate mention, TERMS (longest first, each anchored) the one
@@ -159,7 +159,12 @@ impl Doc {
     }
 
     pub fn with_bib(self, entries: &[BibEntry]) -> Doc {
-        Doc { bib: entries.iter().map(|e| (e.key.clone(), e.clone())).collect(), ..self }
+        self.with_bib_map(bib_map(entries))
+    }
+
+    /// Like `with_bib` with a map shared between pages (`bib_map` once, not a copy per page).
+    pub fn with_bib_map(self, bib: Arc<HashMap<String, BibEntry>>) -> Doc {
+        Doc { bib, ..self }
     }
 }
 
@@ -215,7 +220,7 @@ fn expand_links(text: &str) -> String {
 pub fn parse(text: &str, kw: &Kw) -> Doc {
     let text = expand_links(&crate::crypt::strip(text));
     let lines: Vec<&str> = text.lines().collect();
-    let mut d = Doc { title: None, subtitle: None, author: None, date: None, toc_opt: None, blocks: vec![], diagrams: HashMap::new(), anchors: HashMap::new(), prefix: String::new(), radio: None, toc: vec![], bib: HashMap::new() };
+    let mut d = Doc { title: None, subtitle: None, author: None, date: None, toc_opt: None, blocks: vec![], diagrams: HashMap::new(), anchors: HashMap::new(), prefix: String::new(), radio: None, toc: vec![], bib: Arc::default() };
     let b = blocks(&lines, kw, &mut d);
     d.blocks = b;
     if let Some(depth) = d.toc_opt.filter(|_| !has_toc(&d.blocks)) {
@@ -606,6 +611,11 @@ fn cited(d: &Doc) -> Vec<String> {
     d.title.iter().chain(&d.subtitle).for_each(|t| add(t));
     each_text(&d.blocks, &mut add);
     o
+}
+
+/// ENTRIES by key, shareable between the pages of one export.
+pub fn bib_map(entries: &[BibEntry]) -> Arc<HashMap<String, BibEntry>> {
+    Arc::new(entries.iter().map(|e| (e.key.clone(), e.clone())).collect())
 }
 
 /// One bibliography entry: `Smith 2020. Title. Journal.` (bibLine in cite.ts); an unknown key as `[key?]`.
@@ -1037,7 +1047,8 @@ fn page(title: &str, author: Option<&str>, body: &str, print: bool) -> String {
 /// prefixed `p-N-`), with IDS pointing at the sections instead of the page files and DIAGRAMS and BIB used in every note.
 pub fn combined(pages: &[(&OrgFile, String)], texts: &[String], ids: &Ids, kw: &Kw, diagrams: &HashMap<String, String>, bib: &[BibEntry]) -> String {
     let ids = Ids { ids: ids.ids.iter().filter_map(|(id, name)| Some((id.clone(), format!("#p-{}", pages.iter().position(|(_, n)| n == name)?)))).collect(), site: None };
-    let docs: Vec<(Doc, String)> = pages.iter().zip(texts).enumerate().map(|(i, ((f, _), t))| (Doc { prefix: format!("p-{i}-"), ..parse(t, kw).with_diagrams(diagrams.clone()).with_bib(bib) }, f.path.file_stem().map_or("note".into(), |s| s.to_string_lossy().to_string()))).collect();
+    let bib = bib_map(bib);
+    let docs: Vec<(Doc, String)> = pages.iter().zip(texts).enumerate().map(|(i, ((f, _), t))| (Doc { prefix: format!("p-{i}-"), ..parse(t, kw).with_diagrams(diagrams.clone()).with_bib_map(bib.clone()) }, f.path.file_stem().map_or("note".into(), |s| s.to_string_lossy().to_string()))).collect();
     let body: String = docs.iter().zip(pages).enumerate().map(|(i, ((d, stem), (f, _)))| format!("<section id=\"p-{i}\">\n{}</section>\n", html_body(d, stem, f.path.parent().unwrap_or(Path::new("")), &ids))).collect();
     page(docs[0].0.title.as_deref().unwrap_or(&docs[0].1), docs[0].0.author.as_deref(), &body, true)
 }
@@ -1093,7 +1104,8 @@ pub fn publish(dir: &Path, notes: &Path, files: &[&OrgFile], tag: &str, kw: &Kw,
     }
     let (pages, mut ids) = name_pages(picked, "html", "index.html");
     let mut site: HashMap<PathBuf, String> = pages.iter().map(|(f, n)| (norm(&f.path), n.clone())).collect();
-    let docs: Vec<Doc> = pages.iter().map(|(f, _)| parse(&text_of(f), kw).with_bib(bib)).collect();
+    let bib = bib_map(bib);
+    let docs: Vec<Doc> = pages.iter().map(|(f, _)| parse(&text_of(f), kw).with_bib_map(bib.clone())).collect();
     let (notes, mut assets) = (norm(notes), vec![]);
     for ((f, _), d) in pages.iter().zip(&docs) {
         let base = f.path.parent().unwrap_or(Path::new(""));
@@ -1722,6 +1734,13 @@ MARGIN is here, margin  notes too; Margins, xmargin, margin_x and _margin stay. 
         let v = |s: &[&str]| s.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(stale(&v(&["a.html", "old.html", "pic.png", "b.md", "x.html.bak"]), &v(&["a.html", "b.html"]), "html"), ["old.html"]);
         assert_eq!(stale(&v(&["a.html", "b.md", "old.md"]), &v(&["b.md"]), "md"), ["old.md"]);
+    }
+
+    #[test]
+    fn bib_map_is_shared_between_docs() {
+        let m = bib_map(&crate::bib::parse("@book{b, author={Lee, Bo}, title={Beta}, year={2019}}"));
+        let (a, b) = (parse("x", &kw()).with_bib_map(m.clone()), parse("y", &kw()).with_bib_map(m.clone()));
+        assert!(Arc::ptr_eq(&a.bib, &b.bib) && a.bib.len() == 1);
     }
 
     #[test]
