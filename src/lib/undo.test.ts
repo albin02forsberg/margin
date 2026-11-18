@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { serial, stale } from "./undo.ts";
+import { pushCapped, serial, stale } from "./undo.ts";
 
 test("stale flags only files edited since the recorded write", () => {
   const recs = [{ path: "a", after: "x" }, { path: "b", after: "y" }];
@@ -29,4 +29,10 @@ test("stale ignores CRLF vs LF but still flags real edits and missing files", ()
   assert.deepEqual(stale(recs, new Map([["a", "x\ny\n"]])), []);
   assert.deepEqual(stale(recs, new Map([["a", "x\nz\n"]])), ["a"]);
   assert.deepEqual(stale(recs, new Map([["a", null]])), ["a"]);
+});
+
+test("pushCapped drops the oldest beyond the cap and keeps the newest", () => {
+  const s: number[] = [];
+  for (let i = 1; i <= 5; i++) pushCapped(s, i, 3);
+  assert.deepEqual(s, [3, 4, 5]);
 });

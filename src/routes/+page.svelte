@@ -72,7 +72,7 @@
   import { parseFolds, putFolds } from "$lib/folds";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
   import { lineCol, parseWordGoal, wordCount, wordsLabel } from "$lib/words";
-  import { serial, stale } from "$lib/undo";
+  import { pushCapped, serial, stale } from "$lib/undo";
   import { MENUS } from "$lib/menubar";
   import { windowTitle } from "$lib/wintitle";
   import { orderNotes, parsePins, togglePin } from "$lib/pins";
@@ -1107,7 +1107,7 @@
       try {
         await f();
       } finally {
-        if (group.texts.length || group.bookmarks.length) { undoStack.push(group); redoStack.length = 0; }
+        if (group.texts.length || group.bookmarks.length) { pushCapped(undoStack, group); redoStack.length = 0; }
         recording = null;
       }
     })();
@@ -1136,7 +1136,7 @@
       from.push(group); // a failed write keeps the group; after a partial write a retry is refused as stale rather than doubled
       throw e;
     }
-    to.push(other);
+    pushCapped(to, other);
     flash(done);
   });
   const undo = () => travel(undoStack, redoStack, "Nothing to undo.", "Undone.");

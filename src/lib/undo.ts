@@ -13,3 +13,11 @@ export function serial<A extends unknown[], R>(f: (...a: A) => Promise<R>): (...
     return r;
   };
 }
+
+export const MAX_UNDO = 100;
+
+/** Push G onto STACK, dropping the oldest entries beyond MAX so undo history can't grow without bound. */
+export function pushCapped<T>(stack: T[], g: T, max = MAX_UNDO): void {
+  stack.push(g);
+  if (stack.length > max) stack.splice(0, stack.length - max);
+}
