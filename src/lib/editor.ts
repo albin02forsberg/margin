@@ -1535,7 +1535,7 @@ export function foldsToKeep(state: EditorState): string[] | null {
 }
 
 /** FOLDS: saved heading folds (`foldKeys`), which replace the `#+STARTUP:` ones. */
-export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; path?: string; tagColors?: Record<string, string>; startup?: boolean; folds?: string[]; onChange: (u: ViewUpdate) => void; onUpdate?: (s: EditorState, docChanged: boolean) => void }) {
+export function createState(doc: string, opts: { org: boolean; readOnly: boolean; todo: string[]; done: string[]; path?: string; tagColors?: Record<string, string>; startup?: boolean; folds?: string[]; onChange: (u: ViewUpdate) => void; onUpdate?: (s: EditorState, docChanged: boolean) => void; onScroll?: (v: EditorView) => void }) {
   const ext: Extension[] = [
     vim({ status: true }),
     numConf.of(numExt(eff({}))),
@@ -1556,6 +1556,16 @@ export function createState(doc: string, opts: { org: boolean; readOnly: boolean
       if (u.docChanged || u.selectionSet) opts.onUpdate?.(u.state, u.docChanged);
     }),
   ];
+  if (opts.onScroll) { // scroll position for the mode-line (#1463), rAF-throttled, also on doc/geometry changes
+    const cb = opts.onScroll;
+    ext.push(ViewPlugin.fromClass(class {
+      raf = 0;
+      constructor(readonly v: EditorView) { v.scrollDOM.addEventListener("scroll", this.go, { passive: true }); this.go(); }
+      go = () => { if (!this.raf) this.raf = requestAnimationFrame(() => { this.raf = 0; cb(this.v); }); };
+      update(u: ViewUpdate) { if (u.docChanged || u.geometryChanged || u.viewportChanged) this.go(); }
+      destroy() { this.v.scrollDOM.removeEventListener("scroll", this.go); cancelAnimationFrame(this.raf); }
+    }));
+  }
   if (opts.org) {
     ext.push(
       spellConf.of(spellExt()), orgConf.of({ todo: opts.todo, done: opts.done, path: opts.path, tagColors: opts.tagColors }), orgStyle, orgFold, clicks, tableTools, narrowField, transclusion(opts.path, (t) => hooks.follow(t)), toc(() => opts.todo, () => opts.done), printBib, radioField, diagrams, completion,

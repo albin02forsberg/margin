@@ -90,7 +90,7 @@ describe("Responsive layout", () => {
     await browser.keys([Key.Ctrl, "p"]);
     await answer("Open a note", "emacspos");
     await find(".status .file", "emacspos.org");
-    await browser.waitUntil(async () => /^L\d+:C\d+$/.test(await (await browser.$(".status .pos")).getText()), { timeoutMsg: "no L:C in the mode-line" });
+    await browser.waitUntil(async () => /^L\d+:C\d+ (All|Top|Bot|\d+%)$/.test(await (await browser.$(".status .pos")).getText()), { timeoutMsg: "no L:C and scroll position in the mode-line" });
     await browser.execute(() => void delete document.documentElement.dataset.layout);
     assert.equal(await displayed(".status .pos"), false, "L:C shown outside the emacs layout");
     await (await browser.$(".tabs .tab.cur .x")).click();

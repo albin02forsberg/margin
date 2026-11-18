@@ -36,3 +36,11 @@ export function lineCol(doc: { lineAt(pos: number): { number: number; from: numb
   const l = doc.lineAt(head);
   return `L${l.number}:C${head - l.from + 1}`;
 }
+
+/** Mode-line scroll position like Emacs: "All" (fits), "Top", "Bot" or "NN%" (#1463). */
+export function bufferPos(scrollTop: number, clientHeight: number, scrollHeight: number) {
+  if (!(scrollHeight > clientHeight)) return "All";
+  if (scrollTop <= 0) return "Top";
+  if (scrollTop + clientHeight >= scrollHeight - 1) return "Bot";
+  return `${Math.round((scrollTop / (scrollHeight - clientHeight)) * 100)}%`;
+}
