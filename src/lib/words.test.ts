@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Text } from "@codemirror/state";
-import { lineCol, parseWordGoal, wordCount, wordsLabel } from "./words.ts";
+import { bufferPos, lineCol, parseWordGoal, wordCount, wordsLabel } from "./words.ts";
 
 test("lineCol: 1-based line and column of the cursor", () => {
   const doc = Text.of(["* Heading", "", "body text"]);
@@ -48,4 +48,15 @@ test("wordsLabel shows the selection out of the whole note", () => {
   assert.equal(wordsLabel(412, 38), "38 of 412 words");
   assert.equal(wordsLabel(312, undefined, "heading"), "312 words in heading");
   assert.equal(wordsLabel(312, 38, "heading"), "38 of 312 words in heading");
+});
+
+test("bufferPos: All / Top / Bot / percent like the Emacs mode-line", () => {
+  assert.equal(bufferPos(0, 500, 400), "All");
+  assert.equal(bufferPos(0, 500, 500), "All");
+  assert.equal(bufferPos(0, 0, 0), "All");
+  assert.equal(bufferPos(0, 500, 1500), "Top");
+  assert.equal(bufferPos(1000, 500, 1500), "Bot");
+  assert.equal(bufferPos(999.5, 500, 1500), "Bot"); // 1px tolerance
+  assert.equal(bufferPos(500, 500, 1500), "50%");
+  assert.equal(bufferPos(333, 500, 1500), "33%");
 });

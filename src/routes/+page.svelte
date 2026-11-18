@@ -71,7 +71,7 @@
   import { dropWorkspace, parseWorkspaces, putWorkspace, renameInWorkspaces, workspaceName, type Workspaces } from "$lib/workspaces";
   import { parseFolds, putFolds } from "$lib/folds";
   import { nextZoom, parseZoom, wheelZoom } from "$lib/zoom";
-  import { lineCol, parseWordGoal, wordCount, wordsLabel } from "$lib/words";
+  import { bufferPos, lineCol, parseWordGoal, wordCount, wordsLabel } from "$lib/words";
   import { pushCapped, serial, stale } from "$lib/undo";
   import { MENUS } from "$lib/menubar";
   import { windowTitle } from "$lib/wintitle";
@@ -142,7 +142,7 @@
   let mode = $state("normal");
   let words = $state("");
   /** Cursor as "L12:C4", shown in the emacs layout's mode-line (#1448). */
-  let pos = $state("");
+  let pos = $state(""), scrollPos = $state("");
   /** Title of the heading the editor is narrowed to (Space v n), or "". */
   let narrowed = $state("");
   let wordsDone = $state(false);
@@ -335,6 +335,7 @@
       tagColors: cfg.config.tag_colors,
       path,
       onUpdate: countWords,
+      onScroll: (v) => { if (v === view) scrollPos = bufferPos(v.scrollDOM.scrollTop, v.scrollDOM.clientHeight, v.scrollDOM.scrollHeight); },
       onChange: (u) => {
         const t = tabs.find((x) => x.key === key);
         if (t?.kind === "file") remapCrypt(t.path, u); // synced edits move its headings too
@@ -4817,7 +4818,7 @@
     <footer class="status" data-region="status">
       {#if isText(tab)}<span class="mode">{mode.toUpperCase()}</span>{/if}
       <span class="file">{tab?.path ? rel(tab.path) : ""}{tab?.missing ? " • deleted on disk (:w recreates it)" : tab?.conflict ? " • changed on disk (:w keeps yours, Space f r reloads)" : tab?.dirty ? " • unsaved" : ""}</span>
-      {#if isText(tab)}<span class="pos">{pos}</span><span class="words" class:done={wordsDone}>{words}</span>{/if}
+      {#if isText(tab)}<span class="pos">{pos} {scrollPos}</span><span class="words" class:done={wordsDone}>{words}</span>{/if}
       {#if isText(tab) && narrowed}<span class="narrowed" title="Only this heading is shown; saving keeps the whole note">Narrowed to {narrowed} · Space v n widens</span>{/if}
       <span class="msg">{message}</span>
       {#if download}<progress class="dl" max={download.size} value={download.have} title="Downloading the AI model ({Math.floor((download.have / download.size) * 100)}%); cancel it in AI drafts: choose model…"></progress>{/if}
