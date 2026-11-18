@@ -1609,8 +1609,8 @@ note's folder and `~` is expanded. Margin merges the files in order (the first f
 wins when a key appears twice) and skips files it can't read. A note with no such
 line uses `bibliography_file`. The editor picks up a changed keyword as you type it.
 
-HTML, PDF, Markdown, linked and published exports (published sites use only
-`bibliography_file`) render `[cite:@key]` as
+HTML, PDF, Markdown, linked and published exports (each page uses its own
+`#+BIBLIOGRAPHY:` files) render `[cite:@key]` as
 `(Smith 2020)` (in HTML a link to the entry) and expand `#+PRINT_BIBLIOGRAPHY:`
 into a numbered list of the cited entries, in order of first citation. Keys not in
 the file show as `[key?]`; without a bibliography file citations export as written.

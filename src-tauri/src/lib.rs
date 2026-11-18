@@ -3889,14 +3889,16 @@ fn expand(s: &App, path: &Path, text: &str) -> String {
     notes::expand_transclusions(&s.files(), path, text, &|p| s.check(p))
 }
 
-/// The `bibliography_file` entries for citations in exports (#1337); none when unset or unreadable, never an error.
-fn bib(s: &App) -> Vec<bib::BibEntry> {
-    bib::entries_from(&s.cfg().bibliography_file).unwrap_or_default()
-}
-
 /// Note PATH's bibliography: its `#+BIBLIOGRAPHY:` files in TEXT, else the setting's (#1358); never an error.
 fn note_bib(s: &App, path: &Path, text: &str) -> Vec<bib::BibEntry> {
     bib::entries_for_note(text, Some(path), &s.cfg().bibliography_file).unwrap_or_default()
+}
+
+/// A per-page bibliography map for multi-page exports (#1471): pages with the same `#+BIBLIOGRAPHY:` files
+/// (resolved against the note's folder; none = the setting) share one map.
+fn page_bib(s: &App) -> impl Fn(&org::OrgFile) -> std::sync::Arc<std::collections::HashMap<String, bib::BibEntry>> + '_ {
+    let memo = std::cell::RefCell::new(std::collections::HashMap::new());
+    move |f| memo.borrow_mut().entry(bib::note_bib_paths(&f.text, f.path.parent())).or_insert_with(|| export::bib_map(&note_bib(s, &f.path, &f.text))).clone()
 }
 
 /// Export note TEXT (the buffer of PATH) to export_dir. FORMAT: html | md | pdf (HTML that opens the print dialog).
@@ -3929,8 +3931,7 @@ fn export_html_fragment(s: State<App>, path: PathBuf, text: String, diagrams: Op
 #[tauri::command(async)]
 fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, format: String, overwrite: Option<bool>, diagrams: Option<std::collections::HashMap<String, String>>) -> R<PathBuf> {
     let diagrams = diagrams.unwrap_or_default();
-    let (kw, bib) = (s.kw(), note_bib(&s, &path, &text));
-    let mut memo: std::collections::HashMap<Vec<PathBuf>, std::sync::Arc<std::collections::HashMap<String, bib::BibEntry>>> = Default::default();
+    let (kw, bib_of) = (s.kw(), page_bib(&s));
     let root = org::parse(&path, &text, &kw);
     let files = s.files();
     let files: Vec<&org::OrgFile> = files.iter().map(|f| &**f).collect();
@@ -3938,7 +3939,7 @@ fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, forma
     let (pages, ids) = export::bundle(&files, &root, depth, ext);
     let texts: Vec<String> = pages.iter().map(|(f, _)| expand(&s, &f.path, &f.text)).collect();
     if format == "pdf" {
-        return write_export(&s, &format!("{} (linked).html", stem(&path)), export::combined(&pages, &texts, &ids, &kw, &diagrams, &bib), overwrite);
+        return write_export(&s, &format!("{} (linked).html", stem(&path)), export::combined(&pages, &texts, &ids, &kw, &diagrams, &bib_of), overwrite);
     }
     let dir = export_path(&s, &stem(&path), overwrite)?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -3951,9 +3952,7 @@ fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, forma
         std::fs::rename(dir.join(&n), old.join(&n)).map_err(|e| e.to_string())?;
     }
     for ((f, name), text) in pages.iter().zip(&texts) {
-        // Pages with the same bibliography files (resolved against the note's folder; none = the setting) share one map.
-        let m = memo.entry(bib::note_bib_paths(&f.text, f.path.parent())).or_insert_with(|| export::bib_map(&note_bib(&s, &f.path, &f.text))).clone();
-        let (d, title, base) = (export::parse(text, &kw).with_diagrams(diagrams.clone()).with_bib_map(m), stem(&f.path), f.path.parent().unwrap_or(Path::new("")));
+        let (d, title, base) = (export::parse(text, &kw).with_diagrams(diagrams.clone()).with_bib_map(bib_of(f)), stem(&f.path), f.path.parent().unwrap_or(Path::new("")));
         let body = if ext == "md" { export::markdown(&d, &title, base, &ids) } else { export::html(&d, &title, base, &ids, false) };
         config::write_atomic(&dir.join(name), body).map_err(|e| e.to_string())?;
     }
@@ -3980,7 +3979,7 @@ fn publish_site(s: State<App>) -> R<(PathBuf, usize)> {
     publish_dest(&dir, &[c.notes(), c.data(), s.cfg_path.parent().unwrap().to_path_buf()])?;
     let files = s.files();
     let files: Vec<&org::OrgFile> = files.iter().map(|f| &**f).collect();
-    let n = export::publish(&dir, &c.notes(), &files, &c.publish_tag, &s.kw(), &bib(&s), |f| expand(&s, &f.path, &f.text))?;
+    let n = export::publish(&dir, &c.notes(), &files, &c.publish_tag, &s.kw(), page_bib(&s), |f| expand(&s, &f.path, &f.text))?;
     Ok((dir.join("index.html"), n))
 }
 
