@@ -18,14 +18,17 @@ export const tocEditMatters = (old: string, now: string, has: boolean) =>
 
 export type Entry ={ line: number; level: number; title: string };
 const MAX = 500;
+/** The `local` TOC at line AT from ALL (the depth-0 entries): subtree of the heading above it, DEPTH counted from it. */
+export function localEntries(all: Entry[], at: number, depth = 0): Entry[] {
+  const i = all.findLastIndex((e) => e.line < at), base = i < 0 ? 0 : all[i].level;
+  const sub = all.slice(i + 1), n = sub.findIndex((e) => e.level <= base);
+  return (n < 0 || i < 0 ? sub : sub.slice(0, n)).filter((e) => !depth || e.level <= base + depth);
+}
+
 /** Headings of DOC (0-based `line`) down to level DEPTH (0 = all); skips `* ` lines in blocks and noexport/COMMENT subtrees.
  *  With AT (0-based line of a `local` TOC): only the subtree of the heading above it, DEPTH counted from it (none above: all). */
 export function tocEntries(doc: string, todo: string[], done: string[], depth = 0, at = -1): Entry[] {
-  if (at >= 0) {
-    const all = tocEntries(doc, todo, done), i = all.findLastIndex((e) => e.line < at), base = i < 0 ? 0 : all[i].level;
-    const sub = all.slice(i + 1), n = sub.findIndex((e) => e.level <= base);
-    return (n < 0 || i < 0 ? sub : sub.slice(0, n)).filter((e) => !depth || e.level <= base + depth);
-  }
+  if (at >= 0) return localEntries(tocEntries(doc, todo, done), at, depth);
   const out: Entry[] = [], kw = [...todo, ...done];
   let block = false, skip = 0; // skip: level of the excluded heading whose subtree we're in
   doc.split("\n").forEach((text, line) => {
@@ -49,7 +52,7 @@ export function tocEntries(doc: string, todo: string[], done: string[], depth = 
 class Toc extends WidgetType {
   entries: Entry[];
   constructor(entries: Entry[]) { super(); this.entries = entries; }
-  eq(o: Toc) { return JSON.stringify(o.entries) === JSON.stringify(this.entries); }
+  eq(o: Toc) { return o.entries.length === this.entries.length && o.entries.every((e, i) => { const f = this.entries[i]; return e.line === f.line && e.level === f.level && e.title === f.title; }); }
   toDOM(view: EditorView) {
     const d = document.createElement("div"), top = Math.min(...this.entries.map((e) => e.level));
     d.className = "cm-toc";
@@ -76,7 +79,9 @@ export function toc(todo: () => string[], done: () => string[]): Extension {
   type Val = { decos: DecorationSet; has: boolean };
   const build = (s: EditorState): Val => {
     const ranges: Range<Decoration>[] = [];
-    let block = false, has = false, doc: string | null = null;
+    let block = false, has = false, doc: string | null = null, kw: [string[], string[]] | null = null;
+    const scans = new Map<number, Entry[]>(); // one scan per distinct depth, shared by the note's directives
+    const scan = (depth: number) => { let r = scans.get(depth); if (!r) scans.set(depth, r = tocEntries((doc ??= s.doc.toString()), ...(kw ??= [todo(), done()]), depth)); return r; };
     for (let i = 1; i <= s.doc.lines; i++) {
       const l = s.doc.line(i);
       if (/^\s*#\+begin_/i.test(l.text)) block = true;
@@ -84,7 +89,7 @@ export function toc(todo: () => string[], done: () => string[]): Extension {
       const dir = l.text.includes("#+") ? tocDirective(l.text) : null;
       has ||= !!dir;
       if (!dir || block) continue;
-      const entries = tocEntries((doc ??= s.doc.toString()), todo(), done(), dir.depth, dir.local ? i - 1 : -1);
+      const entries = dir.local ? localEntries(scan(0), i - 1, dir.depth) : scan(dir.depth);
       if (entries.length) ranges.push(Decoration.widget({ widget: new Toc(entries), block: true, side: 1 }).range(l.to));
     }
     return { decos: Decoration.set(ranges), has };
