@@ -3930,6 +3930,7 @@ fn export_html_fragment(s: State<App>, path: PathBuf, text: String, diagrams: Op
 fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, format: String, overwrite: Option<bool>, diagrams: Option<std::collections::HashMap<String, String>>) -> R<PathBuf> {
     let diagrams = diagrams.unwrap_or_default();
     let (kw, bib) = (s.kw(), note_bib(&s, &path, &text));
+    let mut memo: std::collections::HashMap<Vec<PathBuf>, std::sync::Arc<std::collections::HashMap<String, bib::BibEntry>>> = Default::default();
     let root = org::parse(&path, &text, &kw);
     let files = s.files();
     let files: Vec<&org::OrgFile> = files.iter().map(|f| &**f).collect();
@@ -3950,7 +3951,9 @@ fn export_linked(s: State<App>, path: PathBuf, text: String, depth: usize, forma
         std::fs::rename(dir.join(&n), old.join(&n)).map_err(|e| e.to_string())?;
     }
     for ((f, name), text) in pages.iter().zip(&texts) {
-        let (d, title, base) = (export::parse(text, &kw).with_diagrams(diagrams.clone()).with_bib(&note_bib(&s, &f.path, &f.text)), stem(&f.path), f.path.parent().unwrap_or(Path::new("")));
+        // Pages with the same bibliography files (resolved against the note's folder; none = the setting) share one map.
+        let m = memo.entry(bib::note_bib_paths(&f.text, f.path.parent())).or_insert_with(|| export::bib_map(&note_bib(&s, &f.path, &f.text))).clone();
+        let (d, title, base) = (export::parse(text, &kw).with_diagrams(diagrams.clone()).with_bib_map(m), stem(&f.path), f.path.parent().unwrap_or(Path::new("")));
         let body = if ext == "md" { export::markdown(&d, &title, base, &ids) } else { export::html(&d, &title, base, &ids, false) };
         config::write_atomic(&dir.join(name), body).map_err(|e| e.to_string())?;
     }
